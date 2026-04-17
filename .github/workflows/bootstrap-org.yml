@@ -13,6 +13,10 @@ on:
         description: "Full course name for README (optional, defaults to org_name)"
         required: false
         default: ""
+      course_code:
+        description: "Hertie course code (e.g. GRAD-E1394). Optional but recommended for inventory discovery."
+        required: false
+        default: ""
       set_secret:
         description: "Set DSL_BOT_TOKEN secret? (requires secret file in repo, or manually add to Settings → Secrets)"
         required: false
@@ -63,4 +67,5 @@ jobs:
           python3 -m dsl_course.bootstrap_course \
             --org "${{ inputs.org }}" \
             --org-name "${{ inputs.org_name }}" \
-            --course-name "${{ inputs.course_name || inputs.org_name }}"
+            --course-name "${{ inputs.course_name || inputs.org_name }}" \
+            --course-code "${{ inputs.course_code }}"

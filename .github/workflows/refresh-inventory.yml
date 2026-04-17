@@ -1,0 +1,54 @@
+name: Refresh Course Orgs Inventory
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"  # Mondays at 06:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Regenerate inventory/course-orgs.md
+        env:
+          GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
+        run: |
+          python3 -m dsl_course.list_orgs \
+            --update-file inventory/course-orgs.md
+
+      - name: Open PR if the inventory changed
+        env:
+          GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
+        run: |
+          set -eo pipefail
+          if git diff --quiet inventory/course-orgs.md; then
+            echo "No changes to inventory — nothing to do."
+            exit 0
+          fi
+
+          BRANCH="chore/refresh-inventory-$(date -u +%Y%m%d-%H%M)"
+          git config user.name "DSL Bot"
+          git config user.email "dsl-bot@hertie-school.org"
+          git checkout -b "$BRANCH"
+          git add inventory/course-orgs.md
+          git commit -m "chore: refresh course-orgs inventory"
+          git push origin "$BRANCH"
+
+          gh pr create \
+            --title "chore: refresh course-orgs inventory" \
+            --body "Automated refresh by \`refresh-inventory\` workflow. Diff reflects course orgs discovered via topic \`dsl-course-hub\`." \
+            --base main \
+            --head "$BRANCH"

@@ -27,7 +27,10 @@ from .utils import (
     log_ok,
     log_step,
     put_file,
+    set_repo_topics,
 )
+
+COURSE_HUB_TOPIC = "dsl-course-hub"
 
 PROFILE_README = """# {org_name}
 
@@ -40,16 +43,16 @@ is managed by the Hertie Data Science Lab and instructors.
 
 ## Structure
 
-- **`content-f{YYYY}` repos** — course materials (lectures, labs, readings)
-- **`assignment-N-f{YYYY}` repos** — assignment templates
-- **`f{YYYY}-*.github.io`** — course website
+- **`content-f{{YYYY}}` repos** — course materials (lectures, labs, readings)
+- **`assignment-N-f{{YYYY}}` repos** — assignment templates
+- **`f{{YYYY}}-*.github.io`** — course website
 - **Satellite orgs** (e.g. `hertie-dl-f2025`) — student submission repos
 
 ## Teams
 
-- **`instructors-f{YYYY}`** — instructors and TAs (push access to materials)
-- **`students-f{YYYY}`** (satellite) — enrolled students (read content, push submissions)
-- **`auditors-f{YYYY}`** (satellite) — auditors (read-only)
+- **`instructors-f{{YYYY}}`** — instructors and TAs (push access to materials)
+- **`students-f{{YYYY}}`** (satellite) — enrolled students (read content, push submissions)
+- **`auditors-f{{YYYY}}`** (satellite) — auditors (read-only)
 - **`course-admin`** — DSL administrators
 
 ## Workflows
@@ -63,8 +66,7 @@ Trigger via [Actions tab](https://github.com/{org}/actions).
 
 ## Resources
 
-- [DSL Docs](https://github.com/hertie-data-science-lab/hertie-dsl-gh-org-strategy/tree/main/docs)
-- [Faculty Workflows](https://github.com/hertie-data-science-lab/hertie-dsl-gh-org-strategy/tree/main/docs/for-faculty)
+- [Teaching & Course Setup](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup) — workflows + docs
 - [Course Website Template](https://github.com/hertie-data-science-lab/course-website-template)
 
 ---
@@ -148,8 +150,16 @@ def create_default_teams(org: str) -> None:
     )
 
 
-def create_profile_repo(org: str, org_name: str, course_name: str) -> None:
-    """Create the .github profile repo with README."""
+def create_profile_repo(
+    org: str,
+    org_name: str,
+    course_name: str,
+    course_code: str = "",
+) -> None:
+    """Create the .github profile repo with README and course metadata.
+
+    Also tags the repo with `dsl-course-hub` so `list_orgs.py` can discover it.
+    """
     log_step("Setting up .github profile repo")
     if not create_repo(
         org,
@@ -162,6 +172,27 @@ def create_profile_repo(org: str, org_name: str, course_name: str) -> None:
     # README with org branding
     readme = PROFILE_README.format(org=org, org_name=org_name, course_name=course_name)
     put_file(org, ".github", "README.md", readme.encode(), "init: org profile README")
+
+    # Course metadata — canonical machine-readable source for discovery tooling
+    metadata = (
+        f"org: {org}\n"
+        f"org_name: {org_name}\n"
+        f"course_name: {course_name}\n"
+        f'course_code: {course_code or ""}\n'
+    )
+    put_file(
+        org,
+        ".github",
+        "dsl-course.yml",
+        metadata.encode(),
+        "init: course metadata for DSL discovery tooling",
+    )
+
+    # Topic marker — list_orgs.py searches for this topic to enumerate course orgs
+    topics = [COURSE_HUB_TOPIC]
+    if course_code:
+        topics.append(f"course-{course_code.lower()}")
+    set_repo_topics(org, ".github", topics)
 
     # GitHub Actions policy (informational)
     put_file(
@@ -487,6 +518,12 @@ def main() -> int:
         "If not set, uses --org-name.",
     )
     parser.add_argument(
+        "--course-code",
+        default="",
+        help="Hertie course code (e.g. 'GRAD-E1394'). Stored in "
+        ".github/dsl-course.yml and set as a repo topic on .github.",
+    )
+    parser.add_argument(
         "--set-secret",
         default=None,
         help="Path to file containing DSL_BOT_TOKEN PAT. "
@@ -508,7 +545,7 @@ def main() -> int:
     create_default_teams(args.org)
 
     # 3. Profile repo + seed workflows
-    create_profile_repo(args.org, org_name, course_name)
+    create_profile_repo(args.org, org_name, course_name, args.course_code)
     seed_workflows(args.org)
 
     # 4. Secret (set or validate)

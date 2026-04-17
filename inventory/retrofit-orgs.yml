@@ -1,0 +1,59 @@
+# One-shot retrofit source. Lists course orgs that predate the `dsl-course-hub`
+# topic convention. Feed this into:
+#   python3 -m dsl_course.list_orgs --retrofit inventory/retrofit-orgs.yml
+# Safe to rerun — put_file + set_repo_topics are idempotent.
+
+- org: Hertie-School-Deep-Learning-E1394
+  org_name: Deep Learning
+  course_name: Deep Learning
+  course_code: GRAD-E1394
+
+- org: Hertie-School-Machine-Learning-C24
+  org_name: Machine Learning
+  course_name: Machine Learning
+  course_code: GRAD-C24
+
+- org: Hertie-School-Data-Struct-Algorithms-C9
+  org_name: Data Structures & Algorithms
+  course_name: Data Structures & Algorithms
+  course_code: GRAD-C9
+
+- org: Hertie-School-Maths-Data-Science-C23
+  org_name: Mathematics of Data Science
+  course_name: Mathematics of Data Science
+  course_code: GRAD-C23
+
+- org: Hertie-School-DS-Decision-Making-E1354
+  org_name: Data Science & Decision Making
+  course_name: Data Science & Decision Making
+  course_code: GRAD-E1354
+
+- org: Hertie-School-Causal-ML-E1487
+  org_name: Causal Machine Learning
+  course_name: Causal Machine Learning
+  course_code: GRAD-E1487
+
+- org: Hertie-School-Causal-Inference-C22
+  org_name: Causal Inference & Machine Learning
+  course_name: Causal Inference & Machine Learning
+  course_code: GRAD-C22
+
+- org: Hertie-School-NLP-E1282
+  org_name: NLP / Text as Data
+  course_name: NLP / Text as Data
+  course_code: GRAD-E1282
+
+- org: Hertie-School-Algorithmic-Game-Theory
+  org_name: Algorithmic Game Theory & Governance
+  course_name: Algorithmic Game Theory & Governance
+  course_code: GRAD-E1489
+
+- org: Hertie-School-Intro-Data-Science-E1339
+  org_name: Introduction to Data Science
+  course_name: Introduction to Data Science
+  course_code: GRAD-E1339
+
+- org: Hertie-School-Example-Course
+  org_name: Example Course
+  course_name: Example Course (prototype)
+  course_code: ""
