@@ -1,0 +1,112 @@
+name: Post-Migrate Cleanup
+
+on:
+  workflow_dispatch:
+    inputs:
+      org:
+        description: "Course org to clean up (e.g. Hertie-School-Deep-Learning-E1394)"
+        required: true
+      phase:
+        description: "Which phase to run"
+        required: true
+        type: choice
+        options:
+          - classify
+          - tag-in-place
+          - migrate
+      satellite_prefix:
+        description: "Satellite org prefix for migrate phase (e.g. hertie-dl)"
+        required: false
+        default: ""
+      course_code:
+        description: "Hertie course code (e.g. GRAD-E1394). Leave blank to infer from org name."
+        required: false
+        default: ""
+      privatise_past_cohorts:
+        description: "(tag-in-place only) flip public past-cohort repos private"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "true"
+          - "false"
+      archive_past_cohorts:
+        description: "(tag-in-place only) archive past-cohort repos"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "true"
+          - "false"
+      execute:
+        description: "Apply changes (otherwise dry-run). Classify is always read-only."
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+jobs:
+  check-team:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify triggering user is in faculty or admin team
+        env:
+          GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          for team in faculty admin; do
+            code=$(gh api "orgs/hertie-data-science-lab/teams/$team/memberships/$ACTOR" \
+                     --jq '.state' 2>/dev/null || true)
+            if [ "$code" = "active" ]; then exit 0; fi
+          done
+          echo "::error::$ACTOR is not in the faculty or admin team — access denied"
+          exit 1
+
+  post-migrate:
+    needs: check-team
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: hertie-data-science-lab/gh-org-strategy
+          token: ${{ secrets.DSL_BOT_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      - name: Run post-migrate
+        env:
+          GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
+        run: |
+          set -eo pipefail
+          ARGS=(--org "${{ inputs.org }}" --phase "${{ inputs.phase }}")
+          if [ -n "${{ inputs.satellite_prefix }}" ]; then
+            ARGS+=(--satellite-prefix "${{ inputs.satellite_prefix }}")
+          fi
+          if [ -n "${{ inputs.course_code }}" ]; then
+            ARGS+=(--course-code "${{ inputs.course_code }}")
+          fi
+          if [ "${{ inputs.privatise_past_cohorts }}" = "true" ]; then
+            ARGS+=(--privatise-past-cohorts)
+          fi
+          if [ "${{ inputs.archive_past_cohorts }}" = "true" ]; then
+            ARGS+=(--archive-past-cohorts)
+          fi
+          if [ "${{ inputs.execute }}" = "true" ]; then
+            ARGS+=(--execute)
+          fi
+          python3 -m dsl_course.post_migrate "${ARGS[@]}"
+
+      - name: Upload manifest (classify phase)
+        if: inputs.phase == 'classify'
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-manifest
+          path: inventory/*-migration-manifest.yml
+          if-no-files-found: warn

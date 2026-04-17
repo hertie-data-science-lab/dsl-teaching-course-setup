@@ -1,0 +1,89 @@
+name: Set Classroom Link
+
+on:
+  workflow_dispatch:
+    inputs:
+      course_org:
+        description: "Course org (website repo lives here)"
+        required: true
+      website_repo:
+        description: "Website repo name (e.g. hertie-school-deep-learning-e1394.github.io)"
+        required: true
+      assignment_file:
+        description: "Path to assignment .md in website repo (e.g. _assignments/01_problem_sets.md)"
+        required: true
+      classroom_url:
+        description: "GitHub Classroom invite URL (paste from Classroom)"
+        required: true
+
+jobs:
+  check-team:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify triggering user is in faculty or admin team
+        env:
+          GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          for team in faculty admin; do
+            code=$(gh api "orgs/hertie-data-science-lab/teams/$team/memberships/$ACTOR" \
+                     --jq '.state' 2>/dev/null || true)
+            if [ "$code" = "active" ]; then exit 0; fi
+          done
+          echo "::error::$ACTOR is not in the faculty or admin team — access denied"
+          exit 1
+
+  set-classroom-link:
+    needs: check-team
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout website repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.course_org }}/${{ inputs.website_repo }}
+          token: ${{ secrets.DSL_BOT_TOKEN }}
+
+      - name: Update classroom_link in assignment file
+        env:
+          FILE: ${{ inputs.assignment_file }}
+          URL: ${{ inputs.classroom_url }}
+        run: |
+          set -eo pipefail
+
+          if [ ! -f "$FILE" ]; then
+            echo "::error::File not found: $FILE"
+            exit 1
+          fi
+
+          if ! grep -qE '^classroom_link:' "$FILE"; then
+            echo "::error::No classroom_link: field in $FILE. Add 'classroom_link: \"\"' to the YAML front matter first."
+            exit 1
+          fi
+
+          python3 -c "
+          import re, sys, os
+          path = os.environ['FILE']
+          url = os.environ['URL']
+          with open(path) as f:
+              content = f.read()
+          new = re.sub(r'^classroom_link:.*$', f'classroom_link: \"{url}\"', content, count=1, flags=re.MULTILINE)
+          with open(path, 'w') as f:
+              f.write(new)
+          print(f'updated {path}')
+          "
+
+      - name: Commit and push
+        env:
+          FILE: ${{ inputs.assignment_file }}
+          URL: ${{ inputs.classroom_url }}
+        run: |
+          set -eo pipefail
+          git config user.name "DSL Bot"
+          git config user.email "dsl-bot@hertie-school.org"
+          git add "$FILE"
+          if git diff --cached --quiet; then
+            echo "No changes to commit (link may already be set)."
+          else
+            git commit -m "feat: set classroom_link on $(basename $FILE)"
+            git push
+          fi

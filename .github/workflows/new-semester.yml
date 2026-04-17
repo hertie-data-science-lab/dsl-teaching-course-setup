@@ -1,0 +1,85 @@
+name: New Semester Setup (Main Org)
+
+on:
+  workflow_dispatch:
+    inputs:
+      org:
+        description: "Course org where materials live (e.g. Hertie-School-Deep-Learning-E1394)"
+        required: true
+      satellite_org:
+        description: "Per-cohort satellite org for submissions (e.g. hertie-dl-f2026). Leave blank to skip."
+        required: false
+        default: ""
+      semester:
+        description: "Semester code (e.g. f2025 or s2026)"
+        required: true
+      course_name:
+        description: 'Course name (e.g. "Deep Learning")'
+        required: true
+      course_code:
+        description: "Hertie course code (e.g. GRAD-E1394)"
+        required: true
+      instructors:
+        description: "Instructor GitHub logins, comma-separated"
+        required: true
+      tas:
+        description: "TA GitHub logins, comma-separated (optional)"
+        required: false
+        default: ""
+      content_visibility:
+        description: "Course content repo visibility"
+        required: true
+        default: "private"
+        type: choice
+        options:
+          - private
+          - public
+
+jobs:
+  check-team:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify triggering user is in faculty or admin team
+        env:
+          GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          for team in faculty admin; do
+            code=$(gh api "orgs/hertie-data-science-lab/teams/$team/memberships/$ACTOR" \
+                     --jq '.state' 2>/dev/null || true)
+            if [ "$code" = "active" ]; then exit 0; fi
+          done
+          echo "::error::$ACTOR is not in the faculty or admin team — access denied"
+          exit 1
+
+  new-semester:
+    needs: check-team
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      - name: Run new-semester
+        env:
+          GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
+        run: |
+          set -eo pipefail
+          ARGS=(
+            --org "${{ inputs.org }}"
+            --semester "${{ inputs.semester }}"
+            --course-name "${{ inputs.course_name }}"
+            --course-code "${{ inputs.course_code }}"
+            --instructors "${{ inputs.instructors }}"
+            --tas "${{ inputs.tas }}"
+            --content-visibility "${{ inputs.content_visibility }}"
+          )
+          if [ -n "${{ inputs.satellite_org }}" ]; then
+            ARGS+=(--satellite-org "${{ inputs.satellite_org }}")
+          fi
+          python3 -m dsl_course.new_semester "${ARGS[@]}"

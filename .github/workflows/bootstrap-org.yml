@@ -1,0 +1,62 @@
+name: Bootstrap Course Org
+
+on:
+  workflow_dispatch:
+    inputs:
+      org:
+        description: "Course org to bootstrap (e.g. Hertie-School-Deep-Learning-E1394)"
+        required: true
+      org_name:
+        description: "Display name for org profile (e.g. Deep Learning)"
+        required: true
+      course_name:
+        description: "Full course name for README (optional, defaults to org_name)"
+        required: false
+        default: ""
+      set_secret:
+        description: "Set DSL_BOT_TOKEN secret? (requires secret file in repo, or manually add to Settings → Secrets)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+jobs:
+  check-team:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify triggering user is in faculty or admin team
+        env:
+          GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          for team in faculty admin; do
+            code=$(gh api "orgs/hertie-data-science-lab/teams/$team/memberships/$ACTOR" \
+                     --jq '.state' 2>/dev/null || true)
+            if [ "$code" = "active" ]; then exit 0; fi
+          done
+          echo "::error::$ACTOR is not in the faculty or admin team — access denied"
+          exit 1
+
+  bootstrap:
+    name: Bootstrap ${{ inputs.org }}
+    needs: check-team
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Bootstrap course org
+        env:
+          GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
+        run: |
+          python3 -m dsl_course.bootstrap_course \
+            --org "${{ inputs.org }}" \
+            --org-name "${{ inputs.org_name }}" \
+            --course-name "${{ inputs.course_name || inputs.org_name }}"

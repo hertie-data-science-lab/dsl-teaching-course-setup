@@ -1,0 +1,84 @@
+name: Create Assignment (Main Org)
+
+on:
+  workflow_dispatch:
+    inputs:
+      course_org:
+        description: "Course org where the template + roster live (e.g. Hertie-School-Deep-Learning-E1394)"
+        required: true
+      satellite_org:
+        description: "Per-cohort satellite org where submissions are created (e.g. hertie-dl-f2026). Leave blank to target course-org (legacy)."
+        required: false
+        default: ""
+      semester:
+        description: "Semester code (e.g. f2025)"
+        required: true
+      assignment:
+        description: "Assignment slug (e.g. assignment-1)"
+        required: true
+      template:
+        description: "Template repo name in the org (e.g. assignment-1-f2025)"
+        required: true
+      teams_file:
+        description: "Optional: path in website repo to teams YAML (e.g. semesters/f2025/teams/assignment-1.yml). Leave blank for per-student."
+        required: false
+        default: ""
+      dry_run:
+        description: "Preview only, don't create repos"
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  check-team:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify triggering user is in faculty or admin team
+        env:
+          GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          for team in faculty admin; do
+            code=$(gh api "orgs/hertie-data-science-lab/teams/$team/memberships/$ACTOR" \
+                     --jq '.state' 2>/dev/null || true)
+            if [ "$code" = "active" ]; then exit 0; fi
+          done
+          echo "::error::$ACTOR is not in the faculty or admin team — access denied"
+          exit 1
+
+  assign:
+    needs: check-team
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      - name: Run assign
+        env:
+          GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
+          COURSE_ORG: ${{ inputs.course_org }}
+          SATELLITE_ORG: ${{ inputs.satellite_org }}
+          SEMESTER: ${{ inputs.semester }}
+          ASSIGNMENT: ${{ inputs.assignment }}
+          TEMPLATE: ${{ inputs.template }}
+          TEAMS_FILE: ${{ inputs.teams_file }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          args=(--course-org "$COURSE_ORG" --semester "$SEMESTER"
+                --assignment "$ASSIGNMENT" --template "$TEMPLATE")
+          if [ -n "$SATELLITE_ORG" ]; then
+            args+=(--satellite-org "$SATELLITE_ORG")
+          fi
+          if [ -n "$TEAMS_FILE" ]; then
+            args+=(--teams-file "$TEAMS_FILE")
+          fi
+          if [ "$DRY_RUN" = "true" ]; then
+            args+=(--dry-run)
+          fi
+          python3 -m dsl_course.assign "${args[@]}"
