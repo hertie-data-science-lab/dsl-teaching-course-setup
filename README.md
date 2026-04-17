@@ -109,8 +109,18 @@ Keep teams in sync with a roster file. Runs:
 
 ---
 
-## Integration
+## Repo Layout
 
-- **Implementation**: [gh-org-strategy](https://github.com/hertie-data-science-lab/gh-org-strategy) — Python automation engine
-- **Documentation**: [ADRs](https://github.com/hertie-data-science-lab/gh-org-strategy/tree/main/docs/decisions) and [Faculty guides](https://github.com/hertie-data-science-lab/gh-org-strategy/tree/main/docs/for-faculty)
-- **Course list**: [inventory/course-orgs.md](https://github.com/hertie-data-science-lab/gh-org-strategy/blob/main/inventory/course-orgs.md)
+This repo is self-contained: workflows and their Python implementation live here.
+
+- `.github/workflows/` — dispatchable workflows (faculty + admin entry points)
+- `dsl_course/` — Python package implementing the workflows
+- `requirements.txt` — Python dependencies (installed by each workflow)
+
+## Related Reading
+
+- **Design decisions**: [ADRs](https://github.com/hertie-data-science-lab/gh-org-strategy/tree/main/docs/decisions) in the coordination repo
+- **Faculty guides**: [docs/for-faculty](https://github.com/hertie-data-science-lab/gh-org-strategy/tree/main/docs/for-faculty) in the coordination repo
+- **Course list**: [inventory/course-orgs.md](https://github.com/hertie-data-science-lab/gh-org-strategy/blob/main/inventory/course-orgs.md) in the coordination repo
+
+> The `gh-org-strategy` repo is an interim coordination hub (ADRs, inventory, session notes). It is not required at runtime — this repo stands on its own.

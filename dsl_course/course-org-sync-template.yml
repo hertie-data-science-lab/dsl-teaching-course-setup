@@ -1,0 +1,29 @@
+# Course org sync workflow — copy this to your {org}.github.io repo as:
+#   .github/workflows/sync.yml
+#
+# Then set the ORG and CURRENT_SEMESTER variables below.
+# Required secret: DSL_BOT_TOKEN (DSL admin adds this to the course org)
+
+name: Sync Course Roster
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"   # every Monday 06:00 UTC (safety net)
+  push:
+    paths:
+      - "semesters/**/hertie-semester.yml"   # fires when ANY cohort's roster is edited
+  workflow_dispatch:                          # manual trigger from Actions tab
+    inputs:
+      semester:
+        description: "Semester to sync (override current)"
+        required: false
+        default: ""
+
+jobs:
+  sync:
+    uses: hertie-data-science-lab/gh-org-strategy/.github/workflows/sync-roster.yml@main
+    with:
+      org: "REPLACE_WITH_YOUR_ORG"                     # e.g. Hertie-School-Deep-Learning-E1394
+      semester: ${{ inputs.semester || 'REPLACE_WITH_CURRENT_SEMESTER' }}  # e.g. f2025
+    secrets:
+      DSL_BOT_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
