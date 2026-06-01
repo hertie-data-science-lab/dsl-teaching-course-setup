@@ -7,6 +7,14 @@ The discovery source is GitHub itself — no hand-edited list to drift. To add a
 ## Active course orgs
 
 <!-- DSL-AUTOGEN-COURSE-ORGS-START -->
+
+_Auto-generated from GitHub. Discovered via topic `dsl-course-hub` on each org's `.github` repo._
+
+| Org | Course | Code |
+| --- | --- | --- |
+| [Hertie-School-Deep-Learning-E1394](https://github.com/Hertie-School-Deep-Learning-E1394) | Deep Learning | GRAD-E1394 |
+| [Hertie-School-Example-Course](https://github.com/Hertie-School-Example-Course) | Example Course (prototype) | — |
+
 <!-- DSL-AUTOGEN-COURSE-ORGS-END -->
 
 ## Regenerate on demand
