@@ -23,26 +23,28 @@ COHORT org            {Course}-f{YYYY}                 student-facing, per-cohor
   questions stay private and reusable across years.
 - The roster is a per-cohort `students.csv` in the cohort's private `classroom-config`.
 
-## Faculty console (this repo → Actions)
+## Faculty actions
 
-Each takes the target `master_org` / `cohort_org` as inputs and pushes into that cohort.
+Faculty trigger actions **from inside the repo they're working in**, in the course org.
 
-### `Provision assignment`
-Generates one **private** `{assignment}-{handle}` repo per onboarded student from a
-private master template, and adds the student as a collaborator. Idempotent; skips
-students not yet onboarded.
-Inputs: `master_org`, `cohort_org`, `assignment`, `template`, `dry_run`.
+### Content-repo actions (run from a content / assignment-template repo)
+The repo the action runs in is the **source**.
 
-### `Release materials`
-Drips selected sessions from the master content repo into the cohort-private
-`materials` repo (private + `students` team read). Only released sessions appear.
-Inputs: `master_org`, `content_repo`, `cohort_org`, `sessions`.
+- **Release materials** — publishes one week's lecture/reading files (`lectures/Session<n>_*`,
+  `readings/required/session-NN/`) into a chosen cohort repo (private + `students` read).
+  Inputs: `cohort_org` (dropdown), `cohort_repo` (dropdown), `week`, ☑`include_lectures` ☑`include_readings`.
+- **Provision assignment** — run from an assignment-template repo; generates one private
+  `{assignment}-{handle}` repo per onboarded student in the chosen cohort.
+  Inputs: `cohort_org` (dropdown), `assignment`, `dry_run`.
 
-### `Enroll student`
-Grants a handle org membership + `students`-team membership. The self-service path is
-the cohort `welcome` Join issue; this is the faculty override. Leave `handle` blank to
-re-materialise the whole roster.
-Inputs: `cohort_org`, `handle`, `prune`.
+These ship in **`content-template`** (use *"Use this template"* for new repos) and are
+added to existing repos with the **Equip repo** action.
+
+### Org-level actions (in the course org's `.github` Actions tab)
+- **Enroll student** — grant a handle org + `students`-team access (faculty override for the Join issue).
+- **Equip repo** — add the Release/Provision actions to an existing repo.
+- **Refresh actions** — repopulate the `cohort_org`/`cohort_repo` dropdowns from the live
+  cohorts (`{course-org}-*`) + their repos. Re-run it after creating a new cohort.
 
 ## Student onboarding
 
@@ -74,7 +76,7 @@ Self-contained — workflows and their Python implementation live here.
 
 - `.github/workflows/` — dispatchable workflows (the console + admin entry points)
 - `dsl_course/` — Python package implementing them (`assign`, `release`, `sync_roster`,
-  `roster`, plus the create-tier modules)
+  `roster`, `seed` (renders/places the content-repo wrappers), plus the create-tier modules)
 - `templates/welcome/` — the cohort onboarding workflow + Join issue form
 - `requirements.txt` — Python dependencies (installed by each workflow)
 

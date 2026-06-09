@@ -1,23 +1,25 @@
-"""dsl-course release -- drip materials from the master into the cohort.
+"""dsl-course release -- publish one week's content from a course repo to a cohort repo.
 
-Copies selected sessions' lecture + required-reading files from the PRIVATE master
-content repo into a COHORT-PRIVATE `materials` repo (private repo + `students` team
-read). Run per release / weekly — only the released sessions appear, so "each week
-opens up". The master is the source of truth; the cohort gets a projection.
+Run from inside a course content repo (e.g. content-f2026): that repo is the SOURCE.
+Copies one week's lecture and/or reading files into a chosen repo in a cohort org
+(private repo + `students` team read). Only the released weeks appear, so "each week
+opens up". Git-clone based so binary PDFs copy intact.
 
-Git-clone based (not the Contents API) so binary PDFs copy intact.
+Source layout (week N == session N):
+    lectures/Session<N>_*            (lecture files)
+    readings/required/session-<NN>/  (required readings, zero-padded)
 
-    master content   Hertie-School-{Course}-{Code}/content-*   (private)
-            │  copy released sessions
+    course/<source-repo>   (private)
+            │  copy week N (lectures and/or readings)
             ▼
-    cohort           {Course}-f{YYYY}/materials                 (private + students read)
+    cohort/<cohort-repo>   (private + students read)
 
 Usage:
     python3 -m dsl_course.release \\
-        --master-org Hertie-School-Deep-Learning-EXAMPLE \\
-        --content-repo content-f2025 \\
-        --cohort-org Deep-Learning-EXAMPLE-f2026 \\
-        --sessions 1 2 3
+        --source-org test-123-hertie --source-repo content-f2026 \\
+        --cohort-org test-123-hertie-f2026 --cohort-repo materials \\
+        --week 1
+    # add --no-lectures or --no-readings to release only one kind (default: both)
 """
 
 from __future__ import annotations
@@ -31,15 +33,13 @@ from pathlib import Path
 
 from .utils import create_repo, gh, git, log, log_err, log_ok, log_step
 
-MATERIALS = "materials"
 
-
-def grant_students_read(cohort_org: str) -> None:
+def grant_students_read(cohort_org: str, repo: str) -> None:
     code, _ = gh(
         "api",
         "--method",
         "PUT",
-        f"orgs/{cohort_org}/teams/students/repos/{cohort_org}/{MATERIALS}",
+        f"orgs/{cohort_org}/teams/students/repos/{cohort_org}/{repo}",
         "--field",
         "permission=pull",
     )
@@ -50,67 +50,79 @@ def grant_students_read(cohort_org: str) -> None:
 
 
 def release(
-    master_org: str, content_repo: str, cohort_org: str, sessions: list[str]
+    source_org: str,
+    source_repo: str,
+    cohort_org: str,
+    cohort_repo: str,
+    week: str,
+    include_lectures: bool = True,
+    include_readings: bool = True,
 ) -> int:
+    if not (include_lectures or include_readings):
+        log_err("nothing to release — both --no-lectures and --no-readings were set.")
+        return 1
+
+    kinds = ("lectures " if include_lectures else "") + (
+        "readings" if include_readings else ""
+    )
     log_step(
-        f"Releasing sessions {sessions} from {master_org}/{content_repo} "
-        f"-> {cohort_org}/{MATERIALS} (cohort-private)"
+        f"Releasing week {week} ({kinds.strip()}) from {source_org}/{source_repo} "
+        f"-> {cohort_org}/{cohort_repo} (cohort-private)"
     )
     create_repo(
         cohort_org,
-        MATERIALS,
+        cohort_repo,
         private=True,
         description="Released course materials (enrolled students only)",
     )
-    grant_students_read(cohort_org)
+    grant_students_read(cohort_org, cohort_repo)
 
     with tempfile.TemporaryDirectory() as work:
         src, out = Path(work) / "src", Path(work) / "out"
         if (
-            gh("repo", "clone", f"{master_org}/{content_repo}", str(src), "--", "-q")[0]
+            gh("repo", "clone", f"{source_org}/{source_repo}", str(src), "--", "-q")[0]
             != 0
         ):
-            log_err(f"could not clone {master_org}/{content_repo}")
+            log_err(f"could not clone {source_org}/{source_repo}")
             return 1
         if (
-            gh("repo", "clone", f"{cohort_org}/{MATERIALS}", str(out), "--", "-q")[0]
+            gh("repo", "clone", f"{cohort_org}/{cohort_repo}", str(out), "--", "-q")[0]
             != 0
         ):
-            log_err(f"could not clone {cohort_org}/{MATERIALS}")
+            log_err(f"could not clone {cohort_org}/{cohort_repo}")
             return 1
 
-        (out / "lectures").mkdir(exist_ok=True)
-        (out / "readings").mkdir(exist_ok=True)
         copied = 0
-        for s in sessions:
-            for f in glob.glob(str(src / "lectures" / f"Session{s}_*")):
+        # Lectures: files named lectures/Session<week>_*
+        if include_lectures:
+            (out / "lectures").mkdir(exist_ok=True)
+            for f in glob.glob(str(src / "lectures" / f"Session{week}_*")):
                 shutil.copy2(f, out / "lectures")
-                log_ok(f"+ lectures/Session{s}")
+                log_ok(f"+ lectures/{Path(f).name}")
                 copied += 1
-            # readings/required/session-NN — zero-pad only when the session is numeric
-            name = f"session-{int(s):02d}" if s.isdigit() else f"session-{s}"
+        # Readings: dir readings/required/session-<NN> (zero-padded when numeric)
+        if include_readings:
+            (out / "readings").mkdir(exist_ok=True)
+            name = f"session-{int(week):02d}" if week.isdigit() else f"session-{week}"
             reading = src / "readings" / "required" / name
             if reading.is_dir():
-                shutil.copytree(
-                    reading, out / "readings" / reading.name, dirs_exist_ok=True
-                )
-                log_ok(f"+ readings/{reading.name}")
+                shutil.copytree(reading, out / "readings" / name, dirs_exist_ok=True)
+                log_ok(f"+ readings/{name}")
                 copied += 1
 
-        # Fail loudly rather than push an empty "release" — usually a filename mismatch.
+        # Fail loudly rather than push an empty "release" — usually a naming mismatch.
         if copied == 0:
             log_err(
-                f"no files matched sessions {sessions} in {master_org}/{content_repo} "
-                f"(expected lectures/Session<n>_* or readings/required/session-<nn>). "
-                f"Nothing released — check the content repo's naming."
+                f"no files matched week {week} in {source_org}/{source_repo} "
+                f"(expected lectures/Session{week}_* or readings/required/session-NN). "
+                f"Nothing released — check the source repo's layout."
             )
             return 1
 
         (out / "README.md").write_text(
-            f"# Materials — released\n\n"
-            f"Released from the master (`{master_org}/{content_repo}`) — "
-            f"**enrolled students only**.\n\n"
-            f"Released sessions: **{' '.join(sessions)}**. More open up each week.\n"
+            f"# {cohort_repo}\n\n"
+            f"Released from `{source_org}/{source_repo}` — **enrolled students only**.\n\n"
+            f"Weeks open up as the course progresses.\n"
         )
 
         env = [
@@ -130,10 +142,10 @@ def release(
             "-q",
             "--no-verify",
             "-m",
-            f"release: sessions {' '.join(sessions)}",
+            f"release: week {week} ({kinds.strip()}) from {source_repo}",
         )
         if code != 0:
-            log_ok("nothing new to release")
+            log_ok("nothing new to release (week already published)")
             return 0
         if git("-C", str(out), "push", "-q", "origin", "HEAD")[0] != 0:
             log_err("push failed")
@@ -144,19 +156,31 @@ def release(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--master-org", required=True)
+    parser.add_argument("--source-org", required=True, help="Course org (source)")
     parser.add_argument(
-        "--content-repo", required=True, help="Content repo name in the master org"
+        "--source-repo", required=True, help="Content repo name (source)"
     )
-    parser.add_argument("--cohort-org", required=True)
+    parser.add_argument("--cohort-org", required=True, help="Cohort org (target)")
     parser.add_argument(
-        "--sessions", required=True, nargs="+", help="Session numbers, e.g. 1 2 3"
+        "--cohort-repo", required=True, help="Target repo in the cohort org"
     )
+    parser.add_argument("--week", required=True, help="Week number, e.g. 1")
+    parser.add_argument("--no-lectures", action="store_true", help="Skip lectures")
+    parser.add_argument("--no-readings", action="store_true", help="Skip readings")
     args = parser.parse_args()
-    if args.master_org == args.cohort_org:
-        log_err("--master-org and --cohort-org must differ.")
+
+    if (args.source_org, args.source_repo) == (args.cohort_org, args.cohort_repo):
+        log_err("source and target must differ.")
         return 1
-    return release(args.master_org, args.content_repo, args.cohort_org, args.sessions)
+    return release(
+        args.source_org,
+        args.source_repo,
+        args.cohort_org,
+        args.cohort_repo,
+        args.week,
+        include_lectures=not args.no_lectures,
+        include_readings=not args.no_readings,
+    )
 
 
 if __name__ == "__main__":

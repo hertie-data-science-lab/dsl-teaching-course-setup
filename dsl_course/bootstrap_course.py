@@ -6,10 +6,11 @@ Sets up org-level infrastructure that persists across semesters:
 - Org settings (2FA enforcement, Pages default branch)
 - GitHub Actions allowlist (documented common actions)
 - Profile README (.github repo with description)
-- Faculty workflows seeded into .github/workflows/ (provision-assignment,
-  release-materials, enroll-student)
+- Org-level workflows in .github (enroll-student, equip-repo, refresh-actions)
+- A content-template repo carrying the Release / Provision actions (faculty create
+  content repos from it, or retrofit existing ones with the Equip-repo action)
 
-With --cohort, also tightens the org and seeds the student-facing welcome (onboard)
+With --cohort, instead tightens the org and seeds the student-facing welcome (onboard)
 and classroom-config (roster) repos.
 
 Usage:
@@ -23,6 +24,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from . import seed
 from .utils import (
     create_repo,
     create_team,
@@ -62,12 +64,10 @@ is managed by the Hertie Data Science Lab and instructors.
 
 ## Workflows
 
-Faculty run these from the [Actions tab](https://github.com/{org}/actions):
-- **`provision-assignment`** — one private repo per student from a master template
-- **`release-materials`** — drip course materials into the cohort
-- **`enroll-student`** — grant org + students-team access
-
-Leave the org field blank to target this org.
+- **Release materials** / **Provision assignment** — run from *inside* a content or
+  assignment-template repo (that repo is the source); they push into a chosen cohort.
+- **Enroll student** / **Equip repo** / **Refresh actions** — org-level, in the
+  [.github Actions tab](https://github.com/{org}/actions).
 
 ## Resources
 
@@ -327,210 +327,65 @@ def setup_cohort_extras(org: str) -> None:
         log_ok("classroom-config seeded (students.csv starter)")
 
 
-# Thin wrapper workflows seeded into each course AND cohort org's .github repo.
-# They check out the public central repo at run-time and run the module — so the
-# logic is single-sourced here, never duplicated, and runs locally in the faculty's
-# own org. The "blank = this org" rule means ONE identical wrapper behaves the same
-# whether it's seeded in a course (master) org or a cohort org: leave the local org's
-# field blank and it resolves to the org the workflow is running in.
-_CENTRAL = "hertie-data-science-lab/dsl-teaching-course-setup"
-
-_CHECK_TEAM = """\
-  check-team:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Verify triggering user is in faculty or admin team
-        env:
-          GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
-          ACTOR: ${{ github.actor }}
-        run: |
-          for team in faculty admin; do
-            state=$(gh api "orgs/hertie-data-science-lab/teams/$team/memberships/$ACTOR" --jq '.state' 2>/dev/null || true)
-            if [ "$state" = "active" ]; then exit 0; fi
-          done
-          echo "::error::$ACTOR is not in the faculty or admin team — access denied"
-          exit 1
-"""
-
-_RUN_PREAMBLE = (
-    """\
-    needs: check-team
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: %s
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: pip install -r requirements.txt
-"""
-    % _CENTRAL
-)
-
-_WORKFLOW_PROVISION = (
-    """\
-name: Provision assignment
-
-on:
-  workflow_dispatch:
-    inputs:
-      cohort_org:
-        description: "Cohort org (target). Blank = this org."
-        required: false
-        default: ""
-      master_org:
-        description: "Master org (template source). Blank = this org."
-        required: false
-        default: ""
-      assignment:
-        description: "Assignment slug (e.g. assignment-1)"
-        required: true
-      template:
-        description: "Template repo name in the master org (e.g. assignment-1-template)"
-        required: true
-      dry_run:
-        description: "Preview only"
-        required: false
-        default: false
-        type: boolean
-
-jobs:
-"""
-    + _CHECK_TEAM
-    + """
-  provision:
-"""
-    + _RUN_PREAMBLE
-    + """\
-      - name: Provision
-        env:
-          GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
-          OWNER: ${{ github.repository_owner }}
-          MASTER_IN: ${{ inputs.master_org }}
-          COHORT_IN: ${{ inputs.cohort_org }}
-          ASSIGNMENT: ${{ inputs.assignment }}
-          TEMPLATE: ${{ inputs.template }}
-          DRY_RUN: ${{ inputs.dry_run }}
-        run: |
-          MASTER="${MASTER_IN:-$OWNER}"; COHORT="${COHORT_IN:-$OWNER}"
-          args=(--master-org "$MASTER" --cohort-org "$COHORT" --assignment "$ASSIGNMENT" --template "$TEMPLATE")
-          [ "$DRY_RUN" = "true" ] && args+=(--dry-run)
-          python3 -m dsl_course.assign "${args[@]}"
-"""
-)
-
-_WORKFLOW_RELEASE = (
-    """\
-name: Release materials
-
-on:
-  workflow_dispatch:
-    inputs:
-      cohort_org:
-        description: "Cohort org (target). Blank = this org."
-        required: false
-        default: ""
-      master_org:
-        description: "Master org (content source). Blank = this org."
-        required: false
-        default: ""
-      content_repo:
-        description: "Content repo name in the master org (e.g. content-f2025)"
-        required: true
-      sessions:
-        description: "Sessions to release, space-separated (e.g. 1 2 3)"
-        required: true
-
-jobs:
-"""
-    + _CHECK_TEAM
-    + """
-  release:
-"""
-    + _RUN_PREAMBLE
-    + """\
-      - name: Release
-        env:
-          GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
-          OWNER: ${{ github.repository_owner }}
-          MASTER_IN: ${{ inputs.master_org }}
-          COHORT_IN: ${{ inputs.cohort_org }}
-          CONTENT_REPO: ${{ inputs.content_repo }}
-          SESSIONS: ${{ inputs.sessions }}
-        run: |
-          gh auth setup-git
-          MASTER="${MASTER_IN:-$OWNER}"; COHORT="${COHORT_IN:-$OWNER}"
-          python3 -m dsl_course.release --master-org "$MASTER" --content-repo "$CONTENT_REPO" --cohort-org "$COHORT" --sessions $SESSIONS
-"""
-)
-
-_WORKFLOW_ENROLL = (
-    """\
-name: Enroll student
-
-on:
-  workflow_dispatch:
-    inputs:
-      cohort_org:
-        description: "Cohort org. Blank = this org."
-        required: false
-        default: ""
-      handle:
-        description: "GitHub handle to enroll (blank = sync whole roster)"
-        required: false
-        default: ""
-      prune:
-        description: "When syncing the whole roster, remove members no longer on it"
-        required: false
-        default: false
-        type: boolean
-
-jobs:
-"""
-    + _CHECK_TEAM
-    + """
-  enroll:
-"""
-    + _RUN_PREAMBLE
-    + """\
-      - name: Enroll
-        env:
-          GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
-          OWNER: ${{ github.repository_owner }}
-          COHORT_IN: ${{ inputs.cohort_org }}
-          HANDLE: ${{ inputs.handle }}
-          PRUNE: ${{ inputs.prune }}
-        run: |
-          COHORT="${COHORT_IN:-$OWNER}"
-          args=(--cohort-org "$COHORT")
-          [ -n "$HANDLE" ] && args+=(--handle "$HANDLE")
-          [ "$PRUNE" = "true" ] && args+=(--prune)
-          python3 -m dsl_course.sync_roster "${args[@]}"
-"""
-)
-
-_FACULTY_WORKFLOWS = {
-    ".github/workflows/provision-assignment.yml": _WORKFLOW_PROVISION,
-    ".github/workflows/release-materials.yml": _WORKFLOW_RELEASE,
-    ".github/workflows/enroll-student.yml": _WORKFLOW_ENROLL,
-}
-
-
 def seed_workflows(org: str) -> None:
-    """Push faculty workflows into the course org's .github repo."""
-    log_step("Seeding faculty workflows into .github repo")
-    for path, content in _FACULTY_WORKFLOWS.items():
+    """Seed the ORG-LEVEL faculty workflows into the course org's .github repo.
+
+    Release/provision live in content repos (see create_content_template + the
+    Equip-repo action); .github carries the org-level enrol/equip/refresh buttons.
+    Workflow YAML is rendered by dsl_course.seed (single source of truth).
+    """
+    log_step("Seeding org-level workflows (enroll / equip / refresh) into .github")
+    cohorts = seed.discover_cohorts(org)
+    rendered = {
+        ".github/workflows/enroll-student.yml": seed.render_enroll(cohorts),
+        ".github/workflows/equip-repo.yml": seed.render_equip(),
+        ".github/workflows/refresh-actions.yml": seed.render_refresh(),
+    }
+    for path, content in rendered.items():
         name = path.split("/")[-1]
-        ok = put_file(
-            org,
-            ".github",
-            path,
-            content.encode(),
-            f"ci: seed {name} workflow",
-        )
-        if ok:
+        if put_file(org, ".github", path, content.encode(), f"ci: seed {name}"):
             log_ok(f"workflow seeded: {name}")
+
+
+def create_content_template(org: str) -> None:
+    """Create the content-template repo that carries the release/provision actions.
+
+    Faculty create new content / assignment-template repos from this template (so they
+    ship the actions); existing repos are retrofitted via the Equip-repo action.
+    """
+    log_step("Creating content-template repo (carries release/provision actions)")
+    if not create_repo(
+        org,
+        seed.TEMPLATE_REPO,
+        private=True,
+        description="Template for course content/assignment repos — ships the faculty actions",
+    ):
+        return
+    cohorts = seed.discover_cohorts(org)
+    cohort_repos = seed.discover_cohort_repos(cohorts)
+    put_file(
+        org,
+        seed.TEMPLATE_REPO,
+        seed.WORKFLOWS[0],
+        seed.render_release(cohorts, cohort_repos).encode(),
+        "ci: release-materials wrapper",
+    )
+    put_file(
+        org,
+        seed.TEMPLATE_REPO,
+        seed.WORKFLOWS[1],
+        seed.render_provision(cohorts).encode(),
+        "ci: provision-assignment wrapper",
+    )
+    gh(
+        "api",
+        "--method",
+        "PATCH",
+        f"repos/{org}/{seed.TEMPLATE_REPO}",
+        "-F",
+        "is_template=true",
+    )
+    log_ok(f"content-template ready: {org}/{seed.TEMPLATE_REPO}")
 
 
 def preflight(org: str) -> bool:
@@ -608,13 +463,17 @@ def main() -> int:
     # 2. Default teams
     create_default_teams(args.org)
 
-    # 3. Profile repo + seed workflows
+    # 3. Profile repo
     create_profile_repo(args.org, org_name, course_name, args.course_code)
-    seed_workflows(args.org)
 
-    # 3b. Cohort-only: tighten + seed welcome/classroom-config.
+    # 3b. Course vs cohort wiring.
     if args.cohort:
+        # Cohort: student-facing welcome + roster + tightened perms.
         setup_cohort_extras(args.org)
+    else:
+        # Course: org-level buttons + the content-template carrying release/provision.
+        seed_workflows(args.org)
+        create_content_template(args.org)
 
     # 4. Secret (set or validate)
     if args.set_secret:
@@ -645,7 +504,8 @@ DONE (automated):
 - Org-level teams: instructors, students, auditors, course-admin
 - Org settings: 2FA enforcement enabled
 - .github profile repo with README and Actions policy
-- Faculty workflows seeded: provision-assignment, release-materials, enroll-student
+- Org-level workflows in .github: Enroll student · Equip repo · Refresh actions
+- content-template repo created (ships the Release / Provision actions)
 - DSL_BOT_TOKEN secret validated (or set)
 
 NEXT STEPS (manual):
@@ -656,12 +516,16 @@ NEXT STEPS (manual):
 2. Invite course instructors and admins:
    https://github.com/{args.org}/settings/members
 
-3. Faculty can now run, from https://github.com/{args.org}/.github/actions :
-   - Provision assignment · Release materials · Enroll student
-   (leave the org field blank to target this org; fill the other org)
+3. Get the Release/Provision buttons into your content repos:
+   - NEW repos: "Use this template" from https://github.com/{args.org}/content-template
+   - EXISTING repos (e.g. content-f2026): run "Equip repo" from
+     https://github.com/{args.org}/.github/actions
+   Then run Release/Provision from inside that repo's Actions tab.
 
-NB: cohort orgs are created the same way — make the empty org in the web UI, add the
-bot as owner, then run this bootstrap with --cohort so it also seeds welcome + roster.
+4. Run "Refresh actions" after adding a cohort to repopulate the org/repo dropdowns.
+
+NB: cohort orgs are made the same way — create the empty org, add the bot as owner,
+then run bootstrap with --cohort (seeds welcome + roster + tightens perms).
 ============================================================
 """)
 

@@ -98,7 +98,9 @@ def render_markdown_table(orgs: list[dict]) -> str:
     ]
     for o in orgs:
         link = f"[{o['org']}]({o['url']})"
-        lines.append(f"| {link} | {o['course_name'] or '—'} | {o['course_code'] or '—'} |")
+        lines.append(
+            f"| {link} | {o['course_name'] or '—'} | {o['course_code'] or '—'} |"
+        )
     lines.append("")
     lines.append(AUTOGEN_END)
     return "\n".join(lines)
@@ -178,7 +180,7 @@ def tag_org(
         f"org: {org}\n"
         f"org_name: {org_name or org}\n"
         f"course_name: {course_name}\n"
-        f'course_code: {course_code or ""}\n'
+        f"course_code: {course_code or ''}\n"
     )
     if not put_file(
         org,
