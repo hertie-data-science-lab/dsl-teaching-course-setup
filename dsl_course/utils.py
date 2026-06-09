@@ -106,7 +106,7 @@ def get_default_branch(org: str, name: str) -> str:
 def create_team(
     org: str, name: str, description: str = "", privacy: str = "closed"
 ) -> bool:
-    """Create a team. Idempotent — treats 422 'already exists' as success.
+    """Create a team. Idempotent - treats 422 'already exists' as success.
     Returns True if a team with this name now exists.
     """
     code, out = gh(
@@ -142,7 +142,7 @@ def org_membership_state(org: str, login: str) -> str | None:
 def set_org_membership(org: str, login: str, role: str = "member") -> bool:
     """Ensure `login` belongs to `org` (invites if needed). Idempotent.
 
-    If already a member/owner, leaves them as-is (never demotes an owner — that 403s).
+    If already a member/owner, leaves them as-is (never demotes an owner - that 403s).
     Returns True on success or graceful skip (e.g. a non-existent demo handle).
     """
     current = org_membership_state(org, login)
@@ -186,7 +186,7 @@ def create_repo(
     description: str = "",
     is_template: bool = False,
 ) -> bool:
-    """Create a repo. Idempotent — treats existing repo as success."""
+    """Create a repo. Idempotent - treats existing repo as success."""
     args = [
         "api",
         "--method",

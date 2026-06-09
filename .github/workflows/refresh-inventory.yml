@@ -35,7 +35,7 @@ jobs:
         run: |
           set -eo pipefail
           if git diff --quiet inventory/course-orgs.md; then
-            echo "No changes to inventory — nothing to do."
+            echo "No changes to inventory - nothing to do."
             exit 0
           fi
 
@@ -55,4 +55,4 @@ jobs:
               --base main --head "$BRANCH"
           fi
           gh pr merge "$BRANCH" --squash --auto --delete-branch=false \
-            || echo "::notice::auto-merge not enabled — inventory PR left open for manual merge"
+            || echo "::notice::auto-merge not enabled - inventory PR left open for manual merge"

@@ -354,7 +354,7 @@ def create_course_website(
     if not generate_website_from_template(org, website_repo, course_name):
         return
 
-    # Template generation is async — poll until _config.yml is readable
+    # Template generation is async - poll until _config.yml is readable
     # (the repo may appear before the initial commit is in place)
     for _ in range(20):
         code, _ = gh(
@@ -368,7 +368,7 @@ def create_course_website(
         time.sleep(2)
     else:
         log_err(
-            f"{website_repo} _config.yml not readable after template generation — "
+            f"{website_repo} _config.yml not readable after template generation - "
             f"rerun the command in a minute."
         )
         return
@@ -383,7 +383,7 @@ def create_course_website(
         instructor_logins,
     )
     # The template currently ships without Gemfile.lock so Bundler resolves
-    # fresh on each build — just double-check it's gone from this repo.
+    # fresh on each build - just double-check it's gone from this repo.
     delete_file_if_exists(
         org, website_repo, "Gemfile.lock", "init: ensure fresh gem resolution"
     )
@@ -430,7 +430,7 @@ def enable_pages_actions(org: str, website_repo: str) -> None:
         log_ok("Pages enabled (build type: GitHub Actions)")
         return
     if "already exists" in out.lower() or "409" in out:
-        # Already enabled — make sure build type is set to workflow
+        # Already enabled - make sure build type is set to workflow
         code, _ = gh(
             "api",
             "--method",
@@ -508,7 +508,7 @@ NEXT STEPS (manual):
 
 4. Add roster members via semesters/{semester}/hertie-semester.yml:
    https://github.com/{org}/{website}/blob/HEAD/semesters/{semester}/hertie-semester.yml
-   (Sync runs weekly or on push — teams update automatically)
+   (Sync runs weekly or on push - teams update automatically)
 
 5. Optional: add sync workflow to the website repo for on-push sync
    (copy dsl_course/course-org-sync-template.yml)
@@ -615,7 +615,7 @@ def main() -> int:
             create_satellite_teams(args.satellite_org, args.semester, instructors, tas)
         else:
             log_err(
-                f"Satellite org {args.satellite_org} does not exist — "
+                f"Satellite org {args.satellite_org} does not exist - "
                 f"skipping satellite team creation. Create it via the web UI "
                 f"then rerun."
             )

@@ -6,9 +6,9 @@ body:
   - type: markdown
     attributes:
       value: |
-        Your **GitHub handle is captured automatically** — you are the issue author, so it is authenticated and cannot be faked.
+        Your **GitHub handle is captured automatically** - you are the issue author, so it is authenticated and cannot be faked.
         Enter your **student ID** so we can match you to the enrolment roster.
-        ⚠️ **Do not post your email or other personal data here** — this is a public repo. Your email is already on the private roster.
+        ⚠️ **Do not post your email or other personal data here** - this is a public repo. Your email is already on the private roster.
   - type: input
     id: student_id
     attributes:

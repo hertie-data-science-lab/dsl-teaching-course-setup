@@ -187,7 +187,7 @@ on:
 {_choice(cohort_orgs)}
 {_assignment_input(assignments or [])}
       dry_run:
-        description: "Preview only — list the repos that WOULD be created, don't create them"
+        description: "Preview only - list the repos that WOULD be created, don't create them"
         type: boolean
         default: false
 
@@ -375,7 +375,7 @@ def discover_assignments(org: str, repo: str) -> list[str]:
 
 
 def discover_content_repos(course_org: str) -> list[str]:
-    """Every repo in the course org that should carry the content actions — i.e. all
+    """Every repo in the course org that should carry the content actions - i.e. all
     of them except the `.github` profile repo (which holds the org-level buttons).
     Refresh seeds the release/assignment actions into all of these."""
     return [r["name"] for r in list_org_repos(course_org) if r["name"] != ".github"]
@@ -408,7 +408,7 @@ def equip(course_org: str, repo: str) -> int:
     cohort_repos = discover_cohort_repos(cohorts)
     log_step(f"Equipping {course_org}/{repo} (cohorts: {cohorts or 'none yet'})")
     if not repo_exists(course_org, repo):
-        log("  [err] repo does not exist — create it first")
+        log("  [err] repo does not exist - create it first")
         return 1
     _push_workflows(course_org, repo, cohorts, cohort_repos)
     return 0
@@ -453,7 +453,7 @@ Welcome! This is the course organisation for **{course_name}**.
 ## Getting started
 
 1. Open a **Join** issue in
-   [`welcome`](https://github.com/{org}/welcome/issues/new/choose) to enrol — your
+   [`welcome`](https://github.com/{org}/welcome/issues/new/choose) to enrol - your
    GitHub handle is captured automatically.
 2. Once you're enrolled, course **materials** open up here week by week, and your
    own assignment repositories appear in this org.
@@ -469,7 +469,7 @@ _Hertie Data Science Lab. This page is auto-generated._
 """
     return f"""# {org_name}
 
-**{course_name}** — managed by the Hertie Data Science Lab.
+**{course_name}** - managed by the Hertie Data Science Lab.
 _This page is auto-generated; edits will be overwritten on the next refresh._
 
 ## Repositories
@@ -480,17 +480,17 @@ _This page is auto-generated; edits will be overwritten on the next refresh._
 
 ## Available actions for faculty & admin
 
-Content actions — run from inside a content repo (that repo is the source); the links
+Content actions - run from inside a content repo (that repo is the source); the links
 below open the copy in `content-template`, but they live in every content repo:
 
-- [**Release materials**](https://github.com/{org}/content-template/actions/workflows/release-materials.yml) — publish one week's lectures/readings into a cohort repo.
-- [**Release assignment**](https://github.com/{org}/content-template/actions/workflows/release-assignment.yml) — create a private repo per student from an `assignments/<n>/` folder.
+- [**Release materials**](https://github.com/{org}/content-template/actions/workflows/release-materials.yml) - publish one week's lectures/readings into a cohort repo.
+- [**Release assignment**](https://github.com/{org}/content-template/actions/workflows/release-assignment.yml) - create a private repo per student from an `assignments/<n>/` folder.
 
-Org actions — in the `.github` repo:
+Org actions - in the `.github` repo:
 
-- [**Enroll student**](https://github.com/{org}/.github/actions/workflows/enroll-student.yml) — grant a student org + `students`-team access.
-- [**Equip repo**](https://github.com/{org}/.github/actions/workflows/equip-repo.yml) — add the two content actions to an existing repo (repos made from `content-template` already have them; Equip retrofits older ones).
-- [**Refresh actions**](https://github.com/{org}/.github/actions/workflows/refresh-actions.yml) — repopulate the cohort/week/assignment dropdowns and rebuild this index.
+- [**Enroll student**](https://github.com/{org}/.github/actions/workflows/enroll-student.yml) - grant a student org + `students`-team access.
+- [**Equip repo**](https://github.com/{org}/.github/actions/workflows/equip-repo.yml) - add the two content actions to an existing repo (repos made from `content-template` already have them; Equip retrofits older ones).
+- [**Refresh actions**](https://github.com/{org}/.github/actions/workflows/refresh-actions.yml) - repopulate the cohort/week/assignment dropdowns and rebuild this index.
 
 ---
 Maintained by the [Hertie Data Science Lab](https://github.com/hertie-data-science-lab).

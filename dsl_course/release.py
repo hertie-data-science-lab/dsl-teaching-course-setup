@@ -46,7 +46,7 @@ def grant_students_read(cohort_org: str, repo: str) -> None:
     if code == 0:
         log_ok("students team -> read")
     else:
-        log("  (students team not found — create it first)")
+        log("  (students team not found - create it first)")
 
 
 def release(
@@ -59,7 +59,7 @@ def release(
     include_readings: bool = True,
 ) -> int:
     if not (include_lectures or include_readings):
-        log_err("nothing to release — both --no-lectures and --no-readings were set.")
+        log_err("nothing to release - both --no-lectures and --no-readings were set.")
         return 1
 
     kinds = ("lectures " if include_lectures else "") + (
@@ -110,18 +110,18 @@ def release(
                 log_ok(f"+ readings/{name}")
                 copied += 1
 
-        # Fail loudly rather than push an empty "release" — usually a naming mismatch.
+        # Fail loudly rather than push an empty "release" - usually a naming mismatch.
         if copied == 0:
             log_err(
                 f"no files matched week {week} in {source_org}/{source_repo} "
                 f"(expected lectures/Session{week}_* or readings/required/session-NN). "
-                f"Nothing released — check the source repo's layout."
+                f"Nothing released - check the source repo's layout."
             )
             return 1
 
         (out / "README.md").write_text(
             f"# {cohort_repo}\n\n"
-            f"Released from `{source_org}/{source_repo}` — **enrolled students only**.\n\n"
+            f"Released from `{source_org}/{source_repo}` - **enrolled students only**.\n\n"
             f"Weeks open up as the course progresses.\n"
         )
 

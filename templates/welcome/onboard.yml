@@ -33,7 +33,7 @@ jobs:
             const org    = context.repo.owner;            // the cohort org
             const issue  = context.payload.issue;
             const handle = issue.user.login;              // authenticated identity
-            const userId = issue.user.id;                 // immutable — key on this
+            const userId = issue.user.id;                 // immutable - key on this
             const CONFIG = 'classroom-config', FILE = 'students.csv';
 
             const fail = async (msg, label) => {
@@ -46,7 +46,7 @@ jobs:
 
             if (!process.env.HAS_BOT) {
               return fail(
-                `Thanks @${handle} — enrolment is **not yet armed**: the \`DSL_BOT_TOKEN\` secret is unset, ` +
+                `Thanks @${handle} - enrolment is **not yet armed**: the \`DSL_BOT_TOKEN\` secret is unset, ` +
                 `so I can't read the private roster or invite you. A maintainer will action this.`,
                 'needs-review');
             }
@@ -55,7 +55,7 @@ jobs:
             const m = (issue.body || '').match(/Student ID\s*[\r\n]+\s*([A-Za-z0-9][\w-]*)/i);
             const studentId = m && m[1];
             if (!studentId) return fail(
-              `Thanks @${handle} — I couldn't read a **Student ID** from the form. Please edit the issue and add it.`,
+              `Thanks @${handle} - I couldn't read a **Student ID** from the form. Please edit the issue and add it.`,
               'needs-review');
 
             // Read the PRIVATE roster.
@@ -65,10 +65,10 @@ jobs:
             const header = lines[0];
             const rows = lines.slice(1).map(l => l.split(','));   // [student_id,email,name,handle,id,section]
 
-            // Match the authenticated handle to a registrar-seeded row — reject non-enrolees.
+            // Match the authenticated handle to a registrar-seeded row - reject non-enrolees.
             const row = rows.find(r => r[0] === studentId);
             if (!row) return fail(
-              `Thanks @${handle} — student ID **${studentId}** isn't on the enrolment roster. ` +
+              `Thanks @${handle} - student ID **${studentId}** isn't on the enrolment roster. ` +
               `If you believe you're enrolled, contact the teaching team.`,
               'needs-review');
             if (row[3] && row[3].toLowerCase() !== handle.toLowerCase()) return fail(
@@ -96,9 +96,9 @@ jobs:
             // Confirm.
             await github.rest.issues.createComment({
               owner: org, repo: context.repo.repo, issue_number: issue.number, body: [
-                `Welcome **@${handle}** 👋 — you're matched to the roster.`,
+                `Welcome **@${handle}** 👋 - you're matched to the roster.`,
                 ``,
-                `- **⚠️ Check your email and accept the invitation to the \`${org}\` org** — until you accept, you can't see anything here.`,
+                `- **⚠️ Check your email and accept the invitation to the \`${org}\` org** - until you accept, you can't see anything here.`,
                 `- Your handle + GitHub id are recorded (student ID ${studentId}); you've been added to the **students** team (unlocks released materials once you've accepted).`,
                 `- Your assignment repos appear here once the teaching team provisions each assignment.`,
               ].join('\n') });

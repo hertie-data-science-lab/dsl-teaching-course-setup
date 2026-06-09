@@ -6,7 +6,7 @@ students.csv is (a) a member of the cohort org and (b) in the single `students` 
 
 Two modes:
   - whole roster (default): reconcile the `students` team to the roster.
-  - single handle (--handle): faculty override / the welcome onboard path — enrol one.
+  - single handle (--handle): faculty override / the welcome onboard path - enrol one.
 
 With --prune, students no longer on the roster are removed from the team (off-boarding);
 off by default so a stale roster never silently revokes access.

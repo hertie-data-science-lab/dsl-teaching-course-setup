@@ -106,9 +106,9 @@ def create_profile_repo(
     ):
         return
 
-    # Course metadata — canonical machine-readable source for discovery tooling.
+    # Course metadata - canonical machine-readable source for discovery tooling.
     # (The org-overview profile/README.md is generated at the end of bootstrap, once
-    # all repos exist, by seed.update_profile_readme — see main.)
+    # all repos exist, by seed.update_profile_readme - see main.)
     metadata = (
         f"org: {org}\n"
         f"org_name: {org_name}\n"
@@ -123,7 +123,7 @@ def create_profile_repo(
         "init: course metadata for DSL discovery tooling",
     )
 
-    # Topic marker — list_orgs.py searches for this topic to enumerate course orgs
+    # Topic marker - list_orgs.py searches for this topic to enumerate course orgs
     topics = [COURSE_HUB_TOPIC]
     if course_code:
         topics.append(f"course-{course_code.lower()}")
@@ -207,7 +207,7 @@ def setup_cohort_extras(org: str) -> None:
         org,
         "welcome",
         private=False,
-        description="Course front door — open a Join issue to enrol",
+        description="Course front door - open a Join issue to enrol",
     ):
         put_file(
             org,
@@ -229,7 +229,7 @@ def setup_cohort_extras(org: str) -> None:
         org,
         "classroom-config",
         private=True,
-        description="PRIVATE cohort config — roster (students.csv). No PII leaves here.",
+        description="PRIVATE cohort config - roster (students.csv). No PII leaves here.",
     ):
         roster = (
             "student_id,hertie_email,name,github_handle,github_id,section\n"
@@ -276,7 +276,7 @@ def create_content_template(org: str) -> None:
         org,
         seed.TEMPLATE_REPO,
         private=True,
-        description="Template for course content/assignment repos — ships the faculty actions",
+        description="Template for course content/assignment repos - ships the faculty actions",
     ):
         return
     cohorts = seed.discover_cohorts(org)
@@ -318,7 +318,7 @@ def preflight(org: str) -> bool:
     if code != 0:
         log_err(f"org '{org}' not found or not accessible by this token.")
         log(
-            "\nGitHub cannot create an organisation via API — create the empty org "
+            "\nGitHub cannot create an organisation via API - create the empty org "
             "first, then re-run:\n"
             "  1. Create it:  https://github.com/organizations/new\n"
             "  2. Add the DSL bot account as an org Owner (so this automation can configure it).\n"
@@ -372,7 +372,7 @@ def main() -> int:
         "--propagate-secret",
         action="store_true",
         help="Set DSL_BOT_TOKEN on this org to the DSL_BOT_TOKEN/GH_TOKEN env value "
-        "(lets the central bootstrap auto-provision the token — no manual per-org step).",
+        "(lets the central bootstrap auto-provision the token - no manual per-org step).",
     )
     args = parser.parse_args()
 
@@ -383,7 +383,7 @@ def main() -> int:
     log(f"  Org name: {org_name}")
     log(f"  Course name: {course_name}")
 
-    # 0. Preflight — the org must already exist (GitHub can't create one via API).
+    # 0. Preflight - the org must already exist (GitHub can't create one via API).
     if not preflight(args.org):
         return 1
 
@@ -404,7 +404,7 @@ def main() -> int:
             seed.register_cohort(args.course, args.org)
         else:
             log(
-                f"  (no --course given — add {args.org} to its course org's "
+                f"  (no --course given - add {args.org} to its course org's "
                 f".github/{seed.COHORTS_PATH} to show it in the faculty dropdowns)"
             )
     else:
@@ -423,7 +423,7 @@ def main() -> int:
             return 1
     elif args.propagate_secret:
         # Copy the bot token onto this org so its seeded workflows can run. Lets the
-        # central bootstrap auto-provision the secret — no per-course manual step.
+        # central bootstrap auto-provision the secret - no per-course manual step.
         token = os.environ.get("DSL_BOT_TOKEN") or os.environ.get("GH_TOKEN")
         if token:
             set_org_secret(args.org, "DSL_BOT_TOKEN", token)
@@ -472,7 +472,7 @@ NEXT STEPS (manual):
 
 4. Run "Refresh actions" after adding a cohort to repopulate the org/repo dropdowns.
 
-NB: cohort orgs are made the same way — create the empty org, add the bot as owner,
+NB: cohort orgs are made the same way - create the empty org, add the bot as owner,
 then run bootstrap with --cohort (seeds welcome + roster + tightens perms).
 ============================================================
 """)

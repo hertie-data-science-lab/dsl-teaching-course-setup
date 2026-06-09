@@ -1,7 +1,7 @@
 # One-shot retrofit source. Lists course orgs that predate the `dsl-course-hub`
 # topic convention. Feed this into:
 #   python3 -m dsl_course.list_orgs --retrofit inventory/retrofit-orgs.yml
-# Safe to rerun — put_file + set_repo_topics are idempotent.
+# Safe to rerun - put_file + set_repo_topics are idempotent.
 
 - org: Hertie-School-Deep-Learning-E1394
   org_name: Deep Learning

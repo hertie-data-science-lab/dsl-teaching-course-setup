@@ -51,7 +51,7 @@ def load(cohort_org: str) -> list[Student]:
     content = get_file_content(cohort_org, CONFIG_REPO, ROSTER_PATH)
     if content is None:
         log_err(
-            f"Could not find {ROSTER_PATH} in {cohort_org}/{CONFIG_REPO} — "
+            f"Could not find {ROSTER_PATH} in {cohort_org}/{CONFIG_REPO} - "
             f"bootstrap the cohort first (bootstrap_course --cohort)."
         )
         return []

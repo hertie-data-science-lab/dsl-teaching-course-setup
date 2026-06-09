@@ -164,12 +164,12 @@ def main() -> int:
                     args.cohort_org,
                     repo,
                     private=True,
-                    description=f"{args.assignment} — submission repo",
+                    description=f"{args.assignment} - submission repo",
                 ):
                     results["failed-create"] = results.get("failed-create", 0) + 1
                     continue
                 set_repo_topics(args.cohort_org, repo, [args.assignment, "submission"])
-            # Seed only a new or still-empty repo — never overwrite a student's work.
+            # Seed only a new or still-empty repo - never overwrite a student's work.
             if (not existed) or _is_empty(args.cohort_org, repo):
                 if not _seed_repo_from_dir(
                     adir, args.cohort_org, repo, args.assignment
@@ -187,7 +187,7 @@ def main() -> int:
                 status = "created-no-collaborator"
             results[status] = results.get(status, 0) + 1
 
-    log_ok(f"Done — {json.dumps(results)}")
+    log_ok(f"Done - {json.dumps(results)}")
     return 1 if any(k.startswith("failed") for k in results) else 0
 
 

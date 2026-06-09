@@ -1,8 +1,8 @@
-# Course Orgs — Live Inventory
+# Course Orgs - Live Inventory
 
 This page is **auto-generated** on a schedule by the `refresh-inventory` workflow. It discovers course orgs by searching GitHub for `.github` repos tagged with the topic `dsl-course-hub` (set automatically by `bootstrap_course.py` when a new course org is bootstrapped).
 
-The discovery source is GitHub itself — no hand-edited list to drift. To add a course, run the **Bootstrap Course Org** workflow; the next cron run picks it up here.
+The discovery source is GitHub itself - no hand-edited list to drift. To add a course, run the **Bootstrap Course Org** workflow; the next cron run picks it up here.
 
 ## Active course orgs
 
@@ -13,7 +13,7 @@ _Auto-generated from GitHub. Discovered via topic `dsl-course-hub` on each org's
 | Org | Course | Code |
 | --- | --- | --- |
 | [Hertie-School-Deep-Learning-EXAMPLE](https://github.com/Hertie-School-Deep-Learning-EXAMPLE) | Deep Learning | GRAD-E1394 |
-| [Hertie-School-Example-Course](https://github.com/Hertie-School-Example-Course) | Example Course (prototype) | — |
+| [Hertie-School-Example-Course](https://github.com/Hertie-School-Example-Course) | Example Course (prototype) | - |
 
 <!-- DSL-AUTOGEN-COURSE-ORGS-END -->
 

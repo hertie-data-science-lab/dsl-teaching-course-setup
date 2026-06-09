@@ -49,7 +49,7 @@ jobs:
                      --jq '.state' 2>/dev/null || true)
             if [ "$code" = "active" ]; then exit 0; fi
           done
-          echo "::error::$ACTOR is not in the faculty or admin team — access denied"
+          echo "::error::$ACTOR is not in the faculty or admin team - access denied"
           exit 1
 
   new-semester:
