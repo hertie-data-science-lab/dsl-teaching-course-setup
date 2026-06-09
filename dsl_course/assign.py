@@ -60,6 +60,38 @@ def assignment_slug(template: str) -> str:
     return re.sub(r"-[fs]\d{4}$", "", template)
 
 
+def ensure_cohort_template(
+    master_org: str, template: str, cohort_org: str, slug: str
+) -> str | None:
+    """Stage 1: freeze a cohort-level template repo (named `<slug>`) from the course
+    template, so the cohort has its own copy and per-student repos generate from it
+    (the role Classroom 50's classroom template used to play). Returns the cohort
+    template name, or None on failure. Idempotent."""
+    if repo_exists(cohort_org, slug):
+        log_skip(f"cohort template {cohort_org}/{slug}")
+        return slug
+    if not generate_from_template(
+        template_org=master_org,
+        template_name=template,
+        owner=cohort_org,
+        name=slug,
+        private=True,
+        description=f"{slug} - cohort assignment template",
+    ):
+        return None
+    log_ok(f"created cohort template {cohort_org}/{slug}")
+    gh(
+        "api",
+        "--method",
+        "PATCH",
+        f"repos/{cohort_org}/{slug}",
+        "-F",
+        "is_template=true",
+    )
+    set_repo_topics(cohort_org, slug, [slug, "assignment-template"])
+    return slug
+
+
 def fetch_solution(master_org: str, template: str, dest: Path) -> Path | None:
     """Clone the template's `solution` branch and return its solution/ dir, or None.
 
@@ -183,34 +215,44 @@ def main() -> int:
     skipped = len(students) - len(onboarded)
     slug = assignment_slug(args.template)
     log_step(
-        f"Provisioning {slug} for {len(onboarded)} onboarded student(s) -> "
-        f"{args.cohort_org} (template {args.master_org}/{args.template})"
-        f"{' + solution' if args.solution else ''}"
+        f"Releasing {slug} to {args.cohort_org}: freeze cohort template, then provision "
+        f"{len(onboarded)} student(s){' + solution' if args.solution else ''}"
     )
     if skipped:
         log(f"  ({skipped} not-yet-onboarded row(s) skipped)")
 
     if args.dry_run:
+        log(f"    DRY-RUN  cohort template {args.cohort_org}/{slug}")
         for s in onboarded:
             log(
                 f"    DRY-RUN  {args.cohort_org}/{slug}-{s.github_handle}  <- @{s.github_handle}"
             )
         return 0
 
+    # Stage 1: freeze the cohort-level template.
+    cohort_template = ensure_cohort_template(
+        args.master_org, args.template, args.cohort_org, slug
+    )
+    if cohort_template is None:
+        log_err("could not create the cohort assignment template.")
+        return 1
+
     with tempfile.TemporaryDirectory() as soldir:
+        # Solution still comes from the COURSE template's solution branch.
         sol_dir = None
         if args.solution:
             sol_dir = fetch_solution(args.master_org, args.template, Path(soldir) / "t")
             if sol_dir is None:
                 return 1
 
+        # Stage 2: fan out one repo per student FROM the cohort template.
         results: dict[str, int] = {}
         for s in onboarded:
             repo = f"{slug}-{s.github_handle}"
             log_step(repo)
             status = provision_one(
-                args.master_org,
-                args.template,
+                args.cohort_org,
+                cohort_template,
                 args.cohort_org,
                 repo,
                 s.github_handle,

@@ -510,8 +510,8 @@ def register_cohort(course_org: str, cohort_org: str) -> None:
 
 def discover_cohort_repos(cohort_orgs: list[str]) -> list[str]:
     """Candidate target repos: the default(s) + real cohort content repos, excluding
-    infra (welcome/classroom-config/.github) and per-student submission repos (tagged
-    `submission` by the provisioner)."""
+    infra (welcome/classroom-config/.github), the website, per-student submission repos
+    (`submission` topic) and the frozen assignment templates (`assignment-template`)."""
     repos = set(DEFAULT_COHORT_REPOS)
     for org in cohort_orgs:
         code, out = gh(
@@ -521,7 +521,11 @@ def discover_cohort_repos(cohort_orgs: list[str]) -> list[str]:
             continue
         for r in json.loads(out):
             topics = {t["name"] for t in (r.get("repositoryTopics") or [])}
-            if r["name"] in INFRA_REPOS or "submission" in topics:
+            if (
+                r["name"] in INFRA_REPOS
+                or r["name"].endswith(".github.io")
+                or topics & {"submission", "assignment-template"}
+            ):
                 continue
             repos.add(r["name"])
     return sorted(repos)
