@@ -639,7 +639,7 @@ def render_profile_readme(
 
 Welcome! This is the course organisation for **{course_name}**.
 
-## 🌐 Course website
+## Course website
 
 **[{course_name} - course website](https://{org.lower()}.github.io/)** - schedule,
 lectures, assignments, and the teaching team. Auto-generated and kept in sync with this
