@@ -25,6 +25,11 @@ on:
         options:
           - "false"
           - "true"
+      cohort:
+        description: "Is this a COHORT org? Also seeds welcome (onboard) + classroom-config (roster) and tightens permissions."
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   check-team:
@@ -63,9 +68,11 @@ jobs:
       - name: Bootstrap course org
         env:
           GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
+          COHORT: ${{ inputs.cohort }}
         run: |
-          python3 -m dsl_course.bootstrap_course \
-            --org "${{ inputs.org }}" \
-            --org-name "${{ inputs.org_name }}" \
-            --course-name "${{ inputs.course_name || inputs.org_name }}" \
-            --course-code "${{ inputs.course_code }}"
+          args=(--org "${{ inputs.org }}"
+                --org-name "${{ inputs.org_name }}"
+                --course-name "${{ inputs.course_name || inputs.org_name }}"
+                --course-code "${{ inputs.course_code }}")
+          [ "$COHORT" = "true" ] && args+=(--cohort)
+          python3 -m dsl_course.bootstrap_course "${args[@]}"

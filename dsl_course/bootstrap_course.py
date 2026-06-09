@@ -6,17 +6,22 @@ Sets up org-level infrastructure that persists across semesters:
 - Org settings (2FA enforcement, Pages default branch)
 - GitHub Actions allowlist (documented common actions)
 - Profile README (.github repo with description)
-- Faculty workflows seeded into .github/workflows/ (new-semester, assign, sync-roster)
+- Faculty workflows seeded into .github/workflows/ (provision-assignment,
+  release-materials, enroll-student)
+
+With --cohort, also tightens the org and seeds the student-facing welcome (onboard)
+and classroom-config (roster) repos.
 
 Usage:
-    python3 -m dsl_course.bootstrap_course \\
-        --org Hertie-School-Deep-Learning-E1394
+    python3 -m dsl_course.bootstrap_course --org Hertie-School-Deep-Learning-E1394
+    python3 -m dsl_course.bootstrap_course --org Deep-Learning-f2026 --cohort
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
 from .utils import (
     create_repo,
@@ -57,12 +62,12 @@ is managed by the Hertie Data Science Lab and instructors.
 
 ## Workflows
 
-Automated workflows handle:
-- **`new-semester`** — semester setup (repos, teams, website)
-- **`assign`** — student assignment generation
-- **`sync-roster`** — weekly team sync from roster file
+Faculty run these from the [Actions tab](https://github.com/{org}/actions):
+- **`provision-assignment`** — one private repo per student from a master template
+- **`release-materials`** — drip course materials into the cohort
+- **`enroll-student`** — grant org + students-team access
 
-Trigger via [Actions tab](https://github.com/{org}/actions).
+Leave the org field blank to target this org.
 
 ## Resources
 
@@ -240,6 +245,83 @@ def validate_secret_presence(org: str, secret_name: str) -> bool:
     else:
         log_err(f"org secret missing: {secret_name}")
     return exists
+
+
+def _welcome_template(rel: str) -> bytes:
+    """Read a seeded-welcome template from the repo's templates/welcome/ dir."""
+    return (
+        Path(__file__).resolve().parents[1] / "templates" / "welcome" / rel
+    ).read_bytes()
+
+
+def setup_cohort_extras(org: str) -> None:
+    """Cohort-only: tighten the org and seed the student-facing repos.
+
+    Layered on top of the common bootstrap when --cohort is passed:
+    - safe-by-default permissions (members get no repo access unless granted);
+    - public `welcome` repo with the Join issue form + onboard workflow;
+    - private `classroom-config` repo with a starter students.csv.
+    The `materials` repo is created on the first release, so it's not made here.
+    """
+    log_step("Cohort setup: tighten org + seed welcome/classroom-config")
+
+    code, out = gh(
+        "api",
+        "--method",
+        "PATCH",
+        f"orgs/{org}",
+        "--field",
+        "default_repository_permission=none",
+        "--field",
+        "members_can_create_repositories=false",
+    )
+    if code == 0:
+        log_ok(
+            "org tightened (default_repository_permission=none, no member repo creation)"
+        )
+    else:
+        log_err(f"could not tighten org settings: {out[:120]}")
+
+    if create_repo(
+        org,
+        "welcome",
+        private=False,
+        description="Course front door — open a Join issue to enrol",
+    ):
+        put_file(
+            org,
+            "welcome",
+            ".github/workflows/onboard.yml",
+            _welcome_template("onboard.yml"),
+            "ci: seed onboard workflow",
+        )
+        put_file(
+            org,
+            "welcome",
+            ".github/ISSUE_TEMPLATE/join.yml",
+            _welcome_template("ISSUE_TEMPLATE/join.yml"),
+            "ci: seed Join issue form",
+        )
+        log_ok("welcome repo seeded (onboard.yml + Join form)")
+
+    if create_repo(
+        org,
+        "classroom-config",
+        private=True,
+        description="PRIVATE cohort config — roster (students.csv). No PII leaves here.",
+    ):
+        roster = (
+            "student_id,hertie_email,name,github_handle,github_id,section\n"
+            "000001,student@example.edu,Example Student,,,A\n"
+        )
+        put_file(
+            org,
+            "classroom-config",
+            "students.csv",
+            roster.encode(),
+            "init: starter roster (replace the example row with registrar data)",
+        )
+        log_ok("classroom-config seeded (students.csv starter)")
 
 
 # Thin wrapper workflows seeded into each course AND cohort org's .github repo.
@@ -498,6 +580,12 @@ def main() -> int:
         help="Path to file containing DSL_BOT_TOKEN PAT. "
         "If provided, sets the org secret. Otherwise, validates presence only.",
     )
+    parser.add_argument(
+        "--cohort",
+        action="store_true",
+        help="Also do cohort student-facing setup: tighten the org and seed the "
+        "welcome (onboard) + classroom-config (roster) repos.",
+    )
     args = parser.parse_args()
 
     org_name = args.org_name or args.org
@@ -520,6 +608,10 @@ def main() -> int:
     # 3. Profile repo + seed workflows
     create_profile_repo(args.org, org_name, course_name, args.course_code)
     seed_workflows(args.org)
+
+    # 3b. Cohort-only: tighten + seed welcome/classroom-config.
+    if args.cohort:
+        setup_cohort_extras(args.org)
 
     # 4. Secret (set or validate)
     if args.set_secret:
@@ -566,9 +658,18 @@ NEXT STEPS (manual):
    (leave the org field blank to target this org; fill the other org)
 
 NB: cohort orgs are created the same way — make the empty org in the web UI, add the
-bot as owner, then run this bootstrap against it so it gets the same workflows.
+bot as owner, then run this bootstrap with --cohort so it also seeds welcome + roster.
 ============================================================
 """)
+
+    if args.cohort:
+        log(
+            "COHORT extras done:\n"
+            f"- org tightened (default_repository_permission=none)\n"
+            f"- welcome repo (public): Join issue form + onboard workflow\n"
+            f"- classroom-config repo (private): starter students.csv "
+            f"(edit https://github.com/{args.org}/classroom-config/blob/HEAD/students.csv with registrar data)\n"
+        )
 
     return 0
 
