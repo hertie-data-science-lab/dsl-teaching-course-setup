@@ -20,6 +20,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -412,6 +413,12 @@ def main() -> int:
         help="With --cohort: the parent course org. Registers this cohort in that "
         "course's .github/dsl-course.yml so it appears in the faculty dropdowns.",
     )
+    parser.add_argument(
+        "--propagate-secret",
+        action="store_true",
+        help="Set DSL_BOT_TOKEN on this org to the DSL_BOT_TOKEN/GH_TOKEN env value "
+        "(lets the central bootstrap auto-provision the token — no manual per-org step).",
+    )
     args = parser.parse_args()
 
     org_name = args.org_name or args.org
@@ -459,6 +466,14 @@ def main() -> int:
         except (FileNotFoundError, IOError) as e:
             log_err(f"could not read secret file: {e}")
             return 1
+    elif args.propagate_secret:
+        # Copy the bot token onto this org so its seeded workflows can run. Lets the
+        # central bootstrap auto-provision the secret — no per-course manual step.
+        token = os.environ.get("DSL_BOT_TOKEN") or os.environ.get("GH_TOKEN")
+        if token:
+            set_org_secret(args.org, "DSL_BOT_TOKEN", token)
+        else:
+            log_err("--propagate-secret set but no DSL_BOT_TOKEN/GH_TOKEN in env")
     else:
         # Validate the secret exists (it should have been set manually or by another bootstrap run)
         if not validate_secret_presence(args.org, "DSL_BOT_TOKEN"):

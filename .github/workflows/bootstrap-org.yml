@@ -72,13 +72,15 @@ jobs:
       - name: Bootstrap course org
         env:
           GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
+          DSL_BOT_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
           COHORT: ${{ inputs.cohort }}
           COURSE: ${{ inputs.course }}
         run: |
           args=(--org "${{ inputs.org }}"
                 --org-name "${{ inputs.org_name }}"
                 --course-name "${{ inputs.course_name || inputs.org_name }}"
-                --course-code "${{ inputs.course_code }}")
+                --course-code "${{ inputs.course_code }}"
+                --propagate-secret)
           [ "$COHORT" = "true" ] && args+=(--cohort)
           [ -n "$COURSE" ] && args+=(--course "$COURSE")
           python3 -m dsl_course.bootstrap_course "${args[@]}"
