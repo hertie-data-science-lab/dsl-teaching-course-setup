@@ -82,7 +82,8 @@ def _lecture_entry(cohort_org: str, week: str, when: date) -> str:
     links = []
     for section in ("lectures", "readings"):
         for name, url in _week_files(cohort_org, MATERIALS_REPO, section, week):
-            links.append(f"    - url: {url}\n      name: {section[:-1]}: {name}")
+            safe = name.replace('"', "'")
+            links.append(f'    - url: {url}\n      name: "{section[:-1]} - {safe}"')
     links_block = ("links:\n" + "\n".join(links)) if links else "links: []"
     return (
         f"---\n"
@@ -105,6 +106,7 @@ def _assignment_entry(course_org: str, repo: str, when: date) -> str:
         if line.startswith("# "):
             title = line[2:].strip()
             break
+    title = title.replace('"', "'")
     body = "\n".join(ln for ln in readme.splitlines() if not ln.startswith("# ")).strip()
     return (
         f"---\n"
