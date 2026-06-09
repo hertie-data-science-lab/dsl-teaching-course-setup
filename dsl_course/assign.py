@@ -50,6 +50,12 @@ _GIT_ENV = [
 ]
 
 
+def _is_empty(org: str, repo: str) -> bool:
+    """True if the repo has no commits yet (so seeding it won't clobber any work)."""
+    code, out = gh("api", f"repos/{org}/{repo}/branches", "--jq", "length")
+    return code == 0 and out.strip() == "0"
+
+
 def _seed_repo_from_dir(
     src_dir: Path, cohort_org: str, repo: str, assignment: str
 ) -> bool:
@@ -78,7 +84,7 @@ def _seed_repo_from_dir(
         )
         if code != 0:
             return True  # nothing to commit (repo already populated)
-        return git("-C", str(out), "push", "-q", "origin", "HEAD")[0] == 0
+        return git("-C", str(out), *_GIT_ENV, "push", "-q", "origin", "HEAD")[0] == 0
 
 
 def main() -> int:
@@ -153,9 +159,7 @@ def main() -> int:
             repo = f"{args.assignment}-{s.github_handle}"
             log_step(repo)
             existed = repo_exists(args.cohort_org, repo)
-            if existed:
-                log_skip(f"repo {args.cohort_org}/{repo}")
-            else:
+            if not existed:
                 if not create_repo(
                     args.cohort_org,
                     repo,
@@ -165,10 +169,14 @@ def main() -> int:
                     results["failed-create"] = results.get("failed-create", 0) + 1
                     continue
                 set_repo_topics(args.cohort_org, repo, [args.assignment, "submission"])
+            # Seed only a new or still-empty repo — never overwrite a student's work.
+            if (not existed) or _is_empty(args.cohort_org, repo):
                 if not _seed_repo_from_dir(
                     adir, args.cohort_org, repo, args.assignment
                 ):
                     log_err(f"  ! could not seed {repo} from the assignment folder")
+            else:
+                log_skip(f"repo {args.cohort_org}/{repo}")
             status = "skipped" if existed else "ok"
             if add_collaborator(
                 args.cohort_org, repo, s.github_handle, permission="maintain"

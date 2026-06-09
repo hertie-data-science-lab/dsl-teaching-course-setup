@@ -147,7 +147,7 @@ def release(
         if code != 0:
             log_ok("nothing new to release (week already published)")
             return 0
-        if git("-C", str(out), "push", "-q", "origin", "HEAD")[0] != 0:
+        if git("-C", str(out), *env, "push", "-q", "origin", "HEAD")[0] != 0:
             log_err("push failed")
             return 1
     log_ok("released")
