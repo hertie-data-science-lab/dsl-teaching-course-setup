@@ -32,6 +32,9 @@ COHORTS_PATH = (
 )
 
 CENTRAL = "hertie-data-science-lab/dsl-teaching-course-setup"
+# TEMP: seeded workflows run code from this ref. While PR #9 is unmerged we pin to the
+# branch so the buttons work; set back to "main" (or drop the ref:) once it's merged.
+CENTRAL_REF = "feature/adr-0010-inverted-model"
 TEMPLATE_REPO = "content-template"
 # Target is ONE cohort repo holding lectures/ + readings/ as SUBDIRS (not separate
 # repos), so the only default target is `materials`; real content repos are discovered.
@@ -69,6 +72,7 @@ _RUN_PREAMBLE = f"""    needs: check-team
       - uses: actions/checkout@v4
         with:
           repository: {CENTRAL}
+          ref: {CENTRAL_REF}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -363,19 +367,46 @@ def list_org_repos(org: str) -> list[dict]:
     return json.loads(out) if code == 0 else []
 
 
-def render_profile_readme(
-    org: str, org_name: str, course_name: str, repos: list[dict]
-) -> str:
-    """Org overview: a header + a clickable table indexing the org's repos."""
+def _repo_table(repos: list[dict]) -> str:
+    """Clickable repo table, with `welcome` first (most logical landing repo)."""
+    visible = [r for r in repos if r["name"] != ".github"]
+    visible.sort(key=lambda r: (r["name"].lower() != "welcome", r["name"].lower()))
     rows = []
-    for r in sorted(repos, key=lambda x: x["name"].lower()):
-        if r["name"] == ".github":
-            continue
+    for r in visible:
         desc = (r.get("description") or "").replace("|", "\\|").strip()
         rows.append(
             f"| [{r['name']}]({r['url']}) | {r['visibility'].lower()} | {desc} |"
         )
-    table = "\n".join(rows) or "| _(no repos yet)_ | | |"
+    return "\n".join(rows) or "| _(no repos yet)_ | | |"
+
+
+def render_profile_readme(
+    org: str, org_name: str, course_name: str, repos: list[dict], is_cohort: bool
+) -> str:
+    """Org overview. Cohort orgs get a student-facing page; course orgs a faculty one."""
+    table = _repo_table(repos)
+    if is_cohort:
+        return f"""# {course_name}
+
+Welcome! This is the course organisation for **{course_name}**.
+
+## Getting started
+
+1. Open a **Join** issue in
+   [`welcome`](https://github.com/{org}/welcome/issues/new/choose) to enrol — your
+   GitHub handle is captured automatically.
+2. Once you're enrolled, course **materials** open up here week by week, and your
+   own assignment repositories appear in this org.
+
+## Where things are
+
+| Repo | Visibility | What it's for |
+| --- | --- | --- |
+{table}
+
+---
+_Hertie Data Science Lab. This page is auto-generated._
+"""
     return f"""# {org_name}
 
 **{course_name}** — managed by the Hertie Data Science Lab.
@@ -387,12 +418,12 @@ _This page is auto-generated; edits will be overwritten on the next refresh._
 | --- | --- | --- |
 {table}
 
-## Faculty actions
+## Available actions for faculty & admin
 
 - **Release materials** / **Release assignment** — run from inside a content or
   assignment-template repo (its own Actions tab; the repo is the source).
 - **Enroll student** / **Equip repo** / **Refresh actions** — in the
-  [.github repo's Actions tab](https://github.com/{org}/.github/actions).
+  [`.github` repo](https://github.com/{org}/.github) → Actions tab.
 
 ---
 Maintained by the [Hertie Data Science Lab](https://github.com/hertie-data-science-lab).
@@ -402,7 +433,10 @@ Maintained by the [Hertie Data Science Lab](https://github.com/hertie-data-scien
 def update_profile_readme(
     org: str, org_name: str | None = None, course_name: str | None = None
 ) -> None:
-    """(Re)generate the org's profile/README.md from its metadata + live repo list."""
+    """(Re)generate the org's profile/README.md from its metadata + live repo list.
+
+    A cohort org (one with a `welcome` repo) gets a student-facing page; a course org
+    gets the faculty-facing one."""
     if org_name is None or course_name is None:
         cfg = {}
         content = get_file_content(org, ".github", "dsl-course.yml")
@@ -410,7 +444,9 @@ def update_profile_readme(
             cfg = yaml.safe_load(content) or {}
         org_name = org_name or cfg.get("org_name") or org
         course_name = course_name or cfg.get("course_name") or org_name
-    body = render_profile_readme(org, org_name, course_name, list_org_repos(org))
+    repos = list_org_repos(org)
+    is_cohort = any(r["name"] == "welcome" for r in repos)
+    body = render_profile_readme(org, org_name, course_name, repos, is_cohort)
     put_file(
         org,
         ".github",
