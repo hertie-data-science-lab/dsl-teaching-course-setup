@@ -24,7 +24,7 @@ import os
 import sys
 from pathlib import Path
 
-from . import scaffold, seed
+from . import scaffold, seed, site
 from .utils import (
     create_repo,
     create_team,
@@ -351,6 +351,8 @@ def main() -> int:
         setup_cohort_extras(args.org)
         if args.course:
             seed.register_cohort(args.course, args.org)
+            # Populate + prune + wire the freshly-scaffolded site from the org structure.
+            site.sync_site(args.course, args.org)
         else:
             log(
                 f"  (no --course given - add {args.org} to its course org's "

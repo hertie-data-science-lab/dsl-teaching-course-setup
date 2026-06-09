@@ -639,6 +639,12 @@ def render_profile_readme(
 
 Welcome! This is the course organisation for **{course_name}**.
 
+## 🌐 Course website
+
+**[{course_name} - course website](https://{org.lower()}.github.io/)** - schedule,
+lectures, assignments, and the teaching team. Auto-generated and kept in sync with this
+org; updates on every release.
+
 ## Getting started
 
 1. Open a **Join** issue in
