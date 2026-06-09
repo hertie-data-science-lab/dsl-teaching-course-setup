@@ -393,6 +393,60 @@ jobs:
 """
 
 
+def render_new_materials() -> str:
+    """Scaffold a correctly-structured course-materials-<tag> repo, then refresh."""
+    return f"""name: New materials repo
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Year tag (e.g. f2026) - creates course-materials-<tag>"
+        required: true
+
+jobs:
+{_CHECK_TEAM}
+  scaffold:
+{_RUN_PREAMBLE}      - name: Scaffold materials
+        env:
+          GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
+          DSL_BOT_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
+          ORG: ${{{{ github.repository_owner }}}}
+        run: |
+          gh auth setup-git
+          python3 -m dsl_course.scaffold materials --org "$ORG" --tag "${{{{ inputs.tag }}}}"
+          python3 -m dsl_course.seed refresh --course-org "$ORG"
+"""
+
+
+def render_new_assignment() -> str:
+    """Scaffold an assignment-N-<tag> template repo (main + solution branch), then refresh."""
+    return f"""name: New assignment
+
+on:
+  workflow_dispatch:
+    inputs:
+      number:
+        description: "Assignment number (e.g. 1)"
+        required: true
+      tag:
+        description: "Year tag (e.g. f2026) - creates assignment-<number>-<tag>"
+        required: true
+
+jobs:
+{_CHECK_TEAM}
+  scaffold:
+{_RUN_PREAMBLE}      - name: Scaffold assignment
+        env:
+          GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
+          ORG: ${{{{ github.repository_owner }}}}
+        run: |
+          gh auth setup-git
+          python3 -m dsl_course.scaffold assignment --org "$ORG" --number "${{{{ inputs.number }}}}" --tag "${{{{ inputs.tag }}}}"
+          python3 -m dsl_course.seed refresh --course-org "$ORG"
+"""
+
+
 def _read_cohorts(course_org: str) -> list[str]:
     """Read the course org's standalone .github/cohorts.yml registry."""
     content = get_file_content(course_org, ".github", COHORTS_PATH)
@@ -599,12 +653,27 @@ All actions live in the [`.github` repo's Actions tab](https://github.com/{org}/
 
 - [**Release materials**](https://github.com/{org}/.github/actions/workflows/release-materials.yml) - pick the source materials repo + week, publish `lectures/`+`readings/` into a cohort repo.
 - [**Release assignment**](https://github.com/{org}/.github/actions/workflows/release-assignment.yml) - generate one repo per student from a chosen `assignment-*` template repo.
+- [**New materials repo**](https://github.com/{org}/.github/actions/workflows/new-materials.yml) - scaffold a correctly-structured `course-materials-<year>` repo (week folders + the Release buttons).
+- [**New assignment**](https://github.com/{org}/.github/actions/workflows/new-assignment.yml) - scaffold an `assignment-N-<year>` template repo (starter + autograder on `main`, an empty `solution` branch).
 - [**Enroll student**](https://github.com/{org}/.github/actions/workflows/enroll-student.yml) - grant a student org + `students`-team access.
 - [**Bootstrap cohort**](https://github.com/{org}/.github/actions/workflows/bootstrap-cohort.yml) - configure a pre-created cohort org (welcome + roster + tighten), register it, refresh dropdowns.
 - [**Refresh actions**](https://github.com/{org}/.github/actions/workflows/refresh-actions.yml) - repopulate the cohort/week/assignment dropdowns, re-equip content repos, and rebuild this index.
 
 Each materials repo *also* carries its own **Release** buttons (run from inside the repo;
 there the `week` is a dropdown of that repo's weeks).
+
+## Repository structure (required)
+
+The actions assume this layout - use **New materials repo** / **New assignment** above to scaffold it correctly.
+
+**Materials repo** (`course-materials-<year>`) - the source for Release materials:
+- `lectures/week-N/` - one folder per week's lecture files;
+- `readings/week-N/` - one folder per week's readings;
+- `*syllabus*`, `README.md` at the **root** (optional) - released via the syllabus / README toggles.
+
+**Assignment repo** (`assignment-N-<year>`, an `is_template` repo) - the source for Release assignment:
+- **`main` branch** - the starter code + `.github/workflows/autograde.yml`. This is exactly what students receive (native template-generate copies `main` only).
+- **`solution` branch** - a `solution/` folder with the model solution. **Solutions MUST live on this branch, never on `main`** - that is what guarantees they are never copied into student repos on generate. They reach students only when you run Release assignment with **include_solution** ticked, which pushes the `solution/` folder into each student repo as a separate, later commit.
 
 ---
 Maintained by the [Hertie Data Science Lab](https://github.com/hertie-data-science-lab).
@@ -654,6 +723,8 @@ def seed_github_workflows(course_org: str) -> None:
         ".github/workflows/release-assignment.yml": render_provision(
             cohorts, assignments
         ),
+        ".github/workflows/new-materials.yml": render_new_materials(),
+        ".github/workflows/new-assignment.yml": render_new_assignment(),
         ".github/workflows/enroll-student.yml": render_enroll(cohorts),
         ".github/workflows/bootstrap-cohort.yml": render_bootstrap_cohort(),
         ".github/workflows/refresh-actions.yml": render_refresh(),
