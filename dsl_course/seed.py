@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 
@@ -342,7 +343,8 @@ jobs:
 
 
 def render_refresh() -> str:
-    """Repopulate the cohort dropdowns across the template + all equipped repos."""
+    """Repopulate dropdowns, re-seed content actions, propagate the repo secret, and
+    rebuild the profile README across the course org."""
     return f"""name: Refresh actions
 
 on:
@@ -354,6 +356,7 @@ jobs:
 {_RUN_PREAMBLE}      - name: Refresh
         env:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
+          DSL_BOT_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
         run: |
           python3 -m dsl_course.seed refresh --course-org "${{{{ github.repository_owner }}}}"
 """
@@ -615,10 +618,26 @@ def seed_github_workflows(course_org: str) -> None:
             log_ok(f".github <- {path.split('/')[-1]}")
 
 
+def _propagate_repo_secret(course_org: str, repos: list[str]) -> None:
+    """On GitHub Free, org secrets don't reach PRIVATE repos - so set DSL_BOT_TOKEN as a
+    repo secret on each content repo (from the token this run already holds), letting
+    their run-from-repo workflows authenticate."""
+    token = os.environ.get("DSL_BOT_TOKEN") or os.environ.get("GH_TOKEN")
+    if not token:
+        return
+    for repo in repos:
+        code, _ = gh(
+            "secret", "set", "DSL_BOT_TOKEN", "--repo", f"{course_org}/{repo}", "--body", token
+        )
+        if code == 0:
+            log_ok(f"repo secret -> {repo}")
+
+
 def refresh(course_org: str) -> int:
     """Refresh both layers: the run-from-repo content actions in every content repo,
     AND the central org-level workflows in .github; repopulate dropdowns; rebuild the
-    org profile README."""
+    org profile README; and (Free-plan workaround) propagate the token as a repo secret
+    so private content repos can authenticate."""
     cohorts = discover_cohorts(course_org)
     cohort_repos = discover_cohort_repos(cohorts)
     targets = discover_content_repos(course_org)
@@ -627,6 +646,7 @@ def refresh(course_org: str) -> int:
     )
     for repo in sorted(targets):
         _push_workflows(course_org, repo, cohorts, cohort_repos)
+    _propagate_repo_secret(course_org, targets)
     seed_github_workflows(course_org)
     update_profile_readme(course_org)
     return 0
