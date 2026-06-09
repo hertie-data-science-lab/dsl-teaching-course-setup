@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 from . import seed
@@ -212,10 +213,14 @@ def scaffold_site(org: str) -> int:
             "build_type=workflow",
         )
 
-    # template-generate doesn't fire workflows, so kick the first deploy by hand.
-    code, _ = gh("workflow", "run", "deploy.yml", "--repo", f"{org}/{site}")
-    if code != 0:
-        log("  (could not dispatch deploy.yml yet - it will deploy on the next push)")
+    # template-generate doesn't fire workflows, so kick the first deploy by hand. The
+    # workflow takes a few seconds to index after generate, so retry the dispatch.
+    for _ in range(6):
+        if gh("workflow", "run", "deploy.yml", "--repo", f"{org}/{site}")[0] == 0:
+            break
+        time.sleep(5)
+    else:
+        log("  (deploy not dispatched yet - it will deploy on the next push to the site repo)")
     log_ok(f"site deploying -> https://{org.lower()}.github.io/")
     return 0
 
