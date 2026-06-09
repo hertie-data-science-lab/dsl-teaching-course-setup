@@ -16,8 +16,8 @@ Source layout (week N == session N):
 
 Usage:
     python3 -m dsl_course.release \\
-        --source-org test-123-hertie --source-repo content-f2026 \\
-        --cohort-org test-123-hertie-f2026 --cohort-repo materials \\
+        --source-org TEST-HERTIE-COURSE --source-repo content-f2026 \\
+        --cohort-org TEST-HERTIE-COHORT-f2026 --cohort-repo materials \\
         --week 1
     # add --no-lectures or --no-readings to release only one kind (default: both)
 """

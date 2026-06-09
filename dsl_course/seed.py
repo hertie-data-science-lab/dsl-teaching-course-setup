@@ -20,6 +20,7 @@ Actions:
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 
 import yaml
@@ -32,10 +33,13 @@ COHORTS_PATH = (
 
 CENTRAL = "hertie-data-science-lab/dsl-teaching-course-setup"
 TEMPLATE_REPO = "content-template"
-DEFAULT_COHORT_REPOS = ["materials", "lecture-slides", "readings", "slides"]
+# Target is ONE cohort repo holding lectures/ + readings/ as SUBDIRS (not separate
+# repos), so the only default target is `materials`; real content repos are discovered.
+DEFAULT_COHORT_REPOS = ["materials"]
+INFRA_REPOS = {"welcome", "classroom-config", ".github"}
 WORKFLOWS = (
     ".github/workflows/release-materials.yml",
-    ".github/workflows/provision-assignment.yml",
+    ".github/workflows/release-assignment.yml",
 )
 
 _CHECK_TEAM = """  check-team:
@@ -130,7 +134,7 @@ jobs:
 
 
 def render_provision(cohort_orgs: list[str]) -> str:
-    return f"""name: Provision assignment
+    return f"""name: Release assignment
 
 # Run from an assignment-template repo (this repo is the TEMPLATE). Generates one
 # private {{assignment}}-{{handle}} repo per onboarded student in the chosen cohort.
@@ -285,14 +289,22 @@ def register_cohort(course_org: str, cohort_org: str) -> None:
 
 
 def discover_cohort_repos(cohort_orgs: list[str]) -> list[str]:
+    """Candidate target repos: the default(s) + real cohort content repos, excluding
+    infra (welcome/classroom-config/.github) and per-student submission repos (tagged
+    `submission` by the provisioner)."""
     repos = set(DEFAULT_COHORT_REPOS)
     for org in cohort_orgs:
         code, out = gh(
-            "repo", "list", org, "--limit", "200", "--json", "name", "--jq", ".[].name"
+            "repo", "list", org, "--limit", "300", "--json", "name,repositoryTopics"
         )
-        if code == 0:
-            repos |= set(out.splitlines())
-    return sorted(r for r in repos if r)
+        if code != 0:
+            continue
+        for r in json.loads(out):
+            topics = {t["name"] for t in (r.get("repositoryTopics") or [])}
+            if r["name"] in INFRA_REPOS or "submission" in topics:
+                continue
+            repos.add(r["name"])
+    return sorted(repos)
 
 
 def discover_equipped_repos(course_org: str) -> list[str]:
