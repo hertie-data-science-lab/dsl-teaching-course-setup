@@ -1,22 +1,22 @@
 """dsl-course release -- publish one week's content from a course repo to a cohort repo.
 
-Run from inside a course content repo (e.g. content-f2026): that repo is the SOURCE.
-Copies one week's lecture and/or reading files into a chosen repo in a cohort org
+Run from inside a course content repo (materials-f2026): that repo is the SOURCE.
+Copies one week's lecture and/or reading folders into a chosen repo in a cohort org
 (private repo + `students` team read). Only the released weeks appear, so "each week
 opens up". Git-clone based so binary PDFs copy intact.
 
-Source layout (week N == session N):
-    lectures/Session<N>_*            (lecture files)
-    readings/required/session-<NN>/  (required readings, zero-padded)
+Source layout (lectures and readings twinned in one repo):
+    lectures/week-<N>/...
+    readings/week-<N>/...
 
     course/<source-repo>   (private)
-            │  copy week N (lectures and/or readings)
-            ▼
+            |  copy week N (lectures and/or readings)
+            v
     cohort/<cohort-repo>   (private + students read)
 
 Usage:
     python3 -m dsl_course.release \\
-        --source-org TEST-HERTIE-COURSE --source-repo content-f2026 \\
+        --source-org TEST-HERTIE-COURSE --source-repo materials-f2026 \\
         --cohort-org TEST-HERTIE-COHORT-f2026 --cohort-repo materials \\
         --week 1
     # add --no-lectures or --no-readings to release only one kind (default: both)
@@ -25,13 +25,22 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import glob
 import shutil
 import sys
 import tempfile
 from pathlib import Path
 
 from .utils import create_repo, gh, git, log, log_err, log_ok, log_step
+
+SECTIONS = ("lectures", "readings")
+_GIT_ENV = [
+    "-c",
+    "user.email=bot@dsl.local",
+    "-c",
+    "user.name=dsl-bot",
+    "-c",
+    "core.hooksPath=/dev/null",
+]
 
 
 def grant_students_read(cohort_org: str, repo: str) -> None:
@@ -49,6 +58,19 @@ def grant_students_read(cohort_org: str, repo: str) -> None:
         log("  (students team not found - create it first)")
 
 
+def _week_dir(section_dir: Path, week: str) -> Path | None:
+    """Find the week subfolder under a section, tolerating padding variants."""
+    if not section_dir.is_dir():
+        return None
+    names = [f"week-{week}", f"week{week}"]
+    if week.isdigit():
+        names += [f"week-{int(week):02d}", f"week{int(week):02d}"]
+    for name in names:
+        if (section_dir / name).is_dir():
+            return section_dir / name
+    return None
+
+
 def release(
     source_org: str,
     source_repo: str,
@@ -58,15 +80,18 @@ def release(
     include_lectures: bool = True,
     include_readings: bool = True,
 ) -> int:
-    if not (include_lectures or include_readings):
+    wanted = [
+        s
+        for s in SECTIONS
+        if (s == "lectures" and include_lectures)
+        or (s == "readings" and include_readings)
+    ]
+    if not wanted:
         log_err("nothing to release - both --no-lectures and --no-readings were set.")
         return 1
 
-    kinds = ("lectures " if include_lectures else "") + (
-        "readings" if include_readings else ""
-    )
     log_step(
-        f"Releasing week {week} ({kinds.strip()}) from {source_org}/{source_repo} "
+        f"Releasing week {week} ({', '.join(wanted)}) from {source_org}/{source_repo} "
         f"-> {cohort_org}/{cohort_repo} (cohort-private)"
     )
     create_repo(
@@ -93,28 +118,19 @@ def release(
             return 1
 
         copied = 0
-        # Lectures: files named lectures/Session<week>_*
-        if include_lectures:
-            (out / "lectures").mkdir(exist_ok=True)
-            for f in glob.glob(str(src / "lectures" / f"Session{week}_*")):
-                shutil.copy2(f, out / "lectures")
-                log_ok(f"+ lectures/{Path(f).name}")
-                copied += 1
-        # Readings: dir readings/required/session-<NN> (zero-padded when numeric)
-        if include_readings:
-            (out / "readings").mkdir(exist_ok=True)
-            name = f"session-{int(week):02d}" if week.isdigit() else f"session-{week}"
-            reading = src / "readings" / "required" / name
-            if reading.is_dir():
-                shutil.copytree(reading, out / "readings" / name, dirs_exist_ok=True)
-                log_ok(f"+ readings/{name}")
-                copied += 1
+        for section in wanted:
+            wdir = _week_dir(src / section, week)
+            if wdir is None:
+                log(f"  (no {section}/week-{week} in source - skipped)")
+                continue
+            shutil.copytree(wdir, out / section / wdir.name, dirs_exist_ok=True)
+            log_ok(f"+ {section}/{wdir.name}")
+            copied += 1
 
-        # Fail loudly rather than push an empty "release" - usually a naming mismatch.
         if copied == 0:
             log_err(
-                f"no files matched week {week} in {source_org}/{source_repo} "
-                f"(expected lectures/Session{week}_* or readings/required/session-NN). "
+                f"no {'/'.join(wanted)} folder for week {week} in "
+                f"{source_org}/{source_repo} (expected e.g. lectures/week-{week}/). "
                 f"Nothing released - check the source repo's layout."
             )
             return 1
@@ -125,29 +141,21 @@ def release(
             f"Weeks open up as the course progresses.\n"
         )
 
-        env = [
-            "-c",
-            "user.email=bot@dsl.local",
-            "-c",
-            "user.name=dsl-bot",
-            "-c",
-            "core.hooksPath=/dev/null",
-        ]
-        git("-C", str(out), *env, "add", "-A")
+        git("-C", str(out), *_GIT_ENV, "add", "-A")
         code, _ = git(
             "-C",
             str(out),
-            *env,
+            *_GIT_ENV,
             "commit",
             "-q",
             "--no-verify",
             "-m",
-            f"release: week {week} ({kinds.strip()}) from {source_repo}",
+            f"release: week {week} ({', '.join(wanted)})",
         )
         if code != 0:
             log_ok("nothing new to release (week already published)")
             return 0
-        if git("-C", str(out), *env, "push", "-q", "origin", "HEAD")[0] != 0:
+        if git("-C", str(out), *_GIT_ENV, "push", "-q", "origin", "HEAD")[0] != 0:
             log_err("push failed")
             return 1
     log_ok("released")

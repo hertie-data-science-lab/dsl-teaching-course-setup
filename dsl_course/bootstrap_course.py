@@ -5,9 +5,9 @@ Sets up org-level infrastructure that persists across semesters:
 - Default teams (instructors, students, auditors)
 - Org settings (2FA enforcement, Pages default branch)
 - Profile README (.github repo with description)
-- Org-level workflows in .github (enroll-student, equip-repo, refresh-actions)
-- A content-template repo carrying the Release / Provision actions (faculty create
-  content repos from it, or retrofit existing ones with the Equip-repo action)
+- Org-level workflows in .github (enroll-student, bootstrap-cohort, refresh-actions)
+- A materials-template repo carrying the Release / Provision actions (faculty create
+  content repos from it)
 
 With --cohort, instead tightens the org and seeds the student-facing welcome (onboard)
 and classroom-config (roster) repos.
@@ -249,14 +249,16 @@ def seed_workflows(org: str) -> None:
     """Seed the ORG-LEVEL faculty workflows into the course org's .github repo.
 
     Release/provision live in content repos (see create_content_template + the
-    Equip-repo action); .github carries the org-level enrol/equip/refresh buttons.
+    Refresh action equips them); .github carries the enrol/bootstrap-cohort/refresh buttons.
     Workflow YAML is rendered by dsl_course.seed (single source of truth).
     """
-    log_step("Seeding org-level workflows (enroll / equip / refresh) into .github")
+    log_step(
+        "Seeding org-level workflows (enroll / bootstrap-cohort / refresh) into .github"
+    )
     cohorts = seed.discover_cohorts(org)
     rendered = {
         ".github/workflows/enroll-student.yml": seed.render_enroll(cohorts),
-        ".github/workflows/equip-repo.yml": seed.render_equip(),
+        ".github/workflows/bootstrap-cohort.yml": seed.render_bootstrap_cohort(),
         ".github/workflows/refresh-actions.yml": seed.render_refresh(),
     }
     for path, content in rendered.items():
@@ -266,12 +268,12 @@ def seed_workflows(org: str) -> None:
 
 
 def create_content_template(org: str) -> None:
-    """Create the content-template repo that carries the release/provision actions.
+    """Create the materials-template repo that carries the release/provision actions.
 
     Faculty create new content / assignment-template repos from this template (so they
-    ship the actions); existing repos are retrofitted via the Equip-repo action.
+    ship the actions); Refresh equips every content repo too.
     """
-    log_step("Creating content-template repo (carries release/provision actions)")
+    log_step("Creating materials-template repo (carries release/provision actions)")
     if not create_repo(
         org,
         seed.TEMPLATE_REPO,
@@ -303,7 +305,7 @@ def create_content_template(org: str) -> None:
         "-F",
         "is_template=true",
     )
-    log_ok(f"content-template ready: {org}/{seed.TEMPLATE_REPO}")
+    log_ok(f"materials-template ready: {org}/{seed.TEMPLATE_REPO}")
 
 
 def preflight(org: str) -> bool:
@@ -408,7 +410,7 @@ def main() -> int:
                 f".github/{seed.COHORTS_PATH} to show it in the faculty dropdowns)"
             )
     else:
-        # Course: org-level buttons + the content-template carrying release/provision.
+        # Course: org-level buttons + the materials-template carrying release/provision.
         seed_workflows(args.org)
         create_content_template(args.org)
 
@@ -452,8 +454,8 @@ DONE (automated):
 - Org-level teams: instructors, students, auditors, course-admin
 - Org settings: 2FA enforcement enabled
 - .github profile repo with README
-- Org-level workflows in .github: Enroll student · Equip repo · Refresh actions
-- content-template repo created (ships the Release / Provision actions)
+- Org-level workflows in .github: Enroll student, Bootstrap cohort, Refresh actions
+- materials-template repo created (ships the Release materials/assignment actions)
 - DSL_BOT_TOKEN secret validated (or set)
 
 NEXT STEPS (manual):
@@ -464,13 +466,12 @@ NEXT STEPS (manual):
 2. Invite course instructors and admins:
    https://github.com/{args.org}/settings/members
 
-3. Get the Release/Provision buttons into your content repos:
-   - NEW repos: "Use this template" from https://github.com/{args.org}/content-template
-   - EXISTING repos (e.g. content-f2026): run "Equip repo" from
-     https://github.com/{args.org}/.github/actions
-   Then run Release/Provision from inside that repo's Actions tab.
+3. Put content in the materials repo (lectures/week-N/, readings/week-N/) and create
+   assignment-N-f2026 template repos, then run "Refresh actions" so they appear in the
+   dropdowns. Run Release materials/assignment from inside the materials repo's Actions tab.
 
-4. Run "Refresh actions" after adding a cohort to repopulate the org/repo dropdowns.
+4. Add a cohort: create the empty cohort org, add the bot as owner, then run the
+   "Bootstrap cohort" action here with its name (configures + registers + refreshes).
 
 NB: cohort orgs are made the same way - create the empty org, add the bot as owner,
 then run bootstrap with --cohort (seeds welcome + roster + tightens perms).

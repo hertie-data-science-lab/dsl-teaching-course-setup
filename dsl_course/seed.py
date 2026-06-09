@@ -8,13 +8,14 @@ The cohort org / cohort repo inputs are GitHub `choice` dropdowns. GitHub can't
 populate a dropdown live, so the options are rendered into the YAML from the cohort
 registry and refreshed on demand: `refresh` reads the course org's
 .github/cohort-courses-pages.yml `cohorts:` list (maintained by `bootstrap --cohort
---course X`, or by hand), lists their repos, and re-pushes the workflows to the
-content-template + every already-equipped repo. No cron, no app.
+--course X`, or by hand), lists their repos, and re-pushes the content actions to every
+course repo. No cron, no app.
 
-Actions:
-  equip   --course-org X --repo R   push the two wrappers into course-org/R
-  refresh --course-org X            re-render with fresh options + push to the
-                                    content-template and all equipped repos
+CLI:
+  refresh --course-org X   re-render the content actions into every course repo with
+                           fresh cohort/week/assignment dropdowns, and rebuild the
+                           org profile README. (Run by the Refresh-actions and
+                           Bootstrap-cohort workflows.)
 """
 
 from __future__ import annotations
@@ -26,7 +27,7 @@ import sys
 
 import yaml
 
-from .utils import get_file_content, gh, log, log_ok, log_step, put_file, repo_exists
+from .utils import get_file_content, gh, log_ok, log_step, put_file
 
 COHORTS_PATH = (
     "cohort-courses-pages.yml"  # standalone registry in the course org's .github repo
@@ -36,7 +37,7 @@ CENTRAL = "hertie-data-science-lab/dsl-teaching-course-setup"
 # TEMP: seeded workflows run code from this ref. While PR #9 is unmerged we pin to the
 # branch so the buttons work; set back to "main" (or drop the ref:) once it's merged.
 CENTRAL_REF = "feature/adr-0010-inverted-model"
-TEMPLATE_REPO = "content-template"
+TEMPLATE_REPO = "materials-template"
 # Target is ONE cohort repo holding lectures/ + readings/ as SUBDIRS (not separate
 # repos), so the only default target is `materials`; real content repos are discovered.
 DEFAULT_COHORT_REPOS = ["materials"]
@@ -163,7 +164,7 @@ def _assignment_input(assignments: list[str]) -> str:
             + _choice(assignments)
         )
     return (
-        '      assignment:\n        description: "Assignment folder (e.g. assignment-1)"\n'
+        '      assignment:\n        description: "Assignment template repo (e.g. assignment-1-f2026)"\n'
         "        required: true"
     )
 
@@ -173,8 +174,9 @@ def render_provision(
 ) -> str:
     return f"""name: Release assignment
 
-# Run from a content repo (this repo is the SOURCE). Copies one assignments/<name>/
-# folder into a private repo per onboarded student in the chosen cohort.
+# Generates one private repo per onboarded student from the chosen assignment template
+# repo (native template-generate). The assignment dropdown lists the course org's
+# assignment-* template repos; refresh repopulates it.
 
 on:
   workflow_dispatch:
@@ -197,14 +199,12 @@ jobs:
 {_RUN_PREAMBLE}      - name: Provision
         env:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
-          SRC_ORG: ${{{{ github.repository_owner }}}}
-          SRC_REPO: ${{{{ github.event.repository.name }}}}
+          MASTER_ORG: ${{{{ github.repository_owner }}}}
           COHORT_ORG: ${{{{ inputs.cohort_org }}}}
-          ASSIGNMENT: ${{{{ inputs.assignment }}}}
+          TEMPLATE: ${{{{ inputs.assignment }}}}
           DRY_RUN: ${{{{ inputs.dry_run }}}}
         run: |
-          args=(--source-org "$SRC_ORG" --source-repo "$SRC_REPO"
-                --cohort-org "$COHORT_ORG" --assignment "$ASSIGNMENT")
+          args=(--master-org "$MASTER_ORG" --template "$TEMPLATE" --cohort-org "$COHORT_ORG")
           [ "$DRY_RUN" = "true" ] && args+=(--dry-run)
           python3 -m dsl_course.assign "${{args[@]}}"
 """
@@ -249,25 +249,34 @@ jobs:
 """
 
 
-def render_equip() -> str:
-    """Retrofit an existing course repo with the release/provision wrappers."""
-    return f"""name: Equip repo
+def render_bootstrap_cohort() -> str:
+    """Configure a (pre-created, empty) cohort org from the course org: welcome +
+    classroom-config + tightened perms, register it, and refresh the dropdowns."""
+    return f"""name: Bootstrap cohort
+
+# You create the empty cohort org in the web UI first (GitHub has no org-creation API)
+# and add the bot as an owner. Then run this with that org's name.
 
 on:
   workflow_dispatch:
     inputs:
-      repo:
-        description: "Repo in THIS org to add the release/provision actions to"
+      cohort_org:
+        description: "Empty cohort org you've already created (bot must be an owner)"
         required: true
 
 jobs:
 {_CHECK_TEAM}
-  equip:
-{_RUN_PREAMBLE}      - name: Equip
+  bootstrap-cohort:
+{_RUN_PREAMBLE}      - name: Bootstrap + register + refresh
         env:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
+          DSL_BOT_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
+          COURSE: ${{{{ github.repository_owner }}}}
+          COHORT: ${{{{ inputs.cohort_org }}}}
         run: |
-          python3 -m dsl_course.seed equip --course-org "${{{{ github.repository_owner }}}}" --repo "${{{{ inputs.repo }}}}"
+          python3 -m dsl_course.bootstrap_course --org "$COHORT" --org-name "$COHORT" \\
+            --cohort --course "$COURSE" --propagate-secret
+          python3 -m dsl_course.seed refresh --course-org "$COURSE"
 """
 
 
@@ -343,35 +352,36 @@ def discover_cohort_repos(cohort_orgs: list[str]) -> list[str]:
 
 
 def discover_weeks(org: str, repo: str) -> list[str]:
-    """Weeks present in a content repo, from lectures/Session<n>_* and
-    readings/required/session-<nn>. Used to populate the week dropdown."""
+    """Weeks present in a content repo, from lectures/week-<N>/ (and readings/week-<N>/)
+    folders. Used to populate the week dropdown."""
     weeks = set()
-    code, out = gh("api", f"repos/{org}/{repo}/contents/lectures", "--jq", ".[].name")
-    if code == 0:
-        for name in out.splitlines():
-            m = re.match(r"Session0*(\d+)", name)
-            if m:
-                weeks.add(int(m.group(1)))
-    code, out = gh(
-        "api", f"repos/{org}/{repo}/contents/readings/required", "--jq", ".[].name"
-    )
-    if code == 0:
-        for name in out.splitlines():
-            m = re.match(r"session-0*(\d+)", name)
-            if m:
-                weeks.add(int(m.group(1)))
+    for section in ("lectures", "readings"):
+        code, out = gh(
+            "api",
+            f"repos/{org}/{repo}/contents/{section}",
+            "--jq",
+            '.[] | select(.type=="dir") | .name',
+        )
+        if code == 0:
+            for name in out.splitlines():
+                m = re.match(r"week-0*(\d+)", name)
+                if m:
+                    weeks.add(int(m.group(1)))
     return [str(w) for w in sorted(weeks)]
 
 
-def discover_assignments(org: str, repo: str) -> list[str]:
-    """Assignment folder names under assignments/ in a content repo (the dropdown)."""
+def discover_assignments(course_org: str) -> list[str]:
+    """Assignment template repos in the course org (named assignment-*) - the dropdown."""
     code, out = gh(
-        "api",
-        f"repos/{org}/{repo}/contents/assignments",
-        "--jq",
-        '.[] | select(.type=="dir") | .name',
+        "repo", "list", course_org, "--limit", "300", "--json", "name,isTemplate"
     )
-    return sorted(out.splitlines()) if code == 0 and out else []
+    if code != 0:
+        return []
+    return sorted(
+        r["name"]
+        for r in json.loads(out)
+        if r["name"].startswith("assignment-") and r.get("isTemplate")
+    )
 
 
 def discover_content_repos(course_org: str) -> list[str]:
@@ -385,7 +395,7 @@ def _push_workflows(
     org: str, repo: str, cohort_orgs: list[str], cohort_repos: list[str]
 ) -> None:
     weeks = discover_weeks(org, repo)
-    assignments = discover_assignments(org, repo)
+    assignments = discover_assignments(org)
     put_file(
         org,
         repo,
@@ -401,17 +411,6 @@ def _push_workflows(
         "ci: release-assignment wrapper",
     )
     log_ok(f"workflows -> {org}/{repo}")
-
-
-def equip(course_org: str, repo: str) -> int:
-    cohorts = discover_cohorts(course_org)
-    cohort_repos = discover_cohort_repos(cohorts)
-    log_step(f"Equipping {course_org}/{repo} (cohorts: {cohorts or 'none yet'})")
-    if not repo_exists(course_org, repo):
-        log("  [err] repo does not exist - create it first")
-        return 1
-    _push_workflows(course_org, repo, cohorts, cohort_repos)
-    return 0
 
 
 def list_org_repos(org: str) -> list[dict]:
@@ -480,17 +479,17 @@ _This page is auto-generated; edits will be overwritten on the next refresh._
 
 ## Available actions for faculty & admin
 
-Content actions - run from inside a content repo (that repo is the source); the links
-below open the copy in `content-template`, but they live in every content repo:
+Content actions - run from inside the materials repo (that repo is the source); the
+links below open the copy in `materials-template`, but they live in every content repo:
 
-- [**Release materials**](https://github.com/{org}/content-template/actions/workflows/release-materials.yml) - publish one week's lectures/readings into a cohort repo.
-- [**Release assignment**](https://github.com/{org}/content-template/actions/workflows/release-assignment.yml) - create a private repo per student from an `assignments/<n>/` folder.
+- [**Release materials**](https://github.com/{org}/materials-template/actions/workflows/release-materials.yml) - publish one week's `lectures/`+`readings/` into a cohort repo.
+- [**Release assignment**](https://github.com/{org}/materials-template/actions/workflows/release-assignment.yml) - generate one repo per student from a chosen `assignment-*` template repo.
 
 Org actions - in the `.github` repo:
 
 - [**Enroll student**](https://github.com/{org}/.github/actions/workflows/enroll-student.yml) - grant a student org + `students`-team access.
-- [**Equip repo**](https://github.com/{org}/.github/actions/workflows/equip-repo.yml) - add the two content actions to an existing repo (repos made from `content-template` already have them; Equip retrofits older ones).
-- [**Refresh actions**](https://github.com/{org}/.github/actions/workflows/refresh-actions.yml) - repopulate the cohort/week/assignment dropdowns and rebuild this index.
+- [**Bootstrap cohort**](https://github.com/{org}/.github/actions/workflows/bootstrap-cohort.yml) - configure a pre-created cohort org (welcome + roster + tighten), register it, refresh dropdowns.
+- [**Refresh actions**](https://github.com/{org}/.github/actions/workflows/refresh-actions.yml) - repopulate the cohort/week/assignment dropdowns and rebuild this index (also equips every content repo).
 
 ---
 Maintained by the [Hertie Data Science Lab](https://github.com/hertie-data-science-lab).
@@ -542,14 +541,9 @@ def refresh(course_org: str) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="cmd", required=True)
-    pe = sub.add_parser("equip")
-    pe.add_argument("--course-org", required=True)
-    pe.add_argument("--repo", required=True)
     pr = sub.add_parser("refresh")
     pr.add_argument("--course-org", required=True)
     args = parser.parse_args()
-    if args.cmd == "equip":
-        return equip(args.course_org, args.repo)
     return refresh(args.course_org)
 
 
