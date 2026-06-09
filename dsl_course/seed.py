@@ -697,6 +697,26 @@ there the `week` is a dropdown of that repo's weeks).
 
 ## Repository structure (required)
 
+This whole structure is bootstrapped from the central
+[`dsl-teaching-course-setup`](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup)
+repo (its **Bootstrap Course Org** action), and the buttons above run that same central code.
+
+```
+{org}/                            <- this COURSE org (persistent)
+|-- .github/                      profile + faculty action buttons + cohort registry
+|-- course-materials-<year>/      lectures/week-N/   readings/week-N/   (+ syllabus, README)
+`-- assignment-<n>-<year>/        is_template repo:
+                                    main      -> starter + autograder   (students get this)
+                                    solution  -> solution/   (pushed to students on demand)
+
+<Course>-f<year>/                 <- one COHORT org per year (Bootstrap cohort sets it up)
+|-- welcome/                      Join issue -> onboard (enrol)
+|-- classroom-config/             students.csv  (private roster)
+|-- materials/                    released lectures/readings  (students-team read)
+|-- <org>.github.io/              auto-deployed website (synced from this structure)
+`-- <assignment>-<handle>/        one private repo per student
+```
+
 The actions assume this layout - use **New materials repo** / **New assignment** above to scaffold it correctly.
 
 **Materials repo** (`course-materials-<year>`) - the source for Release materials:

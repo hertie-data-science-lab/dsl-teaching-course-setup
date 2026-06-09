@@ -43,11 +43,6 @@ from .utils import (
 )
 
 MATERIALS_REPO = "materials"
-# Template scaffolding a cohort site never uses (the collections stay empty; the docs
-# are template setup notes). Everything else (_layouts/_includes/_sass/_css/_images/
-# _data nav+people+late_policy) is load-bearing, so it stays.
-PRUNE_DIRS = ("_announcements", "_events")
-PRUNE_FILES = ("SETUP-CHECKLIST.md", "README.md", "project.md")
 _GIT_ENV = [
     "-c",
     "user.email=bot@dsl.local",
@@ -139,19 +134,6 @@ def _people_yaml(course_org: str) -> str:
     )
 
 
-def _prune_unused(wd: Path) -> None:
-    """Strip template scaffolding the cohort site doesn't use, keeping the build lean."""
-    for d in PRUNE_DIRS:
-        if (wd / d).is_dir():
-            shutil.rmtree(wd / d)
-    for f in PRUNE_FILES:
-        if (wd / f).is_file():
-            (wd / f).unlink()
-    po = wd / "_data" / "previous_offering.yml"
-    if po.is_file():
-        po.write_text("offerings: []\n")
-
-
 def _week_files(org: str, repo: str, section: str, week: str) -> list[tuple[str, str]]:
     """(name, blob-url) for each file under <section>/week-<week>/ in a repo."""
     code, out = gh(
@@ -237,8 +219,6 @@ def sync_site(course_org: str, cohort_org: str) -> int:
         if gh("repo", "clone", f"{cohort_org}/{site}", str(wd), "--", "-q")[0] != 0:
             log_err(f"could not clone {cohort_org}/{site}")
             return 1
-
-        _prune_unused(wd)
 
         # Course identity: pull name/code from the course org metadata, semester from the
         # cohort tag, into _config.yml (site.course_name / _semester / _code).
