@@ -385,10 +385,14 @@ def discover_assignments(course_org: str) -> list[str]:
 
 
 def discover_content_repos(course_org: str) -> list[str]:
-    """Every repo in the course org that should carry the content actions - i.e. all
-    of them except the `.github` profile repo (which holds the org-level buttons).
-    Refresh seeds the release/assignment actions into all of these."""
-    return [r["name"] for r in list_org_repos(course_org) if r["name"] != ".github"]
+    """Repos that should HOST the release buttons: the materials repo(s), not the
+    `.github` profile repo and not the assignment-* template repos (those are generate
+    sources - equipping them would copy the faculty workflows into every student repo)."""
+    return [
+        r["name"]
+        for r in list_org_repos(course_org)
+        if r["name"] != ".github" and not r["name"].startswith("assignment-")
+    ]
 
 
 def _push_workflows(
