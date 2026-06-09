@@ -213,6 +213,18 @@ def scaffold_site(org: str) -> int:
             "build_type=workflow",
         )
 
+    # The auto-created github-pages environment restricts which branches may deploy, and
+    # the template's default branch (master) is not on that list - clear the policy so
+    # any branch can deploy.
+    gh(
+        "api",
+        "--method",
+        "PUT",
+        f"repos/{org}/{site}/environments/github-pages",
+        "-F",
+        "deployment_branch_policy=null",
+    )
+
     # template-generate doesn't fire workflows, so kick the first deploy by hand. The
     # workflow takes a few seconds to index after generate, so retry the dispatch.
     for _ in range(6):
