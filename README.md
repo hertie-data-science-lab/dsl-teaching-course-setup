@@ -1,87 +1,120 @@
 # DSL Teaching & Course Setup
 
-Central control plane for course delivery at the Hertie Data Science Lab. This repo's
-**Actions tab is the faculty console** - every recurring task is a button you run from
-the browser. No CLI.
+Central control plane for course delivery at the Hertie Data Science Lab. It's the
+single home of the faculty automation: faculty trigger everything as **GitHub Actions
+buttons** (no CLI), and the Python in `dsl_course/` is the one implementation behind
+them.
 
-**Access**: faculty and admin teams only (enforced via workflow team-check steps).
+**Access**: faculty/admin only - every action is gated to a course org's owners or its
+`instructors`/`course-admin` team.
 
 ## The model
 
+Two org tiers; the course org is the persistent source of truth, the cohort org is the
+per-year student-facing target.
+
 ```
-COURSE / MASTER org   Hertie-School-{Course}-{Code}   PRIVATE, persistent control room
-  materials · solutions · PRIVATE assignment templates · cross-cohort index
-        │
-        │  this repo's Actions push master ──▶ cohort
-        ▼
-COHORT org            {Course}-f{YYYY}                 student-facing, per-cohort target
-  welcome (Join issue) · classroom-config (roster) · materials (released) · per-student repos
+COURSE org   e.g. Hertie-School-Deep-Learning-E1394   (persistent, private)
+  materials-f2026         lectures/week-N/ + readings/week-N/   (twinned content)
+  assignment-1-f2026 ...  template repos (is_template) + autograder
+  materials-template      template for next year's materials repo
+  .github                 profile (auto) + org buttons + cohort registry
+        |
+        |  release / generate  (bot token, cross-org)
+        v
+COHORT org   e.g. Deep-Learning-f2026                  (per-year, private)
+  welcome           Join issue -> onboard.yml (enrol)
+  classroom-config  students.csv roster (PRIVATE)
+  materials         released lectures/readings (students-team read)
+  <assignment>-<handle>   one private repo per student (generated; autograder rides along)
+  students team
 ```
 
-- The **master is the source of truth**; the cohort **receives releases** of it.
-- Templates stay **private** - the bot copies them, students never do - so assignment
-  questions stay private and reusable across years.
-- The roster is a per-cohort `students.csv` in the cohort's private `classroom-config`.
+## Hard constraint: orgs are created by hand
+
+**GitHub has no API to create an organisation.** So every org (course or cohort) is
+created once in the web UI, the bot is added as an owner, and then **automation
+configures it**. That's the only manual step; everything after is a button.
+
+## Setting up a course (one-time)
+
+1. **Create the empty course org** in the web UI; add the bot as an owner.
+2. **Bootstrap** it - this repo's Actions tab -> **Bootstrap Course Org** (`org` =
+   the new org). It sets teams, 2FA, the `.github` profile, the org buttons, a
+   `materials-template`, and propagates `DSL_BOT_TOKEN`.
+3. **Add content** in the course org: a `materials-f2026` repo with `lectures/week-N/`
+   and `readings/week-N/` folders, and one `assignment-N-f2026` template repo per
+   assignment (mark `is_template`; put the starter + an autograder in it).
+4. **Refresh actions** (org button) so the new content/assignment repos get the Release
+   buttons and the dropdowns populate.
+
+## Adding a cohort (per year)
+
+1. **Create the empty cohort org** in the web UI; add the bot as an owner.
+2. Course org -> **Bootstrap cohort** (org button) with the cohort's name. It seeds the
+   `welcome` (onboard) + `classroom-config` (roster) repos, tightens permissions,
+   **registers** the cohort in `.github/cohort-courses-pages.yml`, and refreshes the
+   dropdowns so the cohort appears everywhere.
 
 ## Faculty actions
 
-Faculty trigger actions **from inside the repo they're working in**, in the course org.
+**Content actions** - run from inside the materials repo (that repo is the source):
 
-### Content-repo actions (run from a content / assignment-template repo)
-The repo the action runs in is the **source**.
+| Action | Inputs | Effect |
+| --- | --- | --- |
+| **Release materials** | cohort_org, cohort_repo, week, lectures?, readings? | Copies `lectures/week-N/` + `readings/week-N/` into the cohort repo (private + `students` read). Only released weeks appear. |
+| **Release assignment** | cohort_org, assignment, dry_run | Native template-`generate` of one private `<slug>-<handle>` repo per onboarded student from the chosen `assignment-*` template; adds the student as collaborator. |
 
-- **Release materials** - publishes one week's lecture/reading files (`lectures/Session<n>_*`,
-  `readings/required/session-NN/`) into a chosen cohort repo (private + `students` read).
-  Inputs: `cohort_org` (dropdown), `cohort_repo` (dropdown), `week`, ☑`include_lectures` ☑`include_readings`.
-- **Provision assignment** - run from an assignment-template repo; generates one private
-  `{assignment}-{handle}` repo per onboarded student in the chosen cohort.
-  Inputs: `cohort_org` (dropdown), `assignment`, `dry_run`.
+**Org actions** - in the course org's `.github` Actions tab:
 
-These ship in **`content-template`** (use *"Use this template"* for new repos) and are
-added to existing repos with the **Equip repo** action.
+| Action | Effect |
+| --- | --- |
+| **Enroll student** | Grant a handle org + `students`-team access (faculty override for the Join issue). Blank handle = reconcile the whole roster. |
+| **Bootstrap cohort** | Configure a pre-created cohort org + register it + refresh. |
+| **Refresh actions** | Re-seed the Release buttons into every content repo and repopulate the cohort/week/assignment dropdowns; rebuild the org profile README. |
 
-### Org-level actions (in the course org's `.github` Actions tab)
-- **Enroll student** - grant a handle org + `students`-team access (faculty override for the Join issue).
-- **Equip repo** - add the Release/Provision actions to an existing repo.
-- **Refresh actions** - repopulate the `cohort_org`/`cohort_repo` dropdowns from the live
-  cohorts (`{course-org}-*`) + their repos. Re-run it after creating a new cohort.
+**Student onboarding** (cohort-side): students open a **Join** issue in the public
+`welcome` repo; `onboard.yml` matches their student ID against the private roster,
+records their authenticated handle + GitHub id, and grants org + `students`-team access.
+No CLI.
 
-## Student onboarding
+## Dynamic dropdowns
 
-Students never use a CLI. They open a **Join issue** in the cohort's public `welcome`
-repo; the `onboard.yml` Action (templates in [`templates/welcome/`](templates/welcome/))
-matches their student ID against the private roster, records their authenticated handle
-+ GitHub id, and grants org + `students`-team access.
+`workflow_dispatch` dropdowns are static YAML, so **Refresh actions** regenerates them
+from live state and re-pushes the workflows. No cron, no app.
 
-## Admin / create workflows
-
-- **`bootstrap-org`** - one-time setup of a new course (master) org: teams, settings,
-  `.github` profile, seeded workflows, token.
-- **`new-semester`** - set up a cohort: repos, teams, website, Pages.
-- **`post-migrate`** - retrospective classify/tag/migrate of historical repos.
-
-> The create tier (`bootstrap-org` / `new-semester` / `post-migrate`) still reflects the
-> earlier course-side model and is the next slimming target; the day-to-day faculty
-> console above is the current model.
+- **cohort_org** - from the `.github/cohort-courses-pages.yml` registry.
+- **cohort_repo** - the cohort's content repos (excludes infra + submission repos).
+- **week** - `lectures/week-N/` folders in the source materials repo.
+- **assignment** - the course org's `assignment-*` template repos.
 
 ## Token
 
-All workflows run under **`secrets.DSL_BOT_TOKEN`** (org-level secret on
-`hertie-data-science-lab`). It needs cross-org repo admin + members + contents on the
-course and cohort orgs. Production target: a GitHub App (fine-grained, short-lived).
+All workflows run under **`secrets.DSL_BOT_TOKEN`**, auto-propagated to each org by
+bootstrap. It needs cross-org repo admin + members + contents, and read on the course
+org's teams (for the gate). Production target: a **GitHub App** (fine-grained,
+short-lived) instead of a shared PAT.
 
 ## Repo layout
 
-Self-contained - workflows and their Python implementation live here.
+Self-contained - workflows + their Python implementation live here.
 
-- `.github/workflows/` - dispatchable workflows (the console + admin entry points)
-- `dsl_course/` - Python package implementing them (`assign`, `release`, `sync_roster`,
-  `roster`, `seed` (renders/places the content-repo wrappers), plus the create-tier modules)
-- `templates/welcome/` - the cohort onboarding workflow + Join issue form
-- `requirements.txt` - Python dependencies (installed by each workflow)
+- `.github/workflows/` - `bootstrap-org` (+ the legacy create-tier) ; faculty workflows
+  are rendered + seeded into the course/cohort orgs, not kept here.
+- `dsl_course/` - the package:
+  - `bootstrap_course` - configure a course or (`--cohort`) cohort org.
+  - `seed` - render the run-from-repo workflows, discover dropdown options, refresh.
+  - `release` - publish a week's materials into a cohort repo.
+  - `assign` - generate per-student repos from an assignment template.
+  - `sync_roster` - enrol / materialise team access from `students.csv`.
+  - `roster` - read the per-cohort `students.csv`.
+  - `utils` - shared `gh`/git helpers with rate-limit backoff.
+  - `new_semester` / `post_migrate` / `bootstrap_org` / `list_orgs` - legacy create-tier
+    (older course-side model; the next slimming target).
+- `templates/welcome/` - the cohort onboarding workflow + Join issue form.
 
 ## Related reading
 
-Design decisions, faculty guides, and the course inventory live in the
+Decisions, inventory, and session notes live in the
 [`gh-org-strategy`](https://github.com/hertie-data-science-lab/gh-org-strategy)
-coordination hub. That hub is not required at runtime - this repo stands on its own.
+coordination hub. That hub is not required at runtime; this repo stands on its own.
