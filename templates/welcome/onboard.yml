@@ -51,8 +51,8 @@ jobs:
                 'needs-review');
             }
 
-            // Parse the student_id the issue form collected.
-            const m = (issue.body || '').match(/Student ID\s*[\r\n]+\s*([0-9]{3,})/i);
+            // Parse the student_id the issue form collected (alphanumeric IDs allowed).
+            const m = (issue.body || '').match(/Student ID\s*[\r\n]+\s*([A-Za-z0-9][\w-]*)/i);
             const studentId = m && m[1];
             if (!studentId) return fail(
               `Thanks @${handle} — I couldn't read a **Student ID** from the form. Please edit the issue and add it.`,
@@ -71,7 +71,7 @@ jobs:
               `Thanks @${handle} — student ID **${studentId}** isn't on the enrolment roster. ` +
               `If you believe you're enrolled, contact the teaching team.`,
               'needs-review');
-            if (row[3] && row[3] !== handle) return fail(
+            if (row[3] && row[3].toLowerCase() !== handle.toLowerCase()) return fail(
               `Student ID **${studentId}** is already linked to a different GitHub account. ` +
               `Contact the teaching team to resolve this.`,
               'needs-review');
@@ -96,10 +96,10 @@ jobs:
             // Confirm.
             await github.rest.issues.createComment({
               owner: org, repo: context.repo.repo, issue_number: issue.number, body: [
-                `Welcome **@${handle}** 👋 — you're **enrolled**.`,
+                `Welcome **@${handle}** 👋 — you're matched to the roster.`,
                 ``,
-                `- Matched to the roster (student ID ${studentId}); your handle + GitHub id are recorded.`,
-                `- You've been added to the **${org}** org and the **students** team (this unlocks released materials).`,
+                `- **⚠️ Check your email and accept the invitation to the \`${org}\` org** — until you accept, you can't see anything here.`,
+                `- Your handle + GitHub id are recorded (student ID ${studentId}); you've been added to the **students** team (unlocks released materials once you've accepted).`,
                 `- Your assignment repos appear here once the teaching team provisions each assignment.`,
               ].join('\n') });
             await github.rest.issues.addLabels({

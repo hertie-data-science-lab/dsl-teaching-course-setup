@@ -103,22 +103,6 @@ def get_default_branch(org: str, name: str) -> str:
     return "main"
 
 
-def extract_logins(entries: list | None) -> list[str]:
-    """Normalise a list of roster entries (dict or str) to GitHub logins."""
-    if not entries:
-        return []
-    out = []
-    for e in entries:
-        if isinstance(e, str):
-            if e:
-                out.append(e)
-        elif isinstance(e, dict):
-            login = e.get("github", "").strip()
-            if login:
-                out.append(login)
-    return out
-
-
 def create_team(
     org: str, name: str, description: str = "", privacy: str = "closed"
 ) -> bool:

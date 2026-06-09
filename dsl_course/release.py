@@ -81,16 +81,30 @@ def release(
 
         (out / "lectures").mkdir(exist_ok=True)
         (out / "readings").mkdir(exist_ok=True)
+        copied = 0
         for s in sessions:
             for f in glob.glob(str(src / "lectures" / f"Session{s}_*")):
                 shutil.copy2(f, out / "lectures")
                 log_ok(f"+ lectures/Session{s}")
-            reading = src / "readings" / "required" / f"session-{int(s):02d}"
+                copied += 1
+            # readings/required/session-NN — zero-pad only when the session is numeric
+            name = f"session-{int(s):02d}" if s.isdigit() else f"session-{s}"
+            reading = src / "readings" / "required" / name
             if reading.is_dir():
                 shutil.copytree(
                     reading, out / "readings" / reading.name, dirs_exist_ok=True
                 )
                 log_ok(f"+ readings/{reading.name}")
+                copied += 1
+
+        # Fail loudly rather than push an empty "release" — usually a filename mismatch.
+        if copied == 0:
+            log_err(
+                f"no files matched sessions {sessions} in {master_org}/{content_repo} "
+                f"(expected lectures/Session<n>_* or readings/required/session-<nn>). "
+                f"Nothing released — check the content repo's naming."
+            )
+            return 1
 
         (out / "README.md").write_text(
             f"# Materials — released\n\n"
@@ -139,6 +153,9 @@ def main() -> int:
         "--sessions", required=True, nargs="+", help="Session numbers, e.g. 1 2 3"
     )
     args = parser.parse_args()
+    if args.master_org == args.cohort_org:
+        log_err("--master-org and --cohort-org must differ.")
+        return 1
     return release(args.master_org, args.content_repo, args.cohort_org, args.sessions)
 
 

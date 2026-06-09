@@ -58,9 +58,12 @@ def provision_one(
 ) -> str:
     """Generate repo_name in the cohort org from the master template + add the student.
 
-    Returns a status string.
+    Existing repos are not regenerated (topics aren't re-pushed); collaborator access
+    is re-ensured every run so a student who joined late still gets access. Returns a
+    status string.
     """
-    if repo_exists(cohort_org, repo_name):
+    existed = repo_exists(cohort_org, repo_name)
+    if existed:
         log_skip(f"repo {cohort_org}/{repo_name}")
     elif not generate_from_template(
         template_org=master_org,
@@ -73,13 +76,12 @@ def provision_one(
         return "failed-create"
     else:
         log_ok(f"created {cohort_org}/{repo_name}")
+        set_repo_topics(cohort_org, repo_name, [slugify(assignment), "submission"])
 
-    set_repo_topics(cohort_org, repo_name, [slugify(assignment), "submission"])
-
-    # Student gets `maintain` on their own repo (can manage settings, not delete).
+    # Student gets `maintain` on their own repo (idempotent — ensures access on re-run).
     if add_collaborator(cohort_org, repo_name, handle, permission="maintain"):
         log_ok(f"  + @{handle} (maintain)")
-        return "ok"
+        return "skipped" if existed else "ok"
     log_err(f"  ! could not add @{handle} (not a real account?)")
     return "created-no-collaborator"
 
@@ -103,6 +105,15 @@ def main() -> int:
     )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+
+    # Safety: the template lives in the PRIVATE master; generating into the SAME org
+    # would create student repos (with student collaborators) inside the master.
+    if args.master_org == args.cohort_org:
+        log_err(
+            "--master-org and --cohort-org must differ — refusing to provision into "
+            "the template's own (master) org."
+        )
+        return 1
 
     students = (
         roster.load_path(args.roster) if args.roster else roster.load(args.cohort_org)

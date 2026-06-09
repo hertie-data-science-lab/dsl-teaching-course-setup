@@ -52,7 +52,7 @@ def load(cohort_org: str) -> list[Student]:
     if content is None:
         log_err(
             f"Could not find {ROSTER_PATH} in {cohort_org}/{CONFIG_REPO} — "
-            f"seed the roster first (new-semester)."
+            f"bootstrap the cohort first (bootstrap_course --cohort)."
         )
         return []
     return parse(content)

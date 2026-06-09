@@ -54,4 +54,5 @@ jobs:
               --body "Automated refresh by \`refresh-inventory\`. Course orgs discovered via topic \`dsl-course-hub\`." \
               --base main --head "$BRANCH"
           fi
-          gh pr merge "$BRANCH" --squash --auto --delete-branch=false
+          gh pr merge "$BRANCH" --squash --auto --delete-branch=false \
+            || echo "::notice::auto-merge not enabled — inventory PR left open for manual merge"
