@@ -6,8 +6,8 @@ Sets up org-level infrastructure that persists across semesters:
 - Org settings (2FA enforcement, Pages default branch)
 - Profile README (.github repo with description)
 - Org-level workflows in .github (enroll-student, bootstrap-cohort, refresh-actions)
-- A materials-template repo carrying the Release / Provision actions (faculty create
-  content repos from it)
+- Central faculty workflows seeded into .github (Release materials/assignment +
+  Enroll/Bootstrap-cohort/Refresh); the run-from-repo copies are equipped by Refresh
 
 With --cohort, instead tightens the org and seeds the student-facing welcome (onboard)
 and classroom-config (roster) repos.
@@ -246,66 +246,10 @@ def setup_cohort_extras(org: str) -> None:
 
 
 def seed_workflows(org: str) -> None:
-    """Seed the ORG-LEVEL faculty workflows into the course org's .github repo.
-
-    Release/provision live in content repos (see create_content_template + the
-    Refresh action equips them); .github carries the enrol/bootstrap-cohort/refresh buttons.
-    Workflow YAML is rendered by dsl_course.seed (single source of truth).
-    """
-    log_step(
-        "Seeding org-level workflows (enroll / bootstrap-cohort / refresh) into .github"
-    )
-    cohorts = seed.discover_cohorts(org)
-    rendered = {
-        ".github/workflows/enroll-student.yml": seed.render_enroll(cohorts),
-        ".github/workflows/bootstrap-cohort.yml": seed.render_bootstrap_cohort(),
-        ".github/workflows/refresh-actions.yml": seed.render_refresh(),
-    }
-    for path, content in rendered.items():
-        name = path.split("/")[-1]
-        if put_file(org, ".github", path, content.encode(), f"ci: seed {name}"):
-            log_ok(f"workflow seeded: {name}")
-
-
-def create_content_template(org: str) -> None:
-    """Create the materials-template repo that carries the release/provision actions.
-
-    Faculty create new content / assignment-template repos from this template (so they
-    ship the actions); Refresh equips every content repo too.
-    """
-    log_step("Creating materials-template repo (carries release/provision actions)")
-    if not create_repo(
-        org,
-        seed.TEMPLATE_REPO,
-        private=True,
-        description="Template for course content/assignment repos - ships the faculty actions",
-    ):
-        return
-    cohorts = seed.discover_cohorts(org)
-    cohort_repos = seed.discover_cohort_repos(cohorts)
-    put_file(
-        org,
-        seed.TEMPLATE_REPO,
-        seed.WORKFLOWS[0],
-        seed.render_release(cohorts, cohort_repos).encode(),
-        "ci: release-materials wrapper",
-    )
-    put_file(
-        org,
-        seed.TEMPLATE_REPO,
-        seed.WORKFLOWS[1],
-        seed.render_provision(cohorts).encode(),
-        "ci: provision-assignment wrapper",
-    )
-    gh(
-        "api",
-        "--method",
-        "PATCH",
-        f"repos/{org}/{seed.TEMPLATE_REPO}",
-        "-F",
-        "is_template=true",
-    )
-    log_ok(f"materials-template ready: {org}/{seed.TEMPLATE_REPO}")
+    """Seed the org-level workflows into the course org's .github repo. The full set
+    (central Release materials/assignment + Enroll/Bootstrap-cohort/Refresh) is rendered
+    by dsl_course.seed (single source of truth)."""
+    seed.seed_github_workflows(org)
 
 
 def preflight(org: str) -> bool:
@@ -410,9 +354,8 @@ def main() -> int:
                 f".github/{seed.COHORTS_PATH} to show it in the faculty dropdowns)"
             )
     else:
-        # Course: org-level buttons + the materials-template carrying release/provision.
+        # Course: seed the org-level buttons (incl. the central Release actions) into .github.
         seed_workflows(args.org)
-        create_content_template(args.org)
 
     # 4. Secret (set or validate)
     if args.set_secret:
@@ -454,8 +397,8 @@ DONE (automated):
 - Org-level teams: instructors, students, auditors, course-admin
 - Org settings: 2FA enforcement enabled
 - .github profile repo with README
-- Org-level workflows in .github: Enroll student, Bootstrap cohort, Refresh actions
-- materials-template repo created (ships the Release materials/assignment actions)
+- Workflows in .github: Release materials, Release assignment, Enroll student,
+  Bootstrap cohort, Refresh actions
 - DSL_BOT_TOKEN secret validated (or set)
 
 NEXT STEPS (manual):

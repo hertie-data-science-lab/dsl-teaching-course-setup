@@ -50,20 +50,17 @@ WORKFLOWS = (
 _CHECK_TEAM = """  check-team:
     runs-on: ubuntu-latest
     steps:
-      - name: Verify the user may run actions for THIS course org
+      - name: Verify the user may run actions for THIS repo
         env:
           GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
           ACTOR: ${{ github.actor }}
-          ORG: ${{ github.repository_owner }}
+          REPO: ${{ github.repository }}
         run: |
-          # Org owners pass; else must be on this course's instructors/course-admin team.
-          role=$(gh api "orgs/$ORG/memberships/$ACTOR" --jq '.role' 2>/tmp/gherr || true)
-          if [ "$role" = "admin" ]; then exit 0; fi
-          for team in instructors course-admin; do
-            state=$(gh api "orgs/$ORG/teams/$team/memberships/$ACTOR" --jq '.state' 2>>/tmp/gherr || true)
-            if [ "$state" = "active" ]; then exit 0; fi
-          done
-          echo "::error::@$ACTOR not authorised for $ORG (role='$role'). gh api errors (if any):"
+          # Faculty have write+ on the course repos; students never do (and triggering a
+          # workflow_dispatch already requires write), so repo permission is the gate.
+          perm=$(gh api "repos/$REPO/collaborators/$ACTOR/permission" --jq '.permission' 2>/tmp/gherr || true)
+          case "$perm" in admin|write|maintain) exit 0 ;; esac
+          echo "::error::@$ACTOR lacks write on $REPO (permission='$perm'). gh api said:"
           cat /tmp/gherr || true
           exit 1
 """
@@ -140,6 +137,70 @@ jobs:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
           SRC_ORG: ${{{{ github.repository_owner }}}}
           SRC_REPO: ${{{{ github.event.repository.name }}}}
+          COHORT_ORG: ${{{{ inputs.cohort_org }}}}
+          COHORT_REPO: ${{{{ inputs.cohort_repo }}}}
+          WEEK: ${{{{ inputs.week }}}}
+          INC_LEC: ${{{{ inputs.include_lectures }}}}
+          INC_READ: ${{{{ inputs.include_readings }}}}
+        run: |
+          gh auth setup-git
+          args=(--source-org "$SRC_ORG" --source-repo "$SRC_REPO"
+                --cohort-org "$COHORT_ORG" --cohort-repo "$COHORT_REPO" --week "$WEEK")
+          [ "$INC_LEC" = "false" ] && args+=(--no-lectures)
+          [ "$INC_READ" = "false" ] && args+=(--no-readings)
+          python3 -m dsl_course.release "${{args[@]}}"
+"""
+
+
+def render_central_release(
+    source_repos: list[str], cohort_orgs: list[str], cohort_repos: list[str]
+) -> str:
+    """Central copy that lives in .github: pick the source materials repo + type the
+    week (a central dropdown can't depend on the chosen source, so week is free-text;
+    the run-from-repo copy inside each materials repo has a per-repo week dropdown)."""
+    return f"""name: Release materials
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_repo:
+        description: "Source materials repo (in this course org)"
+        required: true
+        type: choice
+        options:
+{_choice(source_repos)}
+      cohort_org:
+        description: "Target cohort org"
+        required: true
+        type: choice
+        options:
+{_choice(cohort_orgs)}
+      cohort_repo:
+        description: "Target repo in the cohort org"
+        required: true
+        type: choice
+        options:
+{_choice(cohort_repos)}
+      week:
+        description: "Week number (e.g. 1)"
+        required: true
+      include_lectures:
+        description: "Include lectures"
+        type: boolean
+        default: true
+      include_readings:
+        description: "Include readings"
+        type: boolean
+        default: true
+
+jobs:
+{_CHECK_TEAM}
+  release:
+{_RUN_PREAMBLE}      - name: Release
+        env:
+          GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
+          SRC_ORG: ${{{{ github.repository_owner }}}}
+          SRC_REPO: ${{{{ inputs.source_repo }}}}
           COHORT_ORG: ${{{{ inputs.cohort_org }}}}
           COHORT_REPO: ${{{{ inputs.cohort_repo }}}}
           WEEK: ${{{{ inputs.week }}}}
@@ -527,17 +588,46 @@ def update_profile_readme(
     log_ok("profile README refreshed")
 
 
+def seed_github_workflows(course_org: str) -> None:
+    """Seed/refresh the org-level workflows into the course org's .github repo: the
+    CENTRAL Release materials (source-repo dropdown), Release assignment, plus Enroll /
+    Bootstrap cohort / Refresh."""
+    cohorts = discover_cohorts(course_org)
+    cohort_repos = discover_cohort_repos(cohorts)
+    source_repos = discover_content_repos(course_org)
+    assignments = discover_assignments(course_org)
+    files = {
+        ".github/workflows/release-materials.yml": render_central_release(
+            source_repos, cohorts, cohort_repos
+        ),
+        ".github/workflows/release-assignment.yml": render_provision(
+            cohorts, assignments
+        ),
+        ".github/workflows/enroll-student.yml": render_enroll(cohorts),
+        ".github/workflows/bootstrap-cohort.yml": render_bootstrap_cohort(),
+        ".github/workflows/refresh-actions.yml": render_refresh(),
+    }
+    log_step(f"Seeding org-level workflows into {course_org}/.github")
+    for path, content in files.items():
+        if put_file(
+            course_org, ".github", path, content.encode(), f"ci: {path.split('/')[-1]}"
+        ):
+            log_ok(f".github <- {path.split('/')[-1]}")
+
+
 def refresh(course_org: str) -> int:
-    """Seed/refresh the content actions into EVERY repo in the course org (except
-    .github), refresh the cohort dropdowns, and rebuild the org profile README."""
+    """Refresh both layers: the run-from-repo content actions in every content repo,
+    AND the central org-level workflows in .github; repopulate dropdowns; rebuild the
+    org profile README."""
     cohorts = discover_cohorts(course_org)
     cohort_repos = discover_cohort_repos(cohorts)
     targets = discover_content_repos(course_org)
     log_step(
-        f"Refreshing {len(targets)} repo(s) in {course_org} with cohorts {cohorts or 'none'}"
+        f"Refreshing {len(targets)} content repo(s) in {course_org} with cohorts {cohorts or 'none'}"
     )
     for repo in sorted(targets):
         _push_workflows(course_org, repo, cohorts, cohort_repos)
+    seed_github_workflows(course_org)
     update_profile_readme(course_org)
     return 0
 
