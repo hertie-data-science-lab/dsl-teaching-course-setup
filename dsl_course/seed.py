@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 
 import yaml
@@ -85,7 +86,20 @@ def _choice(options: list[str]) -> str:
     return "\n".join(f"          - {o}" for o in opts)
 
 
-def render_release(cohort_orgs: list[str], cohort_repos: list[str]) -> str:
+def _week_input(weeks: list[str]) -> str:
+    """Week as a dropdown of discovered weeks, or a free-text box if none found yet."""
+    if weeks:
+        return (
+            '      week:\n        description: "Week to release"\n'
+            "        required: true\n        type: choice\n        options:\n"
+            + _choice(weeks)
+        )
+    return '      week:\n        description: "Week number (e.g. 1)"\n        required: true'
+
+
+def render_release(
+    cohort_orgs: list[str], cohort_repos: list[str], weeks: list[str] | None = None
+) -> str:
     return f"""name: Release materials
 
 # Run from a course content repo (this repo is the SOURCE). Publishes one week's
@@ -107,9 +121,7 @@ on:
         type: choice
         options:
 {_choice(cohort_repos)}
-      week:
-        description: "Week number (e.g. 1)"
-        required: true
+{_week_input(weeks or [])}
       include_lectures:
         description: "Include lectures"
         type: boolean
@@ -158,10 +170,10 @@ on:
         options:
 {_choice(cohort_orgs)}
       assignment:
-        description: "Assignment slug (e.g. assignment-1)"
+        description: "Assignment number (e.g. 1)"
         required: true
       dry_run:
-        description: "Preview only"
+        description: "Preview only — list the repos that WOULD be created, don't create them"
         type: boolean
         default: false
 
@@ -178,7 +190,7 @@ jobs:
           DRY_RUN: ${{{{ inputs.dry_run }}}}
         run: |
           args=(--master-org "$MASTER_ORG" --template "$TEMPLATE"
-                --cohort-org "$COHORT_ORG" --assignment "$ASSIGNMENT")
+                --cohort-org "$COHORT_ORG" --assignment "assignment-$ASSIGNMENT")
           [ "$DRY_RUN" = "true" ] && args+=(--dry-run)
           python3 -m dsl_course.assign "${{args[@]}}"
 """
@@ -316,6 +328,27 @@ def discover_cohort_repos(cohort_orgs: list[str]) -> list[str]:
     return sorted(repos)
 
 
+def discover_weeks(org: str, repo: str) -> list[str]:
+    """Weeks present in a content repo, from lectures/Session<n>_* and
+    readings/required/session-<nn>. Used to populate the week dropdown."""
+    weeks = set()
+    code, out = gh("api", f"repos/{org}/{repo}/contents/lectures", "--jq", ".[].name")
+    if code == 0:
+        for name in out.splitlines():
+            m = re.match(r"Session0*(\d+)", name)
+            if m:
+                weeks.add(int(m.group(1)))
+    code, out = gh(
+        "api", f"repos/{org}/{repo}/contents/readings/required", "--jq", ".[].name"
+    )
+    if code == 0:
+        for name in out.splitlines():
+            m = re.match(r"session-0*(\d+)", name)
+            if m:
+                weeks.add(int(m.group(1)))
+    return [str(w) for w in sorted(weeks)]
+
+
 def discover_content_repos(course_org: str) -> list[str]:
     """Every repo in the course org that should carry the content actions — i.e. all
     of them except the `.github` profile repo (which holds the org-level buttons).
@@ -326,11 +359,12 @@ def discover_content_repos(course_org: str) -> list[str]:
 def _push_workflows(
     org: str, repo: str, cohort_orgs: list[str], cohort_repos: list[str]
 ) -> None:
+    weeks = discover_weeks(org, repo)
     put_file(
         org,
         repo,
         WORKFLOWS[0],
-        render_release(cohort_orgs, cohort_repos).encode(),
+        render_release(cohort_orgs, cohort_repos, weeks).encode(),
         "ci: release-materials wrapper",
     )
     put_file(
