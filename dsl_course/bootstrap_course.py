@@ -174,9 +174,12 @@ def create_profile_repo(
     ):
         return
 
-    # README with org branding
+    # README with org branding. The org OVERVIEW page renders profile/README.md
+    # (a root README.md only shows on the .github repo itself, not the org profile).
     readme = PROFILE_README.format(org=org, org_name=org_name, course_name=course_name)
-    put_file(org, ".github", "README.md", readme.encode(), "init: org profile README")
+    put_file(
+        org, ".github", "profile/README.md", readme.encode(), "init: org profile README"
+    )
 
     # Course metadata — canonical machine-readable source for discovery tooling
     metadata = (
