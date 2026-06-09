@@ -23,12 +23,17 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
 import sys
+import tempfile
+from pathlib import Path
 
 from . import roster
 from .utils import (
     add_collaborator,
     generate_from_template,
+    gh,
+    git,
     log,
     log_err,
     log_ok,
@@ -38,14 +43,79 @@ from .utils import (
     set_repo_topics,
 )
 
+SOLUTION_BRANCH = "solution"
+SOLUTION_DIR = "solution"
+_GIT_ENV = [
+    "-c",
+    "user.email=bot@dsl.local",
+    "-c",
+    "user.name=dsl-bot",
+    "-c",
+    "core.hooksPath=/dev/null",
+]
+
 
 def assignment_slug(template: str) -> str:
     """assignment-1-f2026 -> assignment-1 (drop a trailing cohort suffix)."""
     return re.sub(r"-[fs]\d{4}$", "", template)
 
 
+def fetch_solution(master_org: str, template: str, dest: Path) -> Path | None:
+    """Clone the template's `solution` branch and return its solution/ dir, or None.
+
+    Solutions live on a non-default branch so native template-generate (default branch
+    only) never copies them into student repos - they're pushed separately, on demand."""
+    code, _ = gh(
+        "repo",
+        "clone",
+        f"{master_org}/{template}",
+        str(dest),
+        "--",
+        "-q",
+        "-b",
+        SOLUTION_BRANCH,
+    )
+    if code != 0:
+        log_err(
+            f"  ! no `{SOLUTION_BRANCH}` branch on {master_org}/{template} - "
+            f"nothing to push (add the solution there first)"
+        )
+        return None
+    sol = dest / SOLUTION_DIR
+    return sol if sol.is_dir() else None
+
+
+def push_solution(cohort_org: str, repo: str, sol_dir: Path) -> bool:
+    """Push the solution/ folder into an existing student repo (idempotent overwrite)."""
+    with tempfile.TemporaryDirectory() as work:
+        wd = Path(work) / "r"
+        if gh("repo", "clone", f"{cohort_org}/{repo}", str(wd), "--", "-q")[0] != 0:
+            return False
+        shutil.copytree(sol_dir, wd / SOLUTION_DIR, dirs_exist_ok=True)
+        git("-C", str(wd), *_GIT_ENV, "add", "-A")
+        code, _ = git(
+            "-C",
+            str(wd),
+            *_GIT_ENV,
+            "commit",
+            "-q",
+            "--no-verify",
+            "-m",
+            "add solution",
+        )
+        if code != 0:
+            return True  # already present, nothing new
+        return git("-C", str(wd), *_GIT_ENV, "push", "-q", "origin", "HEAD")[0] == 0
+
+
 def provision_one(
-    master_org: str, template: str, cohort_org: str, repo: str, handle: str, slug: str
+    master_org: str,
+    template: str,
+    cohort_org: str,
+    repo: str,
+    handle: str,
+    slug: str,
+    sol_dir: Path | None = None,
 ) -> str:
     existed = repo_exists(cohort_org, repo)
     if existed:
@@ -62,6 +132,12 @@ def provision_one(
     else:
         log_ok(f"created {cohort_org}/{repo}")
         set_repo_topics(cohort_org, repo, [slug, "submission"])
+
+    if sol_dir is not None:
+        if push_solution(cohort_org, repo, sol_dir):
+            log_ok("  + solution pushed")
+        else:
+            log_err("  ! could not push solution")
 
     if add_collaborator(cohort_org, repo, handle, permission="maintain"):
         log_ok(f"  + @{handle} (maintain)")
@@ -86,6 +162,11 @@ def main() -> int:
         default=None,
         help="Local students.csv (default: cohort classroom-config)",
     )
+    parser.add_argument(
+        "--solution",
+        action="store_true",
+        help="Also push the solution (template's `solution` branch) into each student repo",
+    )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
@@ -104,6 +185,7 @@ def main() -> int:
     log_step(
         f"Provisioning {slug} for {len(onboarded)} onboarded student(s) -> "
         f"{args.cohort_org} (template {args.master_org}/{args.template})"
+        f"{' + solution' if args.solution else ''}"
     )
     if skipped:
         log(f"  ({skipped} not-yet-onboarded row(s) skipped)")
@@ -115,14 +197,27 @@ def main() -> int:
             )
         return 0
 
-    results: dict[str, int] = {}
-    for s in onboarded:
-        repo = f"{slug}-{s.github_handle}"
-        log_step(repo)
-        status = provision_one(
-            args.master_org, args.template, args.cohort_org, repo, s.github_handle, slug
-        )
-        results[status] = results.get(status, 0) + 1
+    with tempfile.TemporaryDirectory() as soldir:
+        sol_dir = None
+        if args.solution:
+            sol_dir = fetch_solution(args.master_org, args.template, Path(soldir) / "t")
+            if sol_dir is None:
+                return 1
+
+        results: dict[str, int] = {}
+        for s in onboarded:
+            repo = f"{slug}-{s.github_handle}"
+            log_step(repo)
+            status = provision_one(
+                args.master_org,
+                args.template,
+                args.cohort_org,
+                repo,
+                s.github_handle,
+                slug,
+                sol_dir,
+            )
+            results[status] = results.get(status, 0) + 1
 
     log_ok(f"Done - {json.dumps(results)}")
     return 1 if any(k.startswith("failed") for k in results) else 0

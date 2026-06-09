@@ -274,6 +274,10 @@ on:
         options:
 {_choice(cohort_orgs)}
 {_assignment_input(assignments or [])}
+      include_solution:
+        description: "Also push the solution (from the template's solution branch) into each student repo"
+        type: boolean
+        default: false
       dry_run:
         description: "Preview only - list the repos that WOULD be created, don't create them"
         type: boolean
@@ -288,9 +292,12 @@ jobs:
           MASTER_ORG: ${{{{ github.repository_owner }}}}
           COHORT_ORG: ${{{{ inputs.cohort_org }}}}
           TEMPLATE: ${{{{ inputs.assignment }}}}
+          INC_SOL: ${{{{ inputs.include_solution }}}}
           DRY_RUN: ${{{{ inputs.dry_run }}}}
         run: |
+          gh auth setup-git
           args=(--master-org "$MASTER_ORG" --template "$TEMPLATE" --cohort-org "$COHORT_ORG")
+          [ "$INC_SOL" = "true" ] && args+=(--solution)
           [ "$DRY_RUN" = "true" ] && args+=(--dry-run)
           python3 -m dsl_course.assign "${{args[@]}}"
 """
@@ -533,10 +540,19 @@ def _repo_table(repos: list[dict]) -> str:
 
 
 def render_profile_readme(
-    org: str, org_name: str, course_name: str, repos: list[dict], is_cohort: bool
+    org: str,
+    org_name: str,
+    course_name: str,
+    repos: list[dict],
+    is_cohort: bool,
+    cohorts: list[str] | None = None,
 ) -> str:
     """Org overview. Cohort orgs get a student-facing page; course orgs a faculty one."""
     table = _repo_table(repos)
+    cohort_lines = (
+        "\n".join(f"- [{c}](https://github.com/{c})" for c in (cohorts or []))
+        or "_(none registered yet - run Bootstrap cohort)_"
+    )
     if is_cohort:
         return f"""# {course_name}
 
@@ -563,6 +579,13 @@ _Hertie Data Science Lab. This page is auto-generated._
 
 **{course_name}** - managed by the Hertie Data Science Lab.
 _This page is auto-generated; edits will be overwritten on the next refresh._
+
+## Cohorts
+
+Cohort orgs receiving releases from this course (auto-discovered from the
+`cohort-courses-pages.yml` registry, the same source as the action dropdowns):
+
+{cohort_lines}
 
 ## Repositories
 
@@ -604,7 +627,8 @@ def update_profile_readme(
         course_name = course_name or cfg.get("course_name") or org_name
     repos = list_org_repos(org)
     is_cohort = any(r["name"] == "welcome" for r in repos)
-    body = render_profile_readme(org, org_name, course_name, repos, is_cohort)
+    cohorts = None if is_cohort else discover_cohorts(org)
+    body = render_profile_readme(org, org_name, course_name, repos, is_cohort, cohorts)
     put_file(
         org,
         ".github",
