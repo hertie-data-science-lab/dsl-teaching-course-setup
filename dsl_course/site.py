@@ -108,11 +108,16 @@ def _assignment_entry(course_org: str, repo: str, when: date) -> str:
             break
     title = title.replace('"', "'")
     body = "\n".join(ln for ln in readme.splitlines() if not ln.startswith("# ")).strip()
+    due = f"{when.isoformat()}T23:59:00"
     return (
         f"---\n"
         f"type: assignment\n"
-        f"date: {when.isoformat()}T23:59:00\n"
+        f"date: {due}\n"
         f'title: "{title}"\n'
+        f"due_event:\n"
+        f"    type: due\n"
+        f"    date: {due}\n"
+        f'    description: "{title} due"\n'
         f"---\n"
         f"{body or 'Assignment brief.'}\n\n"
         f"_Your private `{slug}-<your-handle>` repo appears in `{course_org}`'s cohort "
