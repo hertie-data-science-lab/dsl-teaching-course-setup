@@ -4,7 +4,6 @@ Sets up org-level infrastructure that persists across semesters:
 - DSL_BOT_TOKEN secret (required for all workflows)
 - Default teams (instructors, students, auditors)
 - Org settings (2FA enforcement, Pages default branch)
-- GitHub Actions allowlist (documented common actions)
 - Profile README (.github repo with description)
 - Org-level workflows in .github (enroll-student, equip-repo, refresh-actions)
 - A content-template repo carrying the Release / Provision actions (faculty create
@@ -77,34 +76,6 @@ is managed by the Hertie Data Science Lab and instructors.
 ---
 
 Need help? Reach out to the [Hertie DSL team](https://github.com/hertie-data-science-lab).
-"""
-
-GITHUB_ACTIONS_POLICY = """# GitHub Actions Configuration
-
-This org allows public actions necessary for course management:
-
-## Allowed actions (automatically available)
-
-- `actions/checkout` — clone repositories
-- `actions/setup-python` — Python environments
-- `actions/setup-node` — Node.js environments
-- `actions/upload-artifact` — store build outputs
-- `actions/download-artifact` — fetch build outputs
-- `actions/create-release` — publish releases
-- `github/super-linter` — code quality checks
-- `softprops/action-gh-release` — release automation
-- All other GitHub-owned actions (github/*)
-- All Hertie DSL actions (hertie-data-science-lab/*)
-
-## Disabled
-
-- Third-party actions (unless explicitly approved)
-- Actions from untrusted sources
-- Any action with credential write access
-
-## Adding new actions
-
-Contact the DSL team before enabling new actions.
 """
 
 
@@ -201,15 +172,6 @@ def create_profile_repo(
     if course_code:
         topics.append(f"course-{course_code.lower()}")
     set_repo_topics(org, ".github", topics)
-
-    # GitHub Actions policy (informational)
-    put_file(
-        org,
-        ".github",
-        "GITHUB_ACTIONS_POLICY.md",
-        GITHUB_ACTIONS_POLICY.encode(),
-        "init: GitHub Actions allowlist documentation",
-    )
 
     log_ok(".github profile repo initialised")
 
@@ -444,6 +406,12 @@ def main() -> int:
         help="Also do cohort student-facing setup: tighten the org and seed the "
         "welcome (onboard) + classroom-config (roster) repos.",
     )
+    parser.add_argument(
+        "--course",
+        default=None,
+        help="With --cohort: the parent course org. Registers this cohort in that "
+        "course's .github/dsl-course.yml so it appears in the faculty dropdowns.",
+    )
     args = parser.parse_args()
 
     org_name = args.org_name or args.org
@@ -470,6 +438,13 @@ def main() -> int:
     if args.cohort:
         # Cohort: student-facing welcome + roster + tightened perms.
         setup_cohort_extras(args.org)
+        if args.course:
+            seed.register_cohort(args.course, args.org)
+        else:
+            log(
+                f"  (no --course given — add {args.org} to its course org's "
+                f".github/{seed.COHORTS_PATH} to show it in the faculty dropdowns)"
+            )
     else:
         # Course: org-level buttons + the content-template carrying release/provision.
         seed_workflows(args.org)
@@ -503,7 +478,7 @@ DONE (automated):
 ============================================================
 - Org-level teams: instructors, students, auditors, course-admin
 - Org settings: 2FA enforcement enabled
-- .github profile repo with README and Actions policy
+- .github profile repo with README
 - Org-level workflows in .github: Enroll student · Equip repo · Refresh actions
 - content-template repo created (ships the Release / Provision actions)
 - DSL_BOT_TOKEN secret validated (or set)

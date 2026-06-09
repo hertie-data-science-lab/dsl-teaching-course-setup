@@ -30,6 +30,10 @@ on:
         required: false
         default: false
         type: boolean
+      course:
+        description: "For a COHORT: its parent course org (registers the cohort in that course's dropdowns)"
+        required: false
+        default: ""
 
 jobs:
   check-team:
@@ -69,10 +73,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
           COHORT: ${{ inputs.cohort }}
+          COURSE: ${{ inputs.course }}
         run: |
           args=(--org "${{ inputs.org }}"
                 --org-name "${{ inputs.org_name }}"
                 --course-name "${{ inputs.course_name || inputs.org_name }}"
                 --course-code "${{ inputs.course_code }}")
           [ "$COHORT" = "true" ] && args+=(--cohort)
+          [ -n "$COURSE" ] && args+=(--course "$COURSE")
           python3 -m dsl_course.bootstrap_course "${args[@]}"

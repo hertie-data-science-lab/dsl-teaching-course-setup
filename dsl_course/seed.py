@@ -5,10 +5,11 @@ repos, so faculty trigger them from the repo they're working in. The repo the wo
 runs in is the SOURCE; the action pushes into a chosen cohort org/repo.
 
 The cohort org / cohort repo inputs are GitHub `choice` dropdowns. GitHub can't
-populate a dropdown live, so the options are rendered into the YAML from the current
-cohorts and refreshed on demand: `refresh` re-discovers cohorts ({course-org}-*) and
-their repos and re-pushes the workflows to the content-template + every already-equipped
-repo. No cron, no app.
+populate a dropdown live, so the options are rendered into the YAML from the cohort
+registry and refreshed on demand: `refresh` reads the course org's
+.github/cohort-courses-pages.yml `cohorts:` list (maintained by `bootstrap --cohort
+--course X`, or by hand), lists their repos, and re-pushes the workflows to the
+content-template + every already-equipped repo. No cron, no app.
 
 Actions:
   equip   --course-org X --repo R   push the two wrappers into course-org/R
@@ -21,7 +22,13 @@ from __future__ import annotations
 import argparse
 import sys
 
-from .utils import gh, log, log_ok, log_step, put_file, repo_exists
+import yaml
+
+from .utils import get_file_content, gh, log, log_ok, log_step, put_file, repo_exists
+
+COHORTS_PATH = (
+    "cohort-courses-pages.yml"  # standalone registry in the course org's .github repo
+)
 
 CENTRAL = "hertie-data-science-lab/dsl-teaching-course-setup"
 TEMPLATE_REPO = "content-template"
@@ -243,12 +250,38 @@ jobs:
 """
 
 
-def discover_cohorts(course_org: str) -> list[str]:
-    """Cohort orgs = orgs the bot belongs to named '{course_org}-*'."""
-    code, out = gh("api", "/user/orgs", "--paginate", "--jq", ".[].login")
-    if code != 0:
+def _read_cohorts(course_org: str) -> list[str]:
+    """Read the course org's standalone .github/cohorts.yml registry."""
+    content = get_file_content(course_org, ".github", COHORTS_PATH)
+    if not content:
         return []
-    return sorted(o for o in out.splitlines() if o.startswith(f"{course_org}-"))
+    data = yaml.safe_load(content) or []
+    cohorts = data.get("cohorts", []) if isinstance(data, dict) else data
+    return [c for c in cohorts if c]
+
+
+def discover_cohorts(course_org: str) -> list[str]:
+    """Cohort orgs are listed explicitly in the course's .github/cohorts.yml
+    (naming-independent). `bootstrap --cohort --course X` appends; faculty can edit it."""
+    return sorted(_read_cohorts(course_org))
+
+
+def register_cohort(course_org: str, cohort_org: str) -> None:
+    """Append cohort_org to the course's cohorts.yml registry (idempotent)."""
+    cohorts = set(_read_cohorts(course_org))
+    if cohort_org in cohorts:
+        log_ok(f"{cohort_org} already in {course_org}/.github/{COHORTS_PATH}")
+        return
+    cohorts.add(cohort_org)
+    body = yaml.safe_dump({"cohorts": sorted(cohorts)}, sort_keys=False)
+    put_file(
+        course_org,
+        ".github",
+        COHORTS_PATH,
+        body.encode(),
+        f"registry: add cohort {cohort_org}",
+    )
+    log_ok(f"registered {cohort_org} under {course_org}")
 
 
 def discover_cohort_repos(cohort_orgs: list[str]) -> list[str]:
