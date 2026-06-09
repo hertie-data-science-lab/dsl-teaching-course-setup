@@ -201,6 +201,18 @@ def _assignment_entry(course_org: str, repo: str, when: date) -> str:
     )
 
 
+def _exam_entry(title: str, when: date) -> str:
+    """A red exam row (the template's schedule_row_exam.html styles `type: exam`)."""
+    return (
+        f"---\n"
+        f"type: exam\n"
+        f"date: {when.isoformat()}T09:00:00\n"
+        f'description: "{title}"\n'
+        f"---\n"
+        f"Details to be confirmed.\n"
+    )
+
+
 def sync_site(course_org: str, cohort_org: str) -> int:
     site = f"{cohort_org.lower()}.github.io"
     if not repo_exists(cohort_org, site):
@@ -260,6 +272,17 @@ def sync_site(course_org: str, cohort_org: str) -> int:
                         course_org, a, start + timedelta(days=(i + 1) * 14)
                     )
                     for i, a in enumerate(assignments)
+                },
+            ),
+            (
+                # Exams render red via the template's schedule_row_exam.html. Stub dates
+                # for now (mid/end of a ~15-week semester) - edit on the site later.
+                "_events",
+                {
+                    "midterm.md": _exam_entry(
+                        "MidTerm Exam", start + timedelta(weeks=8)
+                    ),
+                    "final.md": _exam_entry("Final Exam", start + timedelta(weeks=15)),
                 },
             ),
         ):
