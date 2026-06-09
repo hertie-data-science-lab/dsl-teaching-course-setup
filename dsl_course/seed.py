@@ -694,10 +694,34 @@ All actions live in the [`.github` repo's Actions tab](https://github.com/{org}/
 - [**New assignment**](https://github.com/{org}/.github/actions/workflows/new-assignment.yml) - scaffold an `assignment-N-<year>` template repo (starter + autograder on `main`, an empty `solution` branch).
 - [**Enroll student**](https://github.com/{org}/.github/actions/workflows/enroll-student.yml) - grant a student org + `students`-team access.
 - [**Bootstrap cohort**](https://github.com/{org}/.github/actions/workflows/bootstrap-cohort.yml) - configure a pre-created cohort org (welcome + roster + tighten), register it, refresh dropdowns.
+- [**Sync site**](https://github.com/{org}/.github/actions/workflows/sync-site.yml) - regenerate a cohort's website from the org structure (releases do this automatically).
 - [**Refresh actions**](https://github.com/{org}/.github/actions/workflows/refresh-actions.yml) - repopulate the cohort/week/assignment dropdowns, re-equip content repos, and rebuild this index.
 
 Each materials repo *also* carries its own **Release** buttons (run from inside the repo;
 there the `week` is a dropdown of that repo's weeks).
+
+## How the actions behave
+
+**Release materials** - run it from the materials repo (per-repo `week` dropdown) or from
+the central button (pick the source repo, type the week). It copies the *whole*
+`lectures/week-N/` and `readings/week-N/` folders - **every file** (any number of lectures
+or readings per week) - into the cohort's `materials` repo (private + `students` read),
+nested under `week-N/`. Only the weeks you release appear. `include_syllabus` /
+`include_readme` (default off) also copy those root files to the cohort root, overwriting.
+
+**Release assignment** - two stages: (1) it freezes a cohort-level template repo
+`<assignment>` from your `assignment-*-<year>` template; (2) it generates one private
+`<assignment>-<handle>` repo per onboarded student **from that cohort template**, adding
+each as collaborator. Tick **include_solution** (e.g. after the deadline) to push the
+template's `solution` branch into every student repo. Solutions stay on the `solution`
+branch precisely so a normal release never leaks them.
+
+**The cohort website** - every cohort has an auto-deployed site `<org>.github.io` (public
+on Free; private on Campus/Enterprise). It is regenerated from this org's structure on
+every release (and via **Sync site**): the schedule lists released weeks + assignment due
+dates + MidTerm/Final exams, lecture entries link the actual released files, assignment
+briefs come from each template's README, and instructor/TA cards come from the
+`instructors` / `teaching-assistants` teams.
 
 ## Repository structure (required)
 
