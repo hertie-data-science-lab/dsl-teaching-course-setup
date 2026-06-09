@@ -154,11 +154,27 @@ jobs:
 """
 
 
-def render_provision(cohort_orgs: list[str]) -> str:
+def _assignment_input(assignments: list[str]) -> str:
+    """Assignment as a dropdown of discovered assignments/ folders, or free-text."""
+    if assignments:
+        return (
+            '      assignment:\n        description: "Assignment"\n'
+            "        required: true\n        type: choice\n        options:\n"
+            + _choice(assignments)
+        )
+    return (
+        '      assignment:\n        description: "Assignment folder (e.g. assignment-1)"\n'
+        "        required: true"
+    )
+
+
+def render_provision(
+    cohort_orgs: list[str], assignments: list[str] | None = None
+) -> str:
     return f"""name: Release assignment
 
-# Run from an assignment-template repo (this repo is the TEMPLATE). Generates one
-# private {{assignment}}-{{handle}} repo per onboarded student in the chosen cohort.
+# Run from a content repo (this repo is the SOURCE). Copies one assignments/<name>/
+# folder into a private repo per onboarded student in the chosen cohort.
 
 on:
   workflow_dispatch:
@@ -169,9 +185,7 @@ on:
         type: choice
         options:
 {_choice(cohort_orgs)}
-      assignment:
-        description: "Assignment number (e.g. 1)"
-        required: true
+{_assignment_input(assignments or [])}
       dry_run:
         description: "Preview only — list the repos that WOULD be created, don't create them"
         type: boolean
@@ -183,14 +197,14 @@ jobs:
 {_RUN_PREAMBLE}      - name: Provision
         env:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
-          MASTER_ORG: ${{{{ github.repository_owner }}}}
-          TEMPLATE: ${{{{ github.event.repository.name }}}}
+          SRC_ORG: ${{{{ github.repository_owner }}}}
+          SRC_REPO: ${{{{ github.event.repository.name }}}}
           COHORT_ORG: ${{{{ inputs.cohort_org }}}}
           ASSIGNMENT: ${{{{ inputs.assignment }}}}
           DRY_RUN: ${{{{ inputs.dry_run }}}}
         run: |
-          args=(--master-org "$MASTER_ORG" --template "$TEMPLATE"
-                --cohort-org "$COHORT_ORG" --assignment "assignment-$ASSIGNMENT")
+          args=(--source-org "$SRC_ORG" --source-repo "$SRC_REPO"
+                --cohort-org "$COHORT_ORG" --assignment "$ASSIGNMENT")
           [ "$DRY_RUN" = "true" ] && args+=(--dry-run)
           python3 -m dsl_course.assign "${{args[@]}}"
 """
@@ -349,6 +363,17 @@ def discover_weeks(org: str, repo: str) -> list[str]:
     return [str(w) for w in sorted(weeks)]
 
 
+def discover_assignments(org: str, repo: str) -> list[str]:
+    """Assignment folder names under assignments/ in a content repo (the dropdown)."""
+    code, out = gh(
+        "api",
+        f"repos/{org}/{repo}/contents/assignments",
+        "--jq",
+        '.[] | select(.type=="dir") | .name',
+    )
+    return sorted(out.splitlines()) if code == 0 and out else []
+
+
 def discover_content_repos(course_org: str) -> list[str]:
     """Every repo in the course org that should carry the content actions — i.e. all
     of them except the `.github` profile repo (which holds the org-level buttons).
@@ -360,6 +385,7 @@ def _push_workflows(
     org: str, repo: str, cohort_orgs: list[str], cohort_repos: list[str]
 ) -> None:
     weeks = discover_weeks(org, repo)
+    assignments = discover_assignments(org, repo)
     put_file(
         org,
         repo,
@@ -371,8 +397,8 @@ def _push_workflows(
         org,
         repo,
         WORKFLOWS[1],
-        render_provision(cohort_orgs).encode(),
-        "ci: provision-assignment wrapper",
+        render_provision(cohort_orgs, assignments).encode(),
+        "ci: release-assignment wrapper",
     )
     log_ok(f"workflows -> {org}/{repo}")
 
@@ -454,10 +480,17 @@ _This page is auto-generated; edits will be overwritten on the next refresh._
 
 ## Available actions for faculty & admin
 
-- **Release materials** / **Release assignment** — run from inside a content or
-  assignment-template repo (its own Actions tab; the repo is the source).
-- **Enroll student** / **Equip repo** / **Refresh actions** — in the
-  [`.github` repo](https://github.com/{org}/.github) → Actions tab.
+Content actions — run from inside a content repo (that repo is the source); the links
+below open the copy in `content-template`, but they live in every content repo:
+
+- [**Release materials**](https://github.com/{org}/content-template/actions/workflows/release-materials.yml) — publish one week's lectures/readings into a cohort repo.
+- [**Release assignment**](https://github.com/{org}/content-template/actions/workflows/release-assignment.yml) — create a private repo per student from an `assignments/<n>/` folder.
+
+Org actions — in the `.github` repo:
+
+- [**Enroll student**](https://github.com/{org}/.github/actions/workflows/enroll-student.yml) — grant a student org + `students`-team access.
+- [**Equip repo**](https://github.com/{org}/.github/actions/workflows/equip-repo.yml) — add the two content actions to an existing repo (repos made from `content-template` already have them; Equip retrofits older ones).
+- [**Refresh actions**](https://github.com/{org}/.github/actions/workflows/refresh-actions.yml) — repopulate the cohort/week/assignment dropdowns and rebuild this index.
 
 ---
 Maintained by the [Hertie Data Science Lab](https://github.com/hertie-data-science-lab).

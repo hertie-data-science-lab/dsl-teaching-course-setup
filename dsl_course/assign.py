@@ -1,37 +1,36 @@
-"""dsl-course assign -- bot-push assignment provisioner.
+"""dsl-course assign -- provision per-student assignment repos from a content folder.
 
-Generates ONE private submission repo per onboarded student, from a PRIVATE master
-template, into the cohort org. The bot copies the template (the student never reads
-it), so the template — and the assignment questions in it — stay private and reusable
-across years. Students never use a CLI.
+Run from a content repo (the SOURCE). Copies one assignment folder
+(`assignments/<assignment>/`) into a fresh PRIVATE repo per onboarded student in the
+cohort org, and adds the student as a collaborator (maintain). Students never use a
+CLI. Idempotent: existing repos are left alone; collaborator access is re-ensured.
 
-    master org   Hertie-School-{Course}-{Code}   PRIVATE  {assignment}-template
-                          │  generate (bot)
-                          ▼
-    cohort org   {Course}-f{YYYY}                 PRIVATE  {assignment}-{handle}  + student as collaborator
-
-Reads the roster from the cohort's PRIVATE classroom-config/students.csv. Rows without
-a github_handle yet (enrolled-but-not-onboarded) are skipped. Idempotent: existing
-repos are left alone.
+    course/<source-repo>/assignments/<assignment>/   (private)
+            │  copy per onboarded student
+            ▼
+    cohort/<assignment>-<handle>                      (private; student = collaborator)
 
 Usage:
     python3 -m dsl_course.assign \\
-        --master-org Hertie-School-Deep-Learning-EXAMPLE \\
-        --cohort-org Deep-Learning-EXAMPLE-f2026 \\
-        --assignment assignment-1 \\
-        --template assignment-1-template
+        --source-org TEST-HERTIE-COURSE --source-repo content-f2026 \\
+        --assignment assignment-1 --cohort-org TEST-HERTIE-COHORT-f2026
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import sys
+import tempfile
+from pathlib import Path
 
 from . import roster
 from .utils import (
     add_collaborator,
-    generate_from_template,
+    create_repo,
+    gh,
+    git,
     log,
     log_err,
     log_ok,
@@ -41,78 +40,69 @@ from .utils import (
     set_repo_topics,
 )
 
+_GIT_ENV = [
+    "-c",
+    "user.email=bot@dsl.local",
+    "-c",
+    "user.name=dsl-bot",
+    "-c",
+    "core.hooksPath=/dev/null",
+]
 
-def slugify(value: str) -> str:
-    return "".join(c if c.isalnum() or c in "-_" else "-" for c in value.lower()).strip(
-        "-"
-    )
 
-
-def provision_one(
-    master_org: str,
-    template: str,
-    cohort_org: str,
-    repo_name: str,
-    handle: str,
-    assignment: str,
-) -> str:
-    """Generate repo_name in the cohort org from the master template + add the student.
-
-    Existing repos are not regenerated (topics aren't re-pushed); collaborator access
-    is re-ensured every run so a student who joined late still gets access. Returns a
-    status string.
-    """
-    existed = repo_exists(cohort_org, repo_name)
-    if existed:
-        log_skip(f"repo {cohort_org}/{repo_name}")
-    elif not generate_from_template(
-        template_org=master_org,
-        template_name=template,
-        owner=cohort_org,
-        name=repo_name,
-        private=True,
-        description=f"{assignment} — submission repo",
-    ):
-        return "failed-create"
-    else:
-        log_ok(f"created {cohort_org}/{repo_name}")
-        set_repo_topics(cohort_org, repo_name, [slugify(assignment), "submission"])
-
-    # Student gets `maintain` on their own repo (idempotent — ensures access on re-run).
-    if add_collaborator(cohort_org, repo_name, handle, permission="maintain"):
-        log_ok(f"  + @{handle} (maintain)")
-        return "skipped" if existed else "ok"
-    log_err(f"  ! could not add @{handle} (not a real account?)")
-    return "created-no-collaborator"
+def _seed_repo_from_dir(
+    src_dir: Path, cohort_org: str, repo: str, assignment: str
+) -> bool:
+    """Push the contents of src_dir as the initial commit of cohort_org/repo."""
+    with tempfile.TemporaryDirectory() as work:
+        out = Path(work) / "r"
+        if gh("repo", "clone", f"{cohort_org}/{repo}", str(out), "--", "-q")[0] != 0:
+            log_err(f"  could not clone {cohort_org}/{repo}")
+            return False
+        for item in src_dir.iterdir():
+            dest = out / item.name
+            if item.is_dir():
+                shutil.copytree(item, dest, dirs_exist_ok=True)
+            else:
+                shutil.copy2(item, dest)
+        git("-C", str(out), *_GIT_ENV, "add", "-A")
+        code, _ = git(
+            "-C",
+            str(out),
+            *_GIT_ENV,
+            "commit",
+            "-q",
+            "--no-verify",
+            "-m",
+            f"init: {assignment}",
+        )
+        if code != 0:
+            return True  # nothing to commit (repo already populated)
+        return git("-C", str(out), "push", "-q", "origin", "HEAD")[0] == 0
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--source-org", required=True, help="Course org (source)")
     parser.add_argument(
-        "--master-org", required=True, help="Master org (template source)"
+        "--source-repo", required=True, help="Content repo name (source)"
+    )
+    parser.add_argument(
+        "--assignment",
+        required=True,
+        help="Assignment folder under assignments/ (e.g. assignment-1)",
     )
     parser.add_argument("--cohort-org", required=True, help="Cohort org (target)")
     parser.add_argument(
-        "--assignment", required=True, help="Assignment slug, e.g. assignment-1"
-    )
-    parser.add_argument(
-        "--template", required=True, help="Template repo name in the master org"
-    )
-    parser.add_argument(
         "--roster",
         default=None,
-        help="Local students.csv (default: read from cohort classroom-config)",
+        help="Local students.csv (default: cohort classroom-config)",
     )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
-    # Safety: the template lives in the PRIVATE master; generating into the SAME org
-    # would create student repos (with student collaborators) inside the master.
-    if args.master_org == args.cohort_org:
-        log_err(
-            "--master-org and --cohort-org must differ — refusing to provision into "
-            "the template's own (master) org."
-        )
+    if args.source_org == args.cohort_org:
+        log_err("--source-org and --cohort-org must differ.")
         return 1
 
     students = (
@@ -120,12 +110,11 @@ def main() -> int:
     )
     if not students:
         return 1
-
     onboarded = [s for s in students if s.onboarded]
     skipped = len(students) - len(onboarded)
     log_step(
         f"Provisioning {args.assignment} for {len(onboarded)} onboarded student(s) "
-        f"-> {args.cohort_org} (template {args.master_org}/{args.template})"
+        f"-> {args.cohort_org} (from {args.source_org}/{args.source_repo})"
     )
     if skipped:
         log(f"  ({skipped} not-yet-onboarded row(s) skipped)")
@@ -137,19 +126,58 @@ def main() -> int:
             )
         return 0
 
-    results: dict[str, int] = {}
-    for s in onboarded:
-        repo_name = f"{args.assignment}-{s.github_handle}"
-        log_step(repo_name)
-        status = provision_one(
-            args.master_org,
-            args.template,
-            args.cohort_org,
-            repo_name,
-            s.github_handle,
-            args.assignment,
-        )
-        results[status] = results.get(status, 0) + 1
+    with tempfile.TemporaryDirectory() as work:
+        src = Path(work) / "src"
+        if (
+            gh(
+                "repo",
+                "clone",
+                f"{args.source_org}/{args.source_repo}",
+                str(src),
+                "--",
+                "-q",
+            )[0]
+            != 0
+        ):
+            log_err(f"could not clone {args.source_org}/{args.source_repo}")
+            return 1
+        adir = src / "assignments" / args.assignment
+        if not adir.is_dir():
+            log_err(
+                f"no assignments/{args.assignment} folder in {args.source_org}/{args.source_repo}"
+            )
+            return 1
+
+        results: dict[str, int] = {}
+        for s in onboarded:
+            repo = f"{args.assignment}-{s.github_handle}"
+            log_step(repo)
+            existed = repo_exists(args.cohort_org, repo)
+            if existed:
+                log_skip(f"repo {args.cohort_org}/{repo}")
+            else:
+                if not create_repo(
+                    args.cohort_org,
+                    repo,
+                    private=True,
+                    description=f"{args.assignment} — submission repo",
+                ):
+                    results["failed-create"] = results.get("failed-create", 0) + 1
+                    continue
+                set_repo_topics(args.cohort_org, repo, [args.assignment, "submission"])
+                if not _seed_repo_from_dir(
+                    adir, args.cohort_org, repo, args.assignment
+                ):
+                    log_err(f"  ! could not seed {repo} from the assignment folder")
+            status = "skipped" if existed else "ok"
+            if add_collaborator(
+                args.cohort_org, repo, s.github_handle, permission="maintain"
+            ):
+                log_ok(f"  + @{s.github_handle} (maintain)")
+            else:
+                log_err(f"  ! could not add @{s.github_handle} (not a real account?)")
+                status = "created-no-collaborator"
+            results[status] = results.get(status, 0) + 1
 
     log_ok(f"Done — {json.dumps(results)}")
     return 1 if any(k.startswith("failed") for k in results) else 0
