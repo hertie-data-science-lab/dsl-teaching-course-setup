@@ -545,17 +545,16 @@ _This page is auto-generated; edits will be overwritten on the next refresh._
 
 ## Available actions for faculty & admin
 
-Content actions - run from inside the materials repo (that repo is the source); the
-links below open the copy in `materials-template`, but they live in every content repo:
+All actions live in the [`.github` repo's Actions tab](https://github.com/{org}/.github/actions):
 
-- [**Release materials**](https://github.com/{org}/materials-template/actions/workflows/release-materials.yml) - publish one week's `lectures/`+`readings/` into a cohort repo.
-- [**Release assignment**](https://github.com/{org}/materials-template/actions/workflows/release-assignment.yml) - generate one repo per student from a chosen `assignment-*` template repo.
-
-Org actions - in the `.github` repo:
-
+- [**Release materials**](https://github.com/{org}/.github/actions/workflows/release-materials.yml) - pick the source materials repo + week, publish `lectures/`+`readings/` into a cohort repo.
+- [**Release assignment**](https://github.com/{org}/.github/actions/workflows/release-assignment.yml) - generate one repo per student from a chosen `assignment-*` template repo.
 - [**Enroll student**](https://github.com/{org}/.github/actions/workflows/enroll-student.yml) - grant a student org + `students`-team access.
 - [**Bootstrap cohort**](https://github.com/{org}/.github/actions/workflows/bootstrap-cohort.yml) - configure a pre-created cohort org (welcome + roster + tighten), register it, refresh dropdowns.
-- [**Refresh actions**](https://github.com/{org}/.github/actions/workflows/refresh-actions.yml) - repopulate the cohort/week/assignment dropdowns and rebuild this index (also equips every content repo).
+- [**Refresh actions**](https://github.com/{org}/.github/actions/workflows/refresh-actions.yml) - repopulate the cohort/week/assignment dropdowns, re-equip content repos, and rebuild this index.
+
+Each materials repo *also* carries its own **Release** buttons (run from inside the repo;
+there the `week` is a dropdown of that repo's weeks).
 
 ---
 Maintained by the [Hertie Data Science Lab](https://github.com/hertie-data-science-lab).
