@@ -45,16 +45,20 @@ WORKFLOWS = (
 _CHECK_TEAM = """  check-team:
     runs-on: ubuntu-latest
     steps:
-      - name: Verify triggering user is in faculty or admin team
+      - name: Verify the user may run actions for THIS course org
         env:
           GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
           ACTOR: ${{ github.actor }}
+          ORG: ${{ github.repository_owner }}
         run: |
-          for team in faculty admin; do
-            state=$(gh api "orgs/hertie-data-science-lab/teams/$team/memberships/$ACTOR" --jq '.state' 2>/dev/null || true)
+          # Org owners always pass; otherwise must be on this course's instructors/course-admin team.
+          role=$(gh api "orgs/$ORG/memberships/$ACTOR" --jq '.role' 2>/dev/null || true)
+          if [ "$role" = "admin" ]; then exit 0; fi
+          for team in instructors course-admin; do
+            state=$(gh api "orgs/$ORG/teams/$team/memberships/$ACTOR" --jq '.state' 2>/dev/null || true)
             if [ "$state" = "active" ]; then exit 0; fi
           done
-          echo "::error::could not verify @$ACTOR is in the faculty/admin team (or DSL_BOT_TOKEN is missing/lacks org read)"
+          echo "::error::@$ACTOR is not an owner or on $ORG's instructors/course-admin team (or DSL_BOT_TOKEN is missing/lacks org read)"
           exit 1
 """
 
