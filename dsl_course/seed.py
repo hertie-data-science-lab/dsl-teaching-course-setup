@@ -452,7 +452,8 @@ def discover_content_repos(course_org: str) -> list[str]:
     return [
         r["name"]
         for r in list_org_repos(course_org)
-        if r["name"] != ".github" and not r["name"].startswith("assignment-")
+        if r["name"] not in (".github", TEMPLATE_REPO)
+        and not r["name"].startswith("assignment-")
     ]
 
 
