@@ -51,14 +51,15 @@ _CHECK_TEAM = """  check-team:
           ACTOR: ${{ github.actor }}
           ORG: ${{ github.repository_owner }}
         run: |
-          # Org owners always pass; otherwise must be on this course's instructors/course-admin team.
-          role=$(gh api "orgs/$ORG/memberships/$ACTOR" --jq '.role' 2>/dev/null || true)
+          # Org owners pass; else must be on this course's instructors/course-admin team.
+          role=$(gh api "orgs/$ORG/memberships/$ACTOR" --jq '.role' 2>/tmp/gherr || true)
           if [ "$role" = "admin" ]; then exit 0; fi
           for team in instructors course-admin; do
-            state=$(gh api "orgs/$ORG/teams/$team/memberships/$ACTOR" --jq '.state' 2>/dev/null || true)
+            state=$(gh api "orgs/$ORG/teams/$team/memberships/$ACTOR" --jq '.state' 2>>/tmp/gherr || true)
             if [ "$state" = "active" ]; then exit 0; fi
           done
-          echo "::error::@$ACTOR is not an owner or on $ORG's instructors/course-admin team (or DSL_BOT_TOKEN is missing/lacks org read)"
+          echo "::error::@$ACTOR not authorised for $ORG (role='$role'). gh api errors (if any):"
+          cat /tmp/gherr || true
           exit 1
 """
 
@@ -311,36 +312,11 @@ def discover_cohort_repos(cohort_orgs: list[str]) -> list[str]:
     return sorted(repos)
 
 
-def discover_equipped_repos(course_org: str) -> list[str]:
-    """Course-org repos that already carry the release wrapper."""
-    code, out = gh(
-        "repo",
-        "list",
-        course_org,
-        "--limit",
-        "200",
-        "--json",
-        "name",
-        "--jq",
-        ".[].name",
-    )
-    if code != 0:
-        return []
-    equipped = []
-    for r in out.splitlines():
-        # .github holds org-level buttons (not content actions); the template is
-        # refreshed separately. Skip both so they never get content wrappers.
-        if r in (".github", TEMPLATE_REPO):
-            continue
-        if (
-            gh(
-                "api",
-                f"repos/{course_org}/{r}/contents/.github/workflows/release-materials.yml",
-            )[0]
-            == 0
-        ):
-            equipped.append(r)
-    return equipped
+def discover_content_repos(course_org: str) -> list[str]:
+    """Every repo in the course org that should carry the content actions — i.e. all
+    of them except the `.github` profile repo (which holds the org-level buttons).
+    Refresh seeds the release/assignment actions into all of these."""
+    return [r["name"] for r in list_org_repos(course_org) if r["name"] != ".github"]
 
 
 def _push_workflows(
@@ -446,11 +422,11 @@ def update_profile_readme(
 
 
 def refresh(course_org: str) -> int:
+    """Seed/refresh the content actions into EVERY repo in the course org (except
+    .github), refresh the cohort dropdowns, and rebuild the org profile README."""
     cohorts = discover_cohorts(course_org)
     cohort_repos = discover_cohort_repos(cohorts)
-    targets = set(discover_equipped_repos(course_org))
-    if repo_exists(course_org, TEMPLATE_REPO):
-        targets.add(TEMPLATE_REPO)
+    targets = discover_content_repos(course_org)
     log_step(
         f"Refreshing {len(targets)} repo(s) in {course_org} with cohorts {cohorts or 'none'}"
     )
