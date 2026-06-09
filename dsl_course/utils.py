@@ -147,6 +147,39 @@ def create_team(
     return False
 
 
+def org_membership_state(org: str, login: str) -> str | None:
+    """Return '<state> (<role>)' for a current/pending member, else None."""
+    code, out = gh(
+        "api", f"orgs/{org}/memberships/{login}", "--jq", '"\\(.state) (\\(.role))"'
+    )
+    return out if code == 0 and out else None
+
+
+def set_org_membership(org: str, login: str, role: str = "member") -> bool:
+    """Ensure `login` belongs to `org` (invites if needed). Idempotent.
+
+    If already a member/owner, leaves them as-is (never demotes an owner — that 403s).
+    Returns True on success or graceful skip (e.g. a non-existent demo handle).
+    """
+    current = org_membership_state(org, login)
+    if current:
+        log_skip(f"org membership {login} ({current})")
+        return True
+    code, out = gh(
+        "api",
+        "--method",
+        "PUT",
+        f"orgs/{org}/memberships/{login}",
+        "--field",
+        f"role={role}",
+    )
+    if code == 0:
+        log_ok(f"invited {login} to {org}")
+        return True
+    log_err(f"could not invite {login} (not a real account?): {out[:120]}")
+    return False
+
+
 def add_team_member(org: str, team_slug: str, login: str, role: str = "member") -> bool:
     code, out = gh(
         "api",

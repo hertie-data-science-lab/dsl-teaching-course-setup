@@ -1,0 +1,67 @@
+name: Provision assignment
+
+# FACULTY CONSOLE. Actions → Provision assignment → Run workflow.
+# Bot-push: generates one PRIVATE {assignment}-{handle} repo per onboarded student
+# from the PRIVATE master template — template + questions stay private, reusable.
+
+on:
+  workflow_dispatch:
+    inputs:
+      master_org:
+        description: "Master org, template source (e.g. Hertie-School-Deep-Learning-EXAMPLE)"
+        required: true
+      cohort_org:
+        description: "Cohort org, target (e.g. Deep-Learning-EXAMPLE-f2026)"
+        required: true
+      assignment:
+        description: "Assignment slug (e.g. assignment-1)"
+        required: true
+      template:
+        description: "Template repo name in the master org (e.g. assignment-1-template)"
+        required: true
+      dry_run:
+        description: "Preview only, don't create repos"
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  check-team:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify triggering user is in faculty or admin team
+        env:
+          GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          for team in faculty admin; do
+            state=$(gh api "orgs/hertie-data-science-lab/teams/$team/memberships/$ACTOR" \
+                     --jq '.state' 2>/dev/null || true)
+            if [ "$state" = "active" ]; then exit 0; fi
+          done
+          echo "::error::$ACTOR is not in the faculty or admin team — access denied"
+          exit 1
+
+  provision:
+    needs: check-team
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Run provisioner
+        env:
+          GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
+          MASTER_ORG: ${{ inputs.master_org }}
+          COHORT_ORG: ${{ inputs.cohort_org }}
+          ASSIGNMENT: ${{ inputs.assignment }}
+          TEMPLATE: ${{ inputs.template }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          args=(--master-org "$MASTER_ORG" --cohort-org "$COHORT_ORG"
+                --assignment "$ASSIGNMENT" --template "$TEMPLATE")
+          [ "$DRY_RUN" = "true" ] && args+=(--dry-run)
+          python3 -m dsl_course.assign "${args[@]}"

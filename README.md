@@ -1,126 +1,85 @@
 # DSL Teaching & Course Setup
 
-Central hub for course organization management and faculty workflows at Hertie Data Science Lab.
+Central control plane for course delivery at the Hertie Data Science Lab. This repo's
+**Actions tab is the faculty console** — every recurring task is a button you run from
+the browser. No CLI.
 
-**Access**: Faculty and admin teams only (enforced via workflow team-check steps)
+**Access**: faculty and admin teams only (enforced via workflow team-check steps).
 
-## Admin Workflows
+## The model
 
-Setup and management of course organizations.
+```
+COURSE / MASTER org   Hertie-School-{Course}-{Code}   PRIVATE, persistent control room
+  materials · solutions · PRIVATE assignment templates · cross-cohort index
+        │
+        │  this repo's Actions push master ──▶ cohort
+        ▼
+COHORT org            {Course}-f{YYYY}                 student-facing, per-cohort target
+  welcome (Join issue) · classroom-config (roster) · materials (released) · per-student repos
+```
 
-### `bootstrap-org`
+- The **master is the source of truth**; the cohort **receives releases** of it.
+- Templates stay **private** — the bot copies them, students never do — so assignment
+  questions stay private and reusable across years.
+- The roster is a per-cohort `students.csv` in the cohort's private `classroom-config`.
 
-One-time setup for a new course org. Creates:
-- Default teams (instructors, students, auditors, course-admin)
-- Org settings (2FA enforcement)
-- `.github` profile repo with README
-- Faculty workflows (`new-semester`, `assign`, `sync-roster`) auto-seeded
-- DSL_BOT_TOKEN secret (or validates presence)
+## Faculty console (this repo → Actions)
 
-**Inputs**:
-- `org`: Course org name (e.g. `Hertie-School-Deep-Learning-E1394`)
-- `org_name`: Display name (e.g. `Deep Learning`)
-- `course_name`: Full course name (optional)
-- `set_secret`: Whether to set DSL_BOT_TOKEN (optional)
+Each takes the target `master_org` / `cohort_org` as inputs and pushes into that cohort.
 
-### `post-migrate`
+### `Provision assignment`
+Generates one **private** `{assignment}-{handle}` repo per onboarded student from a
+private master template, and adds the student as a collaborator. Idempotent; skips
+students not yet onboarded.
+Inputs: `master_org`, `cohort_org`, `assignment`, `template`, `dry_run`.
 
-Retroactive cleanup and migration of historical repos in a course org.
+### `Release materials`
+Drips selected sessions from the master content repo into the cohort-private
+`materials` repo (private + `students` team read). Only released sessions appear.
+Inputs: `master_org`, `content_repo`, `cohort_org`, `sessions`.
 
-**Phases**:
-- `classify`: Analyse repos, identify submissions vs materials (read-only)
-- `tag-in-place`: Apply topics, optionally privatise/archive past cohorts
-- `migrate`: Move submissions to cohort satellite orgs
+### `Enroll student`
+Grants a handle org membership + `students`-team membership. The self-service path is
+the cohort `welcome` Join issue; this is the faculty override. Leave `handle` blank to
+re-materialise the whole roster.
+Inputs: `cohort_org`, `handle`, `prune`.
 
-**Inputs**:
-- `org`: Course org to process
-- `phase`: Which phase to run
-- `satellite_prefix`: Satellite org prefix for migrate phase (e.g. `hertie-dl`)
-- `course_code`: Hertie course code (optional)
-- Options for privatising/archiving past cohorts
+## Student onboarding
 
-### `set-classroom-link`
+Students never use a CLI. They open a **Join issue** in the cohort's public `welcome`
+repo; the `onboard.yml` Action (templates in [`templates/welcome/`](templates/welcome/))
+matches their student ID against the private roster, records their authenticated handle
++ GitHub id, and grants org + `students`-team access.
 
-Patch a classroom invite URL into an assignment file in a course website repo.
+## Admin / create workflows
 
-**Inputs**:
-- `course_org`: Course org name
-- `website_repo`: Website repo name
-- `assignment_file`: Path to assignment file
-- `classroom_url`: GitHub Classroom invite URL
+- **`bootstrap-org`** — one-time setup of a new course (master) org: teams, settings,
+  `.github` profile, seeded workflows, token.
+- **`new-semester`** — set up a cohort: repos, teams, website, Pages.
+- **`post-migrate`** — retrospective classify/tag/migrate of historical repos.
 
----
+> The create tier (`bootstrap-org` / `new-semester` / `post-migrate`) still reflects the
+> earlier course-side model and is the next slimming target; the day-to-day faculty
+> console above is the current model.
 
-## Faculty Workflows
+## Token
 
-Trigger these from your course org's Actions tab. They're automatically seeded when you bootstrap a course org.
+All workflows run under **`secrets.DSL_BOT_TOKEN`** (org-level secret on
+`hertie-data-science-lab`). It needs cross-org repo admin + members + contents on the
+course and cohort orgs. Production target: a GitHub App (fine-grained, short-lived).
 
-### `new-semester` (in course org)
+## Repo layout
 
-Setup a new semester in your course org:
-- Create semester-specific repos (materials, assignments, website)
-- Create teams (instructors, students, auditors)
-- Deploy website to GitHub Pages
-- Optional: set up per-cohort satellite org for submissions
+Self-contained — workflows and their Python implementation live here.
 
-**Inputs**:
-- `satellite_org`: Satellite org for submissions (optional)
-- `semester`: Semester code (e.g. `f2026`)
-- `course_name`, `course_code`: Course identifiers
-- `instructors`, `tas`: GitHub logins
-- `content_visibility`: private or public
-
-### `assign` (in course org)
-
-Create student assignment repos from a template.
-
-**Options**:
-- Per-student repos or per-team repos
-- Optional roster file to define team membership
-- Dry-run mode to preview
-
-### `sync-roster` (in course org)
-
-Keep teams in sync with a roster file. Runs:
-- Automatically: weekly (Mondays 6am UTC)
-- On-demand: trigger manually from Actions tab
-
-**Inputs**:
-- `semester`: Which semester to sync
-- `dry_run`: Preview only
-
----
-
-## Getting Started
-
-### For admins: Bootstrap a new course org
-
-1. Go to https://github.com/hertie-data-science-lab/dsl-teaching-course-setup → Actions tab
-2. Click `bootstrap-org` → Run workflow
-3. Fill in: org name, display name, course name
-4. Let it run — everything else is automated
-
-### For faculty: Set up a new semester
-
-1. Go to your course org (e.g. `Hertie-School-Deep-Learning-E1394`) → Actions tab
-2. Click `new-semester` → Run workflow
-3. Fill in: semester, course details, instructor/TA logins
-4. Done — repos, teams, and website are created automatically
-
----
-
-## Repo Layout
-
-This repo is self-contained: workflows and their Python implementation live here.
-
-- `.github/workflows/` — dispatchable workflows (faculty + admin entry points)
-- `dsl_course/` — Python package implementing the workflows
+- `.github/workflows/` — dispatchable workflows (the console + admin entry points)
+- `dsl_course/` — Python package implementing them (`assign`, `release`, `sync_roster`,
+  `roster`, plus the create-tier modules)
+- `templates/welcome/` — the cohort onboarding workflow + Join issue form
 - `requirements.txt` — Python dependencies (installed by each workflow)
 
-## Related Reading
+## Related reading
 
-- **Design decisions**: [ADRs](https://github.com/hertie-data-science-lab/gh-org-strategy/tree/main/docs/decisions) in the coordination repo
-- **Faculty guides**: [docs/for-faculty](https://github.com/hertie-data-science-lab/gh-org-strategy/tree/main/docs/for-faculty) in the coordination repo
-- **Course list**: [inventory/course-orgs.md](https://github.com/hertie-data-science-lab/gh-org-strategy/blob/main/inventory/course-orgs.md) in the coordination repo
-
-> The `gh-org-strategy` repo is an interim coordination hub (ADRs, inventory, session notes). It is not required at runtime — this repo stands on its own.
+Design decisions, faculty guides, and the course inventory live in the
+[`gh-org-strategy`](https://github.com/hertie-data-science-lab/gh-org-strategy)
+coordination hub. That hub is not required at runtime — this repo stands on its own.

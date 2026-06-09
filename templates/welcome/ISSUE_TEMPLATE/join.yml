@@ -1,0 +1,26 @@
+name: Join the course
+description: Open this to join the course
+title: "Join: <your name>"
+labels: ["onboarding"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Your **GitHub handle is captured automatically** — you are the issue author, so it is authenticated and cannot be faked.
+        Enter your **student ID** so we can match you to the enrolment roster.
+        ⚠️ **Do not post your email or other personal data here** — this is a public repo. Your email is already on the private roster.
+  - type: input
+    id: student_id
+    attributes:
+      label: Student ID
+      description: Used only to match you to the registrar-seeded roster.
+      placeholder: "e.g. 12345"
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Confirmation
+      options:
+        - label: I am enrolled in this course for the current semester.
+          required: true

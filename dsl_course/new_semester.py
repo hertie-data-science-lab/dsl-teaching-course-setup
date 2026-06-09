@@ -1,7 +1,7 @@
 """dsl-course new-semester -- set up a course org for a new semester.
 
-Implements Option H (ADR 0009): course org holds materials; a per-cohort
-satellite org (e.g. hertie-dl-f2026) holds student submission repos.
+The course org holds materials; a per-cohort satellite org (e.g. hertie-dl-f2026)
+holds student submission repos.
 
 This command seeds the COURSE ORG (materials, templates, website, instructor
 teams). If --satellite-org is passed AND it exists, it also seeds the satellite
@@ -471,7 +471,7 @@ def print_checklist(org: str, satellite_org: str | None, semester: str) -> None:
     else:
         satellite_block = (
             "- No satellite org specified (--satellite-org). Assignments will land\n"
-            f"  in the course org ({org}). Recommended: pass --satellite-org per ADR 0009."
+            f"  in the course org ({org}). Recommended: pass --satellite-org."
         )
 
     log(f"""
@@ -500,7 +500,7 @@ NEXT STEPS (manual):
 2. Populate course materials in:
    https://github.com/{org}/content-{semester}
 
-3. Create student submission repos (per ADR 0007/0009):
+3. Create student submission repos:
    python3 -m dsl_course.assign \\
      --org {satellite_org or org} --semester {semester} \\
      --assignment assignment-1 --template assignment-1-{semester}
