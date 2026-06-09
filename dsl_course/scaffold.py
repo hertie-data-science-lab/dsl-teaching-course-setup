@@ -21,14 +21,21 @@ from pathlib import Path
 from . import seed
 from .utils import (
     create_repo,
+    generate_from_template,
     gh,
     git,
+    log,
     log_err,
     log_ok,
+    log_skip,
     log_step,
     put_file,
+    repo_exists,
     set_repo_topics,
 )
+
+WEBSITE_TEMPLATE_ORG = "hertie-data-science-lab"
+WEBSITE_TEMPLATE = "course-website-template"
 
 _GIT_ENV = [
     "-c",
@@ -161,6 +168,58 @@ def scaffold_assignment(org: str, number: str, tag: str) -> int:
     return 0
 
 
+def scaffold_site(org: str) -> int:
+    """Generate the cohort's public website (from course-website-template) and enable
+    GitHub Pages with the template's deploy-on-push workflow.
+
+    The repo is named `<org>.github.io` so it serves at the org root. It must be PUBLIC
+    on the Free plan (Pages requires it); on GitHub Enterprise Cloud / Campus it can be
+    made private with Pages access control. The site redeploys on every push."""
+    site = f"{org.lower()}.github.io"
+    log_step(f"Scaffolding cohort website {org}/{site}")
+    if repo_exists(org, site):
+        log_skip(f"repo {org}/{site}")
+    elif not generate_from_template(
+        template_org=WEBSITE_TEMPLATE_ORG,
+        template_name=WEBSITE_TEMPLATE,
+        owner=org,
+        name=site,
+        private=False,
+        description="Cohort course website (auto-deployed on push)",
+    ):
+        log_err(
+            f"  ! could not generate the site from {WEBSITE_TEMPLATE_ORG}/{WEBSITE_TEMPLATE}"
+        )
+        return 1
+
+    # Enable Pages with the GitHub Actions ("workflow") build, so the template's
+    # deploy.yml publishes the site. Ignore "already enabled".
+    code, out = gh(
+        "api",
+        "--method",
+        "POST",
+        f"repos/{org}/{site}/pages",
+        "-f",
+        "build_type=workflow",
+    )
+    if code != 0 and "409" not in out and "already" not in out.lower():
+        gh(
+            "api",
+            "--method",
+            "PUT",
+            f"repos/{org}/{site}/pages",
+            "-f",
+            "build_type=workflow",
+        )
+
+    # template-generate doesn't fire workflows, so kick the first deploy by hand.
+    code, _ = gh("workflow", "run", "deploy.yml", "--repo", f"{org}/{site}")
+    if code != 0:
+        log("  (could not dispatch deploy.yml yet - it will deploy on the next push)")
+    log_ok(f"site deploying -> https://{org.lower()}.github.io/")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -171,9 +230,13 @@ def main() -> int:
     pa.add_argument("--org", required=True)
     pa.add_argument("--number", required=True)
     pa.add_argument("--tag", required=True, help="Year tag, e.g. f2026")
+    ps = sub.add_parser("site")
+    ps.add_argument("--org", required=True)
     args = parser.parse_args()
     if args.cmd == "materials":
         return scaffold_materials(args.org, args.tag)
+    if args.cmd == "site":
+        return scaffold_site(args.org)
     return scaffold_assignment(args.org, args.number, args.tag)
 
 

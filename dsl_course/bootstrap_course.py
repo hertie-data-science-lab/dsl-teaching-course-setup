@@ -24,7 +24,7 @@ import os
 import sys
 from pathlib import Path
 
-from . import seed
+from . import scaffold, seed
 from .utils import (
     create_repo,
     create_team,
@@ -243,6 +243,9 @@ def setup_cohort_extras(org: str) -> None:
             "init: starter roster (replace the example row with registrar data)",
         )
         log_ok("classroom-config seeded (students.csv starter)")
+
+    # Public, auto-deployed cohort website (from course-website-template).
+    scaffold.scaffold_site(org)
 
 
 def seed_workflows(org: str) -> None:
