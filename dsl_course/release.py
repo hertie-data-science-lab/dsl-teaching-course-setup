@@ -203,7 +203,7 @@ def main() -> int:
     if (args.source_org, args.source_repo) == (args.cohort_org, args.cohort_repo):
         log_err("source and target must differ.")
         return 1
-    return release(
+    rc = release(
         args.source_org,
         args.source_repo,
         args.cohort_org,
@@ -214,6 +214,11 @@ def main() -> int:
         include_syllabus=args.syllabus,
         include_readme=args.readme,
     )
+    if rc == 0:
+        from . import site
+
+        site.sync_site(args.source_org, args.cohort_org)
+    return rc
 
 
 if __name__ == "__main__":

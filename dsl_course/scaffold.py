@@ -232,7 +232,9 @@ def scaffold_site(org: str) -> int:
             break
         time.sleep(5)
     else:
-        log("  (deploy not dispatched yet - it will deploy on the next push to the site repo)")
+        log(
+            "  (deploy not dispatched yet - it will deploy on the next push to the site repo)"
+        )
     log_ok(f"site deploying -> https://{org.lower()}.github.io/")
     return 0
 

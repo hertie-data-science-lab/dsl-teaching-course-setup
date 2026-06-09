@@ -220,6 +220,9 @@ def main() -> int:
             results[status] = results.get(status, 0) + 1
 
     log_ok(f"Done - {json.dumps(results)}")
+    from . import site
+
+    site.sync_site(args.master_org, args.cohort_org)
     return 1 if any(k.startswith("failed") for k in results) else 0
 
 

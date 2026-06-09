@@ -447,6 +447,33 @@ jobs:
 """
 
 
+def render_sync_site(cohort_orgs: list[str]) -> str:
+    """Regenerate a cohort's website from the live org structure (released weeks +
+    assignment catalog). Releases also trigger this automatically."""
+    return f"""name: Sync site
+
+on:
+  workflow_dispatch:
+    inputs:
+      cohort_org:
+        description: "Cohort whose site to regenerate from the org structure"
+        required: true
+        type: choice
+        options:
+{_choice(cohort_orgs)}
+
+jobs:
+{_CHECK_TEAM}
+  sync:
+{_RUN_PREAMBLE}      - name: Sync site
+        env:
+          GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
+        run: |
+          gh auth setup-git
+          python3 -m dsl_course.site sync --course-org "${{{{ github.repository_owner }}}}" --cohort-org "${{{{ inputs.cohort_org }}}}"
+"""
+
+
 def _read_cohorts(course_org: str) -> list[str]:
     """Read the course org's standalone .github/cohorts.yml registry."""
     content = get_file_content(course_org, ".github", COHORTS_PATH)
@@ -725,6 +752,7 @@ def seed_github_workflows(course_org: str) -> None:
         ),
         ".github/workflows/new-materials.yml": render_new_materials(),
         ".github/workflows/new-assignment.yml": render_new_assignment(),
+        ".github/workflows/sync-site.yml": render_sync_site(cohorts),
         ".github/workflows/enroll-student.yml": render_enroll(cohorts),
         ".github/workflows/bootstrap-cohort.yml": render_bootstrap_cohort(),
         ".github/workflows/refresh-actions.yml": render_refresh(),
