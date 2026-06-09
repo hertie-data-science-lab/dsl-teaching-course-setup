@@ -374,6 +374,77 @@ def equip(course_org: str, repo: str) -> int:
     return 0
 
 
+def list_org_repos(org: str) -> list[dict]:
+    code, out = gh(
+        "repo",
+        "list",
+        org,
+        "--limit",
+        "300",
+        "--json",
+        "name,description,visibility,url",
+    )
+    return json.loads(out) if code == 0 else []
+
+
+def render_profile_readme(
+    org: str, org_name: str, course_name: str, repos: list[dict]
+) -> str:
+    """Org overview: a header + a clickable table indexing the org's repos."""
+    rows = []
+    for r in sorted(repos, key=lambda x: x["name"].lower()):
+        if r["name"] == ".github":
+            continue
+        desc = (r.get("description") or "").replace("|", "\\|").strip()
+        rows.append(
+            f"| [{r['name']}]({r['url']}) | {r['visibility'].lower()} | {desc} |"
+        )
+    table = "\n".join(rows) or "| _(no repos yet)_ | | |"
+    return f"""# {org_name}
+
+**{course_name}** — managed by the Hertie Data Science Lab.
+_This page is auto-generated; edits will be overwritten on the next refresh._
+
+## Repositories
+
+| Repo | Visibility | Description |
+| --- | --- | --- |
+{table}
+
+## Faculty actions
+
+- **Release materials** / **Release assignment** — run from inside a content or
+  assignment-template repo (its own Actions tab; the repo is the source).
+- **Enroll student** / **Equip repo** / **Refresh actions** — in the
+  [.github repo's Actions tab](https://github.com/{org}/.github/actions).
+
+---
+Maintained by the [Hertie Data Science Lab](https://github.com/hertie-data-science-lab).
+"""
+
+
+def update_profile_readme(
+    org: str, org_name: str | None = None, course_name: str | None = None
+) -> None:
+    """(Re)generate the org's profile/README.md from its metadata + live repo list."""
+    if org_name is None or course_name is None:
+        cfg = {}
+        content = get_file_content(org, ".github", "dsl-course.yml")
+        if content:
+            cfg = yaml.safe_load(content) or {}
+        org_name = org_name or cfg.get("org_name") or org
+        course_name = course_name or cfg.get("course_name") or org_name
+    body = render_profile_readme(org, org_name, course_name, list_org_repos(org))
+    put_file(
+        org,
+        ".github",
+        "profile/README.md",
+        body.encode(),
+        "docs: refresh org profile README (repo index)",
+    )
+    log_ok("profile README refreshed")
+
+
 def refresh(course_org: str) -> int:
     cohorts = discover_cohorts(course_org)
     cohort_repos = discover_cohort_repos(cohorts)
@@ -385,6 +456,7 @@ def refresh(course_org: str) -> int:
     )
     for repo in sorted(targets):
         _push_workflows(course_org, repo, cohorts, cohort_repos)
+    update_profile_readme(course_org)
     return 0
 
 

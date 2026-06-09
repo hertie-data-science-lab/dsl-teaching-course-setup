@@ -39,46 +39,6 @@ from .utils import (
 
 COURSE_HUB_TOPIC = "dsl-course-hub"
 
-PROFILE_README = """# {org_name}
-
-This is the organisation for **{course_name}**.
-
-## About
-
-All materials and student submissions for the course are hosted here. Course content
-is managed by the Hertie Data Science Lab and instructors.
-
-## Structure
-
-- **`content-f{{YYYY}}` repos** — course materials (lectures, labs, readings)
-- **`assignment-N-f{{YYYY}}` repos** — assignment templates
-- **`f{{YYYY}}-*.github.io`** — course website
-- **Satellite orgs** (e.g. `hertie-dl-f2025`) — student submission repos
-
-## Teams
-
-- **`instructors-f{{YYYY}}`** — instructors and TAs (push access to materials)
-- **`students-f{{YYYY}}`** (satellite) — enrolled students (read content, push submissions)
-- **`auditors-f{{YYYY}}`** (satellite) — auditors (read-only)
-- **`course-admin`** — DSL administrators
-
-## Workflows
-
-- **Release materials** / **Provision assignment** — run from *inside* a content or
-  assignment-template repo (that repo is the source); they push into a chosen cohort.
-- **Enroll student** / **Equip repo** / **Refresh actions** — org-level, in the
-  [.github Actions tab](https://github.com/{org}/actions).
-
-## Resources
-
-- [Teaching & Course Setup](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup) — workflows + docs
-- [Course Website Template](https://github.com/hertie-data-science-lab/course-website-template)
-
----
-
-Need help? Reach out to the [Hertie DSL team](https://github.com/hertie-data-science-lab).
-"""
-
 
 def set_org_secret(org: str, secret_name: str, secret_value: str) -> bool:
     """Create or update an org secret. Requires gh to read the public key first."""
@@ -146,14 +106,9 @@ def create_profile_repo(
     ):
         return
 
-    # README with org branding. The org OVERVIEW page renders profile/README.md
-    # (a root README.md only shows on the .github repo itself, not the org profile).
-    readme = PROFILE_README.format(org=org, org_name=org_name, course_name=course_name)
-    put_file(
-        org, ".github", "profile/README.md", readme.encode(), "init: org profile README"
-    )
-
-    # Course metadata — canonical machine-readable source for discovery tooling
+    # Course metadata — canonical machine-readable source for discovery tooling.
+    # (The org-overview profile/README.md is generated at the end of bootstrap, once
+    # all repos exist, by seed.update_profile_readme — see main.)
     metadata = (
         f"org: {org}\n"
         f"org_name: {org_name}\n"
@@ -484,6 +439,9 @@ def main() -> int:
                     args.org
                 )
             )
+
+    # 5. Generate the org-overview README now that all repos exist (clickable index).
+    seed.update_profile_readme(args.org, org_name, course_name)
 
     log(f"""
 ============================================================
