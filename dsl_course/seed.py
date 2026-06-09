@@ -129,6 +129,14 @@ on:
         description: "Include readings"
         type: boolean
         default: true
+      include_syllabus:
+        description: "Also release the syllabus (root *syllabus* files) - overwrites"
+        type: boolean
+        default: false
+      include_readme:
+        description: "Also release the source README to the cohort root - overwrites"
+        type: boolean
+        default: false
 
 jobs:
 {_CHECK_TEAM}
@@ -143,12 +151,16 @@ jobs:
           WEEK: ${{{{ inputs.week }}}}
           INC_LEC: ${{{{ inputs.include_lectures }}}}
           INC_READ: ${{{{ inputs.include_readings }}}}
+          INC_SYL: ${{{{ inputs.include_syllabus }}}}
+          INC_RM: ${{{{ inputs.include_readme }}}}
         run: |
           gh auth setup-git
           args=(--source-org "$SRC_ORG" --source-repo "$SRC_REPO"
                 --cohort-org "$COHORT_ORG" --cohort-repo "$COHORT_REPO" --week "$WEEK")
           [ "$INC_LEC" = "false" ] && args+=(--no-lectures)
           [ "$INC_READ" = "false" ] && args+=(--no-readings)
+          [ "$INC_SYL" = "true" ] && args+=(--syllabus)
+          [ "$INC_RM" = "true" ] && args+=(--readme)
           python3 -m dsl_course.release "${{args[@]}}"
 """
 
@@ -193,6 +205,14 @@ on:
         description: "Include readings"
         type: boolean
         default: true
+      include_syllabus:
+        description: "Also release the syllabus (root *syllabus* files) - overwrites"
+        type: boolean
+        default: false
+      include_readme:
+        description: "Also release the source README to the cohort root - overwrites"
+        type: boolean
+        default: false
 
 jobs:
 {_CHECK_TEAM}
@@ -207,12 +227,16 @@ jobs:
           WEEK: ${{{{ inputs.week }}}}
           INC_LEC: ${{{{ inputs.include_lectures }}}}
           INC_READ: ${{{{ inputs.include_readings }}}}
+          INC_SYL: ${{{{ inputs.include_syllabus }}}}
+          INC_RM: ${{{{ inputs.include_readme }}}}
         run: |
           gh auth setup-git
           args=(--source-org "$SRC_ORG" --source-repo "$SRC_REPO"
                 --cohort-org "$COHORT_ORG" --cohort-repo "$COHORT_REPO" --week "$WEEK")
           [ "$INC_LEC" = "false" ] && args+=(--no-lectures)
           [ "$INC_READ" = "false" ] && args+=(--no-readings)
+          [ "$INC_SYL" = "true" ] && args+=(--syllabus)
+          [ "$INC_RM" = "true" ] && args+=(--readme)
           python3 -m dsl_course.release "${{args[@]}}"
 """
 
@@ -627,7 +651,13 @@ def _propagate_repo_secret(course_org: str, repos: list[str]) -> None:
         return
     for repo in repos:
         code, _ = gh(
-            "secret", "set", "DSL_BOT_TOKEN", "--repo", f"{course_org}/{repo}", "--body", token
+            "secret",
+            "set",
+            "DSL_BOT_TOKEN",
+            "--repo",
+            f"{course_org}/{repo}",
+            "--body",
+            token,
         )
         if code == 0:
             log_ok(f"repo secret -> {repo}")

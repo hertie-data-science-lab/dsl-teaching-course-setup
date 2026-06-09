@@ -79,6 +79,8 @@ def release(
     week: str,
     include_lectures: bool = True,
     include_readings: bool = True,
+    include_syllabus: bool = False,
+    include_readme: bool = False,
 ) -> int:
     wanted = [
         s
@@ -86,12 +88,12 @@ def release(
         if (s == "lectures" and include_lectures)
         or (s == "readings" and include_readings)
     ]
-    if not wanted:
-        log_err("nothing to release - both --no-lectures and --no-readings were set.")
+    if not (wanted or include_syllabus or include_readme):
+        log_err("nothing to release - everything was switched off.")
         return 1
 
     log_step(
-        f"Releasing week {week} ({', '.join(wanted)}) from {source_org}/{source_repo} "
+        f"Releasing week {week} from {source_org}/{source_repo} "
         f"-> {cohort_org}/{cohort_repo} (cohort-private)"
     )
     create_repo(
@@ -127,19 +129,34 @@ def release(
             log_ok(f"+ {section}/{wdir.name}")
             copied += 1
 
+        # Optional root files (default off): syllabus + README, deployed to the cohort
+        # root, overwriting whatever is there.
+        if include_syllabus:
+            for f in sorted(src.glob("*[Ss]yllabus*")):
+                if f.is_file():
+                    shutil.copy2(f, out / f.name)
+                    log_ok(f"+ {f.name}")
+                    copied += 1
+        readme_from_source = False
+        if include_readme and (src / "README.md").is_file():
+            shutil.copy2(src / "README.md", out / "README.md")
+            log_ok("+ README.md (from source)")
+            readme_from_source = True
+            copied += 1
+
         if copied == 0:
             log_err(
-                f"no {'/'.join(wanted)} folder for week {week} in "
-                f"{source_org}/{source_repo} (expected e.g. lectures/week-{week}/). "
-                f"Nothing released - check the source repo's layout."
+                f"nothing matched for week {week} in {source_org}/{source_repo} "
+                f"(expected e.g. lectures/week-{week}/). Nothing released."
             )
             return 1
 
-        (out / "README.md").write_text(
-            f"# {cohort_repo}\n\n"
-            f"Released from `{source_org}/{source_repo}` - **enrolled students only**.\n\n"
-            f"Weeks open up as the course progresses.\n"
-        )
+        if not readme_from_source:
+            (out / "README.md").write_text(
+                f"# {cohort_repo}\n\n"
+                f"Released from `{source_org}/{source_repo}` - **enrolled students only**.\n\n"
+                f"Weeks open up as the course progresses.\n"
+            )
 
         git("-C", str(out), *_GIT_ENV, "add", "-A")
         code, _ = git(
@@ -150,7 +167,7 @@ def release(
             "-q",
             "--no-verify",
             "-m",
-            f"release: week {week} ({', '.join(wanted)})",
+            f"release: week {week}",
         )
         if code != 0:
             log_ok("nothing new to release (week already published)")
@@ -175,6 +192,12 @@ def main() -> int:
     parser.add_argument("--week", required=True, help="Week number, e.g. 1")
     parser.add_argument("--no-lectures", action="store_true", help="Skip lectures")
     parser.add_argument("--no-readings", action="store_true", help="Skip readings")
+    parser.add_argument(
+        "--syllabus", action="store_true", help="Also copy root *syllabus* file(s)"
+    )
+    parser.add_argument(
+        "--readme", action="store_true", help="Also copy the source root README.md"
+    )
     args = parser.parse_args()
 
     if (args.source_org, args.source_repo) == (args.cohort_org, args.cohort_repo):
@@ -188,6 +211,8 @@ def main() -> int:
         args.week,
         include_lectures=not args.no_lectures,
         include_readings=not args.no_readings,
+        include_syllabus=args.syllabus,
+        include_readme=args.readme,
     )
 
 
