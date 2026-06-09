@@ -105,7 +105,7 @@ def _assignment_entry(course_org: str, repo: str, when: date) -> str:
         if line.startswith("# "):
             title = line[2:].strip()
             break
-    body = "\n".join(l for l in readme.splitlines() if not l.startswith("# ")).strip()
+    body = "\n".join(ln for ln in readme.splitlines() if not ln.startswith("# ")).strip()
     return (
         f"---\n"
         f"type: assignment\n"
