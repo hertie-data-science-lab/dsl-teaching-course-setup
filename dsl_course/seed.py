@@ -438,7 +438,7 @@ jobs:
 
 
 def _read_cohorts(course_org: str) -> list[str]:
-    """Read the course org's standalone .github/cohorts.yml registry."""
+    """Read the course org's standalone .github/cohort-courses-pages.yml registry."""
     content = get_file_content(course_org, ".github", COHORTS_PATH)
     if not content:
         return []
@@ -448,13 +448,13 @@ def _read_cohorts(course_org: str) -> list[str]:
 
 
 def discover_cohorts(course_org: str) -> list[str]:
-    """Cohort orgs are listed explicitly in the course's .github/cohorts.yml
+    """Cohort orgs are listed explicitly in the course's .github/cohort-courses-pages.yml
     (naming-independent). `bootstrap --cohort --course X` appends; faculty can edit it."""
     return sorted(_read_cohorts(course_org))
 
 
 def register_cohort(course_org: str, cohort_org: str) -> None:
-    """Append cohort_org to the course's cohorts.yml registry (idempotent)."""
+    """Append cohort_org to the course's cohort-courses-pages.yml registry (idempotent)."""
     cohorts = set(_read_cohorts(course_org))
     if cohort_org in cohorts:
         log_ok(f"{cohort_org} already in {course_org}/.github/{COHORTS_PATH}")
