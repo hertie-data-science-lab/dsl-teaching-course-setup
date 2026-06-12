@@ -1,4 +1,4 @@
-"""bootstrap-org (deprecated) — use bootstrap_course instead.
+"""bootstrap-org (deprecated) - use bootstrap_course instead.
 
 Kept for backward compatibility. All functionality moved to bootstrap_course.
 """

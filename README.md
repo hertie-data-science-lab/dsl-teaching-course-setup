@@ -1,126 +1,139 @@
 # DSL Teaching & Course Setup
 
-Central hub for course organization management and faculty workflows at Hertie Data Science Lab.
+Central control plane for course delivery at the Hertie Data Science Lab. It's the
+single home of the faculty automation: faculty trigger everything as **GitHub Actions
+buttons** (no CLI), and the Python in `dsl_course/` is the one implementation behind
+them.
 
-**Access**: Faculty and admin teams only (enforced via workflow team-check steps)
+**Access**: every action is gated on **repo permission** - the triggering user must have
+write/maintain/admin on the repo the action runs in. Faculty do; students never do.
 
-## Admin Workflows
+## The model
 
-Setup and management of course organizations.
+Two org tiers; the course org is the persistent source of truth, the cohort org is the
+per-year student-facing target.
 
-### `bootstrap-org`
+```
+COURSE org   e.g. Hertie-School-Deep-Learning-E1394   (persistent, private)
+  materials-f2026         lectures/week-N/ + readings/week-N/ (+ syllabus, README at root)
+  assignment-1-f2026 ...  template repos (is_template) + autograder
+  .github                 profile (auto) + ALL faculty buttons + cohort registry
+        |
+        |  release / generate  (bot token, cross-org)
+        v
+COHORT org   e.g. Deep-Learning-f2026                  (per-year, private)
+  welcome           Join issue -> onboard.yml (enrol)
+  classroom-config  students.csv roster (PRIVATE)
+  materials         released lectures/readings (students-team read)
+  <assignment>-<handle>   one private repo per student (generated; autograder rides along)
+  students team
+```
 
-One-time setup for a new course org. Creates:
-- Default teams (instructors, students, auditors, course-admin)
-- Org settings (2FA enforcement)
-- `.github` profile repo with README
-- Faculty workflows (`new-semester`, `assign`, `sync-roster`) auto-seeded
-- DSL_BOT_TOKEN secret (or validates presence)
+## Hard constraint: orgs are created by hand
 
-**Inputs**:
-- `org`: Course org name (e.g. `Hertie-School-Deep-Learning-E1394`)
-- `org_name`: Display name (e.g. `Deep Learning`)
-- `course_name`: Full course name (optional)
-- `set_secret`: Whether to set DSL_BOT_TOKEN (optional)
+**GitHub has no API to create an organisation.** So every org (course or cohort) is
+created once in the web UI, the bot is added as an owner, and then **automation
+configures it**. That's the only manual step; everything after is a button.
 
-### `post-migrate`
+## Setting up a course (one-time)
 
-Retroactive cleanup and migration of historical repos in a course org.
+1. **Create the empty course org** in the web UI; add the bot as an owner.
+2. **Bootstrap** it - this repo's Actions tab -> **Bootstrap Course Org** (`org` =
+   the new org). It sets teams, 2FA, the `.github` profile, all the faculty buttons,
+   and propagates `DSL_BOT_TOKEN`.
+3. **Add content** in the course org: a `materials-f2026` repo with `lectures/week-N/`
+   and `readings/week-N/` folders (and optionally a syllabus + README at the root), and
+   one `assignment-N-f2026` template repo per assignment (mark `is_template`; put the
+   starter + an autograder in it).
+4. **Refresh actions** (org button) so the content repos get their run-from-repo Release
+   buttons, the repo secret is propagated, and every dropdown populates.
 
-**Phases**:
-- `classify`: Analyse repos, identify submissions vs materials (read-only)
-- `tag-in-place`: Apply topics, optionally privatise/archive past cohorts
-- `migrate`: Move submissions to cohort satellite orgs
+## Adding a cohort (per year)
 
-**Inputs**:
-- `org`: Course org to process
-- `phase`: Which phase to run
-- `satellite_prefix`: Satellite org prefix for migrate phase (e.g. `hertie-dl`)
-- `course_code`: Hertie course code (optional)
-- Options for privatising/archiving past cohorts
+1. **Create the empty cohort org** in the web UI; add the bot as an owner.
+2. Course org -> **Bootstrap cohort** (org button) with the cohort's name. It seeds the
+   `welcome` (onboard) + `classroom-config` (roster) repos, tightens permissions,
+   **registers** the cohort in `.github/cohort-courses-pages.yml`, and refreshes the
+   dropdowns so the cohort appears everywhere.
 
-### `set-classroom-link`
+## Faculty actions
 
-Patch a classroom invite URL into an assignment file in a course website repo.
+All live in the course org's **`.github`** Actions tab. **Release materials** and
+**Release assignment** *also* live inside each content / assignment-template repo
+("run-from-repo"), where the source is that repo and `week` is a dropdown of that repo's
+weeks.
 
-**Inputs**:
-- `course_org`: Course org name
-- `website_repo`: Website repo name
-- `assignment_file`: Path to assignment file
-- `classroom_url`: GitHub Classroom invite URL
+| Action | Where | Effect |
+| --- | --- | --- |
+| **Release materials** | `.github` (pick source repo, type week) **or** the materials repo (week dropdown) | Copies the *whole* `lectures/week-N/` + `readings/week-N/` folders - every file - into the cohort `materials` repo (private + `students` read), nested under `week-N/`. Only released weeks appear. Optional `syllabus` / `README` toggles (default off). |
+| **Release assignment** | `.github` or the materials repo | Two stages: freeze a cohort-level template repo `<slug>` from the chosen `assignment-*` template, then generate one private `<slug>-<handle>` repo per onboarded student *from that cohort template* (+ collaborator). `include_solution` pushes the template's `solution` branch into each student repo. |
+| **New materials repo** | `.github` | Scaffold a structured `course-materials-<year>` repo (week folders + Release buttons). |
+| **New assignment** | `.github` | Scaffold an `assignment-N-<year>` template (starter + autograder on `main`, an empty `solution` branch). |
+| **Enroll student** | `.github` | Grant a handle org + `students`-team access (faculty override for the Join issue). Blank handle = reconcile the whole roster. |
+| **Bootstrap cohort** | `.github` | Configure a pre-created cohort org (welcome + roster + tighten + website), register it, refresh. |
+| **Sync site** | `.github` | Regenerate a cohort's website from the org structure (releases do this automatically). |
+| **Refresh actions** | `.github` | Re-seed the run-from-repo buttons into every content repo, propagate the repo secret, repopulate all dropdowns, rebuild the profile READMEs. |
 
----
+**Student onboarding** (cohort-side): students open a **Join** issue in the public
+`welcome` repo; `onboard.yml` matches their student ID against the private roster,
+records their authenticated handle + GitHub id, and grants org + `students`-team access.
+No CLI.
 
-## Faculty Workflows
+## Cohort website
 
-Trigger these from your course org's Actions tab. They're automatically seeded when you bootstrap a course org.
+Every cohort gets an **auto-deployed website** at `<cohort-org>.github.io`, generated from
+`course-website-template` (a theme-only Jekyll skeleton) by `scaffold_site` during
+Bootstrap cohort. `site.py` then **regenerates its content from the live org structure**
+on every release (and via **Sync site**): the schedule lists released weeks + assignment
+due dates + MidTerm/Final exams; lecture entries link the actual released files; assignment
+briefs come from each template's README; instructor/TA cards come from the `instructors` /
+`teaching-assistants` teams; the course name/semester come from the org metadata. Public on
+the Free plan (Pages requires it); private with Pages access control on Campus/Enterprise.
 
-### `new-semester` (in course org)
+## Dynamic dropdowns
 
-Setup a new semester in your course org:
-- Create semester-specific repos (materials, assignments, website)
-- Create teams (instructors, students, auditors)
-- Deploy website to GitHub Pages
-- Optional: set up per-cohort satellite org for submissions
+`workflow_dispatch` dropdowns are static YAML and can't depend on another input, so
+**Refresh actions** regenerates them from live state and re-pushes the workflows (no
+cron, no app):
 
-**Inputs**:
-- `satellite_org`: Satellite org for submissions (optional)
-- `semester`: Semester code (e.g. `f2026`)
-- `course_name`, `course_code`: Course identifiers
-- `instructors`, `tas`: GitHub logins
-- `content_visibility`: private or public
+- **cohort_org** - from the `.github/cohort-courses-pages.yml` registry.
+- **cohort_repo** - the cohort's content repos, with `materials` as the default.
+- **week** - the source materials repo's `lectures/week-N/` folders (run-from-repo copy);
+  the central `.github` copy uses a free-text week, since it can't depend on the chosen
+  source repo.
+- **source_repo** (central only) / **assignment** - the course org's content / `assignment-*` repos.
 
-### `assign` (in course org)
+## Token
 
-Create student assignment repos from a template.
+All workflows run under **`secrets.DSL_BOT_TOKEN`**. On the **GitHub Free plan, org
+secrets don't reach private repos** - so bootstrap propagates the token as an *org*
+secret (for the public `.github`/`welcome`) **and** Refresh sets it as a *repo* secret on
+each private content repo. The token needs cross-org repo admin + members + contents.
+Production target: a **GitHub App** (fine-grained, short-lived) - or GitHub Team/Enterprise,
+where org secrets reach private repos and this propagation is unnecessary.
 
-**Options**:
-- Per-student repos or per-team repos
-- Optional roster file to define team membership
-- Dry-run mode to preview
+## Repo layout
 
-### `sync-roster` (in course org)
+Self-contained - workflows + their Python implementation live here.
 
-Keep teams in sync with a roster file. Runs:
-- Automatically: weekly (Mondays 6am UTC)
-- On-demand: trigger manually from Actions tab
+- `.github/workflows/` - `bootstrap-org` (+ the legacy create-tier); the faculty
+  workflows are rendered + seeded into the course/cohort orgs, not kept here.
+- `dsl_course/` - the package:
+  - `bootstrap_course` - configure a course or (`--cohort`) cohort org.
+  - `seed` - render the workflows (central + run-from-repo), discover dropdown options, refresh.
+  - `release` - publish a week's materials (+ optional syllabus/README) into a cohort repo.
+  - `assign` - freeze a cohort assignment template, then fan out per-student repos.
+  - `scaffold` - create structured materials / assignment repos + the cohort website.
+  - `site` - regenerate a cohort website from the live org structure.
+  - `sync_roster` - enrol / materialise team access from `students.csv`.
+  - `roster` - read the per-cohort `students.csv`.
+  - `utils` - shared `gh`/git helpers with rate-limit backoff.
+  - `new_semester` / `post_migrate` / `bootstrap_org` / `list_orgs` - legacy create-tier
+    (older course-side model; the next slimming target).
+- `templates/welcome/` - the cohort onboarding workflow + Join issue form.
 
-**Inputs**:
-- `semester`: Which semester to sync
-- `dry_run`: Preview only
+## Related reading
 
----
-
-## Getting Started
-
-### For admins: Bootstrap a new course org
-
-1. Go to https://github.com/hertie-data-science-lab/dsl-teaching-course-setup → Actions tab
-2. Click `bootstrap-org` → Run workflow
-3. Fill in: org name, display name, course name
-4. Let it run — everything else is automated
-
-### For faculty: Set up a new semester
-
-1. Go to your course org (e.g. `Hertie-School-Deep-Learning-E1394`) → Actions tab
-2. Click `new-semester` → Run workflow
-3. Fill in: semester, course details, instructor/TA logins
-4. Done — repos, teams, and website are created automatically
-
----
-
-## Repo Layout
-
-This repo is self-contained: workflows and their Python implementation live here.
-
-- `.github/workflows/` — dispatchable workflows (faculty + admin entry points)
-- `dsl_course/` — Python package implementing the workflows
-- `requirements.txt` — Python dependencies (installed by each workflow)
-
-## Related Reading
-
-- **Design decisions**: [ADRs](https://github.com/hertie-data-science-lab/gh-org-strategy/tree/main/docs/decisions) in the coordination repo
-- **Faculty guides**: [docs/for-faculty](https://github.com/hertie-data-science-lab/gh-org-strategy/tree/main/docs/for-faculty) in the coordination repo
-- **Course list**: [inventory/course-orgs.md](https://github.com/hertie-data-science-lab/gh-org-strategy/blob/main/inventory/course-orgs.md) in the coordination repo
-
-> The `gh-org-strategy` repo is an interim coordination hub (ADRs, inventory, session notes). It is not required at runtime — this repo stands on its own.
+Decisions, inventory, and session notes live in the
+[`gh-org-strategy`](https://github.com/hertie-data-science-lab/gh-org-strategy)
+coordination hub. That hub is not required at runtime; this repo stands on its own.

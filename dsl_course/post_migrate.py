@@ -1,7 +1,7 @@
 """dsl-course post-migrate -- retrospective cleanup of course orgs.
 
-Implements Option H (ADR 0009): course org keeps materials; per-cohort
-satellite orgs hold student submission repos.
+The course org keeps materials; per-cohort satellite orgs hold student
+submission repos.
 
 Three phases:
     classify       -- inspect repos, write a migration manifest. No writes.

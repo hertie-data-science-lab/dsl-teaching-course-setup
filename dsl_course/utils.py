@@ -70,6 +70,18 @@ def git(*args: str, cwd: str | None = None) -> tuple[int, str]:
     return result.returncode, (result.stdout + result.stderr).strip()
 
 
+# Bot identity + disabled hooks for engine-made commits. Spread into git() calls in the
+# clone/commit/push paths of release/site/scaffold/assign: git("-C", wd, *GIT_ENV, ...).
+GIT_ENV = [
+    "-c",
+    "user.email=bot@dsl.local",
+    "-c",
+    "user.name=dsl-bot",
+    "-c",
+    "core.hooksPath=/dev/null",
+]
+
+
 def log(msg: str) -> None:
     print(msg, flush=True)
 
@@ -103,26 +115,10 @@ def get_default_branch(org: str, name: str) -> str:
     return "main"
 
 
-def extract_logins(entries: list | None) -> list[str]:
-    """Normalise a list of roster entries (dict or str) to GitHub logins."""
-    if not entries:
-        return []
-    out = []
-    for e in entries:
-        if isinstance(e, str):
-            if e:
-                out.append(e)
-        elif isinstance(e, dict):
-            login = e.get("github", "").strip()
-            if login:
-                out.append(login)
-    return out
-
-
 def create_team(
     org: str, name: str, description: str = "", privacy: str = "closed"
 ) -> bool:
-    """Create a team. Idempotent — treats 422 'already exists' as success.
+    """Create a team. Idempotent - treats 422 'already exists' as success.
     Returns True if a team with this name now exists.
     """
     code, out = gh(
@@ -144,6 +140,39 @@ def create_team(
         log_skip(f"team {name}")
         return True
     log_err(f"failed to create team {name}: {out[:200]}")
+    return False
+
+
+def org_membership_state(org: str, login: str) -> str | None:
+    """Return '<state> (<role>)' for a current/pending member, else None."""
+    code, out = gh(
+        "api", f"orgs/{org}/memberships/{login}", "--jq", '"\\(.state) (\\(.role))"'
+    )
+    return out if code == 0 and out else None
+
+
+def set_org_membership(org: str, login: str, role: str = "member") -> bool:
+    """Ensure `login` belongs to `org` (invites if needed). Idempotent.
+
+    If already a member/owner, leaves them as-is (never demotes an owner - that 403s).
+    Returns True on success or graceful skip (e.g. a non-existent demo handle).
+    """
+    current = org_membership_state(org, login)
+    if current:
+        log_skip(f"org membership {login} ({current})")
+        return True
+    code, out = gh(
+        "api",
+        "--method",
+        "PUT",
+        f"orgs/{org}/memberships/{login}",
+        "--field",
+        f"role={role}",
+    )
+    if code == 0:
+        log_ok(f"invited {login} to {org}")
+        return True
+    log_err(f"could not invite {login} (not a real account?): {out[:120]}")
     return False
 
 
@@ -169,7 +198,7 @@ def create_repo(
     description: str = "",
     is_template: bool = False,
 ) -> bool:
-    """Create a repo. Idempotent — treats existing repo as success."""
+    """Create a repo. Idempotent - treats existing repo as success."""
     args = [
         "api",
         "--method",

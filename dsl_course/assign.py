@@ -1,294 +1,265 @@
-"""dsl-course assign -- bulk-create assignment repos, Classroom-free.
+"""dsl-course assign -- provision per-student assignment repos from a template repo.
 
-Per ADR 0007 + 0009: DSL skips GitHub Classroom and creates per-student (or
-per-team) submission repos directly from a template. The template lives in
-the course org; submissions are created in the per-cohort satellite org.
+Generates ONE private repo per onboarded student from an assignment TEMPLATE repo
+(e.g. assignment-1-f2026) in the course org, using GitHub's native template-generate,
+then adds the student as a collaborator (maintain). The template carries its own
+starter code + autograder workflow, which every generated repo inherits. Students
+never use a CLI. Idempotent: existing repos are left alone.
 
-Usage (per-student, Option H):
+    course/<template>  (private, is_template)
+            |  generate (native)
+            v
+    cohort/<slug>-<handle>   (private; student = collaborator)
+    where <slug> is the template name minus a trailing -fYYYY / -sYYYY.
+
+Usage:
     python3 -m dsl_course.assign \\
-        --course-org Hertie-School-Deep-Learning-E1394 \\
-        --satellite-org hertie-dl-f2026 \\
-        --semester f2026 \\
-        --assignment assignment-1 \\
-        --template assignment-1-f2026
-
-Usage (per-team):
-    python3 -m dsl_course.assign \\
-        --course-org Hertie-School-Deep-Learning-E1394 \\
-        --satellite-org hertie-dl-f2026 \\
-        --semester f2026 \\
-        --assignment assignment-1 \\
-        --template assignment-1-f2026 \\
-        --teams-file semesters/f2026/teams/assignment-1.yml
-
-Legacy single-org mode (pre-Option-H, still supported):
-    python3 -m dsl_course.assign \\
-        --org Hertie-School-Example-Course \\
-        --semester f2025 \\
-        --assignment assignment-1 \\
-        --template assignment-1-f2025
-
-Teams file format:
-    team-alpha:
-      - github_login_a
-      - github_login_b
-
-Writes a mapping manifest to:
-    {course-org}.github.io/semesters/{semester}/assignments/{assignment}.yml
+        --master-org TEST-HERTIE-COURSE --template assignment-1-f2026 \\
+        --cohort-org TEST-HERTIE-COHORT-f2026
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
+import shutil
 import sys
-from datetime import datetime, timezone
+import tempfile
+from pathlib import Path
 
-import yaml
-
+from . import roster
 from .utils import (
+    GIT_ENV,
     add_collaborator,
-    extract_logins,
     generate_from_template,
-    get_file_content,
+    gh,
+    git,
     log,
     log_err,
     log_ok,
+    log_skip,
     log_step,
-    put_file,
+    repo_exists,
     set_repo_topics,
 )
 
-
-def load_roster(org: str, semester: str) -> dict:
-    website = f"{org.lower()}.github.io"
-    path = f"semesters/{semester}/hertie-semester.yml"
-    content = get_file_content(org, website, path)
-    if content is None:
-        log_err(f"Could not find {path} in {org}/{website}")
-        return {}
-    return yaml.safe_load(content) or {}
+SOLUTION_BRANCH = "solution"
+SOLUTION_DIR = "solution"
+_GIT_ENV = GIT_ENV
 
 
-def load_teams_file(org: str, semester: str, teams_path: str) -> dict[str, list[str]]:
-    website = f"{org.lower()}.github.io"
-    content = get_file_content(org, website, teams_path)
-    if content is None:
-        log_err(f"Could not find {teams_path} in {org}/{website}")
-        return {}
-    parsed = yaml.safe_load(content) or {}
-    if not isinstance(parsed, dict):
-        log_err(f"{teams_path} must be a YAML mapping of team -> [logins]")
-        return {}
-    return parsed
+def assignment_slug(template: str) -> str:
+    """assignment-1-f2026 -> assignment-1 (drop a trailing cohort suffix)."""
+    return re.sub(r"-[fs]\d{4}$", "", template)
 
 
-def slugify(value: str) -> str:
-    return "".join(c if c.isalnum() or c in "-_" else "-" for c in value.lower()).strip(
-        "-"
-    )
-
-
-def create_submission_repo(
-    template_org: str,
-    template: str,
-    dest_org: str,
-    repo_name: str,
-    collaborators: list[str],
-    course_code: str,
-    semester: str,
-    assignment: str,
-    description: str,
-) -> tuple[str, list[str]]:
-    """Generate a repo from template in dest_org, add collaborators, apply topics.
-
-    template_org and dest_org may be the same (legacy single-org mode) or
-    different (Option H: template in course org, submission in satellite).
-
-    Returns (status, failed_collaborators).
-    """
-    ok = generate_from_template(
-        template_org=template_org,
+def ensure_cohort_template(
+    master_org: str, template: str, cohort_org: str, slug: str
+) -> str | None:
+    """Stage 1: freeze a cohort-level template repo (named `<slug>`) from the course
+    template, so the cohort has its own copy and per-student repos generate from it
+    (the role Classroom 50's classroom template used to play). Returns the cohort
+    template name, or None on failure. Idempotent."""
+    if repo_exists(cohort_org, slug):
+        log_skip(f"cohort template {cohort_org}/{slug}")
+        return slug
+    if not generate_from_template(
+        template_org=master_org,
         template_name=template,
-        owner=dest_org,
-        name=repo_name,
+        owner=cohort_org,
+        name=slug,
         private=True,
-        description=description,
+        description=f"{slug} - cohort assignment template",
+    ):
+        return None
+    log_ok(f"created cohort template {cohort_org}/{slug}")
+    gh(
+        "api",
+        "--method",
+        "PATCH",
+        f"repos/{cohort_org}/{slug}",
+        "-F",
+        "is_template=true",
     )
-    if not ok:
-        return "failed-create", []
+    set_repo_topics(cohort_org, slug, [slug, "assignment-template"])
+    return slug
 
-    failed = []
-    for login in collaborators:
-        if not login:
-            continue
-        if not add_collaborator(dest_org, repo_name, login, permission="push"):
-            failed.append(login)
+
+def fetch_solution(master_org: str, template: str, dest: Path) -> Path | None:
+    """Clone the template's `solution` branch and return its solution/ dir, or None.
+
+    Solutions live on a non-default branch so native template-generate (default branch
+    only) never copies them into student repos - they're pushed separately, on demand."""
+    code, _ = gh(
+        "repo",
+        "clone",
+        f"{master_org}/{template}",
+        str(dest),
+        "--",
+        "-q",
+        "-b",
+        SOLUTION_BRANCH,
+    )
+    if code != 0:
+        log_err(
+            f"  ! no `{SOLUTION_BRANCH}` branch on {master_org}/{template} - "
+            f"nothing to push (add the solution there first)"
+        )
+        return None
+    sol = dest / SOLUTION_DIR
+    return sol if sol.is_dir() else None
+
+
+def push_solution(cohort_org: str, repo: str, sol_dir: Path) -> bool:
+    """Push the solution/ folder into an existing student repo (idempotent overwrite)."""
+    with tempfile.TemporaryDirectory() as work:
+        wd = Path(work) / "r"
+        if gh("repo", "clone", f"{cohort_org}/{repo}", str(wd), "--", "-q")[0] != 0:
+            return False
+        shutil.copytree(sol_dir, wd / SOLUTION_DIR, dirs_exist_ok=True)
+        git("-C", str(wd), *_GIT_ENV, "add", "-A")
+        code, _ = git(
+            "-C",
+            str(wd),
+            *_GIT_ENV,
+            "commit",
+            "-q",
+            "--no-verify",
+            "-m",
+            "add solution",
+        )
+        if code != 0:
+            return True  # already present, nothing new
+        return git("-C", str(wd), *_GIT_ENV, "push", "-q", "origin", "HEAD")[0] == 0
+
+
+def provision_one(
+    master_org: str,
+    template: str,
+    cohort_org: str,
+    repo: str,
+    handle: str,
+    slug: str,
+    sol_dir: Path | None = None,
+) -> str:
+    existed = repo_exists(cohort_org, repo)
+    if existed:
+        log_skip(f"repo {cohort_org}/{repo}")
+    elif not generate_from_template(
+        template_org=master_org,
+        template_name=template,
+        owner=cohort_org,
+        name=repo,
+        private=True,
+        description=f"{slug} - submission repo",
+    ):
+        return "failed-create"
+    else:
+        log_ok(f"created {cohort_org}/{repo}")
+        set_repo_topics(cohort_org, repo, [slug, "submission"])
+
+    if sol_dir is not None:
+        if push_solution(cohort_org, repo, sol_dir):
+            log_ok("  + solution pushed")
         else:
-            log_ok(f"  + {login}")
+            log_err("  ! could not push solution")
 
-    topics = [
-        f"cohort-{semester}",
-        f"course-{course_code.lower().replace('grad-', '').replace('_', '-')}",
-        slugify(assignment),
-        "submission",
-    ]
-    set_repo_topics(dest_org, repo_name, topics)
-
-    return "created" if not failed else "created-with-errors", failed
-
-
-def write_manifest(
-    org: str,
-    semester: str,
-    assignment: str,
-    assignments_map: list[dict],
-) -> None:
-    website = f"{org.lower()}.github.io"
-    path = f"semesters/{semester}/assignments/{assignment}.yml"
-    manifest = {
-        "semester": semester,
-        "assignment": assignment,
-        "org": org,
-        "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "assigned_to": assignments_map,
-    }
-    content = yaml.dump(manifest, sort_keys=False, allow_unicode=True)
-    put_file(
-        org,
-        website,
-        path,
-        content.encode(),
-        f"assign: {assignment} / {semester}",
-    )
+    if add_collaborator(cohort_org, repo, handle, permission="maintain"):
+        log_ok(f"  + @{handle} (maintain)")
+        return "skipped" if existed else "ok"
+    log_err(f"  ! could not add @{handle} (not a real account?)")
+    return "created-no-collaborator"
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--course-org",
-        default=None,
-        help="Course org where the template + roster live (Option H)",
-    )
-    parser.add_argument(
-        "--satellite-org",
-        default=None,
-        help="Per-cohort satellite org where submissions are created (Option H)",
-    )
-    parser.add_argument(
-        "--org",
-        default=None,
-        help="Legacy single-org mode (pre-Option-H). Ignored if --course-org given.",
-    )
-    parser.add_argument("--semester", required=True)
-    parser.add_argument(
-        "--assignment", required=True, help="Assignment slug, e.g. assignment-1"
+        "--master-org", required=True, help="Course org (template source)"
     )
     parser.add_argument(
         "--template",
         required=True,
-        help="Template repo name (lives in --course-org under Option H)",
+        help="Assignment template repo (e.g. assignment-1-f2026)",
+    )
+    parser.add_argument("--cohort-org", required=True, help="Cohort org (target)")
+    parser.add_argument(
+        "--roster",
+        default=None,
+        help="Local students.csv (default: cohort classroom-config)",
     )
     parser.add_argument(
-        "--teams-file",
-        default=None,
-        help="Optional path in website repo to teams YAML. "
-        "If omitted, one repo per student in the roster.",
+        "--solution",
+        action="store_true",
+        help="Also push the solution (template's `solution` branch) into each student repo",
     )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
-    # Resolve Option H vs legacy mode
-    if args.course_org:
-        course_org = args.course_org
-        satellite_org = args.satellite_org or args.course_org
-    elif args.org:
-        course_org = args.org
-        satellite_org = args.org
-    else:
-        log_err("Specify --course-org (with optional --satellite-org) or --org.")
+    if args.master_org == args.cohort_org:
+        log_err("--master-org and --cohort-org must differ.")
         return 1
 
-    log_step(f"Loading roster for {course_org} / {args.semester}")
-    roster = load_roster(course_org, args.semester)
-    if not roster:
-        return 1
-    course_code = roster.get("course_code", "")
-
-    # Build assignment plan: {repo_name: [collaborator_logins]}
-    plan: dict[str, list[str]] = {}
-
-    if args.teams_file:
-        log_step(f"Loading teams from {args.teams_file}")
-        teams = load_teams_file(course_org, args.semester, args.teams_file)
-        if not teams:
-            return 1
-        for team_name, members in teams.items():
-            repo_name = f"{args.assignment}-{args.semester}-{slugify(team_name)}"
-            plan[repo_name] = [m for m in members if m]
-    else:
-        students = extract_logins(roster.get("students"))
-        if not students:
-            log_err(
-                "Roster has no students. Either populate `students:` in "
-                "hertie-semester.yml or pass --teams-file."
-            )
-            return 1
-        for login in students:
-            repo_name = f"{args.assignment}-{args.semester}-{login.lower()}"
-            plan[repo_name] = [login]
-
-    log(
-        f"  plan: {len(plan)} submission repos -> {satellite_org} "
-        f"(template: {course_org}/{args.template})"
+    students = (
+        roster.load_path(args.roster) if args.roster else roster.load(args.cohort_org)
     )
+    if not students:
+        return 1
+    onboarded = [s for s in students if s.onboarded]
+    skipped = len(students) - len(onboarded)
+    slug = assignment_slug(args.template)
+    log_step(
+        f"Releasing {slug} to {args.cohort_org}: freeze cohort template, then provision "
+        f"{len(onboarded)} student(s){' + solution' if args.solution else ''}"
+    )
+    if skipped:
+        log(f"  ({skipped} not-yet-onboarded row(s) skipped)")
 
     if args.dry_run:
-        for repo_name, logins in plan.items():
-            log(f"    DRY-RUN  {satellite_org}/{repo_name}  <- {', '.join(logins)}")
+        log(f"    DRY-RUN  cohort template {args.cohort_org}/{slug}")
+        for s in onboarded:
+            log(
+                f"    DRY-RUN  {args.cohort_org}/{slug}-{s.github_handle}  <- @{s.github_handle}"
+            )
         return 0
 
-    # Execute
-    results = []
-    for repo_name, logins in plan.items():
-        log_step(f"{repo_name}")
-        status, failed = create_submission_repo(
-            template_org=course_org,
-            template=args.template,
-            dest_org=satellite_org,
-            repo_name=repo_name,
-            collaborators=logins,
-            course_code=course_code,
-            semester=args.semester,
-            assignment=args.assignment,
-            description=f"{args.assignment} submission - {args.semester}",
-        )
-        results.append(
-            {
-                "repo": repo_name,
-                "collaborators": logins,
-                "status": status,
-                "failed_collaborators": failed,
-            }
-        )
-
-    # Write manifest
-    log_step(
-        f"Writing manifest to semesters/{args.semester}/assignments/{args.assignment}.yml"
+    # Stage 1: freeze the cohort-level template.
+    cohort_template = ensure_cohort_template(
+        args.master_org, args.template, args.cohort_org, slug
     )
-    # Manifest lives in the course org's website repo (stable identity)
-    write_manifest(course_org, args.semester, args.assignment, results)
+    if cohort_template is None:
+        log_err("could not create the cohort assignment template.")
+        return 1
 
-    # Summary
-    by_status: dict[str, int] = {}
-    for r in results:
-        by_status[r["status"]] = by_status.get(r["status"], 0) + 1
-    log_ok(f"Done — {json.dumps(by_status)}")
+    with tempfile.TemporaryDirectory() as soldir:
+        # Solution still comes from the COURSE template's solution branch.
+        sol_dir = None
+        if args.solution:
+            sol_dir = fetch_solution(args.master_org, args.template, Path(soldir) / "t")
+            if sol_dir is None:
+                return 1
 
-    any_failed = any(
-        r["status"].startswith("failed") or r["failed_collaborators"] for r in results
-    )
-    return 1 if any_failed else 0
+        # Stage 2: fan out one repo per student FROM the cohort template.
+        results: dict[str, int] = {}
+        for s in onboarded:
+            repo = f"{slug}-{s.github_handle}"
+            log_step(repo)
+            status = provision_one(
+                args.cohort_org,
+                cohort_template,
+                args.cohort_org,
+                repo,
+                s.github_handle,
+                slug,
+                sol_dir,
+            )
+            results[status] = results.get(status, 0) + 1
+
+    log_ok(f"Done - {json.dumps(results)}")
+    from . import site
+
+    site.sync_site(args.master_org, args.cohort_org)
+    return 1 if any(k.startswith("failed") for k in results) else 0
 
 
 if __name__ == "__main__":

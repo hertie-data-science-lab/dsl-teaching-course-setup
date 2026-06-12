@@ -4,20 +4,27 @@ Sets up org-level infrastructure that persists across semesters:
 - DSL_BOT_TOKEN secret (required for all workflows)
 - Default teams (instructors, students, auditors)
 - Org settings (2FA enforcement, Pages default branch)
-- GitHub Actions allowlist (documented common actions)
 - Profile README (.github repo with description)
-- Faculty workflows seeded into .github/workflows/ (new-semester, assign, sync-roster)
+- Org-level workflows in .github (enroll-student, bootstrap-cohort, refresh-actions)
+- Central faculty workflows seeded into .github (Release materials/assignment +
+  Enroll/Bootstrap-cohort/Refresh); the run-from-repo copies are equipped by Refresh
+
+With --cohort, instead tightens the org and seeds the student-facing welcome (onboard)
+and classroom-config (roster) repos.
 
 Usage:
-    python3 -m dsl_course.bootstrap_course \\
-        --org Hertie-School-Deep-Learning-E1394
+    python3 -m dsl_course.bootstrap_course --org Hertie-School-Deep-Learning-E1394
+    python3 -m dsl_course.bootstrap_course --org Deep-Learning-f2026 --cohort
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import sys
+from pathlib import Path
 
+from . import scaffold, seed, site
 from .utils import (
     create_repo,
     create_team,
@@ -31,76 +38,6 @@ from .utils import (
 )
 
 COURSE_HUB_TOPIC = "dsl-course-hub"
-
-PROFILE_README = """# {org_name}
-
-This is the organisation for **{course_name}**.
-
-## About
-
-All materials and student submissions for the course are hosted here. Course content
-is managed by the Hertie Data Science Lab and instructors.
-
-## Structure
-
-- **`content-f{{YYYY}}` repos** — course materials (lectures, labs, readings)
-- **`assignment-N-f{{YYYY}}` repos** — assignment templates
-- **`f{{YYYY}}-*.github.io`** — course website
-- **Satellite orgs** (e.g. `hertie-dl-f2025`) — student submission repos
-
-## Teams
-
-- **`instructors-f{{YYYY}}`** — instructors and TAs (push access to materials)
-- **`students-f{{YYYY}}`** (satellite) — enrolled students (read content, push submissions)
-- **`auditors-f{{YYYY}}`** (satellite) — auditors (read-only)
-- **`course-admin`** — DSL administrators
-
-## Workflows
-
-Automated workflows handle:
-- **`new-semester`** — semester setup (repos, teams, website)
-- **`assign`** — student assignment generation
-- **`sync-roster`** — weekly team sync from roster file
-
-Trigger via [Actions tab](https://github.com/{org}/actions).
-
-## Resources
-
-- [Teaching & Course Setup](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup) — workflows + docs
-- [Course Website Template](https://github.com/hertie-data-science-lab/course-website-template)
-
----
-
-Need help? Reach out to the [Hertie DSL team](https://github.com/hertie-data-science-lab).
-"""
-
-GITHUB_ACTIONS_POLICY = """# GitHub Actions Configuration
-
-This org allows public actions necessary for course management:
-
-## Allowed actions (automatically available)
-
-- `actions/checkout` — clone repositories
-- `actions/setup-python` — Python environments
-- `actions/setup-node` — Node.js environments
-- `actions/upload-artifact` — store build outputs
-- `actions/download-artifact` — fetch build outputs
-- `actions/create-release` — publish releases
-- `github/super-linter` — code quality checks
-- `softprops/action-gh-release` — release automation
-- All other GitHub-owned actions (github/*)
-- All Hertie DSL actions (hertie-data-science-lab/*)
-
-## Disabled
-
-- Third-party actions (unless explicitly approved)
-- Actions from untrusted sources
-- Any action with credential write access
-
-## Adding new actions
-
-Contact the DSL team before enabling new actions.
-"""
 
 
 def set_org_secret(org: str, secret_name: str, secret_value: str) -> bool:
@@ -169,16 +106,14 @@ def create_profile_repo(
     ):
         return
 
-    # README with org branding
-    readme = PROFILE_README.format(org=org, org_name=org_name, course_name=course_name)
-    put_file(org, ".github", "README.md", readme.encode(), "init: org profile README")
-
-    # Course metadata — canonical machine-readable source for discovery tooling
+    # Course metadata - canonical machine-readable source for discovery tooling.
+    # (The org-overview profile/README.md is generated at the end of bootstrap, once
+    # all repos exist, by seed.update_profile_readme - see main.)
     metadata = (
         f"org: {org}\n"
         f"org_name: {org_name}\n"
         f"course_name: {course_name}\n"
-        f'course_code: {course_code or ""}\n'
+        f"course_code: {course_code or ''}\n"
     )
     put_file(
         org,
@@ -188,20 +123,11 @@ def create_profile_repo(
         "init: course metadata for DSL discovery tooling",
     )
 
-    # Topic marker — list_orgs.py searches for this topic to enumerate course orgs
+    # Topic marker - list_orgs.py searches for this topic to enumerate course orgs
     topics = [COURSE_HUB_TOPIC]
     if course_code:
         topics.append(f"course-{course_code.lower()}")
     set_repo_topics(org, ".github", topics)
-
-    # GitHub Actions policy (informational)
-    put_file(
-        org,
-        ".github",
-        "GITHUB_ACTIONS_POLICY.md",
-        GITHUB_ACTIONS_POLICY.encode(),
-        "init: GitHub Actions allowlist documentation",
-    )
 
     log_ok(".github profile repo initialised")
 
@@ -242,264 +168,114 @@ def validate_secret_presence(org: str, secret_name: str) -> bool:
     return exists
 
 
-_WORKFLOW_NEW_SEMESTER = """\
-name: New Semester Setup
+def _welcome_template(rel: str) -> bytes:
+    """Read a seeded-welcome template from the repo's templates/welcome/ dir."""
+    return (
+        Path(__file__).resolve().parents[1] / "templates" / "welcome" / rel
+    ).read_bytes()
 
-on:
-  workflow_dispatch:
-    inputs:
-      satellite_org:
-        description: "Per-cohort satellite org for submissions (e.g. hertie-dl-f2026). Leave blank to skip."
-        required: false
-        default: ""
-      semester:
-        description: "Semester code (e.g. f2026)"
-        required: true
-      course_name:
-        description: 'Course name (e.g. "Deep Learning")'
-        required: true
-      course_code:
-        description: "Hertie course code (e.g. GRAD-E1394)"
-        required: true
-      instructors:
-        description: "Instructor GitHub logins, comma-separated"
-        required: true
-      tas:
-        description: "TA GitHub logins, comma-separated (optional)"
-        required: false
-        default: ""
-      content_visibility:
-        description: "Course content repo visibility"
-        required: true
-        default: "private"
-        type: choice
-        options:
-          - private
-          - public
 
-jobs:
-  check-team:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Verify triggering user is in faculty or admin team
-        env:
-          GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
-          ACTOR: ${{ github.actor }}
-        run: |
-          MAIN_ORG="hertie-data-science-lab"
-          for team in faculty admin; do
-            code=$(gh api "orgs/$MAIN_ORG/teams/$team/memberships/$ACTOR" \\
-                     --jq '.state' 2>/dev/null || true)
-            if [ "$code" = "active" ]; then exit 0; fi
-          done
-          echo "::error::$ACTOR is not in the faculty or admin team — access denied"
-          exit 1
+def setup_cohort_extras(org: str) -> None:
+    """Cohort-only: tighten the org and seed the student-facing repos.
 
-  new-semester:
-    needs: check-team
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: hertie-data-science-lab/gh-org-strategy
-          token: ${{ secrets.DSL_BOT_TOKEN }}
+    Layered on top of the common bootstrap when --cohort is passed:
+    - safe-by-default permissions (members get no repo access unless granted);
+    - public `welcome` repo with the Join issue form + onboard workflow;
+    - private `classroom-config` repo with a starter students.csv.
+    The `materials` repo is created on the first release, so it's not made here.
+    """
+    log_step("Cohort setup: tighten org + seed welcome/classroom-config")
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+    code, out = gh(
+        "api",
+        "--method",
+        "PATCH",
+        f"orgs/{org}",
+        "--field",
+        "default_repository_permission=none",
+        "--field",
+        "members_can_create_repositories=false",
+    )
+    if code == 0:
+        log_ok(
+            "org tightened (default_repository_permission=none, no member repo creation)"
+        )
+    else:
+        log_err(f"could not tighten org settings: {out[:120]}")
 
-      - name: Install dependencies
-        run: pip install pyyaml
+    if create_repo(
+        org,
+        "welcome",
+        private=False,
+        description="Course front door - open a Join issue to enrol",
+    ):
+        put_file(
+            org,
+            "welcome",
+            ".github/workflows/onboard.yml",
+            _welcome_template("onboard.yml"),
+            "ci: seed onboard workflow",
+        )
+        put_file(
+            org,
+            "welcome",
+            ".github/ISSUE_TEMPLATE/join.yml",
+            _welcome_template("ISSUE_TEMPLATE/join.yml"),
+            "ci: seed Join issue form",
+        )
+        log_ok("welcome repo seeded (onboard.yml + Join form)")
 
-      - name: Run new-semester
-        env:
-          GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
-        run: |
-          set -eo pipefail
-          ARGS=(
-            --org "${{ github.repository_owner }}"
-            --semester "${{ inputs.semester }}"
-            --course-name "${{ inputs.course_name }}"
-            --course-code "${{ inputs.course_code }}"
-            --instructors "${{ inputs.instructors }}"
-            --tas "${{ inputs.tas }}"
-            --content-visibility "${{ inputs.content_visibility }}"
-          )
-          if [ -n "${{ inputs.satellite_org }}" ]; then
-            ARGS+=(--satellite-org "${{ inputs.satellite_org }}")
-          fi
-          python3 -m dsl_course.new_semester "${ARGS[@]}"
-"""
+    if create_repo(
+        org,
+        "classroom-config",
+        private=True,
+        description="PRIVATE cohort config - roster (students.csv). No PII leaves here.",
+    ):
+        roster = (
+            "student_id,hertie_email,name,github_handle,github_id,section\n"
+            "000001,student@example.edu,Example Student,,,A\n"
+        )
+        put_file(
+            org,
+            "classroom-config",
+            "students.csv",
+            roster.encode(),
+            "init: starter roster (replace the example row with registrar data)",
+        )
+        log_ok("classroom-config seeded (students.csv starter)")
 
-_WORKFLOW_ASSIGN = """\
-name: Create Assignment
-
-on:
-  workflow_dispatch:
-    inputs:
-      satellite_org:
-        description: "Per-cohort satellite org where submissions are created (e.g. hertie-dl-f2026). Leave blank to target course-org."
-        required: false
-        default: ""
-      semester:
-        description: "Semester code (e.g. f2026)"
-        required: true
-      assignment:
-        description: "Assignment slug (e.g. assignment-1)"
-        required: true
-      template:
-        description: "Template repo name in the org (e.g. assignment-1-f2026)"
-        required: true
-      teams_file:
-        description: "Optional: path in website repo to teams YAML. Leave blank for per-student."
-        required: false
-        default: ""
-      dry_run:
-        description: "Preview only, don't create repos"
-        required: false
-        default: false
-        type: boolean
-
-jobs:
-  check-team:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Verify triggering user is in faculty or admin team
-        env:
-          GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
-          ACTOR: ${{ github.actor }}
-        run: |
-          MAIN_ORG="hertie-data-science-lab"
-          for team in faculty admin; do
-            code=$(gh api "orgs/$MAIN_ORG/teams/$team/memberships/$ACTOR" \\
-                     --jq '.state' 2>/dev/null || true)
-            if [ "$code" = "active" ]; then exit 0; fi
-          done
-          echo "::error::$ACTOR is not in the faculty or admin team — access denied"
-          exit 1
-
-  assign:
-    needs: check-team
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: hertie-data-science-lab/gh-org-strategy
-          token: ${{ secrets.DSL_BOT_TOKEN }}
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install dependencies
-        run: pip install pyyaml
-
-      - name: Run assign
-        env:
-          GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
-          COURSE_ORG: ${{ github.repository_owner }}
-          SATELLITE_ORG: ${{ inputs.satellite_org }}
-          SEMESTER: ${{ inputs.semester }}
-          ASSIGNMENT: ${{ inputs.assignment }}
-          TEMPLATE: ${{ inputs.template }}
-          TEAMS_FILE: ${{ inputs.teams_file }}
-          DRY_RUN: ${{ inputs.dry_run }}
-        run: |
-          args=(--course-org "$COURSE_ORG" --semester "$SEMESTER"
-                --assignment "$ASSIGNMENT" --template "$TEMPLATE")
-          if [ -n "$SATELLITE_ORG" ]; then args+=(--satellite-org "$SATELLITE_ORG"); fi
-          if [ -n "$TEAMS_FILE" ]; then args+=(--teams-file "$TEAMS_FILE"); fi
-          if [ "$DRY_RUN" = "true" ]; then args+=(--dry-run); fi
-          python3 -m dsl_course.assign "${args[@]}"
-"""
-
-_WORKFLOW_SYNC_ROSTER = """\
-name: Sync Course Roster
-
-on:
-  workflow_dispatch:
-    inputs:
-      semester:
-        description: "Semester code (e.g. f2026)"
-        required: true
-      dry_run:
-        description: "Preview only, don't modify teams"
-        required: false
-        default: false
-        type: boolean
-  schedule:
-    - cron: "0 6 * * 1"  # Weekly Monday 06:00 UTC
-
-jobs:
-  check-team:
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Verify triggering user is in faculty or admin team
-        env:
-          GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
-          ACTOR: ${{ github.actor }}
-        run: |
-          MAIN_ORG="hertie-data-science-lab"
-          for team in faculty admin; do
-            code=$(gh api "orgs/$MAIN_ORG/teams/$team/memberships/$ACTOR" \\
-                     --jq '.state' 2>/dev/null || true)
-            if [ "$code" = "active" ]; then exit 0; fi
-          done
-          echo "::error::$ACTOR is not in the faculty or admin team — access denied"
-          exit 1
-
-  sync:
-    needs:
-      - check-team
-    if: always() && (needs.check-team.result == 'success' || github.event_name == 'schedule')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: hertie-data-science-lab/gh-org-strategy
-          token: ${{ secrets.DSL_BOT_TOKEN }}
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install dependencies
-        run: pip install pyyaml
-
-      - name: Sync roster
-        env:
-          GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
-          ORG: ${{ github.repository_owner }}
-          SEMESTER: ${{ inputs.semester }}
-          DRY_RUN: ${{ inputs.dry_run }}
-        run: |
-          args=(--org "$ORG" --semester "$SEMESTER")
-          if [ "$DRY_RUN" = "true" ]; then args+=(--dry-run); fi
-          python3 -m dsl_course.sync_roster "${args[@]}"
-"""
-
-_FACULTY_WORKFLOWS = {
-    ".github/workflows/new-semester.yml": _WORKFLOW_NEW_SEMESTER,
-    ".github/workflows/assign.yml": _WORKFLOW_ASSIGN,
-    ".github/workflows/sync-roster.yml": _WORKFLOW_SYNC_ROSTER,
-}
+    # Public, auto-deployed cohort website (from course-website-template).
+    scaffold.scaffold_site(org)
 
 
 def seed_workflows(org: str) -> None:
-    """Push faculty workflows into the course org's .github repo."""
-    log_step("Seeding faculty workflows into .github repo")
-    for path, content in _FACULTY_WORKFLOWS.items():
-        name = path.split("/")[-1]
-        ok = put_file(
-            org,
-            ".github",
-            path,
-            content.encode(),
-            f"ci: seed {name} workflow",
+    """Seed the org-level workflows into the course org's .github repo. The full set
+    (central Release materials/assignment + Enroll/Bootstrap-cohort/Refresh) is rendered
+    by dsl_course.seed (single source of truth)."""
+    seed.seed_github_workflows(org)
+
+
+def preflight(org: str) -> bool:
+    """Verify the org exists and is accessible before configuring anything.
+
+    GitHub has NO API to create an organisation (github.com); it must be created
+    in the web UI first. If the org is missing, stop with instructions rather than
+    404-ing through every step and falsely reporting success.
+    """
+    log_step(f"Preflight: checking org {org} exists and is accessible")
+    code, _ = gh("api", f"orgs/{org}", "--jq", ".login")
+    if code != 0:
+        log_err(f"org '{org}' not found or not accessible by this token.")
+        log(
+            "\nGitHub cannot create an organisation via API - create the empty org "
+            "first, then re-run:\n"
+            "  1. Create it:  https://github.com/organizations/new\n"
+            "  2. Add the DSL bot account as an org Owner (so this automation can configure it).\n"
+            f"  3. Re-run bootstrap with --org {org}.\n"
         )
-        if ok:
-            log_ok(f"workflow seeded: {name}")
+        return False
+    log_ok(f"org {org} is accessible")
+    return True
 
 
 def main() -> int:
@@ -529,6 +305,24 @@ def main() -> int:
         help="Path to file containing DSL_BOT_TOKEN PAT. "
         "If provided, sets the org secret. Otherwise, validates presence only.",
     )
+    parser.add_argument(
+        "--cohort",
+        action="store_true",
+        help="Also do cohort student-facing setup: tighten the org and seed the "
+        "welcome (onboard) + classroom-config (roster) repos.",
+    )
+    parser.add_argument(
+        "--course",
+        default=None,
+        help="With --cohort: the parent course org. Registers this cohort in that "
+        "course's .github/dsl-course.yml so it appears in the faculty dropdowns.",
+    )
+    parser.add_argument(
+        "--propagate-secret",
+        action="store_true",
+        help="Set DSL_BOT_TOKEN on this org to the DSL_BOT_TOKEN/GH_TOKEN env value "
+        "(lets the central bootstrap auto-provision the token - no manual per-org step).",
+    )
     args = parser.parse_args()
 
     org_name = args.org_name or args.org
@@ -538,15 +332,35 @@ def main() -> int:
     log(f"  Org name: {org_name}")
     log(f"  Course name: {course_name}")
 
+    # 0. Preflight - the org must already exist (GitHub can't create one via API).
+    if not preflight(args.org):
+        return 1
+
     # 1. Org settings
     set_org_settings(args.org)
 
     # 2. Default teams
     create_default_teams(args.org)
 
-    # 3. Profile repo + seed workflows
+    # 3. Profile repo
     create_profile_repo(args.org, org_name, course_name, args.course_code)
-    seed_workflows(args.org)
+
+    # 3b. Course vs cohort wiring.
+    if args.cohort:
+        # Cohort: student-facing welcome + roster + tightened perms.
+        setup_cohort_extras(args.org)
+        if args.course:
+            seed.register_cohort(args.course, args.org)
+            # Populate + prune + wire the freshly-scaffolded site from the org structure.
+            site.sync_site(args.course, args.org)
+        else:
+            log(
+                f"  (no --course given - add {args.org} to its course org's "
+                f".github/{seed.COHORTS_PATH} to show it in the faculty dropdowns)"
+            )
+    else:
+        # Course: seed the org-level buttons (incl. the central Release actions) into .github.
+        seed_workflows(args.org)
 
     # 4. Secret (set or validate)
     if args.set_secret:
@@ -557,6 +371,14 @@ def main() -> int:
         except (FileNotFoundError, IOError) as e:
             log_err(f"could not read secret file: {e}")
             return 1
+    elif args.propagate_secret:
+        # Copy the bot token onto this org so its seeded workflows can run. Lets the
+        # central bootstrap auto-provision the secret - no per-course manual step.
+        token = os.environ.get("DSL_BOT_TOKEN") or os.environ.get("GH_TOKEN")
+        if token:
+            set_org_secret(args.org, "DSL_BOT_TOKEN", token)
+        else:
+            log_err("--propagate-secret set but no DSL_BOT_TOKEN/GH_TOKEN in env")
     else:
         # Validate the secret exists (it should have been set manually or by another bootstrap run)
         if not validate_secret_presence(args.org, "DSL_BOT_TOKEN"):
@@ -568,6 +390,9 @@ def main() -> int:
                 )
             )
 
+    # 5. Generate the org-overview README now that all repos exist (clickable index).
+    seed.update_profile_readme(args.org, org_name, course_name)
+
     log(f"""
 ============================================================
 Course org bootstrap complete: {args.org}
@@ -576,8 +401,9 @@ DONE (automated):
 ============================================================
 - Org-level teams: instructors, students, auditors, course-admin
 - Org settings: 2FA enforcement enabled
-- .github profile repo with README and Actions policy
-- Faculty workflows seeded: new-semester, assign, sync-roster
+- .github profile repo with README
+- Workflows in .github: Release materials, Release assignment, Enroll student,
+  Bootstrap cohort, Refresh actions
 - DSL_BOT_TOKEN secret validated (or set)
 
 NEXT STEPS (manual):
@@ -588,15 +414,26 @@ NEXT STEPS (manual):
 2. Invite course instructors and admins:
    https://github.com/{args.org}/settings/members
 
-3. Faculty can now trigger workflows from:
-   https://github.com/{args.org}/.github/actions
+3. Put content in the materials repo (lectures/week-N/, readings/week-N/) and create
+   assignment-N-f2026 template repos, then run "Refresh actions" so they appear in the
+   dropdowns. Run Release materials/assignment from inside the materials repo's Actions tab.
 
-4. Run new-semester to create the first semester:
-   → Go to https://github.com/{args.org}/.github/actions/workflows/new-semester.yml
-   → Click "Run workflow" and fill in the form
+4. Add a cohort: create the empty cohort org, add the bot as owner, then run the
+   "Bootstrap cohort" action here with its name (configures + registers + refreshes).
 
+NB: cohort orgs are made the same way - create the empty org, add the bot as owner,
+then run bootstrap with --cohort (seeds welcome + roster + tightens perms).
 ============================================================
 """)
+
+    if args.cohort:
+        log(
+            "COHORT extras done:\n"
+            f"- org tightened (default_repository_permission=none)\n"
+            f"- welcome repo (public): Join issue form + onboard workflow\n"
+            f"- classroom-config repo (private): starter students.csv "
+            f"(edit https://github.com/{args.org}/classroom-config/blob/HEAD/students.csv with registrar data)\n"
+        )
 
     return 0
 
