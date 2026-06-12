@@ -21,6 +21,7 @@ from pathlib import Path
 
 from . import seed
 from .utils import (
+    GIT_ENV,
     create_repo,
     generate_from_template,
     gh,
@@ -38,14 +39,7 @@ from .utils import (
 WEBSITE_TEMPLATE_ORG = "hertie-data-science-lab"
 WEBSITE_TEMPLATE = "course-website-template"
 
-_GIT_ENV = [
-    "-c",
-    "user.email=bot@dsl.local",
-    "-c",
-    "user.name=dsl-bot",
-    "-c",
-    "core.hooksPath=/dev/null",
-]
+_GIT_ENV = GIT_ENV
 
 _AUTOGRADE = """name: Autograde
 

@@ -32,6 +32,7 @@ import yaml
 
 from . import seed
 from .utils import (
+    GIT_ENV,
     gh,
     get_file_content,
     git,
@@ -43,14 +44,7 @@ from .utils import (
 )
 
 MATERIALS_REPO = "materials"
-_GIT_ENV = [
-    "-c",
-    "user.email=bot@dsl.local",
-    "-c",
-    "user.name=dsl-bot",
-    "-c",
-    "core.hooksPath=/dev/null",
-]
+_GIT_ENV = GIT_ENV
 
 
 def _semester_start(cohort_org: str) -> date:

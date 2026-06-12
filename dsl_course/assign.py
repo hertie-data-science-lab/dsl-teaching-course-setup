@@ -30,6 +30,7 @@ from pathlib import Path
 
 from . import roster
 from .utils import (
+    GIT_ENV,
     add_collaborator,
     generate_from_template,
     gh,
@@ -45,14 +46,7 @@ from .utils import (
 
 SOLUTION_BRANCH = "solution"
 SOLUTION_DIR = "solution"
-_GIT_ENV = [
-    "-c",
-    "user.email=bot@dsl.local",
-    "-c",
-    "user.name=dsl-bot",
-    "-c",
-    "core.hooksPath=/dev/null",
-]
+_GIT_ENV = GIT_ENV
 
 
 def assignment_slug(template: str) -> str:

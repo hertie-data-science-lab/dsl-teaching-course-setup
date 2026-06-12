@@ -35,10 +35,8 @@ COHORTS_PATH = (
 )
 
 CENTRAL = "hertie-data-science-lab/dsl-teaching-course-setup"
-# TEMP: seeded workflows run code from this ref. While PR #9 is unmerged we pin to the
-# branch so the buttons work; set back to "main" (or drop the ref:) once it's merged.
-CENTRAL_REF = "feature/adr-0010-inverted-model"
-TEMPLATE_REPO = "materials-template"
+# Seeded workflows run the engine code from this ref of the central repo.
+CENTRAL_REF = "main"
 # Target is ONE cohort repo holding lectures/ + readings/ as SUBDIRS (not separate
 # repos), so the only default target is `materials`; real content repos are discovered.
 DEFAULT_COHORT_REPOS = ["materials"]
@@ -96,31 +94,22 @@ def _week_input(weeks: list[str]) -> str:
     return '      week:\n        description: "Week number (e.g. 1)"\n        required: true'
 
 
-def render_release(
-    cohort_orgs: list[str], cohort_repos: list[str], weeks: list[str] | None = None
-) -> str:
-    return f"""name: Release materials
-
-# Run from a course content repo (this repo is the SOURCE). Publishes one week's
-# lecture/reading files into the chosen cohort repo. Dropdowns are refreshed by the
-# 'Refresh actions' workflow.
-
-on:
-  workflow_dispatch:
-    inputs:
+# Shared cohort_org + cohort_repo dropdowns and the include_* toggles - identical in
+# both release renderers; only the source/week inputs and the SRC_REPO expr differ.
+_COHORT_INPUTS = """\
       cohort_org:
         description: "Target cohort org"
         required: true
         type: choice
         options:
-{_choice(cohort_orgs)}
+{cohort_orgs}
       cohort_repo:
         description: "Target repo in the cohort org"
         required: true
         type: choice
         options:
-{_choice(cohort_repos)}
-{_week_input(weeks or [])}
+{cohort_repos}"""
+_RELEASE_INCLUDES = """\
       include_lectures:
         description: "Include lectures"
         type: boolean
@@ -136,7 +125,17 @@ on:
       include_readme:
         description: "Also release the source README to the cohort root - overwrites"
         type: boolean
-        default: false
+        default: false"""
+
+
+def _render_release(header: str, inputs_block: str, src_repo_expr: str) -> str:
+    return f"""name: Release materials
+{header}
+on:
+  workflow_dispatch:
+    inputs:
+{inputs_block}
+{_RELEASE_INCLUDES}
 
 jobs:
 {_CHECK_TEAM}
@@ -145,7 +144,7 @@ jobs:
         env:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
           SRC_ORG: ${{{{ github.repository_owner }}}}
-          SRC_REPO: ${{{{ github.event.repository.name }}}}
+          SRC_REPO: {src_repo_expr}
           COHORT_ORG: ${{{{ inputs.cohort_org }}}}
           COHORT_REPO: ${{{{ inputs.cohort_repo }}}}
           WEEK: ${{{{ inputs.week }}}}
@@ -163,6 +162,24 @@ jobs:
           [ "$INC_RM" = "true" ] && args+=(--readme)
           python3 -m dsl_course.release "${{args[@]}}"
 """
+
+
+def render_release(
+    cohort_orgs: list[str], cohort_repos: list[str], weeks: list[str] | None = None
+) -> str:
+    """Run-from-repo copy: the SOURCE is the repo it lives in, week is a per-repo dropdown."""
+    cohort = _COHORT_INPUTS.format(
+        cohort_orgs=_choice(cohort_orgs), cohort_repos=_choice(cohort_repos)
+    )
+    return _render_release(
+        header=(
+            "\n# Run from a course content repo (this repo is the SOURCE). Publishes one"
+            " week's\n# lecture/reading files into the chosen cohort repo. Dropdowns are"
+            " refreshed by the\n# 'Refresh actions' workflow.\n"
+        ),
+        inputs_block=f"{cohort}\n{_week_input(weeks or [])}",
+        src_repo_expr="${{ github.event.repository.name }}",
+    )
 
 
 def render_central_release(
@@ -171,74 +188,20 @@ def render_central_release(
     """Central copy that lives in .github: pick the source materials repo + type the
     week (a central dropdown can't depend on the chosen source, so week is free-text;
     the run-from-repo copy inside each materials repo has a per-repo week dropdown)."""
-    return f"""name: Release materials
-
-on:
-  workflow_dispatch:
-    inputs:
-      source_repo:
-        description: "Source materials repo (in this course org)"
-        required: true
-        type: choice
-        options:
-{_choice(source_repos)}
-      cohort_org:
-        description: "Target cohort org"
-        required: true
-        type: choice
-        options:
-{_choice(cohort_orgs)}
-      cohort_repo:
-        description: "Target repo in the cohort org"
-        required: true
-        type: choice
-        options:
-{_choice(cohort_repos)}
-      week:
-        description: "Week number (e.g. 1)"
-        required: true
-      include_lectures:
-        description: "Include lectures"
-        type: boolean
-        default: true
-      include_readings:
-        description: "Include readings"
-        type: boolean
-        default: true
-      include_syllabus:
-        description: "Also release the syllabus (root *syllabus* files) - overwrites"
-        type: boolean
-        default: false
-      include_readme:
-        description: "Also release the source README to the cohort root - overwrites"
-        type: boolean
-        default: false
-
-jobs:
-{_CHECK_TEAM}
-  release:
-{_RUN_PREAMBLE}      - name: Release
-        env:
-          GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
-          SRC_ORG: ${{{{ github.repository_owner }}}}
-          SRC_REPO: ${{{{ inputs.source_repo }}}}
-          COHORT_ORG: ${{{{ inputs.cohort_org }}}}
-          COHORT_REPO: ${{{{ inputs.cohort_repo }}}}
-          WEEK: ${{{{ inputs.week }}}}
-          INC_LEC: ${{{{ inputs.include_lectures }}}}
-          INC_READ: ${{{{ inputs.include_readings }}}}
-          INC_SYL: ${{{{ inputs.include_syllabus }}}}
-          INC_RM: ${{{{ inputs.include_readme }}}}
-        run: |
-          gh auth setup-git
-          args=(--source-org "$SRC_ORG" --source-repo "$SRC_REPO"
-                --cohort-org "$COHORT_ORG" --cohort-repo "$COHORT_REPO" --week "$WEEK")
-          [ "$INC_LEC" = "false" ] && args+=(--no-lectures)
-          [ "$INC_READ" = "false" ] && args+=(--no-readings)
-          [ "$INC_SYL" = "true" ] && args+=(--syllabus)
-          [ "$INC_RM" = "true" ] && args+=(--readme)
-          python3 -m dsl_course.release "${{args[@]}}"
-"""
+    source = (
+        '      source_repo:\n        description: "Source materials repo (in this course'
+        ' org)"\n        required: true\n        type: choice\n        options:\n'
+        f"{_choice(source_repos)}"
+    )
+    cohort = _COHORT_INPUTS.format(
+        cohort_orgs=_choice(cohort_orgs), cohort_repos=_choice(cohort_repos)
+    )
+    week = '      week:\n        description: "Week number (e.g. 1)"\n        required: true'
+    return _render_release(
+        header="",
+        inputs_block=f"{source}\n{cohort}\n{week}",
+        src_repo_expr="${{ inputs.source_repo }}",
+    )
 
 
 def _assignment_input(assignments: list[str]) -> str:
@@ -571,16 +534,19 @@ def discover_content_repos(course_org: str) -> list[str]:
     return [
         r["name"]
         for r in list_org_repos(course_org)
-        if r["name"] not in (".github", TEMPLATE_REPO)
+        if r["name"] != ".github"
         and not r["name"].startswith("assignment-")
     ]
 
 
 def _push_workflows(
-    org: str, repo: str, cohort_orgs: list[str], cohort_repos: list[str]
+    org: str,
+    repo: str,
+    cohort_orgs: list[str],
+    cohort_repos: list[str],
+    assignments: list[str],
 ) -> None:
     weeks = discover_weeks(org, repo)
-    assignments = discover_assignments(org)
     put_file(
         org,
         repo,
@@ -848,11 +814,12 @@ def refresh(course_org: str) -> int:
     cohorts = discover_cohorts(course_org)
     cohort_repos = discover_cohort_repos(cohorts)
     targets = discover_content_repos(course_org)
+    assignments = discover_assignments(course_org)  # org-wide; discover once, not per repo
     log_step(
         f"Refreshing {len(targets)} content repo(s) in {course_org} with cohorts {cohorts or 'none'}"
     )
     for repo in sorted(targets):
-        _push_workflows(course_org, repo, cohorts, cohort_repos)
+        _push_workflows(course_org, repo, cohorts, cohort_repos, assignments)
     _propagate_repo_secret(course_org, targets)
     seed_github_workflows(course_org)
     update_profile_readme(course_org)

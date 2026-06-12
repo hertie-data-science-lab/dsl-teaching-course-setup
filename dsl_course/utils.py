@@ -70,6 +70,18 @@ def git(*args: str, cwd: str | None = None) -> tuple[int, str]:
     return result.returncode, (result.stdout + result.stderr).strip()
 
 
+# Bot identity + disabled hooks for engine-made commits. Spread into git() calls in the
+# clone/commit/push paths of release/site/scaffold/assign: git("-C", wd, *GIT_ENV, ...).
+GIT_ENV = [
+    "-c",
+    "user.email=bot@dsl.local",
+    "-c",
+    "user.name=dsl-bot",
+    "-c",
+    "core.hooksPath=/dev/null",
+]
+
+
 def log(msg: str) -> None:
     print(msg, flush=True)
 

@@ -30,17 +30,10 @@ import sys
 import tempfile
 from pathlib import Path
 
-from .utils import create_repo, gh, git, log, log_err, log_ok, log_step
+from .utils import GIT_ENV, create_repo, gh, git, log, log_err, log_ok, log_step
 
 SECTIONS = ("lectures", "readings")
-_GIT_ENV = [
-    "-c",
-    "user.email=bot@dsl.local",
-    "-c",
-    "user.name=dsl-bot",
-    "-c",
-    "core.hooksPath=/dev/null",
-]
+_GIT_ENV = GIT_ENV
 
 
 def grant_students_read(cohort_org: str, repo: str) -> None:
@@ -82,12 +75,7 @@ def release(
     include_syllabus: bool = False,
     include_readme: bool = False,
 ) -> int:
-    wanted = [
-        s
-        for s in SECTIONS
-        if (s == "lectures" and include_lectures)
-        or (s == "readings" and include_readings)
-    ]
+    wanted = [s for s, on in zip(SECTIONS, (include_lectures, include_readings)) if on]
     if not (wanted or include_syllabus or include_readme):
         log_err("nothing to release - everything was switched off.")
         return 1
