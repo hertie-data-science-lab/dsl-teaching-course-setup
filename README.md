@@ -37,6 +37,12 @@ configures it**. That's the only manual step; everything after is a button.
 
 ## Setting up a course (one-time)
 
+> **Full input checklist:** [`docs/DEPLOY-FROM-SCRATCH.md`](docs/DEPLOY-FROM-SCRATCH.md)
+> lists every input needed to go from nothing to a running course + cohort.
+> [`example-course/`](example-course/README.md) is a ready-to-deploy dummy course (the
+> demo dataset) you can stand up on `Hertie-DSL-Demo` / `DSL-Demo-f2026`.
+
+
 1. **Create the empty course org** in the web UI; add the bot as an owner.
 2. **Bootstrap** it - this repo's Actions tab -> **Bootstrap Course Org** (`org` =
    the new org). It sets teams, 2FA, the `.github` profile, all the faculty buttons,

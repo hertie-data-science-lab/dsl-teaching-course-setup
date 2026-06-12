@@ -1,0 +1,19 @@
+org: Hertie-DSL-Demo
+org_name: DSL Demo Course
+course_name: Deep Learning (Demo)
+course_code: GRAD-DEMO
+
+# Schedule overrides for the cohort website. Edit here (GitHub web UI is fine - no CLI)
+# then run Sync site. Anything left out is synthesised (semester start from the cohort's
+# fYYYY tag; assignments every 2 weeks; exams at weeks 8 and 15). This demo pins real
+# dates so faculty see the schedule they expect rather than placeholders.
+schedule:
+  semester_start: 2026-09-07
+  assignments:
+    assignment-1: 2026-10-13
+    assignment-2: 2026-11-17
+  exams:
+    - name: MidTerm Exam
+      date: 2026-11-03
+    - name: Final Exam
+      date: 2026-12-15
