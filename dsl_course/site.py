@@ -25,7 +25,7 @@ import re
 import shutil
 import sys
 import tempfile
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import yaml
@@ -54,6 +54,47 @@ def _semester_start(cohort_org: str) -> date:
         season, year = m.group(1), int(m.group(2))
         return date(year, 9 if season == "f" else 2, 1)
     return date(2026, 1, 1)
+
+
+def _coerce_date(value: object) -> date | None:
+    """A YAML date/datetime or an ISO `YYYY-MM-DD` string -> date (None if unparseable)."""
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        try:
+            return date.fromisoformat(value.strip()[:10])
+        except ValueError:
+            return None
+    return None
+
+
+def _slug(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-") or "exam"
+
+
+def _schedule(meta: dict) -> tuple[date | None, dict[str, date], list[tuple[str, date]]]:
+    """Faculty schedule overrides from the course `.github/dsl-course.yml` `schedule:` block.
+
+    Returns `(semester_start, {assignment_slug: due_date}, [(exam_name, date), ...])`.
+    Any missing/blank field falls back to the synthesised date at the call site, so the
+    block is fully optional - a course with no `schedule:` behaves exactly as before.
+    """
+    sched = meta.get("schedule") if isinstance(meta, dict) else None
+    sched = sched if isinstance(sched, dict) else {}
+    start = _coerce_date(sched.get("semester_start"))
+    due = {
+        str(slug): d
+        for slug, raw in (sched.get("assignments") or {}).items()
+        if (d := _coerce_date(raw))
+    }
+    exams = [
+        (str(e.get("name", "Exam")), d)
+        for e in (sched.get("exams") or [])
+        if isinstance(e, dict) and (d := _coerce_date(e.get("date")))
+    ]
+    return start, due, exams
 
 
 def _semester_label(cohort_org: str) -> str:
@@ -230,6 +271,12 @@ def sync_site(course_org: str, cohort_org: str) -> int:
         # cohort tag, into _config.yml (site.course_name / _semester / _code).
         meta_raw = get_file_content(course_org, ".github", "dsl-course.yml") or ""
         meta = yaml.safe_load(meta_raw) if meta_raw else {}
+        # Faculty schedule overrides (all optional; blanks keep the synthesised dates).
+        sched_start, due_overrides, exam_overrides = _schedule(
+            meta if isinstance(meta, dict) else {}
+        )
+        if sched_start:
+            start = sched_start
         cfg_path = wd / "_config.yml"
         if cfg_path.is_file() and isinstance(meta, dict):
             cfg = cfg_path.read_text()
@@ -246,8 +293,23 @@ def sync_site(course_org: str, cohort_org: str) -> int:
         data_dir.mkdir(exist_ok=True)
         (data_dir / "people.yml").write_text(_people_yaml(course_org))
 
-        # Regenerate the two generated collections; leave everything else (layouts,
-        # _data, pages) as the template provides.
+        # Exam rows render red via the template's schedule_row_exam.html. Use faculty
+        # dates from the schedule block; else stub mid/end dates of a ~15-week semester.
+        if exam_overrides:
+            exam_entries = {
+                f"{i + 1:02d}-{_slug(name)}.md": _exam_entry(name, when)
+                for i, (name, when) in enumerate(exam_overrides)
+            }
+        else:
+            exam_entries = {
+                "midterm.md": _exam_entry("MidTerm Exam", start + timedelta(weeks=8)),
+                "final.md": _exam_entry("Final Exam", start + timedelta(weeks=15)),
+            }
+
+        # Regenerate the generated collections; leave everything else (layouts, _data,
+        # pages) as the template provides. Assignment due dates come from the schedule
+        # block when set (keyed on the assignment slug), else a synthesised fortnightly
+        # cadence.
         for coll, gen in (
             (
                 "_lectures",
@@ -263,22 +325,17 @@ def sync_site(course_org: str, cohort_org: str) -> int:
                 "_assignments",
                 {
                     f"{i + 1:02d}-{a}.md": _assignment_entry(
-                        course_org, a, start + timedelta(days=(i + 1) * 14)
+                        course_org,
+                        a,
+                        due_overrides.get(
+                            re.sub(r"-[fs]\d{4}$", "", a),
+                            start + timedelta(days=(i + 1) * 14),
+                        ),
                     )
                     for i, a in enumerate(assignments)
                 },
             ),
-            (
-                # Exams render red via the template's schedule_row_exam.html. Stub dates
-                # for now (mid/end of a ~15-week semester) - edit on the site later.
-                "_events",
-                {
-                    "midterm.md": _exam_entry(
-                        "MidTerm Exam", start + timedelta(weeks=8)
-                    ),
-                    "final.md": _exam_entry("Final Exam", start + timedelta(weeks=15)),
-                },
-            ),
+            ("_events", exam_entries),
         ):
             d = wd / coll
             if d.is_dir():

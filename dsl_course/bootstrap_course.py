@@ -114,6 +114,22 @@ def create_profile_repo(
         f"org_name: {org_name}\n"
         f"course_name: {course_name}\n"
         f"course_code: {course_code or ''}\n"
+        "\n"
+        "# Optional schedule overrides for the cohort website. Edit here (GitHub web UI\n"
+        "# is fine - no CLI) then run Sync site. Anything you leave out is synthesised\n"
+        "# (semester start from the cohort's fYYYY tag; assignments every 2 weeks; exams\n"
+        "# at weeks 8 and 15). Uncomment and fill what you want to pin:\n"
+        "#\n"
+        "# schedule:\n"
+        "#   semester_start: 2026-09-07        # YYYY-MM-DD\n"
+        "#   assignments:                      # keyed by assignment slug (no -fYYYY)\n"
+        "#     assignment-1: 2026-10-13\n"
+        "#     assignment-2: 2026-11-10\n"
+        "#   exams:\n"
+        "#     - name: MidTerm Exam\n"
+        "#       date: 2026-11-03\n"
+        "#     - name: Final Exam\n"
+        "#       date: 2026-12-15\n"
     )
     put_file(
         org,
