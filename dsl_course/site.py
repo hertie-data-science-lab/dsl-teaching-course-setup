@@ -170,21 +170,32 @@ def _people_yaml(course_org: str) -> str:
 
 
 def _week_files(org: str, repo: str, section: str, week: str) -> list[tuple[str, str]]:
-    """(name, blob-url) for each file under <section>/week-<week>/ in a repo."""
-    code, out = gh(
-        "api",
-        f"repos/{org}/{repo}/contents/{section}/week-{week}",
-        "--jq",
-        '.[] | select(.type=="file") | .name + "\\t" + .html_url',
-    )
-    if code != 0:
-        return []
-    pairs = []
-    for line in out.splitlines():
-        if "\t" in line:
-            name, url = line.split("\t", 1)
-            pairs.append((name, url))
-    return pairs
+    """(name, blob-url) for each file under <section>/week-<week>/ in a repo.
+
+    discover_weeks reports the UNPADDED number (its regex tolerates `week-0*N`), so a
+    zero-padded folder (`week-01`) would otherwise be queried here as `week-1` and 404 -
+    the week appears on the schedule but its links come back empty. Try the padded name
+    too, matching release._week_dir's tolerance, so the three readers stay in step.
+    """
+    folders = [f"week-{week}"]
+    if week.isdigit():
+        folders.append(f"week-{int(week):02d}")
+    for folder in folders:
+        code, out = gh(
+            "api",
+            f"repos/{org}/{repo}/contents/{section}/{folder}",
+            "--jq",
+            '.[] | select(.type=="file") | .name + "\\t" + .html_url',
+        )
+        if code != 0:
+            continue
+        pairs = []
+        for line in out.splitlines():
+            if "\t" in line:
+                name, url = line.split("\t", 1)
+                pairs.append((name, url))
+        return pairs
+    return []
 
 
 def _lecture_entry(cohort_org: str, week: str, when: date) -> str:
