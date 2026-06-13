@@ -46,21 +46,20 @@ Prereqs: the bot account is an **owner** of both demo orgs, and `DSL_BOT_TOKEN`
 2. This repo → Actions → **Bootstrap Course Org**: `org=Hertie-DSL-Demo`,
    `org_name=DSL Demo Course`, `course_name=Deep Learning (Demo)`, `course_code=GRAD-DEMO`,
    `set_secret=true`.
-3. Add **dummy instructors/TAs** to the `instructors` and `teaching-assistants` teams in
-   `Hertie-DSL-Demo`. *Cards pull the GitHub display name + avatar, so use real-ish GitHub
-   accounts (a couple of throwaway accounts, or yourself) - empty teams = no cards.*
+3. Copy this dataset's [`course-org/dsl-course.yml`](course-org/dsl-course.yml) into
+   `Hertie-DSL-Demo/.github/dsl-course.yml` (web editor is fine). It declares the **people**
+   (instructor + TA cards, with headshots + bio links) and the **schedule** (real due/exam
+   dates) - so the site shows intended cards + dates, not GitHub avatars or synthesised dates.
 4. **New materials repo** (`tag=f2026`), then push the contents of `course-org/materials-f2026/`
    into it (lectures/readings/syllabus).
 5. **New assignment** twice (`number=1` then `2`, `tag=f2026`), then push each
    `course-org/assignment-N-f2026/` (README brief + `starter.py`) into the matching template.
-6. Copy `course-org/dsl-course.yml`'s `schedule:` block into `Hertie-DSL-Demo/.github/dsl-course.yml`
-   (the web editor is fine), so the site shows the real demo dates.
-7. **Refresh actions** (populates dropdowns + propagates the repo secret).
-8. **Bootstrap cohort**: `cohort_org=DSL-Demo-f2026`.
-9. Replace the starter row in `DSL-Demo-f2026/classroom-config/students.csv` with
+6. **Refresh actions** (populates dropdowns + propagates the repo secret).
+7. **Bootstrap cohort**: `cohort_org=DSL-Demo-f2026`.
+8. Replace the starter row in `DSL-Demo-f2026/classroom-config/students.csv` with
    `cohort-org/students.csv`.
-10. **Release materials** for weeks 1, 2, 3. **Release assignment** for `assignment-1`.
-11. **Sync site** (releases also trigger it).
+9. **Release materials** for weeks 1-5. **Release assignment** for `assignment-1`.
+10. **Sync site** (releases also trigger it).
 
 ## What faculty then see
 

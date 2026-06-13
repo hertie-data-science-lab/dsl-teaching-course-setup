@@ -3,10 +3,28 @@ org_name: DSL Demo Course
 course_name: Deep Learning (Demo)
 course_code: GRAD-DEMO
 
+# People shown on the cohort website (instructors + TAs). Declared here so cards carry
+# institutional headshots + bio links rather than GitHub avatars. The first instructor is
+# the "featured" one. photo = image URL, url = bio/profile link, title = optional role.
+people:
+  instructors:
+    - name: "Prof. Lynn Kaack, PhD"
+      title: "Assistant Professor of Computer Science and Public Policy"
+      photo: "https://www.hertie-school.org/fileadmin/_processed_/7/9/csm_Kaack3_01_36ff2991f7.png"
+      url: "https://www.hertie-school.org/de/research/faculty-and-researchers/profile/person/kaack"
+  teaching_assistants:
+    - name: "Chiara Fusar Bassini"
+      title: "PhD candidate, Data Science Lab"
+      photo: "https://www.hertie-school.org/fileadmin/_processed_/6/f/csm_Picture_Chiara_Fusar_Bassini_be71ff890e.jpg"
+      url: "https://www.hertie-school.org/en/who-we-are/profile/person/fusar-bassini"
+    - name: "Henry Baker"
+      title: "Teaching Assistant"
+      photo: "https://www.hertie-school.org/fileadmin/_processed_/f/8/csm_Henry_final_deda644991.jpg"
+      url: "https://www.hertie-school.org/en/who-we-are/profile/person/baker"
+
 # Schedule overrides for the cohort website. Edit here (GitHub web UI is fine - no CLI)
 # then run Sync site. Anything left out is synthesised (semester start from the cohort's
-# fYYYY tag; assignments every 2 weeks; exams at weeks 8 and 15). This demo pins real
-# dates so faculty see the schedule they expect rather than placeholders.
+# fYYYY tag; assignments every 2 weeks; exams at weeks 8 and 15).
 schedule:
   semester_start: 2026-09-07
   assignments:
