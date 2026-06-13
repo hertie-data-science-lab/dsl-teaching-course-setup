@@ -114,13 +114,6 @@ def scaffold_assignment(org: str, number: str, tag: str) -> int:
         "init: starter",
     )
     put_file(
-        org,
-        repo,
-        ".github/workflows/autograde.yml",
-        _autograder_template("autograde.yml"),
-        "ci: autograder",
-    )
-    put_file(
         org, repo, "autograder/grade.py", _autograder_template("grade.py"), "ci: autograder script"
     )
     put_file(
@@ -129,6 +122,16 @@ def scaffold_assignment(org: str, number: str, tag: str) -> int:
         "tests/test_starter.py",
         _autograder_template("test_starter.py"),
         "init: placeholder test",
+    )
+    # autograde.yml LAST: each put_file is its own commit, so the workflow's first push
+    # trigger must land after the grader + tests exist, else the first run sees no tests
+    # (0/0). (Student repos get everything in one generate commit, so they're unaffected.)
+    put_file(
+        org,
+        repo,
+        ".github/workflows/autograde.yml",
+        _autograder_template("autograde.yml"),
+        "ci: autograder",
     )
     set_repo_topics(org, repo, [f"assignment-{number}", "assignment"])
 
