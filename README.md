@@ -40,6 +40,33 @@ configures it**. That's the only manual step; everything after is a button.
   `https://github.com/orgs/<ORG>/people` → **Invite member** → the bot account's username
   → role **Owner** (the bot then accepts the emailed/▸-notification invite). If you created
   the org while signed in *as* the bot account, it's already the owner - nothing to do.
+  *(Which account is "the bot"? See [The bot account](#the-bot-account).)*
+
+## The bot account
+
+Every button runs under **one** credential, `DSL_BOT_TOKEN` - "the bot". **Faculty never
+hold or see it**: they trigger the Actions buttons, which run server-side under the org
+secret (ADR 0008). So a single bot serves the whole DSL - faculty use it *indirectly*.
+
+| Model | What "the bot" is | When |
+| --- | --- | --- |
+| **Personal PAT** | a classic PAT on a maintainer's **own** account (today: `henrycgbaker`) | demo / bootstrap only - tied to one person, avoid for production |
+| **Shared service account** *(recommended)* | one GitHub account, e.g. **`hertie-dsl-bot`**, with its own email + 2FA, added as **Owner** of every course/cohort org; its PAT is `DSL_BOT_TOKEN` | the institutional "DSL-wide bot any faculty can use" - one account, one token, rotated centrally; nobody shares the password |
+| **GitHub App** | a **"DSL Course Automation"** App installed on both org tiers - short-lived fine-grained tokens, no static PAT, per-org revocable | end-state (ADR 0010); workflows don't change, only the token source |
+
+**Exact permissions the bot needs.** It must be an **Owner** of every course and cohort
+org, and its token must carry:
+
+| Classic PAT scope | Covers |
+| --- | --- |
+| `repo` | create + read/write repos incl. **private**; contents; generate-from-template; topics; repo settings + repo secrets |
+| `admin:org` | org **membership** + **teams** (invite students, manage `students`/`instructors`/`teaching-assistants`); org **settings** (2FA); **org secrets** |
+| `workflow` | write the seeded workflow files (the buttons) |
+
+> **Fine-grained PAT / App equivalent** (per org): **Repository** → Contents, Administration,
+> Workflows, Secrets = *Read & write*, Metadata = *Read*; **Organization** → Members,
+> Administration = *Read & write*. A fine-grained PAT targets **one** resource-owner org, so
+> cross-org automation uses a **classic PAT or the App** (which span both tiers).
 
 ## Setting up a course (one-time)
 
@@ -123,7 +150,8 @@ cron, no app):
 
 ## Token
 
-All workflows run under **`secrets.DSL_BOT_TOKEN`**. On the **GitHub Free plan, org
+All workflows run under **`secrets.DSL_BOT_TOKEN`** (see [The bot account](#the-bot-account)
+for which account that is and its exact permissions). On the **GitHub Free plan, org
 secrets don't reach private repos** - so bootstrap propagates the token as an *org*
 secret (for the public `.github`/`welcome`) **and** Refresh sets it as a *repo* secret on
 each private content repo. The token needs cross-org repo admin + members + contents.
