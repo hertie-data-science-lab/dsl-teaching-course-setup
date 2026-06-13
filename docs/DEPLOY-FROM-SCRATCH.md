@@ -12,14 +12,40 @@ in `dsl_course/` is the single implementation behind every button.
 
 ```
 COURSE org   (persistent, private)              COHORT org   (per year, private)
-  .github      console + dsl-course.yml            welcome           Join issue -> onboard
+  .github/dsl-course.yml  identity+people+schedule  welcome      Join issue -> onboard
   materials-f2026   lectures/ + readings/    ──►   classroom-config  students.csv (PRIVATE)
   assignment-N-f2026  template repos          ──►  materials         released weeks
-  instructors / teaching-assistants teams      ──► <assignment>-<handle>  per-student repos
+  .github  console + buttons                  ──►  <assignment>-<handle>  per-student repos
                                                    <cohort>.github.io   auto-generated site
 ```
 
 The course org is the source of truth; the cohort org receives releases of it.
+
+## The input-schema contract
+
+Every part of a course has **one canonical place**. Put your inputs there, run the
+buttons, and the pipeline reads them and generates a full, delivery-ready course +
+website. Nothing about the course is hand-built on the site - it is all *derived* from
+these inputs, so re-running is idempotent and a new cohort is a re-run.
+
+| Input | Canonical place | Read by | Becomes on the site / cohort |
+|-------|-----------------|---------|------------------------------|
+| **Course identity** (name, code) | `.github/dsl-course.yml` → `org_name`, `course_name`, `course_code` | `site` | site title + header |
+| **Semester** | derived from the cohort org's `fYYYY`/`sYYYY` tag | `site` | "Fall 2026" + schedule anchor |
+| **People** (instructors, TAs) | `.github/dsl-course.yml` → `people:` block (`name`, `photo`, `url`, `title`) | `site` | instructor/TA cards (institutional headshots + bio links) |
+| **Schedule** (semester start, due dates, exams) | `.github/dsl-course.yml` → `schedule:` block | `site` | the schedule table (lectures, due dates, exams) |
+| **Lectures** | `materials-fYYYY/lectures/week-N/` (any files) | `release` → `site` | weekly lecture entries linking the released files |
+| **Readings** | `materials-fYYYY/readings/week-N/` (any files) | `release` → `site` | weekly reading links |
+| **Syllabus** | `materials-fYYYY/` root file matching `*syllabus*` | `release --syllabus` | cohort root + syllabus link |
+| **Assignments** | `assignment-N-fYYYY` template repo: `README.md` (brief), `starter.*`, `solution` branch, `.github/workflows/autograde.yml` | `release-assignment` → `site` | assignment briefs on the site + one private `<slug>-<handle>` repo per student |
+| **Roster** | cohort `classroom-config/students.csv` (`student_id, hertie_email, name, section`) | `sync_roster`, `assign`, onboard | enrolment + per-student provisioning |
+
+So `.github/dsl-course.yml` is the **course config contract** (identity + people + schedule);
+the `materials-fYYYY` repo is the **content contract** (lectures/readings/syllabus by week);
+the `assignment-*-fYYYY` template repos are the **assignment contract**; and the cohort
+`students.csv` is the **roster contract**. The pipeline -
+`Bootstrap → Release materials/assignment → (auto) Sync site` - turns those inputs into the
+running course. Anything you don't supply is synthesised or skipped, never blocks.
 
 ## The inputs, grouped
 
@@ -38,8 +64,7 @@ Everything below is a button or a file edit.
 | # | Input | Supplied via | Mandatory | Stored as |
 |---|-------|--------------|-----------|-----------|
 | B1 | Course identity: `org`, `org_name`, `course_name`, `course_code` | **Bootstrap Course Org** button inputs | org + org_name | `.github/dsl-course.yml` |
-| B2 | **Instructors** (names/photos on the site) | Add members to the **`instructors`** team | for the site cards | GitHub team membership (profile name + avatar pulled live) |
-| B3 | **TAs** | Add members to the **`teaching-assistants`** team | optional | same |
+| B2 | **People** (instructors + TAs: name, photo, bio link, title) | Edit the `people:` block in `.github/dsl-course.yml` | for the site cards | declared input → cards carry institutional headshots + bio links. *(If omitted, falls back to the `instructors`/`teaching-assistants` GitHub teams → GitHub avatars.)* |
 | B4 | **Materials**: a `materials-fYYYY` repo with `lectures/week-N/` and `readings/week-N/` folders | **New materials repo** button scaffolds it; you add files | yes | course org repo |
 | B5 | Syllabus / root README (optional) | Files at the materials-repo root | optional | copied to the cohort on release if toggled on |
 | B6 | **Assignments**: one `assignment-N-fYYYY` **template** repo each (starter + autograder on `main`, empty `solution` branch) | **New assignment** button scaffolds it; you add the brief + starter | yes | course org template repos (`is_template`) |
@@ -66,11 +91,11 @@ workflow does the rest. See [How students are managed](#how-students-are-managed
 2. This repo's Actions tab → **Bootstrap Course Org** (`org`, `org_name`, `course_name`,
    `course_code`). Sets teams, 2FA, the `.github` profile + **all the buttons**, and
    propagates `DSL_BOT_TOKEN`. *(A3, B1)*
-3. Add people to the **`instructors`** / **`teaching-assistants`** teams. *(B2, B3)*
+3. Edit the **`people:`** block in `.github/dsl-course.yml` (instructors + TAs). *(B2)*
 4. **New materials repo** → fill `lectures/week-N/` + `readings/week-N/` with your files.
    *(B4, B5)*
 5. **New assignment** (once per assignment) → fill the brief (`README.md`) + starter. *(B6)*
-6. (Optional) edit the `schedule:` block in `.github/dsl-course.yml`. *(B7)*
+6. (Optional) edit the **`schedule:`** block in `.github/dsl-course.yml`. *(B7)*
 7. **Refresh actions** so every content repo gets its run-from-repo buttons, the repo
    secret is propagated, and all dropdowns populate from live state.
 
@@ -128,6 +153,29 @@ Roster columns:
 | `github_handle` | **onboarding** | blank until the student joins |
 | `github_id` | **onboarding** | blank until the student joins |
 | `section` | registrar (seed) | ✅ |
+
+## People
+
+Instructor/TA cards are a **declared input**: the `people:` block in the course
+`.github/dsl-course.yml`. This lets cards carry institutional headshots + bio links
+rather than GitHub avatars. The first instructor is the "featured" one. Edit it and run
+**Sync site**:
+
+```yaml
+people:
+  instructors:
+    - name: "Prof. Jane Doe"
+      title: "Professor of ..."        # optional
+      photo: "https://.../jane.jpg"    # image URL (shown on the card)
+      url: "https://.../profile/jane"  # bio / profile link
+  teaching_assistants:
+    - name: "A. N. Other"
+      photo: "https://.../other.jpg"
+      url: "https://.../profile/other"
+```
+
+If there is no `people:` block, the site falls back to the GitHub `instructors` /
+`teaching-assistants` teams (GitHub display name + avatar + profile link).
 
 ## The schedule
 

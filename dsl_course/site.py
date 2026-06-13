@@ -144,24 +144,69 @@ def _team_people(course_org: str, team: str) -> list[tuple[str, str, str]]:
     return people
 
 
-def _people_yaml(course_org: str) -> str:
-    """Build _data/people.yml from the course org's instructors / teaching-assistants
-    teams (GitHub display name + avatar as the photo + profile link)."""
-    instructors = _team_people(course_org, "instructors")
-    tas = _team_people(course_org, "teaching-assistants")
+def _people_from_meta(meta: dict) -> tuple[list[tuple], list[tuple]] | None:
+    """Declared people from the course `.github/dsl-course.yml` `people:` block.
 
-    def block(items: list[tuple[str, str, str]]) -> str:
+    The block is the canonical input for who appears on the site (name + photo + bio
+    link + optional title), so cards carry institutional headshots/profiles rather than
+    GitHub avatars. Returns `(instructors, teaching_assistants)` as lists of
+    `(name, photo, url, title)`, or None when there is no `people:` block (then fall
+    back to the GitHub teams). Schema:
+
+        people:
+          instructors:
+            - {name: ..., photo: <img-url>, url: <bio-link>, title: ...}
+          teaching_assistants:
+            - {name: ..., photo: ..., url: ..., title: ...}
+    """
+    people = meta.get("people") if isinstance(meta, dict) else None
+    if not isinstance(people, dict):
+        return None
+
+    def rows(key: str) -> list[tuple]:
+        out = []
+        for p in people.get(key) or []:
+            if isinstance(p, dict) and p.get("name"):
+                out.append(
+                    (
+                        str(p["name"]),
+                        str(p.get("photo", "")),
+                        str(p.get("url", "")),
+                        str(p.get("title", "")),
+                    )
+                )
+        return out
+
+    return rows("instructors"), rows("teaching_assistants")
+
+
+def _people_yaml(course_org: str, meta: dict | None = None) -> str:
+    """Build _data/people.yml. Prefer the declared `people:` block in the course
+    dsl-course.yml; else fall back to the GitHub instructors / teaching-assistants teams
+    (GitHub display name + avatar + profile link)."""
+    override = _people_from_meta(meta or {})
+    if override is not None:
+        instructors, tas = override
+        note = "declared in the course .github/dsl-course.yml `people:` block"
+    else:
+        instructors = [(*t, "") for t in _team_people(course_org, "instructors")]
+        tas = [(*t, "") for t in _team_people(course_org, "teaching-assistants")]
+        note = "auto-generated from the course org's instructors / teaching-assistants teams"
+
+    def block(items: list[tuple]) -> str:
         if not items:
             return " []"
-        return "\n" + "\n".join(
-            f'  - name: "{_q(n)}"\n    profile_pic: "{_q(p)}"\n    webpage: "{_q(w)}"'
-            for n, p, w in items
-        )
+        rows = []
+        for n, p, w, t in items:
+            row = f'  - name: "{_q(n)}"\n    profile_pic: "{_q(p)}"\n    webpage: "{_q(w)}"'
+            if t:
+                row += f'\n    title: "{_q(t)}"'
+            rows.append(row)
+        return "\n" + "\n".join(rows)
 
-    featured = instructors[0] if instructors else ("Course staff", "", "")
+    featured = instructors[0] if instructors else ("Course staff", "", "", "")
     return (
-        "# Auto-generated from the course org's teams by `dsl_course.site` - add people\n"
-        "# to the instructors / teaching-assistants teams, then re-sync.\n\n"
+        f"# {note}.\n\n"
         f'instructor:\n  name: "{_q(featured[0])}"\n'
         f'  profile_pic: "{_q(featured[1])}"\n  webpage: "{_q(featured[2])}"\n\n'
         f"instructors:{block(instructors)}\n\n"
@@ -299,10 +344,10 @@ def sync_site(course_org: str, cohort_org: str) -> int:
                 cfg = _set_config(cfg, "course_code", str(meta["course_code"]))
             cfg_path.write_text(cfg)
 
-        # People: regenerate _data/people.yml from the course org's teams.
+        # People: regenerate _data/people.yml from the declared `people:` block (else teams).
         data_dir = wd / "_data"
         data_dir.mkdir(exist_ok=True)
-        (data_dir / "people.yml").write_text(_people_yaml(course_org))
+        (data_dir / "people.yml").write_text(_people_yaml(course_org, meta))
 
         # Exam rows render red via the template's schedule_row_exam.html. Use faculty
         # dates from the schedule block; else stub mid/end dates of a ~15-week semester.
