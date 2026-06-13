@@ -47,12 +47,17 @@ MATERIALS_REPO = "materials"
 _GIT_ENV = GIT_ENV
 
 
+def _cohort_tag(cohort_org: str) -> str | None:
+    """The fYYYY / sYYYY semester tag in a cohort org name (e.g. 'f2026'), or None."""
+    m = re.search(r"[fs]\d{4}", cohort_org.lower())
+    return m.group(0) if m else None
+
+
 def _semester_start(cohort_org: str) -> date:
     """Best-effort semester start from a fYYYY / sYYYY tag (for schedule ordering)."""
-    m = re.search(r"([fs])(\d{4})", cohort_org.lower())
-    if m:
-        season, year = m.group(1), int(m.group(2))
-        return date(year, 9 if season == "f" else 2, 1)
+    tag = _cohort_tag(cohort_org)
+    if tag:
+        return date(int(tag[1:]), 9 if tag[0] == "f" else 2, 1)
     return date(2026, 1, 1)
 
 
@@ -99,10 +104,8 @@ def _schedule(meta: dict) -> tuple[date | None, dict[str, date], list[tuple[str,
 
 def _semester_label(cohort_org: str) -> str:
     """fYYYY -> 'Fall YYYY', sYYYY -> 'Spring YYYY' (for site.course_semester)."""
-    m = re.search(r"([fs])(\d{4})", cohort_org.lower())
-    if m:
-        return f"{'Fall' if m.group(1) == 'f' else 'Spring'} {m.group(2)}"
-    return ""
+    tag = _cohort_tag(cohort_org)
+    return f"{'Fall' if tag[0] == 'f' else 'Spring'} {tag[1:]}" if tag else ""
 
 
 def _q(value: str) -> str:
@@ -311,6 +314,11 @@ def sync_site(course_org: str, cohort_org: str) -> int:
         return 0
     weeks = seed.discover_weeks(cohort_org, MATERIALS_REPO)
     assignments = seed.discover_assignments(course_org)
+    # A persistent course org holds per-year templates (assignment-*-fYYYY); a cohort site
+    # should list only its own year's, matched on the cohort's fYYYY/sYYYY tag.
+    tag = _cohort_tag(cohort_org)
+    if tag:
+        assignments = [a for a in assignments if a.lower().endswith(tag)]
     log_step(
         f"Syncing {cohort_org}/{site}: {len(weeks)} released week(s), "
         f"{len(assignments)} assignment(s)"

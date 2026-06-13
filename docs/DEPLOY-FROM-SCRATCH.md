@@ -37,7 +37,7 @@ these inputs, so re-running is idempotent and a new cohort is a re-run.
 | **Lectures** | `materials-fYYYY/lectures/week-N/` (any files) | `release` → `site` | weekly lecture entries linking the released files |
 | **Readings** | `materials-fYYYY/readings/week-N/` (any files) | `release` → `site` | weekly reading links |
 | **Syllabus** | `materials-fYYYY/` root file matching `*syllabus*` | `release --syllabus` | cohort root + syllabus link |
-| **Assignments** | `assignment-N-fYYYY` template repo: `README.md` (brief), `starter.*`, `solution` branch, `.github/workflows/autograde.yml` | `release-assignment` → `site` | assignment briefs on the site + one private `<slug>-<handle>` repo per student |
+| **Assignments** | `assignment-N-fYYYY` template repo: `README.md` (brief), `starter.*`, `tests/`, `autograder/grade.py`, `.github/workflows/autograde.yml`, `solution` branch | `release-assignment` → `site` | assignment briefs on the site + one private `<slug>-<handle>` repo per student; each push runs the autograder |
 | **Roster** | cohort `classroom-config/students.csv` (`student_id, hertie_email, name, section`) | `sync_roster`, `assign`, onboard | enrolment + per-student provisioning |
 
 So `.github/dsl-course.yml` is the **course config contract** (identity + people + schedule);
@@ -216,8 +216,11 @@ One secret, `DSL_BOT_TOKEN`, runs every workflow. It needs, **on both orgs**: re
 
 ## Known limits (not blockers)
 
-- **Autograding** is deferred - the template ships a dormant autograder shim; no runner is
-  wired ([ADR 0010 §2]).
+- **Autograding** runs a minimal pytest autograder on every push to `main` (the submission):
+  it runs the assignment's `tests/`, writes `result.json` (`{score, max, tests}` - the
+  C50-style contract for later score collection) and a score summary on the Actions run.
+  Swap pytest for Otter/nbgrader without changing the workflow. Score-collection into
+  `scores.csv`/Moodle is the remaining piece ([ADR 0010 §2/§4]).
 - **Moodle** roster-in / grade-out is manual CSV until Hertie IT enables Web Services.
 - **Pages are public** on the Free plan; access-controlled once on Campus/Enterprise.
 - GDPR (retention, erasure, DPA, DPO sign-off) must be settled before any live cohort.

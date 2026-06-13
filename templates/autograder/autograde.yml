@@ -1,0 +1,21 @@
+name: Autograde
+# Runs on every push to main (the submission). Runs the assignment's tests/ via the
+# autograder and reports a score; emits result.json (the C50-style contract) for later
+# score collection. Swap pytest for Otter/nbgrader without changing this workflow.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  autograde:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pytest
+      - name: Autograde
+        run: python autograder/grade.py

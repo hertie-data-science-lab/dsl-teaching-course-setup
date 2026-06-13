@@ -41,18 +41,13 @@ WEBSITE_TEMPLATE = "course-website-template"
 
 _GIT_ENV = GIT_ENV
 
-_AUTOGRADE = """name: Autograde
 
-# Dormant autograder (runs on push to main). Wire up Otter/nbgrader -> result.json later.
-on:
-  push:
-    branches: [main]
-jobs:
-  autograde:
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "Autograding deferred - submission = this push (${{ github.sha }})."
-"""
+def _autograder_template(rel: str) -> bytes:
+    """Read an assignment autograder file from the repo's templates/autograder/ dir
+    (real linted files, not embedded strings - mirrors bootstrap's templates/welcome/)."""
+    return (
+        Path(__file__).resolve().parents[1] / "templates" / "autograder" / rel
+    ).read_bytes()
 
 
 def scaffold_materials(org: str, tag: str) -> int:
@@ -84,7 +79,9 @@ def scaffold_materials(org: str, tag: str) -> int:
         put_file(org, repo, path, content, "init: materials skeleton")
     # Equip the run-from-repo Release buttons (same as Refresh does for content repos).
     cohorts = seed.discover_cohorts(org)
-    seed._push_workflows(org, repo, cohorts, seed.discover_cohort_repos(cohorts))
+    seed._push_workflows(
+        org, repo, cohorts, seed.discover_cohort_repos(cohorts), seed.discover_assignments(org)
+    )
     log_ok(f"materials repo ready: {org}/{repo}")
     return 0
 
@@ -117,10 +114,23 @@ def scaffold_assignment(org: str, number: str, tag: str) -> int:
         "init: starter",
     )
     put_file(
+        org, repo, "autograder/grade.py", _autograder_template("grade.py"), "ci: autograder script"
+    )
+    put_file(
+        org,
+        repo,
+        "tests/test_starter.py",
+        _autograder_template("test_starter.py"),
+        "init: placeholder test",
+    )
+    # autograde.yml LAST: each put_file is its own commit, so the workflow's first push
+    # trigger must land after the grader + tests exist, else the first run sees no tests
+    # (0/0). (Student repos get everything in one generate commit, so they're unaffected.)
+    put_file(
         org,
         repo,
         ".github/workflows/autograde.yml",
-        _AUTOGRADE.encode(),
+        _autograder_template("autograde.yml"),
         "ci: autograder",
     )
     set_repo_topics(org, repo, [f"assignment-{number}", "assignment"])
