@@ -311,6 +311,11 @@ def sync_site(course_org: str, cohort_org: str) -> int:
         return 0
     weeks = seed.discover_weeks(cohort_org, MATERIALS_REPO)
     assignments = seed.discover_assignments(course_org)
+    # A persistent course org holds per-year templates (assignment-*-fYYYY); a cohort site
+    # should list only its own year's, matched on the cohort's fYYYY/sYYYY tag.
+    tag = re.search(r"[fs]\d{4}", cohort_org.lower())
+    if tag:
+        assignments = [a for a in assignments if a.lower().endswith(tag.group(0))]
     log_step(
         f"Syncing {cohort_org}/{site}: {len(weeks)} released week(s), "
         f"{len(assignments)} assignment(s)"

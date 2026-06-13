@@ -42,17 +42,57 @@ WEBSITE_TEMPLATE = "course-website-template"
 _GIT_ENV = GIT_ENV
 
 _AUTOGRADE = """name: Autograde
-
-# Dormant autograder (runs on push to main). Wire up Otter/nbgrader -> result.json later.
+# Runs on every push to main (the submission). Runs the assignment's tests/ via the
+# autograder and reports a score; emits result.json (the C50-style contract) for later
+# score collection. Swap pytest for Otter/nbgrader without changing this workflow.
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
 jobs:
   autograde:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Autograding deferred - submission = this push (${{ github.sha }})."
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pytest
+      - name: Autograde
+        run: python autograder/grade.py
 """
+
+# Runs the tests, writes result.json {score, max, tests:[...]} and a GitHub Actions
+# summary. Exits 0 so the run is green; the score is the signal (a fail = low score).
+_GRADE_PY = '''import json, os, subprocess, sys, xml.etree.ElementTree as ET
+
+subprocess.run([sys.executable, "-m", "pytest", "-q", "tests/", "--junitxml=report.xml"])
+suite = ET.parse("report.xml").getroot()
+suite = suite if suite.tag == "testsuite" else suite.find("testsuite")
+cases = [{"name": tc.get("name"),
+          "passed": tc.find("failure") is None and tc.find("error") is None}
+         for tc in suite.findall("testcase")]
+passed = sum(c["passed"] for c in cases)
+json.dump({"score": passed, "max": len(cases), "tests": cases},
+          open("result.json", "w"), indent=2)
+report = "\\n".join(["## Autograder", "", f"**Score: {passed}/{len(cases)}**", ""]
+                    + [f"- {'✅' if c['passed'] else '❌'} `{c['name']}`" for c in cases])
+print(report)
+if os.environ.get("GITHUB_STEP_SUMMARY"):
+    open(os.environ["GITHUB_STEP_SUMMARY"], "a").write(report + "\\n")
+'''
+
+# Placeholder test - faculty replace tests/ with the assignment's real tests. It fails on
+# the un-implemented starter (so a fresh submission scores 0) and passes once solved.
+_TEST_PLACEHOLDER = '''from starter import solve
+
+
+def test_solve_runs():
+    # Replace with real tests for this assignment.
+    assert solve() is not None
+'''
 
 
 def scaffold_materials(org: str, tag: str) -> int:
@@ -84,7 +124,9 @@ def scaffold_materials(org: str, tag: str) -> int:
         put_file(org, repo, path, content, "init: materials skeleton")
     # Equip the run-from-repo Release buttons (same as Refresh does for content repos).
     cohorts = seed.discover_cohorts(org)
-    seed._push_workflows(org, repo, cohorts, seed.discover_cohort_repos(cohorts))
+    seed._push_workflows(
+        org, repo, cohorts, seed.discover_cohort_repos(cohorts), seed.discover_assignments(org)
+    )
     log_ok(f"materials repo ready: {org}/{repo}")
     return 0
 
@@ -122,6 +164,10 @@ def scaffold_assignment(org: str, number: str, tag: str) -> int:
         ".github/workflows/autograde.yml",
         _AUTOGRADE.encode(),
         "ci: autograder",
+    )
+    put_file(org, repo, "autograder/grade.py", _GRADE_PY.encode(), "ci: autograder script")
+    put_file(
+        org, repo, "tests/test_starter.py", _TEST_PLACEHOLDER.encode(), "init: placeholder test"
     )
     set_repo_topics(org, repo, [f"assignment-{number}", "assignment"])
 
