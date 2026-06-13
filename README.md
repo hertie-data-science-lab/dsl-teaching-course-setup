@@ -35,6 +35,12 @@ COHORT org   e.g. Deep-Learning-f2026                  (per-year, private)
 created once in the web UI, the bot is added as an owner, and then **automation
 configures it**. That's the only manual step; everything after is a button.
 
+- **Create the org:** https://github.com/account/organizations/new (pick the Free plan).
+- **Add the bot as an owner:** the org's **People** tab,
+  `https://github.com/orgs/<ORG>/people` → **Invite member** → the bot account's username
+  → role **Owner** (the bot then accepts the emailed/▸-notification invite). If you created
+  the org while signed in *as* the bot account, it's already the owner - nothing to do.
+
 ## Setting up a course (one-time)
 
 > **Full input checklist:** [`docs/DEPLOY-FROM-SCRATCH.md`](docs/DEPLOY-FROM-SCRATCH.md)
@@ -43,7 +49,10 @@ configures it**. That's the only manual step; everything after is a button.
 > demo dataset) you can stand up on `Hertie-DSL-Demo` / `DSL-Demo-f2026`.
 
 
-1. **Create the empty course org** in the web UI; add the bot as an owner.
+1. **Create the empty course org** at https://github.com/account/organizations/new (Free plan).
+   - **1b. Add the bot as an owner:** `https://github.com/orgs/<ORG>/people` → **Invite member**
+     → the bot's username → role **Owner** (the bot accepts the invite). Skip if you created
+     the org as the bot account.
 2. **Bootstrap** it - this repo's Actions tab -> **Bootstrap Course Org** (`org` =
    the new org). It sets teams, 2FA, the `.github` profile, all the faculty buttons,
    and propagates `DSL_BOT_TOKEN`.
@@ -56,7 +65,10 @@ configures it**. That's the only manual step; everything after is a button.
 
 ## Adding a cohort (per year)
 
-1. **Create the empty cohort org** in the web UI; add the bot as an owner.
+1. **Create the empty cohort org** at https://github.com/account/organizations/new (Free plan).
+   - **1b. Add the bot as an owner:** `https://github.com/orgs/<ORG>/people` → **Invite member**
+     → the bot's username → role **Owner** (the bot accepts the invite). Skip if you created
+     the org as the bot account.
 2. Course org -> **Bootstrap cohort** (org button) with the cohort's name. It seeds the
    `welcome` (onboard) + `classroom-config` (roster) repos, tightens permissions,
    **registers** the cohort in `.github/cohort-courses-pages.yml`, and refreshes the
