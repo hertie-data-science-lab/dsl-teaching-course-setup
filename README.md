@@ -37,9 +37,10 @@ configures it**. That's the only manual step; everything after is a button.
 
 - **Create the org:** https://github.com/account/organizations/new (pick the Free plan).
 - **Add the bot as an owner:** the org's **People** tab,
-  `https://github.com/orgs/<ORG>/people` → **Invite member** → the bot account's username
-  → role **Owner** (the bot then accepts the emailed/▸-notification invite). If you created
-  the org while signed in *as* the bot account, it's already the owner - nothing to do.
+  `https://github.com/orgs/<ORG>/people` → **Invite member** → **the bot account's username
+  (currently `henrycgbaker`; production target `hertie-dsl-bot`)** → role **Owner** (the bot
+  then accepts the emailed/▸-notification invite). If you created the org while signed in *as*
+  the bot account, it's already the owner - nothing to do.
   *(Which account is "the bot"? See [The bot account](#the-bot-account).)*
 
 ## The bot account
@@ -67,6 +68,26 @@ org, and its token must carry:
 > Workflows, Secrets = *Read & write*, Metadata = *Read*; **Organization** → Members,
 > Administration = *Read & write*. A fine-grained PAT targets **one** resource-owner org, so
 > cross-org automation uses a **classic PAT or the App** (which span both tiers).
+
+### Who can run the buttons (onboarding faculty)
+
+Faculty don't get the token - they get **team membership**. Every action is dispatched from
+this central repo's Actions tab and gated by a `check-team` step: the triggering user must be
+in the **`faculty`** or **`admin`** team of
+[`hertie-data-science-lab`](https://github.com/orgs/hertie-data-science-lab/teams), else access
+is denied. The workflow then runs as the bot.
+
+**To let a new faculty member stand up and deliver courses:** add them to the **`faculty`**
+team. That is the entire grant - no token, no per-person setup. They then:
+
+1. Create the org in the web UI and **invite the bot (`henrycgbaker`) as Owner** - the one
+   manual step (GitHub has no org-creation API).
+2. Run **Bootstrap Course Org** from this repo's Actions tab; everything after is buttons.
+
+> **Production note:** the bot is currently a personal PAT on `henrycgbaker`, so the whole DSL
+> depends on one person's account/2FA. Migrate to a shared **`hertie-dsl-bot`** service account
+> (its own email + 2FA, Owner of every org, its PAT as `DSL_BOT_TOKEN`) when going beyond demo -
+> workflows and the team gate are unchanged; only the invited username and token source move.
 
 ## Setting up a course (one-time)
 

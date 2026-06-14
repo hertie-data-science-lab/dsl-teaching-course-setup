@@ -207,6 +207,10 @@ backward-compatible.
 One secret, `DSL_BOT_TOKEN`, runs every workflow. It needs, **on both orgs**: repo admin
 (create/generate repos, topics, settings), org members (invite + team), and contents R/W.
 
+The bot to **invite as Owner** of each org is currently **`henrycgbaker`** (production target:
+a shared `hertie-dsl-bot`). Faculty trigger the buttons via **`faculty`/`admin` team membership**
+in `hertie-data-science-lab`, never the token - see [Who can run the buttons](../README.md#who-can-run-the-buttons-onboarding-faculty).
+
 - **Demo:** a classic PAT with `repo` + `admin:org` + `workflow`.
 - **Free-plan caveat:** org secrets don't reach private repos, so Bootstrap sets it as an
   *org* secret (public `.github`/`welcome`) **and** Refresh propagates it as a *repo* secret
