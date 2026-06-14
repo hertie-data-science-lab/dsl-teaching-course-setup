@@ -4,8 +4,13 @@ Central registry of workflows functionality for course delivery at the Hertie Da
 
 **UI**: Faculty trigger everything as **GitHub Actions buttons** (also exposed as CLI commands).
 
-**Access**: every action is gated on **repo permission** - the triggering user must have
-write/maintain/admin on the repo the action runs in.
+**Access**: the day-to-day buttons are gated on **repo permission** - the triggering user
+must have write/maintain/admin on the repo the action runs in. The one exception is the
+central **Bootstrap Course Org** action, which additionally needs **`faculty`/`admin` team
+membership** in `hertie-data-science-lab` (a brand-new org has no repos to gate on yet).
+To let a new faculty member stand up courses, add them to the `faculty` team - that is the
+whole grant; they never hold the token. See
+[`docs/ADMIN-SETUP.md`](docs/ADMIN-SETUP.md#who-can-run-which-action).
 
 ## The model
 
@@ -45,10 +50,10 @@ _Steps 1 & 2 require manual setup - the rest is automatically configured via Git
     
 ### 2. Add the DSL bot as an owner:
   - Open the org's **People** tab: `https://github.com/orgs/<ORG>/people` → **Invite member**
-  - Select the bot's username → role **Owner** (the bot then accepts the emailed-notification invite).
+  - Invite the bot account - currently **`henrycgbaker`** (production target `hertie-dsl-bot`) - → role **Owner** (the bot then accepts the emailed-notification invite).
   -  _Skip if you created the org as the bot account: if you created
   the org while signed in *as* the bot account, it's already the owner - nothing to do._
-  - (Which account is "the DSL bot"? See [The bot account](#the-bot-account).)*
+  - (Which account is "the DSL bot"? See [The bot account](docs/ADMIN-SETUP.md#the-bot-account).)*
 
 ### 3. Bootstrap the new org 
   - On _this_ repo's Actions tab -> [**Bootstrap Course Org**](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions/workflows/bootstrap-org.yml) (`org` =  the new org).
@@ -76,16 +81,21 @@ _Steps 1 & 2 require manual setup - the rest is automatically configured via Git
 
 ## Adding a cohort (per year)
 
-### 1. Create the empty cohort org
-  - At https://github.com/account/organizations/new (Free plan).
-   - **1b. Add the bot as an owner:** `https://github.com/orgs/<ORG>/people` → **Invite member**
-     → the bot's username → role **Owner** (the bot accepts the invite). Skip if you created
-     the org as the bot account.
-### 2. Course org -> `Bootstrap cohort` (Course-level button)
-  - Seeds the `welcome` (onboard) + `classroom-config` (roster) repos,
-  - Tightens permissions,
-  - **Registers** the cohort in `.github/cohort-courses-pages.yml`, and refreshes the
-   dropdowns so the cohort appears everywhere.
+A cohort is bootstrapped by the **same** mechanism as a course - it's `Bootstrap Course Org`
+with the **`cohort`** checkbox ticked (plus the parent `course` org). So:
+
+### 1-2. Create the empty cohort org + add the bot as Owner
+  - Identical to course steps 1-2 above (create at https://github.com/account/organizations/new,
+    Free plan; invite the bot as **Owner**).
+
+### 3. Bootstrap it as a cohort
+  - Run `Bootstrap Course Org` with **`cohort` ✓** and `course` = the parent course org
+    (exposed in the course org as the **`Bootstrap cohort`** button, which is that same
+    action pre-set for cohorts).
+  - On top of the course bootstrap, the `cohort` flag additionally: seeds the `welcome`
+    (onboard) + `classroom-config` (roster) repos, tightens permissions, scaffolds the
+    website, and **registers** the cohort in `.github/cohort-courses-pages.yml` (refreshing
+    every dropdown so it appears everywhere).
 
 ## Faculty actions
 
@@ -110,84 +120,8 @@ weeks.
 records their authenticated handle + GitHub id, and grants org + `students`-team access.
 No CLI.
 
-## Technical details
+## Technical & admin reference
 
-### Cohort website
-
-Every cohort gets an **auto-deployed website** at `<cohort-org>.github.io`, generated from
-`course-website-template` by `scaffold_site` during Bootstrap cohort. `site.py` then **regenerates its content from the live org structure**
-on every release (and via manual dispatch of **Sync site**): the schedule lists released weeks + assignment
-due dates + MidTerm/Final exams; lecture entries link the actual released files; assignment
-briefs come from each template's README; instructor/TA cards come from the `instructors` /
-`teaching-assistants` teams; the course name/semester come from the org metadata.
-
-### The bot account
-
-Every button runs under **one** credential, `DSL_BOT_TOKEN` - "the bot". **Faculty never
-hold or see it**: they trigger the Actions buttons, which run server-side under the org
-secret. So a single bot serves the whole DSL - faculty use it *indirectly*.
-
-| Model | What "the bot" is | When |
-| --- | --- | --- |
-| **Personal PAT** | a classic PAT on a maintainer's **own** account (today: `henrycgbaker`) | demo / bootstrap only - tied to one person, avoid for production |
-| **Shared service account** *(recommended)* | one GitHub account, e.g. **`hertie-dsl-bot`**, with its own email + 2FA, added as **Owner** of every course/cohort org; its PAT is `DSL_BOT_TOKEN` | the institutional "DSL-wide bot any faculty can use" - one account, one token, rotated centrally; nobody shares the password |
-| **GitHub App** | a **"DSL Course Automation"** App installed on both org tiers - short-lived fine-grained tokens, no static PAT, per-org revocable | end-state (ADR 0010); workflows don't change, only the token source |
-
-**Exact permissions the bot needs.** It must be an **Owner** of every course and cohort
-org, and its token must carry:
-
-| Classic PAT scope | Covers |
-| --- | --- |
-| `repo` | create + read/write repos incl. **private**; contents; generate-from-template; topics; repo settings + repo secrets |
-| `admin:org` | org **membership** + **teams** (invite students, manage `students`/`instructors`/`teaching-assistants`); org **settings** (2FA); **org secrets** |
-| `workflow` | write the seeded workflow files (the buttons) |
-
-> **Fine-grained PAT / App equivalent** (per org): **Repository** → Contents, Administration,
-> Workflows, Secrets = *Read & write*, Metadata = *Read*; **Organization** → Members,
-> Administration = *Read & write*. A fine-grained PAT targets **one** resource-owner org, so
-> cross-org automation uses a **classic PAT or the App** (which span both tiers).
-
-
-### Dynamic dropdowns
-
-`workflow_dispatch` dropdowns are static YAML and can't depend on another input, so
-**Refresh actions** regenerates them from live state and re-pushes the workflows (no
-cron, no app):
-
-- **cohort_org** - from the `.github/cohort-courses-pages.yml` registry.
-- **cohort_repo** - the cohort's content repos, with `materials` as the default.
-- **week** - the source materials repo's `lectures/week-N/` folders (run-from-repo copy);
-  the central `.github` copy uses a free-text week, since it can't depend on the chosen
-  source repo.
-- **source_repo** (central only) / **assignment** - the course org's content / `assignment-*` repos.
-
-### Token
-
-All workflows run under **`secrets.DSL_BOT_TOKEN`** (see [The bot account](#the-bot-account)
-for which account that is and its exact permissions). On the **GitHub Free plan, org
-secrets don't reach private repos** - so bootstrap propagates the token as an *org*
-secret (for the public `.github`/`welcome`) **and** Refresh sets it as a *repo* secret on
-each private content repo. The token needs cross-org repo admin + members + contents.
-Production target: a **GitHub App** (fine-grained, short-lived) - or GitHub Team/Enterprise,
-where org secrets reach private repos and this propagation is unnecessary.
-
-### Repo layout
-
-Self-contained - workflows + their Python implementation live here.
-
-- `.github/workflows/` - `bootstrap-org` (+ the legacy create-tier); the faculty
-  workflows are rendered + seeded into the course/cohort orgs, not kept here.
-- `dsl_course/` - the package:
-  - `bootstrap_course` - configure a course or (`--cohort`) cohort org.
-  - `seed` - render the workflows (central + run-from-repo), discover dropdown options, refresh.
-  - `release` - publish a week's materials (+ optional syllabus/README) into a cohort repo.
-  - `assign` - freeze a cohort assignment template, then fan out per-student repos.
-  - `scaffold` - create structured materials / assignment repos + the cohort website.
-  - `site` - regenerate a cohort website from the live org structure.
-  - `sync_roster` - enrol / materialise team access from `students.csv`.
-  - `roster` - read the per-cohort `students.csv`.
-  - `utils` - shared `gh`/git helpers with rate-limit backoff.
-  - `new_semester` / `post_migrate` / `bootstrap_org` / `list_orgs` - legacy create-tier
-    (older course-side model; the next slimming target).
-- `templates/welcome/` - the cohort onboarding workflow + Join issue form.
-
+The bot credential, the token / secret-propagation model, the dynamic-dropdown mechanics,
+the cohort-website pipeline, and the repo layout now live in
+**[`docs/ADMIN-SETUP.md`](docs/ADMIN-SETUP.md)** - faculty delivering a course don't need them.
