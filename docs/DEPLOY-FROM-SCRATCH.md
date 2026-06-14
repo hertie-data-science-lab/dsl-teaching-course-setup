@@ -1,4 +1,4 @@
-# Deploy a course from scratch - the full set of inputs
+# Deploy a course from scratch
 
 This is the authoritative checklist of **every input** needed to stand up a fully working
 course + cohort. For a ready-to-run worked example
@@ -11,11 +11,12 @@ in `dsl_course/` is the single implementation behind every button.
 
 ```
 COURSE org   (persistent, private)              COHORT org   (per year, private)
-  .github/dsl-course.yml  identity+people+schedule  welcome      Join issue -> onboard
-  materials-f202x   lectures/ + readings/    ──►   classroom-config  students.csv (PRIVATE)
-  assignment-N-f202x  template repos          ──►  materials         released weeks
-  .github  console + buttons                  ──►  <assignment>-<handle>  per-student repos
-                                                   <cohort>.github.io   auto-generated site
+  .github/dsl-course.yml  identity+people+schedule 
+  materials-f202x   (lectures/ + readings/)    
+  assignment-N-f202x  (template repos ──►  <assignment>-<handle> per-student repos     
+  .github  console + buttons                  
+
++ live auto-generated site: <cohort>.github.io
 ```
 
 The course org is the source of truth; the cohort org receives releases of it.
@@ -24,27 +25,27 @@ The course org is the source of truth; the cohort org receives releases of it.
 
 Every part of a course has **one canonical place**. Put your inputs there, run the
 buttons, and the pipeline reads them and generates a full, delivery-ready course +
-website. Nothing about the course is hand-built on the site - it is all *derived* from
-these inputs, so re-running is idempotent and a new cohort is a re-run.
+website. 
 
-| Input | Canonical place | Read by | Becomes on the site / cohort |
+1. `.github/dsl-course.yml` is the **course config contract** (identity + people + schedule);
+2. `materials-fYYYY` repo is the **content contract** (lectures/readings/syllabus by week);
+3. `assignment-*-fYYYY` template repos are the **assignment contract**; 
+4. the cohort `students.csv` is the **roster contract**.
+  
+The pipeline: `Bootstrap → Release materials/assignment → (auto) Sync site` - turns those inputs into the
+running course. _Anything you don't supply is synthesised or skipped, never blocks._
+
+| Element | Input location | Becomes on the site / cohort |
 |-------|-----------------|---------|------------------------------|
-| **Course identity** (name, code) | `.github/dsl-course.yml` → `org_name`, `course_name`, `course_code` | `site` | site title + header |
-| **Semester** | derived from the cohort org's `fYYYY`/`sYYYY` tag | `site` | "Fall 2026" + schedule anchor |
-| **People** (instructors, TAs) | `.github/dsl-course.yml` → `people:` block (`name`, `photo`, `url`, `title`) | `site` | instructor/TA cards (institutional headshots + bio links) |
-| **Schedule** (semester start, due dates, exams) | `.github/dsl-course.yml` → `schedule:` block | `site` | the schedule table (lectures, due dates, exams) |
-| **Lectures** | `materials-fYYYY/lectures/week-N/` (any files) | `release` → `site` | weekly lecture entries linking the released files |
-| **Readings** | `materials-fYYYY/readings/week-N/` (any files) | `release` → `site` | weekly reading links |
-| **Syllabus** | `materials-fYYYY/` root file matching `*syllabus*` | `release --syllabus` | cohort root + syllabus link |
-| **Assignments** | `assignment-N-fYYYY` template repo: `README.md` (brief), `starter.*`, `solution` branch, `.github/workflows/autograde.yml` | `release-assignment` → `site` | assignment briefs on the site + one private `<slug>-<handle>` repo per student |
-| **Roster** | cohort `classroom-config/students.csv` (`student_id, hertie_email, name, section`) | `sync_roster`, `assign`, onboard | enrolment + per-student provisioning |
-
-So `.github/dsl-course.yml` is the **course config contract** (identity + people + schedule);
-the `materials-fYYYY` repo is the **content contract** (lectures/readings/syllabus by week);
-the `assignment-*-fYYYY` template repos are the **assignment contract**; and the cohort
-`students.csv` is the **roster contract**. The pipeline -
-`Bootstrap → Release materials/assignment → (auto) Sync site` - turns those inputs into the
-running course. Anything you don't supply is synthesised or skipped, never blocks.
+| **Course identity** (name, code) | `.github/dsl-course.yml` → `org_name`, `course_name`, `course_code` |  site title + header |
+| **Semester** | derived from the cohort org's `fYYYY`/`sYYYY` tag |  "Fall 2026" + schedule anchor |
+| **People** (instructors, TAs) | `.github/dsl-course.yml` → `people:` block (`name`, `photo`, `url`, `title`) |  instructor/TA cards (institutional headshots + bio links) |
+| **Schedule** (semester start, due dates, exams) | `.github/dsl-course.yml` → `schedule:` block |  the schedule table (lectures, due dates, exams) |
+| **Lectures** | `materials-fYYYY/lectures/week-N/` (any files) |  weekly lecture entries linking the released files |
+| **Readings** | `materials-fYYYY/readings/week-N/` (any files) |  weekly reading links |
+| **Syllabus** | `materials-fYYYY/` root file matching `*syllabus*` |  cohort root + syllabus link |
+| **Assignments** | `assignment-N-fYYYY` template repo: `README.md` (brief), `starter.*`, `solution` branch, `.github/workflows/autograde.yml` | assignment briefs on the site + one private `<slug>-<handle>` repo per student |
+| **Roster** | cohort `classroom-config/students.csv` (`student_id, hertie_email, name, section`) | enrolment + per-student provisioning |
 
 ## The inputs, grouped
 
@@ -58,7 +59,9 @@ running course. Anything you don't supply is synthesised or skipped, never block
 
 Everything below is a button or a file edit.
 
-### B. Course org content (persistent - set once, reused every cohort)
+### B. Course org content (persistent)
+
+TODO SOME OF THIS IS WRONG
 
 | # | Input | Supplied via | Mandatory | Stored as |
 |---|-------|--------------|-----------|-----------|
@@ -113,6 +116,8 @@ workflow does the rest. See [How students are managed](#how-students-are-managed
 
 ## How students are managed
 
+TODO: CHANGE THIS - REGISTRAR HAS JUST EMAIL -> STUDENT HAS TO PROVIDE BOTH EMAIL & GH ID IN JOIN ISSUE (EMAIL IS VERIFIED AND IMMUTABLY JOINED AGAINST THE UNSPOOFABLE GH ID)
+
 Student lifecycle is **two separate stages** - *enrol once, provision per assignment*:
 
 1. **Enrolment (access).** The registrar seeds `students.csv` with `student_id` (+ email,
@@ -131,16 +136,15 @@ Student lifecycle is **two separate stages** - *enrol once, provision per assign
    The faculty override is the **Enroll student** button (type a handle; a blank handle
    reconciles the whole roster). `sync_roster` materialises team membership from the CSV.
 
-2. **Provisioning (per-assignment repos).** **Release assignment** reads the roster and, for
-   each **onboarded** row (non-blank handle), native-`generate`s a private
-   `<assignment>-<handle>` repo from the frozen cohort template and adds the student as
-   collaborator. Not-yet-onboarded rows are skipped; re-running is idempotent.
-
-**Submission** is a plain `git push` to `main` in the student's repo - no CLI, no accept step.
+2. **Provisioning (per-assignment repos).** **Release assignment** for
+   each students the `release assignment` workflow generates a private
+   `<assignment>-<handle>` repo from the assignment template, then adds the student as
+   collaborator.
+   
+**Submission** is a plain `git push` to `main` in the student's repo.
 
 **Removal / rollover:** drop the row from `students.csv` and re-run **Enroll student** with a
-blank handle and `--prune` to reconcile team membership. (Repo archival/erasure on cohort
-rollover is a documented manual runbook - see GDPR items in [ADR 0010].)
+blank handle and `--prune` to reconcile team membership.
 
 Roster columns:
 
@@ -182,6 +186,8 @@ The cohort website schedule is generated, not hand-built. By default dates are
 **synthesised**: semester start = 1 Sep (fall) / 1 Feb (spring) of the cohort's `fYYYY`
 tag; lectures weekly from there; assignments every 14 days; exams at weeks 8 and 15.
 
+TODO CHANGE THIS ^^^
+
 To set **real** dates, edit the optional `schedule:` block in the course
 `.github/dsl-course.yml` and run **Sync site**:
 
@@ -197,9 +203,6 @@ schedule:
     - name: Final Exam
       date: 2026-12-15
 ```
-
-Anything you leave out keeps its synthesised value, so the block is fully optional and
-backward-compatible.
 
 ## Token
 
@@ -219,9 +222,3 @@ One secret, `DSL_BOT_TOKEN`, runs every workflow. It needs, **on both orgs**: re
   wired ([ADR 0010 §2]).
 - **Moodle** roster-in / grade-out is manual CSV until Hertie IT enables Web Services.
 - **Pages are public** on the Free plan; access-controlled once on Campus/Enterprise.
-- GDPR (retention, erasure, DPA, DPO sign-off) must be settled before any live cohort.
-
-[ADR 0008]: https://github.com/hertie-data-science-lab/gh-org-strategy/blob/main/docs/decisions/0008-no-cli-for-faculty.md
-[ADR 0010]: https://github.com/hertie-data-science-lab/gh-org-strategy/blob/main/docs/decisions/0010-classroom50-inverted-org-model.md
-[ADR 0011 §9]: https://github.com/hertie-data-science-lab/gh-org-strategy/blob/main/docs/decisions/0011-realized-faculty-console-workflow.md
-[ADR 0011]: https://github.com/hertie-data-science-lab/gh-org-strategy/blob/main/docs/decisions/0011-realized-faculty-console-workflow.md
