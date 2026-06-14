@@ -639,12 +639,16 @@ _This page is auto-generated; edits will be overwritten on the next refresh._
 
 ## Cohorts
 
-Cohort orgs receiving releases from this course (auto-discovered from the
-`cohort-courses-pages.yml` registry, the same source as the action dropdowns):
+List of cohort orgs registered to receive releases from this course org. _Auto-discovered from the
+`cohort-courses-pages.yml` registry_:
 
 {cohort_lines}
 
 ## Repositories
+
+List of all repositories associated with the course org; a centralised registry and historical
+record of course-related content. _Add new course-related content here, then push to the relevant
+cohort org using the GitHub Actions below_.
 
 | Repo | Visibility | Description |
 | --- | --- | --- |
@@ -652,24 +656,29 @@ Cohort orgs receiving releases from this course (auto-discovered from the
 
 ## Available actions for faculty & admin
 
-All actions live in the [`.github` repo's Actions tab](https://github.com/{org}/.github/actions):
+All actions live in the [`.github` repo's Actions tab](https://github.com/{org}/.github/actions)
+_(automatically bootstrapped from the central
+[dsl-teaching-course-setup repo](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup))_:
 
-- [**Release materials**](https://github.com/{org}/.github/actions/workflows/release-materials.yml) - pick the source materials repo + week, publish `lectures/`+`readings/` into a cohort repo.
-- [**Release assignment**](https://github.com/{org}/.github/actions/workflows/release-assignment.yml) - generate one repo per student from a chosen `assignment-*` template repo.
+### One-time setup actions:
+- [**Bootstrap cohort**](https://github.com/{org}/.github/actions/workflows/bootstrap-cohort.yml) - configure a freshly-created cohort org (sets up scaffold repos), register it with the course org, refresh dropdowns.
+- [**Enroll student**](https://github.com/{org}/.github/actions/workflows/enroll-student.yml) - grant a student access to the cohort org; provision them with student-level permissions.
 - [**New materials repo**](https://github.com/{org}/.github/actions/workflows/new-materials.yml) - scaffold a correctly-structured `course-materials-<year>` repo (week folders + the Release buttons).
 - [**New assignment**](https://github.com/{org}/.github/actions/workflows/new-assignment.yml) - scaffold an `assignment-N-<year>` template repo (starter + autograder on `main`, an empty `solution` branch).
-- [**Enroll student**](https://github.com/{org}/.github/actions/workflows/enroll-student.yml) - grant a student org + `students`-team access.
-- [**Bootstrap cohort**](https://github.com/{org}/.github/actions/workflows/bootstrap-cohort.yml) - configure a pre-created cohort org (welcome + roster + tighten), register it, refresh dropdowns.
-- [**Sync site**](https://github.com/{org}/.github/actions/workflows/sync-site.yml) - regenerate a cohort's website from the org structure (releases do this automatically).
 - [**Refresh actions**](https://github.com/{org}/.github/actions/workflows/refresh-actions.yml) - repopulate the cohort/week/assignment dropdowns, re-equip content repos, and rebuild this index.
 
-Each materials repo *also* carries its own **Release** buttons (run from inside the repo;
-there the `week` is a dropdown of that repo's weeks).
+### Weekly cadence actions:
+- [**Release materials**](https://github.com/{org}/.github/actions/workflows/release-materials.yml) - publish a given week's `lectures/`+`readings/` into a cohort repo.
+- [**Release assignment**](https://github.com/{org}/.github/actions/workflows/release-assignment.yml) - generate one private repo per student from a chosen `assignment-*` template repo.
+- [**Sync site**](https://github.com/{org}/.github/actions/workflows/sync-site.yml) - regenerate a cohort's website from the org structure (releases do this automatically).
+
+NB: alternatively each materials repo *also* carries its own **Release** buttons (run from inside the
+repo; there the `week` is a dropdown of that repo's weeks).
 
 ## How the actions behave
 
 **Release materials** - run it from the materials repo (per-repo `week` dropdown) or from
-the central button (pick the source repo, type the week). It copies the *whole*
+the course org's central `.github` repo (pick the source repo, type the week). It copies the *whole*
 `lectures/week-N/` and `readings/week-N/` folders - **every file** (any number of lectures
 or readings per week) - into the cohort's `materials` repo (private + `students` read),
 nested under `week-N/`. Only the weeks you release appear. `include_syllabus` /
@@ -678,22 +687,14 @@ nested under `week-N/`. Only the weeks you release appear. `include_syllabus` /
 **Release assignment** - two stages: (1) it freezes a cohort-level template repo
 `<assignment>` from your `assignment-*-<year>` template; (2) it generates one private
 `<assignment>-<handle>` repo per onboarded student **from that cohort template**, adding
-each as collaborator. Tick **include_solution** (e.g. after the deadline) to push the
+each as collaborator. After the assignment deadline, rerun with **include_solution** to push the
 template's `solution` branch into every student repo. Solutions stay on the `solution`
-branch precisely so a normal release never leaks them.
+branch so a normal release never leaks them.
 
-**The cohort website** - every cohort has an auto-deployed site `<org>.github.io` (public
-on Free; private on Campus/Enterprise). It is regenerated from this org's structure on
-every release (and via **Sync site**): the schedule lists released weeks + assignment due
-dates + MidTerm/Final exams, lecture entries link the actual released files, assignment
-briefs come from each template's README, and instructor/TA cards come from the
-`instructors` / `teaching-assistants` teams.
+**The cohort website** - every cohort has an auto-deployed site `<org>.github.io`. It is regenerated
+on every release (and via **Sync site**).
 
 ## Repository structure (required)
-
-This whole structure is bootstrapped from the central
-[`dsl-teaching-course-setup`](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup)
-repo (its **Bootstrap Course Org** action), and the buttons above run that same central code.
 
 ```
 {org}/                            <- this COURSE org (persistent)
@@ -711,7 +712,11 @@ repo (its **Bootstrap Course Org** action), and the buttons above run that same 
 `-- <assignment>-<handle>/        one private repo per student
 ```
 
-The actions assume this layout - use **New materials repo** / **New assignment** above to scaffold it correctly.
+This whole structure is bootstrapped from the central
+[`dsl-teaching-course-setup`](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup)
+repo (via its **Bootstrap Course Org** action), and the actions above run that same central code.
+
+The course-level actions assume this layout - use **New materials repo** / **New assignment** above to scaffold correctly.
 
 **Materials repo** (`course-materials-<year>`) - the source for Release materials:
 - `lectures/week-N/` - one folder per week's lecture files;
