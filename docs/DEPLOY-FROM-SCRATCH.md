@@ -36,7 +36,7 @@ The pipeline: `Bootstrap → Release materials/assignment → (auto) Sync site` 
 running course. _Anything you don't supply is synthesised or skipped, never blocks._
 
 | Element | Input location | Becomes on the site / cohort |
-|-------|-----------------|---------|------------------------------|
+|-------|-----------------|------------------------------|
 | **Course identity** (name, code) | `.github/dsl-course.yml` → `org_name`, `course_name`, `course_code` |  site title + header |
 | **Semester** | derived from the cohort org's `fYYYY`/`sYYYY` tag |  "Fall 2026" + schedule anchor |
 | **People** (instructors, TAs) | `.github/dsl-course.yml` → `people:` block (`name`, `photo`, `url`, `title`) |  instructor/TA cards (institutional headshots + bio links) |
