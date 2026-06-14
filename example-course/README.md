@@ -61,7 +61,7 @@ Prereqs: the bot account is an **owner** of both demo orgs, and `DSL_BOT_TOKEN`
 9. **Release materials** for weeks 1-5. **Release assignment** for `assignment-1`.
 10. **Sync site** (releases also trigger it).
 
-## What faculty then see
+## What this stands up
 
 - **The site:** `https://dsl-demo-f2026.github.io` - course name, semester, instructor/TA
   cards, weeks 1-3 lectures linking the released files, two assignment briefs, and a schedule
@@ -71,10 +71,3 @@ Prereqs: the bot account is an **owner** of both demo orgs, and `DSL_BOT_TOKEN`
   the roster (e.g. `220001`), and watch the onboard action enrol you. *(Only IDs whose row
   you can claim with a real GitHub account run fully end-to-end - the dummy rows have blank
   handles until someone joins.)*
-
-## Making it feel real for the live demo
-
-- Onboard **one real account** (yours) against `220001` so there's a live enrolment + a
-  provisioned `assignment-1-<you>` repo to open.
-- Pre-release weeks 1-2; release **week 3 live** so faculty watch the site regenerate.
-- Have the schedule block already set so the schedule looks intentional, not stubbed.
