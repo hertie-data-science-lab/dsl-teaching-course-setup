@@ -2,16 +2,6 @@
 
 Central registry of workflows functionality for course delivery at the Hertie Data Science Lab. 
 
-**UI**: Faculty trigger everything as **GitHub Actions buttons** (also exposed as CLI commands).
-
-**Access**: the day-to-day buttons are gated on **repo permission** - the triggering user
-must have write/maintain/admin on the repo the action runs in. The one exception is the
-central **Bootstrap Course Org** action, which additionally needs **`faculty`/`admin` team
-membership** in `hertie-data-science-lab` (a brand-new org has no repos to gate on yet).
-To let a new faculty member stand up courses, add them to the `faculty` team - that is the
-whole grant; they never hold the token. See
-[`docs/ADMIN-SETUP.md`](docs/ADMIN-SETUP.md#who-can-run-which-action).
-
 ## The model
 
 Two org tiers:
@@ -35,6 +25,8 @@ COHORT org   e.g. Deep-Learning-f2026                  (per-year, private)
 ```
 
 ## Setting up a course (one-time)
+
+Faculty trigger everything as **GitHub Actions**.
 
 > **Full input checklist:** [`docs/DEPLOY-FROM-SCRATCH.md`](docs/DEPLOY-FROM-SCRATCH.md)
 > lists every input needed to go from nothing to a running course + cohort.
@@ -119,6 +111,14 @@ weeks.
 `welcome` repo; `onboard.yml` matches their student ID against the private roster,
 records their authenticated handle + GitHub id, and grants org + `students`-team access.
 No CLI.
+
+_**Access**: the day-to-day buttons are gated on **repo permission** - the triggering user
+must have write/maintain/admin on the repo the action runs in. The one exception is the
+central **Bootstrap Course Org** action, which additionally needs **`faculty`/`admin` team
+membership** in `hertie-data-science-lab` (a brand-new org has no repos to gate on yet).
+To let a new faculty member stand up courses, add them to the `faculty` team - that is the
+whole grant; they never hold the token. See
+[`docs/ADMIN-SETUP.md`](docs/ADMIN-SETUP.md#who-can-run-which-action)._
 
 ## Technical & admin reference
 
