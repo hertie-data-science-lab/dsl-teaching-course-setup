@@ -69,8 +69,9 @@ _Steps 1 & 2 require manual setup - the rest is automatically configured via Git
     - See (ADD LINK HERE) for full details
 
 ### 5. Refresh the course org 
+- In the newly created & bootstrapped course org, run the `Refresh actions` action.
 - So the content repos get their run-from-repo Release buttons, the repo secret is propagated, and every dropdown populates.
-- Use the [`Refresh Course Org Inventory`](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions/workflows/refresh-inventory.yml) action
+- _Alternatively, you can use this repo's [`Refresh Course Org Inventory`](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions/workflows/refresh-inventory.yml) action; this refreshes actions across all DSL-managed repos._
 
 
 ## Adding a cohort (per year)
