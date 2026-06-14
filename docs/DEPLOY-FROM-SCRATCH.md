@@ -88,6 +88,12 @@ workflow does the rest. See [How students are managed](#how-students-are-managed
 
 ## Step-by-step
 
+> The **canonical, comprehensive walkthrough** is the root README's
+> [Setting up a course (one-time)](../README.md#setting-up-a-course-one-time) (+ [Adding a
+> cohort](../README.md#adding-a-cohort-per-year)). The list below is the same flow annotated
+> with the input IDs (A1, B1, ...) from the tables above - follow the README for the steps,
+> use this to see which input each step consumes.
+
 **Course (once):**
 1. Create the course org in the web UI; add the bot as owner. *(A1)*
 2. This repo's Actions tab → **Bootstrap Course Org** (`org`, `org_name`, `course_name`,
