@@ -38,7 +38,8 @@ COHORT org   e.g. Deep-Learning-f2026                  (per-year, private)
 
 _Steps 1 & 2 require manual setup - the rest is automatically configured via GitHub actions buttons._
 
-### 1. Create the empty course org at https://github.com/account/organizations/new 
+### 1. Create the empty course org 
+  - https://github.com/account/organizations/new
   - Pick the Free plan.
   - Every org (course or cohort) is  created once in GitHub's web UI
     
@@ -67,8 +68,10 @@ _Steps 1 & 2 require manual setup - the rest is automatically configured via Git
       - optionally add solutions
     - See (ADD LINK HERE) for full details
 
-### 5. `[Refresh Course Org Inventory`](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions/workflows/refresh-inventory.yml) action
+### 5. Refresh the course org 
 - So the content repos get their run-from-repo Release buttons, the repo secret is propagated, and every dropdown populates.
+- Use the [`Refresh Course Org Inventory`](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions/workflows/refresh-inventory.yml) action
+
 
 ## Adding a cohort (per year)
 
