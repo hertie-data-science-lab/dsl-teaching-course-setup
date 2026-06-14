@@ -1,11 +1,10 @@
 # Deploy a course from scratch - the full set of inputs
 
 This is the authoritative checklist of **every input** needed to stand up a fully working
-course + cohort from nothing, and the order to supply them. It is engine-canonical (it
-describes the buttons in this repo, not any one demo). For a ready-to-run worked example
+course + cohort. For a ready-to-run worked example
 with dummy data, see [`example-course/`](../example-course/README.md).
 
-Everything faculty-facing is a **GitHub Actions button** - no CLI ([ADR 0008]). The Python
+Everything faculty-facing is a **GitHub Actions button** (also exposed as CLI commandds). The Python
 in `dsl_course/` is the single implementation behind every button.
 
 ## What you end up with
@@ -13,8 +12,8 @@ in `dsl_course/` is the single implementation behind every button.
 ```
 COURSE org   (persistent, private)              COHORT org   (per year, private)
   .github/dsl-course.yml  identity+people+schedule  welcome      Join issue -> onboard
-  materials-f2026   lectures/ + readings/    ──►   classroom-config  students.csv (PRIVATE)
-  assignment-N-f2026  template repos          ──►  materials         released weeks
+  materials-f202x   lectures/ + readings/    ──►   classroom-config  students.csv (PRIVATE)
+  assignment-N-f202x  template repos          ──►  materials         released weeks
   .github  console + buttons                  ──►  <assignment>-<handle>  per-student repos
                                                    <cohort>.github.io   auto-generated site
 ```
