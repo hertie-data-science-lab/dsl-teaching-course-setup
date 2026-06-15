@@ -12,8 +12,15 @@ _Auto-generated from GitHub. Discovered via topic `dsl-course-hub` on each org's
 
 | Org | Course | Code |
 | --- | --- | --- |
+| [DSL-Demo-f2025](https://github.com/DSL-Demo-f2025) | DSL-Demo-f2025 | - |
+| [DSL-Demo-f2026](https://github.com/DSL-Demo-f2026) | DSL-Demo-f2026 | - |
+| [DSL-Demo-f2027](https://github.com/DSL-Demo-f2027) | DSL-Demo-f2027 | - |
+| [Hertie-DSL-Demo](https://github.com/Hertie-DSL-Demo) | Deep Learning (Demo) | GRAD-DEMO |
 | [Hertie-School-Deep-Learning-EXAMPLE](https://github.com/Hertie-School-Deep-Learning-EXAMPLE) | Deep Learning | GRAD-E1394 |
 | [Hertie-School-Example-Course](https://github.com/Hertie-School-Example-Course) | Example Course (prototype) | - |
+| [TEST-HERTIE-COHORT-f2026](https://github.com/TEST-HERTIE-COHORT-f2026) | TEST-HERTIE-COHORT-f2026 | - |
+| [TEST-HERTIE-COURSE](https://github.com/TEST-HERTIE-COURSE) | TEST-HERTIE-COURSE | TEST-123 |
+| [THROWAWAY-HERTIE](https://github.com/THROWAWAY-HERTIE) | THROWAWAY-HERTIE-2 | - |
 
 <!-- DSL-AUTOGEN-COURSE-ORGS-END -->
 
