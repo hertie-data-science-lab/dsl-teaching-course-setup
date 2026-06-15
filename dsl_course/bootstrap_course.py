@@ -34,6 +34,7 @@ from .utils import (
     log_ok,
     log_step,
     put_file,
+    repo_exists,
     set_repo_topics,
 )
 
@@ -41,18 +42,31 @@ COURSE_HUB_TOPIC = "dsl-course-hub"
 
 
 def set_org_secret(org: str, secret_name: str, secret_value: str) -> bool:
-    """Create or update an org secret. Requires gh to read the public key first."""
+    """Create or update an org secret, scoped to the public infra repos that need it.
+
+    The token must reach the **public** `.github` (faculty buttons) and, on cohort
+    orgs, `welcome` (onboarding) repos. gh defaults org-secret visibility to
+    `private`, which excludes public repos - so the seeded workflows there run with
+    an empty `secrets.DSL_BOT_TOKEN` and fail with "set the GH_TOKEN environment
+    variable". Scope it explicitly to the infra repos that exist, which also keeps
+    this org-admin credential out of the student / content repos (`visibility=all`
+    would expose it to every workflow in the org)."""
+    infra = [r for r in (".github", "welcome") if repo_exists(org, r)] or [".github"]
     code, out = gh(
         "secret",
         "set",
         secret_name,
         "--org",
         org,
+        "--visibility",
+        "selected",
+        "--repos",
+        ",".join(infra),
         "--body",
         secret_value,
     )
     if code == 0:
-        log_ok(f"org secret set: {secret_name}")
+        log_ok(f"org secret set: {secret_name} (selected: {', '.join(infra)})")
         return True
     log_err(f"failed to set org secret {secret_name}: {out[:200]}")
     return False
