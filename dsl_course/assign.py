@@ -12,6 +12,11 @@ never use a CLI. Idempotent: existing repos are left alone.
     cohort/<slug>-<handle>   (private; student = collaborator)
     where <slug> is the template name minus a trailing -fYYYY / -sYYYY.
 
+With --group it instead makes ONE repo per team, `cohort/<slug>-<team>`, adding every
+member (from classroom-config/teams.csv, keyed on <slug>) as a collaborator - for group
+projects. Grades are never written here; they go to each student's private gradebook repo
+(see dsl_course.grades), so a possibly-public team repo never carries marks.
+
 Usage:
     python3 -m dsl_course.assign \\
         --master-org TEST-HERTIE-COURSE --template assignment-1-f2026 \\
@@ -28,7 +33,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from . import roster
+from . import roster, teams
 from .utils import (
     GIT_ENV,
     add_collaborator,
@@ -139,10 +144,14 @@ def provision_one(
     template: str,
     cohort_org: str,
     repo: str,
-    handle: str,
+    handles: list[str],
     slug: str,
     sol_dir: Path | None = None,
 ) -> str:
+    """Generate one submission repo and add every `handles` member as a collaborator.
+
+    Individual assignments pass a single-element list (a team of one); group assignments
+    pass the whole team, so all members share the one repo."""
     existed = repo_exists(cohort_org, repo)
     if existed:
         log_skip(f"repo {cohort_org}/{repo}")
@@ -165,11 +174,16 @@ def provision_one(
         else:
             log_err("  ! could not push solution")
 
-    if add_collaborator(cohort_org, repo, handle, permission="maintain"):
-        log_ok(f"  + @{handle} (maintain)")
-        return "skipped" if existed else "ok"
-    log_err(f"  ! could not add @{handle} (not a real account?)")
-    return "created-no-collaborator"
+    added = 0
+    for handle in handles:
+        if add_collaborator(cohort_org, repo, handle, permission="maintain"):
+            log_ok(f"  + @{handle} (maintain)")
+            added += 1
+        else:
+            log_err(f"  ! could not add @{handle} (not a real account?)")
+    if added == 0:
+        return "created-no-collaborator"
+    return "skipped" if existed else "ok"
 
 
 def main() -> int:
@@ -193,6 +207,12 @@ def main() -> int:
         action="store_true",
         help="Also push the solution (template's `solution` branch) into each student repo",
     )
+    parser.add_argument(
+        "--group",
+        action="store_true",
+        help="Group assignment: one repo per team (from classroom-config/teams.csv), "
+        "all members as collaborators, instead of one per student.",
+    )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
@@ -208,18 +228,37 @@ def main() -> int:
     onboarded = [s for s in students if s.onboarded]
     skipped = len(students) - len(onboarded)
     slug = assignment_slug(args.template)
+
+    # A provisioning unit is (repo_name, [member handles]). Individual = one per student
+    # (a team of one); group = one per team from teams.csv, keyed on this assignment slug.
+    if args.group:
+        groups = teams.teams_for(teams.load(args.cohort_org), slug)
+        if not groups:
+            log_err(
+                f"no teams for `{slug}` in {args.cohort_org}/classroom-config/teams.csv - "
+                f"students self-select via the welcome 'Join team' issue, or seed the CSV."
+            )
+            return 1
+        units = [
+            (f"{slug}-{team}", members) for team, members in sorted(groups.items())
+        ]
+        what = f"{len(units)} team(s)"
+    else:
+        units = [(f"{slug}-{s.github_handle}", [s.github_handle]) for s in onboarded]
+        what = f"{len(units)} student(s)"
+
     log_step(
         f"Releasing {slug} to {args.cohort_org}: freeze cohort template, then provision "
-        f"{len(onboarded)} student(s){' + solution' if args.solution else ''}"
+        f"{what}{' + solution' if args.solution else ''}"
     )
     if skipped:
         log(f"  ({skipped} not-yet-onboarded row(s) skipped)")
 
     if args.dry_run:
         log(f"    DRY-RUN  cohort template {args.cohort_org}/{slug}")
-        for s in onboarded:
+        for repo, handles in units:
             log(
-                f"    DRY-RUN  {args.cohort_org}/{slug}-{s.github_handle}  <- @{s.github_handle}"
+                f"    DRY-RUN  {args.cohort_org}/{repo}  <- {', '.join('@' + h for h in handles)}"
             )
         return 0
 
@@ -239,17 +278,16 @@ def main() -> int:
             if sol_dir is None:
                 return 1
 
-        # Stage 2: fan out one repo per student FROM the cohort template.
+        # Stage 2: fan out one repo per unit (student, or team) FROM the cohort template.
         results: dict[str, int] = {}
-        for s in onboarded:
-            repo = f"{slug}-{s.github_handle}"
+        for repo, handles in units:
             log_step(repo)
             status = provision_one(
                 args.cohort_org,
                 cohort_template,
                 args.cohort_org,
                 repo,
-                s.github_handle,
+                handles,
                 slug,
                 sol_dir,
             )

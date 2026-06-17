@@ -282,6 +282,10 @@ on:
         description: "Also push the solution (from the template's solution branch) into each student repo"
         type: boolean
         default: false
+      group:
+        description: "Group assignment - one repo per team (from teams.csv), all members as collaborators"
+        type: boolean
+        default: false
       dry_run:
         description: "Preview only - list the repos that WOULD be created, don't create them"
         type: boolean
@@ -297,11 +301,13 @@ jobs:
           COHORT_ORG: ${{{{ inputs.cohort_org }}}}
           TEMPLATE: ${{{{ inputs.assignment }}}}
           INC_SOL: ${{{{ inputs.include_solution }}}}
+          GROUP: ${{{{ inputs.group }}}}
           DRY_RUN: ${{{{ inputs.dry_run }}}}
         run: |
           gh auth setup-git
           args=(--master-org "$MASTER_ORG" --template "$TEMPLATE" --cohort-org "$COHORT_ORG")
           [ "$INC_SOL" = "true" ] && args+=(--solution)
+          [ "$GROUP" = "true" ] && args+=(--group)
           [ "$DRY_RUN" = "true" ] && args+=(--dry-run)
           python3 -m dsl_course.assign "${{args[@]}}"
 """
