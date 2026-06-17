@@ -21,6 +21,7 @@ ALL_RENDERED = {
     "provision": seed.render_provision(["Cohort-f2026"], ["assignment-1-f2026"]),
     "release_code": seed.render_release_code(["Cohort-f2026"], ["materials"]),
     "enroll": seed.render_enroll(["Cohort-f2026"]),
+    "send_codes": seed.render_send_codes(["Cohort-f2026"]),
     "sync_gradebooks": seed.render_sync_gradebooks(["Cohort-f2026"]),
     "render_grades": seed.render_render_grades(["Cohort-f2026"]),
     "distribute_grades": seed.render_distribute_grades(["Cohort-f2026"]),

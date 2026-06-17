@@ -40,7 +40,7 @@ from pathlib import Path
 
 import yaml
 
-from . import roster
+from . import mailer, roster
 from .utils import (
     GIT_ENV,
     add_collaborator,
@@ -306,10 +306,12 @@ def render(cohort_org: str) -> int:
 
 
 def distribute(cohort_org: str, notify: bool = True) -> int:
-    """Fan the merged gradebook/<handle>.yml files out into each private grades-<handle>.
+    """Fan the merged gradebook/<handle>.yml files out into each private grades-<handle>,
+    then (unless silenced) email each student a notification to their university inbox.
 
     Clone classroom-config once and read the files locally (rather than an API GET per
     student); the only per-student call left is the unavoidable write to each repo."""
+    by_handle = {s.github_handle: s for s in roster.load(cohort_org) if s.github_handle}
     with tempfile.TemporaryDirectory() as work:
         wd = Path(work) / "cfg"
         if (
@@ -328,41 +330,47 @@ def distribute(cohort_org: str, notify: bool = True) -> int:
         log_step(f"Distributing {len(files)} gradebook(s) in {cohort_org}")
 
         results: dict[str, int] = {}
+        pushed: list[str] = []
         for f in files:
-            status = _push_gradebook(cohort_org, f.stem, f.read_text(), notify)
+            status = _push_gradebook(cohort_org, f.stem, f.read_text())
             results[status] = results.get(status, 0) + 1
+            if status == "ok":
+                pushed.append(f.stem)
     log_ok(f"Done - {json.dumps(results)}")
+
+    if notify and pushed:
+        _email_updates(cohort_org, pushed, by_handle)
     return 1 if any(k.startswith("failed") for k in results) else 0
 
 
-def _push_gradebook(cohort_org: str, handle: str, content: str, notify: bool) -> str:
-    """Write grades.yml into grades-<handle> and (optionally) open an @-mention issue.
-
-    A missing repo (sync not run) surfaces as a put_file failure -> failed-push."""
+def _push_gradebook(cohort_org: str, handle: str, content: str) -> str:
+    """Write grades.yml into grades-<handle>. A missing repo (sync not run) -> failed-push."""
     repo = f"{GRADEBOOK_PREFIX}{handle}"
     if not put_file(cohort_org, repo, "grades.yml", content.encode(), "grades: update"):
         return "failed-push"
     log_ok(f"+ {repo}/grades.yml")
-    if notify:
-        _notify(cohort_org, repo, handle)
     return "ok"
 
 
-def _notify(cohort_org: str, repo: str, handle: str) -> None:
-    """Open an issue @-mentioning the student so GitHub emails them the update."""
-    code, _ = gh(
-        "api",
-        "--method",
-        "POST",
-        f"repos/{cohort_org}/{repo}/issues",
-        "--field",
-        "title=Your grades have been updated",
-        "--field",
-        f"body=Hi @{handle} - your `grades.yml` has been updated. "
-        f"Open it in this repository to see your latest grades and feedback.",
-    )
-    if code == 0:
-        log_ok(f"  + notified @{handle}")
+def _email_updates(
+    cohort_org: str, handles: list[str], by_handle: dict[str, roster.Student]
+) -> None:
+    """Email each student a 'grades updated' notification to their university inbox,
+    linking to their private gradebook repo (the grade's source of truth)."""
+    messages = []
+    for handle in handles:
+        student = by_handle.get(handle)
+        if not student or not student.hertie_email:
+            continue
+        url = f"https://github.com/{cohort_org}/{GRADEBOOK_PREFIX}{handle}"
+        body = (
+            f"Hello {student.name or 'there'},\n\n"
+            f"Your grades have been updated. View them in your private gradebook:\n"
+            f"  {url}\n"
+        )
+        messages.append((student.hertie_email, "Your grades have been updated", body))
+    if messages:
+        mailer.send_bulk(messages)
 
 
 def main() -> int:

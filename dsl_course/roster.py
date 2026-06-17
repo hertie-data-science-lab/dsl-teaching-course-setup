@@ -21,7 +21,15 @@ from .utils import get_file_content, log_err
 
 CONFIG_REPO = "classroom-config"
 ROSTER_PATH = "students.csv"
-FIELDS = ("student_id", "hertie_email", "name", "github_handle", "github_id", "section")
+FIELDS = (
+    "student_id",
+    "hertie_email",
+    "name",
+    "github_handle",
+    "github_id",
+    "section",
+    "enrol_code",
+)
 
 
 @dataclass
@@ -32,6 +40,9 @@ class Student:
     github_handle: str
     github_id: str
     section: str
+    enrol_code: str = (
+        ""  # random non-PII token the bot generates + emails; pasted to enrol
+    )
 
     @property
     def onboarded(self) -> bool:
@@ -39,11 +50,21 @@ class Student:
 
 
 def parse(text: str) -> list[Student]:
-    """Parse students.csv text into Student rows."""
+    """Parse students.csv text into Student rows (a missing enrol_code column is fine)."""
     rows = []
     for row in csv.DictReader(io.StringIO(text)):
         rows.append(Student(**{f: (row.get(f) or "").strip() for f in FIELDS}))
     return rows
+
+
+def dump(students: list[Student]) -> str:
+    """Serialise rows back to students.csv text (header + one row per student)."""
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow(FIELDS)
+    for s in students:
+        writer.writerow([getattr(s, f) for f in FIELDS])
+    return out.getvalue()
 
 
 def load(cohort_org: str) -> list[Student]:
