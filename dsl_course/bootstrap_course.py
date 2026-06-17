@@ -196,14 +196,14 @@ def create_profile_repo(
         "#\n"
         "# people:\n"
         "#   instructors:\n"
-        "#     - name: \"Prof. Jane Doe\"\n"
-        "#       title: \"Professor of ...\"\n"
-        "#       photo: \"https://.../jane.jpg\"\n"
-        "#       url: \"https://.../profile/jane\"\n"
+        '#     - name: "Prof. Jane Doe"\n'
+        '#       title: "Professor of ..."\n'
+        '#       photo: "https://.../jane.jpg"\n'
+        '#       url: "https://.../profile/jane"\n'
         "#   teaching_assistants:\n"
-        "#     - name: \"A. N. Other\"\n"
-        "#       photo: \"https://.../other.jpg\"\n"
-        "#       url: \"https://.../profile/other\"\n"
+        '#     - name: "A. N. Other"\n'
+        '#       photo: "https://.../other.jpg"\n'
+        '#       url: "https://.../profile/other"\n'
         "\n"
         "# Optional schedule overrides for the cohort website. Edit here (GitHub web UI\n"
         "# is fine - no CLI) then run Sync site. Anything you leave out is synthesised\n"

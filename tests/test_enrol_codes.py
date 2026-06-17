@@ -29,7 +29,9 @@ def test_make_code_shape():
     code = enrol_codes.make_code()
     assert code.startswith("dsl-") and len(code) == 10
     suffix = code[4:]  # the random part (the "dsl-" prefix legitimately contains 'l')
-    assert not (set(suffix) & set("0o1il"))  # ambiguous chars excluded from the random part
+    assert not (
+        set(suffix) & set("0o1il")
+    )  # ambiguous chars excluded from the random part
 
 
 def test_code_message_contains_code_and_targets_university_email():
