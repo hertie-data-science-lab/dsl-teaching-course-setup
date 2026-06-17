@@ -156,9 +156,10 @@ def add_course_admins(org: str, handles: str) -> None:
             "--jq",
             ".state",
         )
-        log_ok(f"  {login}: {out.strip() or 'added'}") if code == 0 else log_err(
-            f"  ! could not add {login}: {out[:120]}"
-        )
+        if code == 0:
+            log_ok(f"  {login}: {out.strip() or 'added'}")
+        else:
+            log_err(f"  ! could not add {login}: {out[:120]}")
 
 
 def create_profile_repo(
