@@ -7,6 +7,30 @@ with dummy data, see [`example-course/`](../example-course/README.md).
 Everything faculty-facing is a **GitHub Actions button** (also exposed as CLI commandds). The Python
 in `dsl_course/` is the single implementation behind every button.
 
+## Deployment checklist
+
+The fast path: tick these off in order. `[required]` must be done to deploy; everything else
+is synthesised or skipped if you leave it. Each item names the **exact place** the input
+lives - the [grouped tables](#the-inputs-grouped) below expand on every one. (Copy this block
+into a tracking issue and tick as you go.)
+
+### Course setup (once)
+
+- [ ] `[required]` Create the **course org** in the GitHub web UI, then add **`hertie-dsl-bot`** as **Owner** (the one manual step - no org-creation API).
+- [ ] `[required]` Run [**Bootstrap Course Org**](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions/workflows/bootstrap-org.yml) from this repo's Actions tab (`org`, `org_name`; optional `course_name`, `course_code`, `admin`). This also sets `DSL_BOT_TOKEN` on the org - you don't set the secret by hand. See [Token](#token).
+- [ ] `[required]` **Materials**: scaffold with **New materials repo**, then fill `course-materials-fYYYY/lectures/week-N/` and `readings/week-N/` with any files. *(optional: a `*syllabus*` file + `README` at the repo root.)*
+- [ ] `[required]` **Assignments** (≥1): scaffold with **New assignment**, then on `main` add the brief (`README.md`) + starter. *(optional: solutions go in a `solution/` folder on a branch named `solution`; an autograder at `.github/workflows/autograde.yml`.)*
+- [ ] *(optional)* **People**: edit the `people:` block in `.github/dsl-course.yml` (instructor/TA cards). If omitted, falls back to GitHub teams + avatars.
+- [ ] *(optional)* **Schedule**: edit the `schedule:` block in `.github/dsl-course.yml` (real dates). If omitted, dates are synthesised.
+- [ ] `[required]` Run **Refresh actions** so every content repo gets its Release buttons, the secret propagates, and all dropdowns populate.
+
+### Cohort setup (per year)
+
+- [ ] `[required]` Create the **cohort org** in the GitHub web UI; add **`hertie-dsl-bot`** as **Owner**.
+- [ ] `[required]` Run **Bootstrap cohort** (`cohort` ticked, `course` = parent course org). Seeds `welcome` + `classroom-config`, scaffolds the site, registers the cohort, propagates the token.
+- [ ] `[required]` **Roster**: edit `classroom-config/students.csv` with registrar data - `student_id, hertie_email, name, section`. Leave `github_handle, github_id` blank; students fill them by onboarding.
+- [ ] `[required]` Run the weekly loop: **Release materials** (per week) and **Release assignment** (per assignment). Students onboard themselves via the **Join** issue in `welcome`; **Enroll student** is the faculty override.
+
 ## What you end up with
 
 ```mermaid
@@ -93,46 +117,6 @@ Everything below is a button or a file edit.
 A student opens a **Join** issue in `welcome` and types their **student ID**. The onboard
 workflow does the rest. See [How students are managed](#how-students-are-managed).
 
-## Step-by-step
-
-> The **canonical, comprehensive walkthrough** is the root README's
-> [Set up the course](../README.md#1-set-up-the-course-once) (+ [Add a
-> cohort](../README.md#2-add-a-cohort-each-year) and [Run the course](../README.md#3-run-the-course-each-week)).
-> The list below is the same flow annotated with the input IDs (A1, B1, ...) from the tables
-> above - follow the README for the steps, use this to see which input each step consumes.
-
-**Course (once):**
-1. Create the course org in the web UI; add the bot as owner. *(A1)*
-2. This repo's Actions tab → **Bootstrap Course Org** (`org`, `org_name`, `course_name`,
-   `course_code`). Sets teams, 2FA, the `.github` profile + **all the buttons**, and
-   propagates `DSL_BOT_TOKEN`. *(A3, B1)*
-3. Edit the **`people:`** block in `.github/dsl-course.yml` (instructors + TAs). *(B2)*
-4. **New materials repo** → fill `lectures/week-N/` + `readings/week-N/` with your files.
-   *(B3, B4)*
-5. **New assignment** (once per assignment) → fill the brief (`README.md`) + starter. *(B5)*
-6. (Optional) edit the **`schedule:`** block in `.github/dsl-course.yml`. *(B6)*
-7. **Refresh actions** so every content repo gets its run-from-repo buttons, the repo
-   secret is propagated, and all dropdowns populate from live state.
-
-**Cohort (per year):**
-8. Create the cohort org in the web UI; add the bot as owner. *(A2)*
-9. Course org → **Bootstrap cohort** (the cohort org name). Seeds `welcome` + roster,
-   tightens permissions, scaffolds the website, registers the cohort. *(C1)*
-10. Replace the starter row in `classroom-config/students.csv` with registrar data. *(C2)*
-
-**Run the course:**
-11. **Release materials** (pick cohort + week) → that week's lectures/readings appear in the
-    cohort `materials` repo and on the site. Repeat weekly ("each week opens up").
-12. **Release assignment** (pick cohort + assignment) → freezes a cohort template, then
-    generates one private `<assignment>-<handle>` repo per onboarded student.
-13. Students onboard themselves via the Join issue; **Enroll student** is the faculty override.
-
-**Optional - public course website (open courseware):**
-14. Course org → **Publish course website** (pick a materials repo; choose readings as
-    `reading-list` or `actual-readings`). The first run scaffolds a public
-    `<course-org>.github.io` and publishes the chosen lectures/readings; re-run to refresh.
-    Opt-in and manual - skip it entirely if you don't want a public site.
-
 ## How students are managed
 
 Student lifecycle is **two separate stages** - *enrol once, provision per assignment*:
@@ -168,7 +152,7 @@ Roster columns:
 | Column | Filled by | Mandatory |
 |--------|-----------|-----------|
 | `student_id` | registrar (seed) | ✓ match key |
-| `hertie_email` | registrar (seed) | ✓ grade-export key; PII → private only |
+| `hertie_email` | registrar (seed) | ✓ reference + future grade export; PII → private only |
 | `name` | registrar (seed) | ✓ |
 | `github_handle` | **onboarding** | blank until the student joins |
 | `github_id` | **onboarding** | blank until the student joins |
