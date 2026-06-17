@@ -1,0 +1,393 @@
+"""dsl-course grades -- private per-student gradebook repos (the single home for grades).
+
+Every grade, individual or group, is delivered into a PRIVATE per-student repo
+`grades-<handle>` (student = read). Team project repos may be public (showcase /
+open-courseware), so grades NEVER touch them: a group result is split into the shared
+team grade (duplicated into each member's gradebook) and that member's private
+adjustment + final mark, all delivered individually.
+
+Three idempotent stages, each a faculty button:
+
+    sync       cohort/grades-<handle>            (private; student = read) per onboarded student
+                     ^
+    render     classroom-config/grades/<assignment>.csv   (faculty's table, was Excel)
+                     |  build per-student YAML
+                     v
+               classroom-config/gradebook/<handle>.yml  -- opened as ONE PR (the preview)
+                     |  distribute (after the PR merges)
+                     v
+               cohort/grades-<handle>/grades.yml + an @-mention issue (GitHub emails them)
+
+`classroom-config` keeps the full grade archive (private source of truth); the PR diff is
+the all-students-at-once preview that the Power Automate flow never gave.
+
+Usage:
+    python3 -m dsl_course.grades sync       --cohort-org Deep-Learning-EXAMPLE-f2026
+    python3 -m dsl_course.grades render     --cohort-org Deep-Learning-EXAMPLE-f2026
+    python3 -m dsl_course.grades distribute --cohort-org Deep-Learning-EXAMPLE-f2026
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import io
+import json
+import sys
+import tempfile
+from dataclasses import dataclass
+from pathlib import Path
+
+import yaml
+
+from . import roster
+from .utils import (
+    GIT_ENV,
+    add_collaborator,
+    create_repo,
+    get_default_branch,
+    get_file_content,
+    gh,
+    git,
+    log,
+    log_err,
+    log_ok,
+    log_skip,
+    log_step,
+    put_file,
+    repo_exists,
+    set_repo_topics,
+)
+
+CONFIG_REPO = roster.CONFIG_REPO  # classroom-config
+GRADES_DIR = "grades"  # faculty-edited source tables, one CSV per assignment
+GRADEBOOK_DIR = "gradebook"  # rendered per-student YAML staged for the preview PR
+GRADEBOOK_PREFIX = "grades-"  # per-student repo: grades-<handle>
+RENDER_BRANCH = "grades-update"
+
+# One assignment CSV row. Individual rows leave the group columns blank; group rows carry
+# the shared team grade plus that member's private adjustment, with `final` authoritative
+# (stored explicitly so faculty own any rounding). Values stay strings - a grade may be a
+# letter, a percentage, or "+4" - we never coerce.
+GRADE_FIELDS = (
+    "github_handle",
+    "team",
+    "team_grade",
+    "adjustment",
+    "final",
+    "comments",
+)
+
+_STARTER_README = (
+    "# Your gradebook\n\n"
+    "This private repository is yours alone. Grades and feedback for each piece of "
+    "assessment appear in `grades.yml` as the course progresses.\n"
+)
+
+
+@dataclass
+class GradeRow:
+    github_handle: str
+    team: str
+    team_grade: str
+    adjustment: str
+    final: str
+    comments: str
+
+
+# --------------------------------------------------------------------------- pure core
+
+
+def parse_grades(text: str) -> list[GradeRow]:
+    """Parse one `grades/<assignment>.csv` into rows (blank/extra columns tolerated)."""
+    rows = []
+    for row in csv.DictReader(io.StringIO(text)):
+        rows.append(GradeRow(**{f: (row.get(f) or "").strip() for f in GRADE_FIELDS}))
+    return rows
+
+
+def gradebook_entry(row: GradeRow) -> dict:
+    """One assignment's entry for a student. Group fields appear only for group rows;
+    empty fields are dropped so an individual assignment reads as just final + comments."""
+    entry: dict[str, str] = {}
+    if row.team:
+        entry["team"] = row.team
+        if row.team_grade:
+            entry["team_grade"] = row.team_grade
+        if row.adjustment:
+            entry["adjustment"] = row.adjustment
+    if row.final:
+        entry["final"] = row.final
+    if row.comments:
+        entry["comments"] = row.comments
+    return entry
+
+
+def build_gradebooks(per_assignment: dict[str, list[GradeRow]]) -> dict[str, dict]:
+    """Pivot {assignment: [rows]} into {handle: {student, assignments: {assignment: ...}}}.
+
+    Deterministic: assignments are folded in sorted order so the rendered YAML (and thus
+    the preview diff) is stable across runs."""
+    books: dict[str, dict] = {}
+    for assignment in sorted(per_assignment):
+        for row in per_assignment[assignment]:
+            if not row.github_handle:
+                continue
+            book = books.setdefault(
+                row.github_handle,
+                {"student": row.github_handle, "assignments": {}},
+            )
+            book["assignments"][assignment] = gradebook_entry(row)
+    return books
+
+
+def render_yaml(book: dict) -> str:
+    """Serialise one student's gradebook to YAML text (insertion order preserved)."""
+    return yaml.safe_dump(book, sort_keys=False, allow_unicode=True)
+
+
+# ---------------------------------------------------------------------- gh/git wiring
+
+
+def load_grade_sources(cohort_org: str) -> dict[str, list[GradeRow]]:
+    """Read every `grades/<assignment>.csv` from the cohort's classroom-config repo."""
+    code, out = gh(
+        "api",
+        f"repos/{cohort_org}/{CONFIG_REPO}/contents/{GRADES_DIR}",
+        "--jq",
+        ".[].name",
+    )
+    if code != 0:
+        log_err(
+            f"no {GRADES_DIR}/ in {cohort_org}/{CONFIG_REPO} - add a grade CSV first "
+            f"(e.g. {GRADES_DIR}/assignment-1.csv)"
+        )
+        return {}
+    per: dict[str, list[GradeRow]] = {}
+    for name in sorted(out.splitlines()):
+        if not name.endswith(".csv"):
+            continue
+        content = get_file_content(cohort_org, CONFIG_REPO, f"{GRADES_DIR}/{name}")
+        if content is not None:
+            per[name[:-4]] = parse_grades(content)
+    return per
+
+
+def provision_one(cohort_org: str, handle: str) -> str:
+    """Ensure a private grades-<handle> repo exists with the student as read collaborator."""
+    repo = f"{GRADEBOOK_PREFIX}{handle}"
+    existed = repo_exists(cohort_org, repo)
+    if existed:
+        log_skip(f"gradebook {cohort_org}/{repo}")
+    else:
+        if not create_repo(
+            cohort_org,
+            repo,
+            private=True,
+            description=f"Private gradebook for @{handle}",
+        ):
+            return "failed-create"
+        put_file(
+            cohort_org, repo, "README.md", _STARTER_README.encode(), "init gradebook"
+        )
+        set_repo_topics(cohort_org, repo, ["gradebook"])
+
+    if add_collaborator(cohort_org, repo, handle, permission="pull"):
+        log_ok(f"  + @{handle} (read)")
+        return "skipped" if existed else "ok"
+    log_err(f"  ! could not add @{handle} (not a real account?)")
+    return "created-no-collaborator"
+
+
+def sync(cohort_org: str, dry_run: bool = False) -> int:
+    """Provision one private gradebook repo per onboarded student. Idempotent."""
+    students = roster.load(cohort_org)
+    if not students:
+        return 1
+    onboarded = [s for s in students if s.onboarded]
+    skipped = len(students) - len(onboarded)
+    log_step(f"Syncing {len(onboarded)} gradebook repo(s) in {cohort_org}")
+    if skipped:
+        log(f"  ({skipped} not-yet-onboarded row(s) skipped)")
+
+    results: dict[str, int] = {}
+    for s in onboarded:
+        if dry_run:
+            log(f"    DRY-RUN  {cohort_org}/{GRADEBOOK_PREFIX}{s.github_handle}")
+            continue
+        status = provision_one(cohort_org, s.github_handle)
+        results[status] = results.get(status, 0) + 1
+    if dry_run:
+        return 0
+    log_ok(f"Done - {json.dumps(results)}")
+    return 1 if any(k.startswith("failed") for k in results) else 0
+
+
+def render(cohort_org: str) -> int:
+    """Build per-student gradebook YAML and open it as ONE preview PR in classroom-config."""
+    per = load_grade_sources(cohort_org)
+    if not per:
+        return 1
+    books = build_gradebooks(per)
+    if not books:
+        log_err("no graded students found across the grade CSVs.")
+        return 1
+    log_step(
+        f"Rendering {len(books)} gradebook(s) from {len(per)} assignment table(s) "
+        f"-> preview PR on {cohort_org}/{CONFIG_REPO}"
+    )
+
+    base = get_default_branch(cohort_org, CONFIG_REPO)
+    with tempfile.TemporaryDirectory() as work:
+        wd = Path(work) / "cfg"
+        if (
+            gh("repo", "clone", f"{cohort_org}/{CONFIG_REPO}", str(wd), "--", "-q")[0]
+            != 0
+        ):
+            log_err(f"could not clone {cohort_org}/{CONFIG_REPO}")
+            return 1
+        git("-C", str(wd), *GIT_ENV, "checkout", "-q", "-B", RENDER_BRANCH, base)
+        gbdir = wd / GRADEBOOK_DIR
+        gbdir.mkdir(exist_ok=True)
+        for handle in sorted(books):
+            (gbdir / f"{handle}.yml").write_text(render_yaml(books[handle]))
+            log_ok(f"+ {GRADEBOOK_DIR}/{handle}.yml")
+
+        git("-C", str(wd), *GIT_ENV, "add", "-A")
+        code, _ = git(
+            "-C",
+            str(wd),
+            *GIT_ENV,
+            "commit",
+            "-q",
+            "--no-verify",
+            "-m",
+            "grades: render gradebooks",
+        )
+        if code != 0:
+            log_ok("nothing new to render (gradebooks already match the source).")
+            return 0
+        if (
+            git("-C", str(wd), *GIT_ENV, "push", "-q", "-f", "origin", RENDER_BRANCH)[0]
+            != 0
+        ):
+            log_err("push failed")
+            return 1
+
+    # Open the preview PR (or reuse the open one on this branch).
+    title = "Grades: review before distribution"
+    body = (
+        f"Rendered {len(books)} gradebook(s) from `{GRADES_DIR}/`.\n\n"
+        f"**This is the preview.** Review every student's grades in the diff below, then "
+        f"merge to distribute to each private `grades-<handle>` repo.\n"
+    )
+    code, out = gh(
+        "pr",
+        "create",
+        "--repo",
+        f"{cohort_org}/{CONFIG_REPO}",
+        "--base",
+        base,
+        "--head",
+        RENDER_BRANCH,
+        "--title",
+        title,
+        "--body",
+        body,
+    )
+    if code == 0:
+        log_ok(f"preview PR opened: {out.strip().splitlines()[-1]}")
+    elif "already exists" in out.lower():
+        log_ok("preview PR already open for this branch (updated).")
+    else:
+        log_err(f"could not open PR: {out[:200]}")
+        return 1
+    return 0
+
+
+def distribute(cohort_org: str, notify: bool = True) -> int:
+    """Fan the merged gradebook/<handle>.yml files out into each private grades-<handle>."""
+    code, out = gh(
+        "api",
+        f"repos/{cohort_org}/{CONFIG_REPO}/contents/{GRADEBOOK_DIR}",
+        "--jq",
+        ".[].name",
+    )
+    if code != 0:
+        log_err(
+            f"no {GRADEBOOK_DIR}/ in {cohort_org}/{CONFIG_REPO} - run `render` first."
+        )
+        return 1
+    handles = [n[:-4] for n in sorted(out.splitlines()) if n.endswith(".yml")]
+    log_step(f"Distributing {len(handles)} gradebook(s) in {cohort_org}")
+
+    results: dict[str, int] = {}
+    for handle in handles:
+        content = get_file_content(
+            cohort_org, CONFIG_REPO, f"{GRADEBOOK_DIR}/{handle}.yml"
+        )
+        if content is None:
+            results["failed-read"] = results.get("failed-read", 0) + 1
+            continue
+        status = _push_gradebook(cohort_org, handle, content, notify)
+        results[status] = results.get(status, 0) + 1
+    log_ok(f"Done - {json.dumps(results)}")
+    return 1 if any(k.startswith("failed") for k in results) else 0
+
+
+def _push_gradebook(cohort_org: str, handle: str, content: str, notify: bool) -> str:
+    """Write grades.yml into grades-<handle> and (optionally) open an @-mention issue."""
+    repo = f"{GRADEBOOK_PREFIX}{handle}"
+    if not repo_exists(cohort_org, repo):
+        log_err(f"  ! {cohort_org}/{repo} missing - run `sync` first")
+        return "failed-missing-repo"
+    if not put_file(cohort_org, repo, "grades.yml", content.encode(), "grades: update"):
+        return "failed-push"
+    log_ok(f"+ {repo}/grades.yml")
+    if notify:
+        _notify(cohort_org, repo, handle)
+    return "ok"
+
+
+def _notify(cohort_org: str, repo: str, handle: str) -> None:
+    """Open an issue @-mentioning the student so GitHub emails them the update."""
+    code, _ = gh(
+        "api",
+        "--method",
+        "POST",
+        f"repos/{cohort_org}/{repo}/issues",
+        "--field",
+        "title=Your grades have been updated",
+        "--field",
+        f"body=Hi @{handle} - your `grades.yml` has been updated. "
+        f"Open it in this repository to see your latest grades and feedback.",
+    )
+    if code == 0:
+        log_ok(f"  + notified @{handle}")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    sub = parser.add_subparsers(dest="action", required=True)
+    for name in ("sync", "render", "distribute"):
+        p = sub.add_parser(name)
+        p.add_argument("--cohort-org", required=True)
+        if name == "sync":
+            p.add_argument("--dry-run", action="store_true")
+        if name == "distribute":
+            p.add_argument(
+                "--no-notify",
+                action="store_true",
+                help="Skip the @-mention notification issue.",
+            )
+    args = parser.parse_args()
+
+    if args.action == "sync":
+        return sync(args.cohort_org, dry_run=args.dry_run)
+    if args.action == "render":
+        return render(args.cohort_org)
+    return distribute(args.cohort_org, notify=not args.no_notify)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

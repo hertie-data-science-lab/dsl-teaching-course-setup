@@ -109,8 +109,18 @@ Everything below is a button or a file edit.
 |---|-------|--------------|-----------|
 | C1 | The empty cohort org name | **Bootstrap cohort** button | yes |
 | C2 | **Roster**: registrar columns of `students.csv` (`student_id, hertie_email, name, section`) | Edit `classroom-config/students.csv` (private) | yes |
+| C3 | **Grades** (optional, when returning marks): one CSV per assignment, `classroom-config/grades/<assignment>.csv` (`github_handle, team, team_grade, adjustment, final, comments`) | Edit the CSV (private), then **Sync gradebooks** → **Render grades** → **Distribute grades** | no |
 
 `github_handle` and `github_id` are **left blank** - students fill them by onboarding (below).
+
+**Grades are private and previewable.** Each student gets one private `grades-<handle>`
+repo (the single home for every mark - team project repos may be public, so grades never
+go there). For an individual assignment, fill just `final` + `comments`; for a group
+project, fill `team`, `team_grade`, and that member's private `adjustment` (`final` is
+authoritative). **Render grades** builds per-student `gradebook/<handle>.yml` and opens one
+PR - *that diff is the preview* - and **Distribute grades** fans the merged files out to
+each private repo. A teammate never sees another member's adjustment: it lives only in
+their own repo.
 
 ### D. Per-student (self-service, no faculty input)
 
