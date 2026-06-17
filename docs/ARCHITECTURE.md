@@ -17,8 +17,9 @@ PAT scopes, how to grant access) see [ADMIN-SETUP.md](ADMIN-SETUP.md).
 ## System overview
 
 Two org tiers plus one central control repo, all operated by a single **bot** identity.
-GitHub has **no org-creation API**, so each org is created by hand and the bot is invited as
-Owner; everything after that is a button.
+GitHub has **no org-creation API**, so each org is created by hand - ideally **while signed in
+as the bot**, which makes the bot Owner immediately with no invite. Everything after that is a
+button.
 
 ```mermaid
 flowchart TB
@@ -226,7 +227,7 @@ account; this is the runbook that replaces the personal-PAT setup.
 ```mermaid
 flowchart TD
   A["1 · Create hertie-dsl-bot<br/>own email + 2FA"] --> B["2 · Mint classic PAT<br/>repo + admin:org + workflow"]
-  B --> C["3 · Invite bot as Owner of each org<br/>(bot accepts)"]
+  B --> C["3 · Bot is Owner of each org<br/>new org: create it AS the bot (no invite)<br/>existing org: invite bot + accept"]
   C --> D["4 · Set DSL_BOT_TOKEN = bot PAT<br/>in the CENTRAL repo (UI)"]
   D --> E["5 · Re-run Bootstrap (+ Refresh) per org<br/>→ propagates the token"]
   E --> F["6 · Verify green + bot-attributed"]
@@ -235,8 +236,11 @@ flowchart TD
 
 **Hard rules** (ordering is not optional):
 
-- **Owner before token.** The bot must be Owner of an org *before* its PAT has admin there -
-  invite + accept (step 3) before propagating (step 5).
+- **Owner before token.** The bot must be Owner of an org *before* its PAT has admin there.
+  For **new** orgs, create them signed in as the bot (Owner instantly, no invite); the
+  invite + accept is only for orgs a **human already created**. Either way, Owner (step 3)
+  before propagating (step 5). GitHub has no API to force-add a member, so a human-created
+  org's bot invite must be accepted once.
 - **Swap central only after a one-org test.** Setting the central secret (step 4) doesn't
   touch existing org secrets - they stay until re-propagated - so it's safe; but prove it on
   one org first.
