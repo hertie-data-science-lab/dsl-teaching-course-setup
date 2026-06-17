@@ -214,7 +214,7 @@ Standing up the bot, and rotating its token.
 ```mermaid
 flowchart TD
   A["1 · Create hertie-dsl-bot<br/>own email + 2FA"] --> B["2 · Mint classic PAT<br/>repo + admin:org + workflow"]
-  B --> C["3 · Invite bot as Owner of each org<br/>(bot accepts once)"]
+  B --> C["3 · Invite bot as Owner of each course/cohort org<br/>+ MEMBER of hertie-data-science-lab (bot accepts)"]
   C --> D["4 · Set DSL_BOT_TOKEN = bot PAT<br/>in the CENTRAL repo (UI)"]
   D --> E["5 · Run Bootstrap (+ Refresh) per org<br/>→ propagates the token"]
   E --> F["6 · Verify green + bot-attributed"]
@@ -229,6 +229,11 @@ PAT expiry so rotation is forced.
 - **Owner before token.** The bot must be Owner of an org *before* its PAT has admin there -
   invite + accept (step 3) before propagating (step 5). GitHub has no API to force-add a
   member, so the bot's invite must be accepted once.
+- **Bot must be a member of the central org.** The central Bootstrap action's `check-team`
+  gate reads `hertie-data-science-lab`'s `faculty`/`admin` teams **under `DSL_BOT_TOKEN`**, so
+  the bot's own account has to be a **member** of `hertie-data-science-lab` to see those
+  (closed) teams - otherwise the gate 404s on the lookup and **denies everyone**. Add the bot
+  as a member of the central org once (it doesn't need to be an owner there).
 - **Swap central only after a one-org test.** Setting the central secret (step 4) doesn't
   touch existing org secrets - they stay until re-propagated - so it's safe; but prove it on
   one org first.
