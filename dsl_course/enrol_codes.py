@@ -22,7 +22,7 @@ import secrets
 import sys
 
 from . import mailer, roster
-from .utils import log, log_ok, log_step, put_file
+from .utils import log_ok, log_step, put_file
 
 # No ambiguous characters (0/O, 1/l/I) so a student can read the code off an email.
 _ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"
@@ -94,9 +94,6 @@ def run(cohort_org: str, dry_run: bool = False) -> int:
         return 0
     messages = [code_message(s, welcome_url) for s in targets]
     sent = mailer.send_bulk(messages, dry_run=dry_run)
-    if dry_run:
-        log("    (dry-run: codes not written, emails not sent)")
-        return 0
     return 0 if sent == len(messages) else 1
 
 

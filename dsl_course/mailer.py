@@ -49,38 +49,30 @@ def smtp_config_from_env() -> SMTPConfig | None:
     )
 
 
-def send_one(cfg: SMTPConfig, to: str, subject: str, body: str) -> bool:
-    """Send one plain-text message over STARTTLS. Returns True on success."""
+def _build(cfg: SMTPConfig, to: str, subject: str, body: str) -> EmailMessage:
     msg = EmailMessage()
     msg["From"] = cfg.from_addr
     msg["To"] = to
     msg["Subject"] = subject
     msg.set_content(body)
-    try:
-        with smtplib.SMTP(cfg.host, cfg.port) as server:
-            server.starttls(context=ssl.create_default_context())
-            server.login(cfg.user, cfg.password)
-            server.send_message(msg)
-        return True
-    except (smtplib.SMTPException, OSError) as exc:
-        log_err(f"send to {to} failed: {exc}")
-        return False
+    return msg
 
 
-def send_bulk(
-    messages: list[Message], dry_run: bool = False, cfg: SMTPConfig | None = None
-) -> int:
-    """Preview (dry_run) or send a batch. Returns the count previewed/sent.
+def send_bulk(messages: list[Message], dry_run: bool = False) -> int:
+    """Preview (dry_run) or send a batch over a SINGLE SMTP session. Returns the count
+    previewed/sent.
 
     dry_run prints every message in full - the all-recipients-at-once preview the Power
-    Automate flow never gave - and sends nothing."""
+    Automate flow never gave - and sends nothing. Otherwise one connect + login is reused
+    for the whole batch (providers throttle repeated logins); a bad recipient is logged
+    and skipped, not fatal."""
     if dry_run:
         for to, subject, body in messages:
             log(f"\n--- to: {to}\n--- subject: {subject}\n{body}")
         log_ok(f"DRY-RUN previewed {len(messages)} message(s) - nothing sent")
         return len(messages)
 
-    cfg = cfg or smtp_config_from_env()
+    cfg = smtp_config_from_env()
     if cfg is None:
         log_err(
             "SMTP not configured (set SMTP_HOST / SMTP_USER / SMTP_PASSWORD) - "
@@ -88,8 +80,17 @@ def send_bulk(
         )
         return 0
     sent = 0
-    for to, subject, body in messages:
-        if send_one(cfg, to, subject, body):
-            log_ok(f"sent -> {to}")
-            sent += 1
+    try:
+        with smtplib.SMTP(cfg.host, cfg.port) as server:
+            server.starttls(context=ssl.create_default_context())
+            server.login(cfg.user, cfg.password)
+            for to, subject, body in messages:
+                try:
+                    server.send_message(_build(cfg, to, subject, body))
+                    log_ok(f"sent -> {to}")
+                    sent += 1
+                except smtplib.SMTPException as exc:
+                    log_err(f"send to {to} failed: {exc}")
+    except (smtplib.SMTPException, OSError) as exc:
+        log_err(f"SMTP connection failed: {exc}")
     return sent
