@@ -10,7 +10,7 @@ website with a **real schedule**. Use it two ways:
 - **Artifact B - self-serve.** A faculty member follows the same steps to stand up *their
   own* course and feel the workflow. Same dataset, same runbook.
 
-The canonical, engine-wide input reference is [`docs/DEPLOY-FROM-SCRATCH.md`](../docs/DEPLOY-FROM-SCRATCH.md).
+The canonical, engine-wide input reference is [`docs/REQUIRED-INPUT-SCHEMA.md`](../docs/REQUIRED-INPUT-SCHEMA.md).
 This file is the demo-specific concretisation of it.
 
 ## The demo orgs
@@ -26,7 +26,7 @@ This file is the demo-specific concretisation of it.
 example-course/
   course-org/
     dsl-course.yml                  # course identity + a FILLED schedule block (real dates)
-    materials-f2026/
+    course-materials-f2026/
       lectures/week-1..3/           # 3 weeks of placeholder lecture files
       readings/week-1..3/           # 3 weeks of placeholder readings
       syllabus.md
@@ -39,7 +39,7 @@ example-course/
 ## Deploy it (≈20 min)
 
 Prereqs: the bot account is an **owner** of both demo orgs, and `DSL_BOT_TOKEN`
-(`repo` + `admin:org` + `workflow`) is available. See [the token section](../docs/DEPLOY-FROM-SCRATCH.md#token).
+(`repo` + `admin:org` + `workflow`) is available. See [the token section](../docs/REQUIRED-INPUT-SCHEMA.md#token).
 
 1. **Create** `Hertie-DSL-Demo` and `DSL-Demo-f2026` in the GitHub web UI; add the bot as
    owner of each. *(The only manual step - there is no org-creation API.)*
@@ -50,7 +50,7 @@ Prereqs: the bot account is an **owner** of both demo orgs, and `DSL_BOT_TOKEN`
    `Hertie-DSL-Demo/.github/dsl-course.yml` (web editor is fine). It declares the **people**
    (instructor + TA cards, with headshots + bio links) and the **schedule** (real due/exam
    dates) - so the site shows intended cards + dates, not GitHub avatars or synthesised dates.
-4. **New materials repo** (`tag=f2026`), then push the contents of `course-org/materials-f2026/`
+4. **New materials repo** (`tag=f2026`), then push the contents of `course-org/course-materials-f2026/`
    into it (lectures/readings/syllabus).
 5. **New assignment** twice (`number=1` then `2`, `tag=f2026`), then push each
    `course-org/assignment-N-f2026/` (README brief + `starter.py`) into the matching template.

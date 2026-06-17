@@ -1,7 +1,7 @@
-# Deploy a course from scratch
+# Required input schema
 
 This is the authoritative checklist of **every input** needed to stand up a fully working
-course + cohort. For a ready-to-run worked example
+course + cohort from scratch. For a ready-to-run worked example
 with dummy data, see [`example-course/`](../example-course/README.md).
 
 Everything faculty-facing is a **GitHub Actions button** (also exposed as CLI commandds). The Python
@@ -9,14 +9,23 @@ in `dsl_course/` is the single implementation behind every button.
 
 ## What you end up with
 
-```
-COURSE org   (persistent, private)              COHORT org   (per year, private)
-  .github/dsl-course.yml  identity+people+schedule 
-  materials-f202x   (lectures/ + readings/)    
-  assignment-N-f202x  (template repos ──►  <assignment>-<handle> per-student repos     
-  .github  console + buttons                  
+```mermaid
+flowchart LR
+  subgraph COURSE["COURSE org (persistent, private)"]
+    cfg[".github/dsl-course.yml<br/>identity + people + schedule"]
+    mat["course-materials-f202x<br/>lectures/ + readings/"]
+    tmpl["assignment-N-f202x<br/>template repos"]
+    console[".github<br/>console + buttons"]
+  end
 
-+ live auto-generated site: <cohort>.github.io
+  subgraph COHORT["COHORT org (per year, private)"]
+    repos["&lt;assignment&gt;-&lt;handle&gt;<br/>per-student repos"]
+    site["live auto-generated site<br/>&lt;cohort&gt;.github.io"]
+  end
+
+  COURSE -->|release| COHORT
+  tmpl -->|instantiate per student| repos
+  mat --> site
 ```
 
 The course org is the source of truth; the cohort org receives releases of it.
@@ -28,7 +37,7 @@ buttons, and the pipeline reads them and generates a full, delivery-ready course
 website. 
 
 1. `.github/dsl-course.yml` is the **course config contract** (identity + people + schedule);
-2. `materials-fYYYY` repo is the **content contract** (lectures/readings/syllabus by week);
+2. `course-materials-fYYYY` repo is the **content contract** (lectures/readings/syllabus by week);
 3. `assignment-*-fYYYY` template repos are the **assignment contract**; 
 4. the cohort `students.csv` is the **roster contract**.
   
@@ -41,9 +50,9 @@ running course. _Anything you don't supply is synthesised or skipped, never bloc
 | **Semester** | derived from the cohort org's `fYYYY`/`sYYYY` tag |  "Fall 2026" + schedule anchor |
 | **People** (instructors, TAs) | `.github/dsl-course.yml` → `people:` block (`name`, `photo`, `url`, `title`) |  instructor/TA cards (institutional headshots + bio links) |
 | **Schedule** (semester start, due dates, exams) | `.github/dsl-course.yml` → `schedule:` block |  the schedule table (lectures, due dates, exams) |
-| **Lectures** | `materials-fYYYY/lectures/week-N/` (any files) |  weekly lecture entries linking the released files |
-| **Readings** | `materials-fYYYY/readings/week-N/` (any files) |  weekly reading links |
-| **Syllabus** | `materials-fYYYY/` root file matching `*syllabus*` |  cohort root + syllabus link |
+| **Lectures** | `course-materials-fYYYY/lectures/week-N/` (any files) |  weekly lecture entries linking the released files |
+| **Readings** | `course-materials-fYYYY/readings/week-N/` (any files) |  weekly reading links |
+| **Syllabus** | `course-materials-fYYYY/` root file matching `*syllabus*` |  cohort root + syllabus link |
 | **Assignments** | `assignment-N-fYYYY` template repo: `README.md` (brief), `starter.*`, `solution` branch, `.github/workflows/autograde.yml` | assignment briefs on the site + one private `<slug>-<handle>` repo per student |
 | **Roster** | cohort `classroom-config/students.csv` (`student_id, hertie_email, name, section`) | enrolment + per-student provisioning |
 
@@ -61,16 +70,14 @@ Everything below is a button or a file edit.
 
 ### B. Course org content (persistent)
 
-TODO SOME OF THIS IS WRONG
-
 | # | Input | Supplied via | Mandatory | Stored as |
 |---|-------|--------------|-----------|-----------|
 | B1 | Course identity: `org`, `org_name`, `course_name`, `course_code` | **Bootstrap Course Org** button inputs | org + org_name | `.github/dsl-course.yml` |
 | B2 | **People** (instructors + TAs: name, photo, bio link, title) | Edit the `people:` block in `.github/dsl-course.yml` | for the site cards | declared input → cards carry institutional headshots + bio links. *(If omitted, falls back to the `instructors`/`teaching-assistants` GitHub teams → GitHub avatars.)* |
-| B4 | **Materials**: a `materials-fYYYY` repo with `lectures/week-N/` and `readings/week-N/` folders | **New materials repo** button scaffolds it; you add files | yes | course org repo |
-| B5 | Syllabus / root README (optional) | Files at the materials-repo root | optional | copied to the cohort on release if toggled on |
-| B6 | **Assignments**: one `assignment-N-fYYYY` **template** repo each (starter + autograder on `main`, empty `solution` branch) | **New assignment** button scaffolds it; you add the brief + starter | yes | course org template repos (`is_template`) |
-| B7 | **Schedule dates** (assignment due dates, exam dates, real semester start) | Edit the `schedule:` block in `.github/dsl-course.yml` | optional (synthesised if blank) | see [Schedule](#the-schedule) |
+| B3 | **Materials**: a `course-materials-fYYYY` repo with `lectures/week-N/` and `readings/week-N/` folders | **New materials repo** button scaffolds it; you add files | yes | course org repo |
+| B4 | Syllabus / root README (optional) | Files at the materials-repo root | optional | copied to the cohort on release if toggled on |
+| B5 | **Assignments**: one `assignment-N-fYYYY` **template** repo each (starter + autograder on `main`, empty `solution` branch) | **New assignment** button scaffolds it; you add the brief + starter | yes | course org template repos (`is_template`) |
+| B6 | **Schedule dates** (assignment due dates, exam dates, real semester start) | Edit the `schedule:` block in `.github/dsl-course.yml` | optional (synthesised if blank) | see [Schedule](#the-schedule) |
 
 ### C. Per-cohort (each year)
 
@@ -89,10 +96,10 @@ workflow does the rest. See [How students are managed](#how-students-are-managed
 ## Step-by-step
 
 > The **canonical, comprehensive walkthrough** is the root README's
-> [Setting up a course (one-time)](../README.md#setting-up-a-course-one-time) (+ [Adding a
-> cohort](../README.md#adding-a-cohort-per-year)). The list below is the same flow annotated
-> with the input IDs (A1, B1, ...) from the tables above - follow the README for the steps,
-> use this to see which input each step consumes.
+> [Set up the course](../README.md#1-set-up-the-course-once) (+ [Add a
+> cohort](../README.md#2-add-a-cohort-each-year) and [Run the course](../README.md#3-run-the-course-each-week)).
+> The list below is the same flow annotated with the input IDs (A1, B1, ...) from the tables
+> above - follow the README for the steps, use this to see which input each step consumes.
 
 **Course (once):**
 1. Create the course org in the web UI; add the bot as owner. *(A1)*
@@ -101,9 +108,9 @@ workflow does the rest. See [How students are managed](#how-students-are-managed
    propagates `DSL_BOT_TOKEN`. *(A3, B1)*
 3. Edit the **`people:`** block in `.github/dsl-course.yml` (instructors + TAs). *(B2)*
 4. **New materials repo** → fill `lectures/week-N/` + `readings/week-N/` with your files.
-   *(B4, B5)*
-5. **New assignment** (once per assignment) → fill the brief (`README.md`) + starter. *(B6)*
-6. (Optional) edit the **`schedule:`** block in `.github/dsl-course.yml`. *(B7)*
+   *(B3, B4)*
+5. **New assignment** (once per assignment) → fill the brief (`README.md`) + starter. *(B5)*
+6. (Optional) edit the **`schedule:`** block in `.github/dsl-course.yml`. *(B6)*
 7. **Refresh actions** so every content repo gets its run-from-repo buttons, the repo
    secret is propagated, and all dropdowns populate from live state.
 
@@ -127,8 +134,6 @@ workflow does the rest. See [How students are managed](#how-students-are-managed
     Opt-in and manual - skip it entirely if you don't want a public site.
 
 ## How students are managed
-
-TODO: CHANGE THIS - REGISTRAR HAS JUST EMAIL -> STUDENT HAS TO PROVIDE BOTH EMAIL & GH ID IN JOIN ISSUE (EMAIL IS VERIFIED AND IMMUTABLY JOINED AGAINST THE UNSPOOFABLE GH ID)
 
 Student lifecycle is **two separate stages** - *enrol once, provision per assignment*:
 
@@ -162,12 +167,12 @@ Roster columns:
 
 | Column | Filled by | Mandatory |
 |--------|-----------|-----------|
-| `student_id` | registrar (seed) | ✅ match key |
-| `hertie_email` | registrar (seed) | ✅ grade-export key; PII → private only |
-| `name` | registrar (seed) | ✅ |
+| `student_id` | registrar (seed) | ✓ match key |
+| `hertie_email` | registrar (seed) | ✓ grade-export key; PII → private only |
+| `name` | registrar (seed) | ✓ |
 | `github_handle` | **onboarding** | blank until the student joins |
 | `github_id` | **onboarding** | blank until the student joins |
-| `section` | registrar (seed) | ✅ |
+| `section` | registrar (seed) | ✓ |
 
 ## People
 
@@ -197,8 +202,6 @@ If there is no `people:` block, the site falls back to the GitHub `instructors` 
 The cohort website schedule is generated, not hand-built. By default dates are
 **synthesised**: semester start = 1 Sep (fall) / 1 Feb (spring) of the cohort's `fYYYY`
 tag; lectures weekly from there; assignments every 14 days; exams at weeks 8 and 15.
-
-TODO CHANGE THIS ^^^
 
 To set **real** dates, edit the optional `schedule:` block in the course
 `.github/dsl-course.yml` and run **Sync site**:
