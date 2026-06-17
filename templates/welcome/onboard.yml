@@ -1,10 +1,16 @@
 name: Onboard student
 
 # Seed this into a cohort's public `welcome` repo as
-# .github/workflows/onboard.yml. Students open a "Join" issue here; the issue
-# AUTHOR is the authenticated GitHub handle (unspoofable). We match the typed
-# student ID against the PRIVATE classroom-config/students.csv, reject non-enrolees,
-# record the handle + immutable GitHub id, then grant org + students-team access.
+# .github/workflows/onboard.yml. Students open a "Join" issue here; the issue AUTHOR is
+# the authenticated GitHub handle (unspoofable). We match the typed UNIVERSITY EMAIL
+# against the PRIVATE classroom-config/students.csv, reject non-enrolees, record the
+# handle + immutable GitHub id (building the email <-> GH-id mapping), then grant org +
+# students-team access.
+#
+# Privacy: welcome is public, so the email lands in the issue body. We REDACT it from the
+# visible issue as soon as we've read it. (GitHub keeps edit history on public repos, so
+# this minimises - not eliminates - exposure; the raw email also appears only in the
+# private Actions log.)
 #
 # Runs under secrets.DSL_BOT_TOKEN, which needs, on the cohort org: Contents R/W on
 # classroom-config, Members R/W (org invite + team), Issues R/W on welcome.
@@ -22,10 +28,10 @@ permissions:
 
 jobs:
   onboard:
-    if: startsWith(github.event.issue.title, 'Join')
+    if: startsWith(github.event.issue.title, 'Join') && !startsWith(github.event.issue.title, 'Join team')
     runs-on: ubuntu-latest
     steps:
-      - name: Match roster, capture handle, grant access
+      - name: Match roster on email, redact, grant access
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.DSL_BOT_TOKEN || github.token }}
@@ -44,18 +50,25 @@ jobs:
               core.setFailed(msg.replace(/\*\*/g, ''));
             };
 
+            // Read the university email from the issue form (first email-shaped token).
+            const emailMatch = (issue.body || '').match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/);
+            const email = emailMatch && emailMatch[0];
+
+            // Redact it from the public issue immediately - before any matching/branching.
+            if (email) {
+              const redacted = issue.body.split(email).join('[email redacted]');
+              await github.rest.issues.update({
+                owner: org, repo: context.repo.repo, issue_number: issue.number, body: redacted });
+            }
+
             if (!process.env.HAS_BOT) {
               return fail(
                 `Thanks @${handle} - enrolment is **not yet armed**: the \`DSL_BOT_TOKEN\` secret is unset, ` +
                 `so I can't read the private roster or invite you. A maintainer will action this.`,
                 'needs-review');
             }
-
-            // Parse the student_id the issue form collected (alphanumeric IDs allowed).
-            const m = (issue.body || '').match(/Student ID\s*[\r\n]+\s*([A-Za-z0-9][\w-]*)/i);
-            const studentId = m && m[1];
-            if (!studentId) return fail(
-              `Thanks @${handle} - I couldn't read a **Student ID** from the form. Please edit the issue and add it.`,
+            if (!email) return fail(
+              `Thanks @${handle} - I couldn't read a **university email** from the form. Please edit the issue and add it.`,
               'needs-review');
 
             // Read the PRIVATE roster.
@@ -65,14 +78,14 @@ jobs:
             const header = lines[0];
             const rows = lines.slice(1).map(l => l.split(','));   // [student_id,email,name,handle,id,section]
 
-            // Match the authenticated handle to a registrar-seeded row - reject non-enrolees.
-            const row = rows.find(r => r[0] === studentId);
+            // Match the typed email to a registrar-seeded row - reject non-enrolees.
+            const row = rows.find(r => (r[1] || '').trim().toLowerCase() === email.toLowerCase());
             if (!row) return fail(
-              `Thanks @${handle} - student ID **${studentId}** isn't on the enrolment roster. ` +
+              `Thanks @${handle} - that email isn't on the enrolment list. ` +
               `If you believe you're enrolled, contact the teaching team.`,
               'needs-review');
             if (row[3] && row[3].toLowerCase() !== handle.toLowerCase()) return fail(
-              `Student ID **${studentId}** is already linked to a different GitHub account. ` +
+              `That email is already linked to a different GitHub account. ` +
               `Contact the teaching team to resolve this.`,
               'needs-review');
 
@@ -83,7 +96,7 @@ jobs:
               const body = [header, ...rows.map(r => r.join(','))].join('\n') + '\n';
               await github.rest.repos.createOrUpdateFileContents({
                 owner: org, repo: CONFIG, path: FILE, sha,
-                message: `roster: link ${studentId} -> @${handle} (id ${userId})`,
+                message: `roster: link @${handle} (id ${userId})`,
                 content: Buffer.from(body, 'utf8').toString('base64'),
               });
             }
@@ -93,13 +106,13 @@ jobs:
             await github.rest.teams.addOrUpdateMembershipForUserInOrg({
               org, team_slug: 'students', username: handle, role: 'member' });
 
-            // Confirm.
+            // Confirm (never echo the email back).
             await github.rest.issues.createComment({
               owner: org, repo: context.repo.repo, issue_number: issue.number, body: [
-                `Welcome **@${handle}** 👋 - you're matched to the roster.`,
+                `Welcome **@${handle}** 👋 - you're matched to the enrolment list.`,
                 ``,
                 `- **⚠️ Check your email and accept the invitation to the \`${org}\` org** - until you accept, you can't see anything here.`,
-                `- Your handle + GitHub id are recorded (student ID ${studentId}); you've been added to the **students** team (unlocks released materials once you've accepted).`,
+                `- Your handle + GitHub id are recorded; you've been added to the **students** team (unlocks released materials once you've accepted).`,
                 `- Your assignment repos appear here once the teaching team provisions each assignment.`,
               ].join('\n') });
             await github.rest.issues.addLabels({

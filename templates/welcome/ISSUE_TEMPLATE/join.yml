@@ -7,14 +7,14 @@ body:
     attributes:
       value: |
         Your **GitHub handle is captured automatically** - you are the issue author, so it is authenticated and cannot be faked.
-        Enter your **student ID** so we can match you to the enrolment roster.
-        ⚠️ **Do not post your email or other personal data here** - this is a public repo. Your email is already on the private roster.
+        Enter your **university email** so we can match you to the enrolment list.
+        🔒 For privacy, the bot **redacts your email from this issue** as soon as it has matched you (this is a public repo, so don't add any other personal data).
   - type: input
-    id: student_id
+    id: email
     attributes:
-      label: Student ID
-      description: Used only to match you to the registrar-seeded roster.
-      placeholder: "e.g. 12345"
+      label: University email
+      description: Used only to match you to the enrolment list; redacted right after.
+      placeholder: "e.g. a.lovelace@students.hertie-school.org"
     validations:
       required: true
   - type: checkboxes
