@@ -79,6 +79,16 @@ _RUN_PREAMBLE = f"""    needs: check-team
 """
 
 
+# SMTP secrets, wired into the env of the buttons that send email (enrolment codes, grade
+# notifications). A plain string (not the f-string body) so the GitHub `${{ }}` is literal.
+_SMTP_ENV = """\
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SMTP_FROM: ${{ secrets.SMTP_FROM }}"""
+
+
 def _choice(options: list[str]) -> str:
     opts = options or ["(none-yet)"]
     return "\n".join(f"          - {o}" for o in opts)
@@ -422,15 +432,15 @@ def render_distribute_grades(cohort_orgs: list[str]) -> str:
     return f"""name: Distribute grades
 
 # Run AFTER merging the Render grades preview PR. Copies each merged gradebook/<handle>.yml
-# into that student's private grades-<handle> repo and (unless silenced) opens an
-# @-mention issue so GitHub emails them.
+# into that student's private grades-<handle> repo and (unless silenced) emails them a
+# notification to their university inbox. Needs the SMTP_* secrets for the email.
 
 on:
   workflow_dispatch:
     inputs:
 {_cohort_dropdown(cohort_orgs)}
       silent:
-        description: "Skip the @-mention notification issue"
+        description: "Skip the email notification (just push the grades)"
         type: boolean
         default: false
 
@@ -442,10 +452,45 @@ jobs:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
           COHORT_ORG: ${{{{ inputs.cohort_org }}}}
           SILENT: ${{{{ inputs.silent }}}}
+{_SMTP_ENV}
         run: |
           args=(--cohort-org "$COHORT_ORG")
           [ "$SILENT" = "true" ] && args+=(--no-notify)
           python3 -m dsl_course.grades distribute "${{args[@]}}"
+"""
+
+
+def render_send_codes(cohort_orgs: list[str]) -> str:
+    """Generate a non-PII enrolment code per student and email each their code over SMTP."""
+    return f"""name: Send enrolment codes
+
+# Generates a random enrolment code per student (into classroom-config/students.csv) and
+# emails each not-yet-onboarded student their code to their university inbox. Students paste
+# the code into the welcome Join issue - no personal data in the public repo. dry_run
+# previews the codes + emails without writing or sending. Needs the SMTP_* secrets.
+
+on:
+  workflow_dispatch:
+    inputs:
+{_cohort_dropdown(cohort_orgs)}
+      dry_run:
+        description: "Preview the codes + emails - write nothing, send nothing"
+        type: boolean
+        default: true
+
+jobs:
+{_CHECK_TEAM}
+  send-codes:
+{_RUN_PREAMBLE}      - name: Send enrolment codes
+        env:
+          GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
+          COHORT_ORG: ${{{{ inputs.cohort_org }}}}
+          DRY_RUN: ${{{{ inputs.dry_run }}}}
+{_SMTP_ENV}
+        run: |
+          args=(--cohort-org "$COHORT_ORG")
+          [ "$DRY_RUN" = "true" ] && args+=(--dry-run)
+          python3 -m dsl_course.enrol_codes "${{args[@]}}"
 """
 
 
@@ -913,6 +958,7 @@ _(automatically bootstrapped from the central
 
 ### One-time setup actions:
 - [**Bootstrap cohort**](https://github.com/{org}/.github/actions/workflows/bootstrap-cohort.yml) - configure a freshly-created cohort org (sets up scaffold repos), register it with the course org, refresh dropdowns.
+- [**Send enrolment codes**](https://github.com/{org}/.github/actions/workflows/send-codes.yml) - generate a random non-PII enrolment code per student and email each their code (to their university inbox). Students paste the code into the welcome Join issue - no personal data in the public repo. `dry_run` previews codes + emails. Needs the `SMTP_*` secrets.
 - [**Enroll student**](https://github.com/{org}/.github/actions/workflows/enroll-student.yml) - grant a student access to the cohort org; provision them with student-level permissions.
 - [**New materials repo**](https://github.com/{org}/.github/actions/workflows/new-materials.yml) - scaffold a correctly-structured `course-materials-<year>` repo (week folders + the Release buttons).
 - [**New assignment**](https://github.com/{org}/.github/actions/workflows/new-assignment.yml) - scaffold an `assignment-N-<year>` template repo (starter + autograder on `main`, an empty `solution` branch).
@@ -1051,6 +1097,7 @@ def seed_github_workflows(course_org: str) -> None:
         ".github/workflows/sync-site.yml": render_sync_site(cohorts),
         ".github/workflows/publish-site.yml": render_publish_site(source_repos),
         ".github/workflows/enroll-student.yml": render_enroll(cohorts),
+        ".github/workflows/send-codes.yml": render_send_codes(cohorts),
         ".github/workflows/sync-gradebooks.yml": render_sync_gradebooks(cohorts),
         ".github/workflows/render-grades.yml": render_render_grades(cohorts),
         ".github/workflows/distribute-grades.yml": render_distribute_grades(cohorts),

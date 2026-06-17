@@ -8,7 +8,7 @@ body:
       value: |
         Your **GitHub handle is captured automatically** - you are the issue author, so it is authenticated and cannot be faked.
         To **form a new team**, pick a team name nobody is using yet. To **join an existing team**, use its exact name.
-        ⚠️ **Do not post your email or other personal data here** - this is a public repo.
+        **Do not post your email or other personal data here** - this is a public repo.
   - type: input
     id: assignment
     attributes:
