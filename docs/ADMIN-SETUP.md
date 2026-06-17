@@ -36,18 +36,32 @@ org, and its token must carry:
 
 ### Who can run which action
 
-Two gates, by action type - both intentional:
+Two **separate** populations - keep them distinct:
 
-- **Day-to-day buttons** (Release materials/assignment, New materials/assignment, Enroll,
-  Bootstrap cohort, Sync site, Refresh actions) gate on **repo permission**: the triggering
-  user needs `write`/`maintain`/`admin` on the repo the action runs in
-  (`seed.py` `_CHECK_TEAM`). Triggering a `workflow_dispatch` already requires write, so
-  repo permission is the gate; students never have it.
-- **Bootstrap Course Org** (the central, cross-org action that provisions a brand-new org)
-  additionally requires **`faculty`/`admin` team membership** in `hertie-data-science-lab`
-  (`bootstrap-org.yml` `check-team`) - at bootstrap time the new org has no repos to gate
-  on yet. **To onboard a new faculty member, add them to the `faculty` team**; that is the
-  whole grant - they never touch the token.
+- **Who may provision orgs** (run the central **Bootstrap Course Org**): members of the
+  **`faculty`/`admin`** teams in **`hertie-data-science-lab`** (`bootstrap-org.yml`
+  `check-team`). This is a DSL-wide authority - it gates *creating/configuring* any course
+  org, and nothing else. It does **not** grant access to any course's buttons.
+- **Who may run a specific course's buttons** (Release materials/assignment, New
+  materials/assignment, Enroll, Bootstrap cohort, Sync site, Refresh actions): members of
+  **that course org's own** `instructors` (write) or `course-admin` (admin) team. The
+  day-to-day buttons gate on **repo permission** on the repo they run in
+  (`seed.py` `_CHECK_TEAM`), and bootstrap grants those two teams write/admin on `.github`
+  (`grant_button_access`). GitHub only shows the "Run workflow" button to write+ users, so
+  without that grant only the org owner can run anything.
+
+**Access is per-course - deliberately.** Central `hertie-data-science-lab` faculty are
+*not* mirrored into course orgs (no one is added to a course they don't teach; teams are
+org-scoped, so cross-org grants aren't possible anyway). To give someone a course's
+buttons:
+
+- at bootstrap, pass the **`admin`** input (course admin handle(s)) → added to
+  `course-admin`; or
+- anytime, add the person to that course org's **`instructors`** team (write) via the org's
+  Teams page.
+
+Either way they accept a one-time org invite (membership shows `pending` until then), after
+which the buttons appear in their Actions tab. Students never get write, so never see them.
 
 ## Token
 
