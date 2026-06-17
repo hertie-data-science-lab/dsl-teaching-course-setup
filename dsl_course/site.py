@@ -525,9 +525,8 @@ def sync_public_site(
         if scaffold.scaffold_site(course_org) != 0:
             return 1
 
-    from . import (
-        release,
-    )  # _week_dir padding tolerance (avoid an import cycle at module load)
+    # Local import: _week_dir padding tolerance, without a module-load import cycle.
+    from . import release
 
     weeks = seed.discover_weeks(course_org, source_repo)
     log_step(
@@ -539,8 +538,10 @@ def sync_public_site(
     meta = yaml.safe_load(meta_raw) if meta_raw else {}
     if not isinstance(meta, dict):
         meta = {}
-    sched = meta.get("schedule") if isinstance(meta.get("schedule"), dict) else {}
-    start = _coerce_date(sched.get("semester_start")) or date(2025, 1, 1)
+    # Only the semester_start matters here (a course site has no per-cohort schedule);
+    # reuse _schedule's parsing rather than re-deriving it. Neutral fallback - the site
+    # spans years, so the date only orders the week entries.
+    start = _schedule(meta)[0] or date(2025, 1, 1)
 
     with tempfile.TemporaryDirectory() as work:
         src, site_wd = Path(work) / "src", Path(work) / "site"
