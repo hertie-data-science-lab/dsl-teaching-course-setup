@@ -11,6 +11,7 @@ PAT scopes, how to grant access) see [ADMIN-SETUP.md](ADMIN-SETUP.md).
 - [Core workflows](#core-workflows)
 - [Dynamic dropdowns](#dynamic-dropdowns)
 - [Cohort website](#cohort-website)
+- [Course website (open courseware)](#course-website-open-courseware)
 - [Bot lifecycle — setup & rotation](#bot-lifecycle--setup--rotation)
 - [Code map](#code-map)
 
@@ -207,6 +208,25 @@ lecture entries link the actual released files; assignment briefs come from each
 README; instructor/TA cards come from the `instructors` / `teaching-assistants` teams; the
 course name/semester come from the org metadata.
 
+## Course website (open courseware)
+
+A course can **optionally** publish a **public** site at `<course-org>.github.io` via the
+manual **Publish course website** action (`site.sync_public_site`). It reuses the same
+`course-website-template` + `scaffold_site`, but differs from the cohort site in one
+decisive way: the cohort site *links* to files in private repos (404 for non-members, by
+design), whereas the course `course-materials-*` repos are private too, so the public site
+**hosts the shared files itself** under `public-materials/<source-repo>/week-N/...` (Jekyll
+serves any path not starting with `_`) and links to those site-relative URLs.
+
+- **Lectures** are always hosted; **readings** are either a text-only reading list
+  (`reading-list` - citations shown, no files, copyright-safe) or hosted + linked
+  (`actual-readings`). `none` skips readings.
+- **Lectures + readings only** - no assignments or exam rows.
+- **Opt-in + manual**: the first run scaffolds the site, later runs re-sync the chosen
+  materials repo; served files are namespaced per source repo so several years coexist.
+  Releases and refresh **never** touch it, so a public site only exists, and only updates,
+  when faculty run the action.
+
 ## Bot lifecycle — setup & rotation
 
 Standing up the bot, and rotating its token.
@@ -253,8 +273,8 @@ Self-contained - workflows + their Python implementation live in this repo.
   - `seed` - render the workflows (central + run-from-repo), discover dropdown options, refresh.
   - `release` - publish a week's materials (+ optional syllabus/README) into a cohort repo.
   - `assign` - freeze a cohort assignment template, then fan out per-student repos.
-  - `scaffold` - create structured materials / assignment repos + the cohort website.
-  - `site` - regenerate a cohort website from the live org structure.
+  - `scaffold` - create structured materials / assignment repos + the website (cohort or course).
+  - `site` - regenerate the cohort website (`sync_site`) and the public course website (`sync_public_site`) from the live org structure.
   - `sync_roster` - enrol / materialise team access from `students.csv`.
   - `roster` - read the per-cohort `students.csv`.
   - `utils` - shared `gh`/git helpers with rate-limit backoff.

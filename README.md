@@ -24,6 +24,11 @@ COHORT org   e.g. Deep-Learning-f2026                  (per-year, private)
   students team
 ```
 
+Each cohort also gets an auto-deployed `<cohort>.github.io` site whose material links are
+private (enrolled students only). Separately and **optionally**, a course can publish a
+**public** `<course-org>.github.io` open-courseware site that shares its lecture materials
+and readings with the world (see **Publish course website** below).
+
 ## Setting up a course (one-time)
 
 Faculty trigger everything as **GitHub Actions**.
@@ -109,6 +114,12 @@ weeks.
 | **Release materials** | `.github` (pick source repo, type week) **or** the materials repo (week dropdown) | Copies the *whole* `lectures/week-N/` + `readings/week-N/` folders - every file - into the cohort `materials` repo (private + `students` read), nested under `week-N/`. Only released weeks appear. Optional `syllabus` / `README` toggles (default off). |
 | **Release assignment** | `.github` or the materials repo | Two stages: freeze a cohort-level template repo `<slug>` from the chosen `assignment-*` template, then generate one private `<slug>-<handle>` repo per onboarded student *from that cohort template* (+ collaborator). `include_solution` pushes the template's `solution` branch into each student repo. |
 | **Sync site** | `.github` | Regenerate a cohort's website from the org structure - releases do this automatically; the standard workflow has no need for manual sync. |
+
+### Optional: public course website (open courseware)
+
+| Action | Where | Effect |
+| --- | --- | --- |
+| **Publish course website** | `.github` | Build/refresh a **public** `<course-org>.github.io` site sharing this course's lectures + readings. Opt-in + manual (first run scaffolds it). Pick a materials repo; choose readings as `reading-list` (citations only) or `actual-readings` (also host the files). Because the materials repos are private, the site **hosts** the shared files itself. Separate from the per-cohort student-gated sites; releases/refresh never touch it. |
 
 **Student onboarding** (cohort-side): students open a **Join** issue in the public
 `welcome` repo; `onboard.yml` matches their student ID against the private roster,

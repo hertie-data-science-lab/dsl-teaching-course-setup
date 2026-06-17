@@ -437,6 +437,62 @@ jobs:
 """
 
 
+def render_publish_site(source_repos: list[str]) -> str:
+    """Build/refresh the PUBLIC course site <course-org>.github.io (open courseware).
+
+    Opt-in + manual: the first run scaffolds the site, later runs re-sync it. Hosts the
+    chosen materials repo's lecture files in the public site (the source repos are private,
+    so links would 404); readings are a text-only list or hosted files. Separate from the
+    per-cohort student-gated sites; releases/refresh never touch it."""
+    return f"""name: Publish course website
+
+# Build/refresh the PUBLIC course site <course-org>.github.io (open courseware). The
+# course materials repos are private, so this HOSTS the chosen repo's lecture files in
+# the site (links would otherwise 404). Readings: 'reading-list' shows citations as text
+# only; 'actual-readings' also hosts + links the files (you carry the copyright
+# responsibility); 'none' skips them. Opt-in + manual - the first run scaffolds the site.
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_repo:
+        description: "Source materials repo (in this course org) to publish"
+        required: true
+        type: choice
+        options:
+{_choice(source_repos)}
+      readings_mode:
+        description: "Readings: reading-list (citations) / actual-readings (files) / none"
+        required: true
+        type: choice
+        default: reading-list
+        options:
+          - reading-list
+          - actual-readings
+          - none
+      include_lectures:
+        description: "Publish lecture files (the point of the site)"
+        type: boolean
+        default: true
+
+jobs:
+{_CHECK_TEAM}
+  publish:
+{_RUN_PREAMBLE}      - name: Publish course website
+        env:
+          GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
+          COURSE_ORG: ${{{{ github.repository_owner }}}}
+          SOURCE_REPO: ${{{{ inputs.source_repo }}}}
+          READINGS_MODE: ${{{{ inputs.readings_mode }}}}
+          INC_LEC: ${{{{ inputs.include_lectures }}}}
+        run: |
+          gh auth setup-git
+          args=(--course-org "$COURSE_ORG" --source-repo "$SOURCE_REPO" --readings-mode "$READINGS_MODE")
+          [ "$INC_LEC" = "false" ] && args+=(--no-include-lectures)
+          python3 -m dsl_course.site public-sync "${{args[@]}}"
+"""
+
+
 def _read_cohorts(course_org: str) -> list[str]:
     """Read the course org's standalone .github/cohort-courses-pages.yml registry."""
     content = get_file_content(course_org, ".github", COHORTS_PATH)
@@ -534,8 +590,7 @@ def discover_content_repos(course_org: str) -> list[str]:
     return [
         r["name"]
         for r in list_org_repos(course_org)
-        if r["name"] != ".github"
-        and not r["name"].startswith("assignment-")
+        if r["name"] != ".github" and not r["name"].startswith("assignment-")
     ]
 
 
@@ -667,6 +722,9 @@ _(automatically bootstrapped from the central
 - [**New assignment**](https://github.com/{org}/.github/actions/workflows/new-assignment.yml) - scaffold an `assignment-N-<year>` template repo (starter + autograder on `main`, an empty `solution` branch).
 - [**Refresh actions**](https://github.com/{org}/.github/actions/workflows/refresh-actions.yml) - repopulate the cohort/week/assignment dropdowns, re-equip content repos, and rebuild this index.
 
+### Optional: public course website (open courseware)
+- [**Publish course website**](https://github.com/{org}/.github/actions/workflows/publish-site.yml) - build/refresh a PUBLIC site `{org}.github.io` that shares this course's lecture materials and readings with the world. Opt-in + manual (the first run scaffolds the site). Pick a materials repo and choose for readings: `reading-list` (citations only) or `actual-readings` (also host the files). Because the materials repos are private, the site **hosts** the shared files itself. This is separate from each cohort's student-facing site.
+
 ### Weekly cadence actions:
 - [**Release materials**](https://github.com/{org}/.github/actions/workflows/release-materials.yml) - publish a given week's `lectures/`+`readings/` into a cohort repo.
 - [**Release assignment**](https://github.com/{org}/.github/actions/workflows/release-assignment.yml) - generate one private repo per student from a chosen `assignment-*` template repo.
@@ -693,7 +751,14 @@ template's `solution` branch into every student repo. Solutions stay on the `sol
 branch so a normal release never leaks them.
 
 **The cohort website** - every cohort has an auto-deployed site `<org>.github.io`. It is regenerated
-on every release (and via **Sync site**).
+on every release (and via **Sync site**). Its lecture links point at the cohort's private repos, so
+they only resolve for enrolled members (deliberate).
+
+**The public course website** (optional) - `Publish course website` builds `{org}.github.io`, a public
+open-courseware site for the course as a whole. Unlike the cohort sites it **hosts** the shared lecture
+files (the source repos are private, so links would 404); readings are published either as a text-only
+reading list or as hosted files. It is opt-in and manual - releases and refresh never touch it - so a
+public site only exists, and only updates, when you run the action.
 
 ## Repository structure (required)
 
@@ -779,6 +844,7 @@ def seed_github_workflows(course_org: str) -> None:
         ".github/workflows/new-materials.yml": render_new_materials(),
         ".github/workflows/new-assignment.yml": render_new_assignment(),
         ".github/workflows/sync-site.yml": render_sync_site(cohorts),
+        ".github/workflows/publish-site.yml": render_publish_site(source_repos),
         ".github/workflows/enroll-student.yml": render_enroll(cohorts),
         ".github/workflows/bootstrap-cohort.yml": render_bootstrap_cohort(),
         ".github/workflows/refresh-actions.yml": render_refresh(),
@@ -820,7 +886,9 @@ def refresh(course_org: str) -> int:
     cohorts = discover_cohorts(course_org)
     cohort_repos = discover_cohort_repos(cohorts)
     targets = discover_content_repos(course_org)
-    assignments = discover_assignments(course_org)  # org-wide; discover once, not per repo
+    assignments = discover_assignments(
+        course_org
+    )  # org-wide; discover once, not per repo
     log_step(
         f"Refreshing {len(targets)} content repo(s) in {course_org} with cohorts {cohorts or 'none'}"
     )
