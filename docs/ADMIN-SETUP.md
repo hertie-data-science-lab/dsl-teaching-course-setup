@@ -1,9 +1,11 @@
 # Admin & technical reference
 
-Implementation and one-time-setup detail behind the faculty buttons: the bot credential,
-the token / secret model, how the dynamic dropdowns regenerate, the cohort-website
-pipeline, and the repo layout. **Faculty delivering a course don't need this** - see the
-[root README](../README.md) for the button workflow.
+Operational detail behind the faculty buttons: the bot credential, its exact permissions,
+the token / secret model, and who-can-run access. For **how the system is built and how the
+pieces move** - diagrams, the workflow sequences, the token-propagation flow, the bot
+lifecycle, and the code map - see **[ARCHITECTURE.md](ARCHITECTURE.md)**. **Faculty
+delivering a course don't need either** - see the [root README](../README.md) for the
+button workflow.
 
 ## The bot account
 
@@ -13,12 +15,13 @@ secret. So a single bot serves the whole DSL - faculty use it *indirectly*.
 
 | Model | What "the bot" is | When |
 | --- | --- | --- |
-| **Personal PAT** | a classic PAT on a maintainer's **own** account (today: `henrycgbaker`) | demo / bootstrap only - tied to one person, avoid for production |
-| **Shared service account** *(recommended)* | one GitHub account, e.g. **`hertie-dsl-bot`**, with its own email + 2FA, added as **Owner** of every course/cohort org; its PAT is `DSL_BOT_TOKEN` | the institutional "DSL-wide bot any faculty can use" - one account, one token, rotated centrally; nobody shares the password |
+| **Personal PAT** | a classic PAT on a maintainer's **own** account (`henrycgbaker`) | **legacy** - demo / bootstrap only, tied to one person; being retired |
+| **Shared service account** | one GitHub account **`hertie-dsl-bot`**, with its own email + 2FA, added as **Owner** of every course/cohort org; its PAT is `DSL_BOT_TOKEN` | **current** - the institutional DSL-wide bot; one account, one token, rotated centrally; nobody shares the password |
 | **GitHub App** | a **"DSL Course Automation"** App installed on both org tiers - short-lived fine-grained tokens, no static PAT, per-org revocable | end-state (ADR 0010); workflows don't change, only the token source |
 
-The account to **invite as Owner** of each new org (course setup step 2) is currently
-**`henrycgbaker`** (production target: `hertie-dsl-bot`).
+The account to **invite as Owner** of each new org (course setup step 2) is **`hertie-dsl-bot`**.
+The legacy `henrycgbaker` PAT is being retired - the cutover/rotation runbook is in
+[ARCHITECTURE → Bot lifecycle](ARCHITECTURE.md#bot-lifecycle--setup--rotation).
 
 **Exact permissions the bot needs.** It must be an **Owner** of every course and cohort
 org, and its token must carry:
@@ -78,44 +81,8 @@ each private content repo. The token needs cross-org repo admin + members + cont
 Production target: a **GitHub App** (fine-grained, short-lived) - or GitHub Team/Enterprise,
 where org secrets reach private repos and this propagation is unnecessary.
 
-## Dynamic dropdowns
+## How it works (dropdowns, website, code map)
 
-`workflow_dispatch` dropdowns are static YAML and can't depend on another input, so
-**Refresh actions** regenerates them from live state and re-pushes the workflows (no
-cron, no app):
-
-- **cohort_org** - from the `.github/cohort-courses-pages.yml` registry.
-- **cohort_repo** - the cohort's content repos, with `materials` as the default.
-- **week** - the source materials repo's `lectures/week-N/` folders (run-from-repo copy);
-  the central `.github` copy uses a free-text week, since it can't depend on the chosen
-  source repo.
-- **source_repo** (central only) / **assignment** - the course org's content / `assignment-*` repos.
-
-## Cohort website
-
-Every cohort gets an **auto-deployed website** at `<cohort-org>.github.io`, generated from
-`course-website-template` by `scaffold_site` during Bootstrap cohort. `site.py` then **regenerates its content from the live org structure**
-on every release (and via manual dispatch of **Sync site**): the schedule lists released weeks + assignment
-due dates + MidTerm/Final exams; lecture entries link the actual released files; assignment
-briefs come from each template's README; instructor/TA cards come from the `instructors` /
-`teaching-assistants` teams; the course name/semester come from the org metadata.
-
-## Repo layout
-
-Self-contained - workflows + their Python implementation live here.
-
-- `.github/workflows/` - `bootstrap-org` (+ the legacy create-tier); the faculty
-  workflows are rendered + seeded into the course/cohort orgs, not kept here.
-- `dsl_course/` - the package:
-  - `bootstrap_course` - configure a course or (`--cohort`) cohort org.
-  - `seed` - render the workflows (central + run-from-repo), discover dropdown options, refresh.
-  - `release` - publish a week's materials (+ optional syllabus/README) into a cohort repo.
-  - `assign` - freeze a cohort assignment template, then fan out per-student repos.
-  - `scaffold` - create structured materials / assignment repos + the cohort website.
-  - `site` - regenerate a cohort website from the live org structure.
-  - `sync_roster` - enrol / materialise team access from `students.csv`.
-  - `roster` - read the per-cohort `students.csv`.
-  - `utils` - shared `gh`/git helpers with rate-limit backoff.
-  - `new_semester` / `post_migrate` / `bootstrap_org` / `list_orgs` - legacy create-tier
-    (older course-side model; the next slimming target).
-- `templates/welcome/` - the cohort onboarding workflow + Join issue form.
+The dynamic-dropdown regeneration, the cohort-website pipeline, and the repo/code map now
+live in **[ARCHITECTURE.md](ARCHITECTURE.md)** alongside the system diagrams and workflow
+sequences - this doc keeps the operational reference above.

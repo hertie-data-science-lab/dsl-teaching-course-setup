@@ -42,7 +42,7 @@ _Steps 1 & 2 require manual setup - the rest is automatically configured via Git
     
 ### 2. Add the DSL bot as an owner:
   - Open the org's **People** tab: `https://github.com/orgs/<ORG>/people` → **Invite member**
-  - Invite the bot account - currently **`henrycgbaker`** (production target `hertie-dsl-bot`) - → role **Owner** (the bot then accepts the emailed-notification invite).
+  - Invite the bot account **`hertie-dsl-bot`** → role **Owner** (the bot then accepts the emailed-notification invite).
   -  _Skip if you created the org as the bot account: if you created
   the org while signed in *as* the bot account, it's already the owner - nothing to do._
   - (Which account is "the DSL bot"? See [The bot account](docs/ADMIN-SETUP.md#the-bot-account).)*
@@ -130,6 +130,10 @@ hold the token. See
 
 ## Technical & admin reference
 
-The bot credential, the token / secret-propagation model, the dynamic-dropdown mechanics,
-the cohort-website pipeline, and the repo layout now live in
-**[`docs/ADMIN-SETUP.md`](docs/ADMIN-SETUP.md)** - faculty delivering a course don't need them.
+For admins / developers (faculty delivering a course don't need these):
+
+- **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)** - how the system is built and how the
+  pieces move: system + token-propagation + access diagrams, workflow sequences, the bot
+  lifecycle, and the code map.
+- **[`docs/ADMIN-SETUP.md`](docs/ADMIN-SETUP.md)** - operational reference: the bot
+  credential + exact PAT scopes, the token / secret model, and who-can-run access.
