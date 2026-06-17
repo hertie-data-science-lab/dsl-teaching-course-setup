@@ -16,7 +16,7 @@ Three idempotent stages, each a faculty button:
                classroom-config/gradebook/<handle>.yml  -- opened as ONE PR (the preview)
                      |  distribute (after the PR merges)
                      v
-               cohort/grades-<handle>/grades.yml + an @-mention issue (GitHub emails them)
+               cohort/grades-<handle>/grades.yml + an email to the student's university inbox
 
 `classroom-config` keeps the full grade archive (private source of truth); the PR diff is
 the all-students-at-once preview that the Power Automate flow never gave.
@@ -311,7 +311,6 @@ def distribute(cohort_org: str, notify: bool = True) -> int:
 
     Clone classroom-config once and read the files locally (rather than an API GET per
     student); the only per-student call left is the unavoidable write to each repo."""
-    by_handle = {s.github_handle: s for s in roster.load(cohort_org) if s.github_handle}
     with tempfile.TemporaryDirectory() as work:
         wd = Path(work) / "cfg"
         if (
@@ -339,7 +338,7 @@ def distribute(cohort_org: str, notify: bool = True) -> int:
     log_ok(f"Done - {json.dumps(results)}")
 
     if notify and pushed:
-        _email_updates(cohort_org, pushed, by_handle)
+        _email_updates(cohort_org, pushed)
     return 1 if any(k.startswith("failed") for k in results) else 0
 
 
@@ -352,11 +351,10 @@ def _push_gradebook(cohort_org: str, handle: str, content: str) -> str:
     return "ok"
 
 
-def _email_updates(
-    cohort_org: str, handles: list[str], by_handle: dict[str, roster.Student]
-) -> None:
+def _email_updates(cohort_org: str, handles: list[str]) -> None:
     """Email each student a 'grades updated' notification to their university inbox,
     linking to their private gradebook repo (the grade's source of truth)."""
+    by_handle = {s.github_handle: s for s in roster.load(cohort_org) if s.github_handle}
     messages = []
     for handle in handles:
         student = by_handle.get(handle)
@@ -385,7 +383,7 @@ def main() -> int:
             p.add_argument(
                 "--no-notify",
                 action="store_true",
-                help="Skip the @-mention notification issue.",
+                help="Skip the email notification (just push the grades).",
             )
     args = parser.parse_args()
 
