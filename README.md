@@ -35,13 +35,11 @@ Faculty trigger everything as **GitHub Actions**.
 
 _Steps 1 & 2 require manual setup - the rest is automatically configured via GitHub actions buttons._
 
-### 1. Create the empty course org — signed in as the bot
-  - **Sign in as `hertie-dsl-bot`**, then create the org at https://github.com/account/organizations/new (Free plan).
-  - Created this way the bot is **Owner automatically — no invite, no accept step**. (Creating the org in the web UI is the one irreducible manual step: GitHub has no org-creation API.)
+### 1. Create the empty course org
+  - Create the org at https://github.com/account/organizations/new (Free plan). Creating the org in the web UI is the one manual step - GitHub has no org-creation API.
 
-### 2. (Only if you created it as yourself) add the bot as owner
-  - **Skip this** if you did step 1 as the bot - it's already the owner.
-  - Otherwise: org **People** tab `https://github.com/orgs/<ORG>/people` → **Invite member** → **`hertie-dsl-bot`** → role **Owner** (the bot accepts the invite once). GitHub requires the invitee to accept - there's no API to force-add a member.
+### 2. Add the DSL bot as an owner
+  - Org **People** tab `https://github.com/orgs/<ORG>/people` → **Invite member** → **`hertie-dsl-bot`** → role **Owner**. The bot accepts the invite once (GitHub requires the invitee to accept - there's no API to force-add a member).
   - (Which account is "the DSL bot"? See [The bot account](docs/ADMIN-SETUP.md#the-bot-account).)
 
 ### 3. Bootstrap the new org 

@@ -55,7 +55,7 @@ running course. _Anything you don't supply is synthesised or skipped, never bloc
 |---|-------|-------------|-------|
 | A1 | **Create the course org** | GitHub web UI | GitHub has **no org-creation API** ([ADR 0011 §9]). Add the bot account as an **owner**. |
 | A2 | **Create the cohort org** | GitHub web UI | Same - one per year. Add the bot as owner. |
-| A3 | **`DSL_BOT_TOKEN`** | A classic PAT (demo) or GitHub App (prod) | Scopes: `repo` + `admin:org` + `workflow`. Must be **owner on both orgs**. This is the only secret. See [Token](#token). |
+| A3 | **`DSL_BOT_TOKEN`** | The bot's classic PAT | Scopes: `repo` + `admin:org` + `workflow`. The bot must be **owner on both orgs**. This is the only secret. See [Token](#token). |
 
 Everything below is a button or a file edit.
 
@@ -215,12 +215,11 @@ schedule:
 One secret, `DSL_BOT_TOKEN`, runs every workflow. It needs, **on both orgs**: repo admin
 (create/generate repos, topics, settings), org members (invite + team), and contents R/W.
 
-- **Demo:** a classic PAT with `repo` + `admin:org` + `workflow`.
+- The bot's **classic PAT** with `repo` + `admin:org` + `workflow`.
 - **Free-plan caveat:** org secrets don't reach private repos, so Bootstrap sets it as an
   *org* secret (public `.github`/`welcome`) **and** Refresh propagates it as a *repo* secret
-  on each private content repo.
-- **Production target:** a GitHub App (fine-grained, short-lived), or GitHub Team/Enterprise
-  (where org secrets reach private repos and the propagation is unnecessary).
+  on each private content repo. On GitHub Team/Enterprise org secrets reach private repos and
+  this propagation is unnecessary.
 
 ## Known limits (not blockers)
 

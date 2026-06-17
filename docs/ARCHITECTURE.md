@@ -17,9 +17,8 @@ PAT scopes, how to grant access) see [ADMIN-SETUP.md](ADMIN-SETUP.md).
 ## System overview
 
 Two org tiers plus one central control repo, all operated by a single **bot** identity.
-GitHub has **no org-creation API**, so each org is created by hand - ideally **while signed in
-as the bot**, which makes the bot Owner immediately with no invite. Everything after that is a
-button.
+GitHub has **no org-creation API**, so each org is created by hand and the bot is invited as
+Owner; everything after that is a button.
 
 ```mermaid
 flowchart TB
@@ -51,22 +50,12 @@ flowchart TB
 
 Every button runs server-side under **one** credential, `DSL_BOT_TOKEN` - "the bot".
 **Faculty never hold or see it**; they trigger the Actions buttons, which run as the bot.
-The identity is migrating along this path:
 
-```mermaid
-flowchart LR
-  A["Personal PAT<br/>henrycgbaker · legacy"] --> B["Shared service account<br/>hertie-dsl-bot · CURRENT"] --> C["GitHub App<br/>future · ADR 0010"]
-```
-
-The production identity is the shared service account **`hertie-dsl-bot`** (its own email +
-2FA, Owner of every course/cohort org; its classic PAT is `DSL_BOT_TOKEN`). It replaces the
-personal `henrycgbaker` PAT, which is *legacy* and being retired.
-
-> **Migration status:** the bot is created and validated end-to-end on `THROWAWAY-HERTIE-1`
-> (it provisions + propagates + commits as `hertie-dsl-bot`). The **full cutover** - swapping
-> the central token, inviting the bot as Owner of the remaining orgs, and **revoking the old
-> personal PAT** - is in progress. See [Bot lifecycle](#bot-lifecycle--setup--rotation). Exact
-> PAT scopes are in [ADMIN-SETUP](ADMIN-SETUP.md#the-bot-account).
+The bot is the shared service account **`hertie-dsl-bot`** - its own email + 2FA, **Owner of
+every course and cohort org**, and its classic PAT is `DSL_BOT_TOKEN`. One account, one token,
+rotated centrally; nobody shares the password. Exact PAT scopes are in
+[ADMIN-SETUP](ADMIN-SETUP.md#the-bot-account); standing it up and rotating it is the
+[Bot lifecycle](#bot-lifecycle--setup--rotation).
 
 ## Token & secret propagation
 
@@ -91,8 +80,7 @@ Why two paths, and why `selected` visibility:
   **`visibility=selected → .github`** (plus `welcome` on cohort orgs), which reaches the
   public infra repos while keeping the org-admin token **out of** student/content repos
   (`set_org_secret`). `visibility=all` would expose it to every workflow in the org.
-- End-state (GitHub App, or Team/Enterprise where org secrets reach private repos) removes
-  the propagation entirely.
+- On GitHub Team/Enterprise, org secrets reach private repos and this propagation is unnecessary.
 
 ## Access model — two populations
 
@@ -221,35 +209,33 @@ course name/semester come from the org metadata.
 
 ## Bot lifecycle — setup & rotation
 
-Standing up or rotating the bot. The production identity is the shared **`hertie-dsl-bot`**
-account; this is the runbook that replaces the personal-PAT setup.
+Standing up the bot, and rotating its token.
 
 ```mermaid
 flowchart TD
   A["1 · Create hertie-dsl-bot<br/>own email + 2FA"] --> B["2 · Mint classic PAT<br/>repo + admin:org + workflow"]
-  B --> C["3 · Bot is Owner of each org<br/>new org: create it AS the bot (no invite)<br/>existing org: invite bot + accept"]
+  B --> C["3 · Invite bot as Owner of each org<br/>(bot accepts once)"]
   C --> D["4 · Set DSL_BOT_TOKEN = bot PAT<br/>in the CENTRAL repo (UI)"]
-  D --> E["5 · Re-run Bootstrap (+ Refresh) per org<br/>→ propagates the token"]
+  D --> E["5 · Run Bootstrap (+ Refresh) per org<br/>→ propagates the token"]
   E --> F["6 · Verify green + bot-attributed"]
-  F --> G["7 · Revoke the old personal PAT (LAST)"]
 ```
+
+**Rotation:** mint a fresh PAT (step 2), set it in the central repo (step 4), re-run
+Bootstrap + Refresh (step 5), verify (step 6), then **revoke the previous PAT last**. Set a
+PAT expiry so rotation is forced.
 
 **Hard rules** (ordering is not optional):
 
-- **Owner before token.** The bot must be Owner of an org *before* its PAT has admin there.
-  For **new** orgs, create them signed in as the bot (Owner instantly, no invite); the
-  invite + accept is only for orgs a **human already created**. Either way, Owner (step 3)
-  before propagating (step 5). GitHub has no API to force-add a member, so a human-created
-  org's bot invite must be accepted once.
+- **Owner before token.** The bot must be Owner of an org *before* its PAT has admin there -
+  invite + accept (step 3) before propagating (step 5). GitHub has no API to force-add a
+  member, so the bot's invite must be accepted once.
 - **Swap central only after a one-org test.** Setting the central secret (step 4) doesn't
   touch existing org secrets - they stay until re-propagated - so it's safe; but prove it on
   one org first.
 - **Never paste a token into chat, PRs, or issues.** Set it *only* via the GitHub Secrets UI.
   A token that is exposed anywhere must be **revoked and reissued** immediately.
-- **Revoke the old personal PAT LAST** - only after *every* org verifies green under the bot,
-  or automation breaks mid-cutover.
-- **Rotate on a schedule.** Set a PAT expiry so rotation is forced; rotating = repeat steps
-  2 + 4-7 with a fresh token.
+- **When rotating, revoke the previous PAT last** - only after *every* org verifies green
+  under the new one, or automation breaks mid-rotation.
 
 ## Code map
 

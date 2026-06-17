@@ -13,18 +13,15 @@ Every button runs under **one** credential, `DSL_BOT_TOKEN` - "the bot". **Facul
 hold or see it**: they trigger the Actions buttons, which run server-side under the org
 secret. So a single bot serves the whole DSL - faculty use it *indirectly*.
 
-| Model | What "the bot" is | When |
-| --- | --- | --- |
-| **Personal PAT** | a classic PAT on a maintainer's **own** account (`henrycgbaker`) | **legacy** - demo / bootstrap only, tied to one person; being retired |
-| **Shared service account** | one GitHub account **`hertie-dsl-bot`**, with its own email + 2FA, added as **Owner** of every course/cohort org; its PAT is `DSL_BOT_TOKEN` | **current** - the institutional DSL-wide bot; one account, one token, rotated centrally; nobody shares the password |
-| **GitHub App** | a **"DSL Course Automation"** App installed on both org tiers - short-lived fine-grained tokens, no static PAT, per-org revocable | end-state (ADR 0010); workflows don't change, only the token source |
-
-The account to **invite as Owner** of each new org (course setup step 2) is **`hertie-dsl-bot`**.
-The legacy `henrycgbaker` PAT is being retired - the cutover/rotation runbook is in
+The bot is the shared service account **`hertie-dsl-bot`**: one GitHub account with its own
+email + 2FA, added as **Owner** of every course/cohort org; its classic PAT is
+`DSL_BOT_TOKEN`. One account, one token, rotated centrally; nobody shares the password. The
+account to **invite as Owner** of each new org (course setup step 2) is `hertie-dsl-bot` -
+standing it up and rotating it is the
 [ARCHITECTURE → Bot lifecycle](ARCHITECTURE.md#bot-lifecycle--setup--rotation).
 
-**Exact permissions the bot needs.** It must be an **Owner** of every course and cohort
-org, and its token must carry:
+**Exact permissions.** It must be an **Owner** of every course and cohort org, and its token
+must carry:
 
 | Classic PAT scope | Covers |
 | --- | --- |
@@ -32,10 +29,7 @@ org, and its token must carry:
 | `admin:org` | org **membership** + **teams** (invite students, manage `students`/`instructors`/`teaching-assistants`); org **settings** (2FA); **org secrets** |
 | `workflow` | write the seeded workflow files (the buttons) |
 
-> **Fine-grained PAT / App equivalent** (per org): **Repository** → Contents, Administration,
-> Workflows, Secrets = *Read & write*, Metadata = *Read*; **Organization** → Members,
-> Administration = *Read & write*. A fine-grained PAT targets **one** resource-owner org, so
-> cross-org automation uses a **classic PAT or the App** (which span both tiers).
+A classic PAT spans both org tiers, which is what cross-org automation needs.
 
 ### Who can run which action
 
@@ -77,9 +71,8 @@ All workflows run under **`secrets.DSL_BOT_TOKEN`** (see [The bot account](#the-
 for which account that is and its exact permissions). On the **GitHub Free plan, org
 secrets don't reach private repos** - so bootstrap propagates the token as an *org*
 secret (for the public `.github`/`welcome`) **and** Refresh sets it as a *repo* secret on
-each private content repo. The token needs cross-org repo admin + members + contents.
-Production target: a **GitHub App** (fine-grained, short-lived) - or GitHub Team/Enterprise,
-where org secrets reach private repos and this propagation is unnecessary.
+each private content repo. The token needs cross-org repo admin + members + contents. On
+GitHub Team/Enterprise, org secrets reach private repos and this propagation is unnecessary.
 
 ## How it works (dropdowns, website, code map)
 
