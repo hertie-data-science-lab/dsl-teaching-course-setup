@@ -9,15 +9,23 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
+import pytest
+
 from dsl_course import site
 
 
-def test_coerce_date_accepts_date_datetime_iso_and_rejects_junk():
-    assert site._coerce_date(date(2026, 9, 7)) == date(2026, 9, 7)
-    assert site._coerce_date(datetime(2026, 9, 7, 12, 0)) == date(2026, 9, 7)
-    assert site._coerce_date("2026-09-07") == date(2026, 9, 7)
-    assert site._coerce_date("not-a-date") is None
-    assert site._coerce_date(12345) is None
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        (date(2026, 9, 7), date(2026, 9, 7)),
+        (datetime(2026, 9, 7, 12, 0), date(2026, 9, 7)),
+        ("2026-09-07", date(2026, 9, 7)),
+        ("not-a-date", None),
+        (12345, None),
+    ],
+)
+def test_coerce_date(value, expected):
+    assert site._coerce_date(value) == expected
 
 
 def test_semester_label():
@@ -62,16 +70,18 @@ def test_reading_list_md_inlines_text_lists_binaries_by_name(tmp_path):
     (wk / "reading.md").write_text("# Week 1\n- Smith 2020, ch.1")
     (wk / "paper.pdf").write_bytes(b"%PDF-1.4 copyrighted bytes")
     md = site._reading_list_md(wk)
-    assert "Smith 2020" in md          # citation text is published
-    assert "- paper.pdf" in md         # the PDF is named...
-    assert "%PDF" not in md            # ...but its bytes are NOT
+    assert "Smith 2020" in md  # citation text is published
+    assert "- paper.pdf" in md  # the PDF is named...
+    assert "%PDF" not in md  # ...but its bytes are NOT
 
 
 def test_public_links_are_site_relative(tmp_path):
     wk = tmp_path / "lectures"
     wk.mkdir()
     (wk / "01 intro.pdf").write_bytes(b"x")
-    links = site._public_links(wk, "/public-materials/course-materials-f2026/week-1/lectures")
+    links = site._public_links(
+        wk, "/public-materials/course-materials-f2026/week-1/lectures"
+    )
     assert len(links) == 1
     name, url = links[0]
     assert name == "01 intro.pdf"
