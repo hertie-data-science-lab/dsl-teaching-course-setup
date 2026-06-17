@@ -30,7 +30,7 @@ flowchart TB
   bot(["hertie-dsl-bot<br/>service account · Owner of every org"])
   subgraph course["COURSE org — persistent"]
     cg[".github<br/>profile + faculty buttons + cohort registry"]
-    mat["materials-fYYYY<br/>lectures/ + readings/"]
+    mat["course-materials-fYYYY<br/>lectures/ + readings/"]
     asg["assignment-N-fYYYY<br/>is_template: main + solution branch"]
   end
   subgraph cohort["COHORT org — per year"]
@@ -95,6 +95,7 @@ flowchart TD
   subgraph run["2 · Run a course's buttons (per-course)"]
     it["course org's own<br/>instructors (write) / course-admin (admin)"] -->|"granted on"| gh["that org's .github"] --> rb["run Release / Refresh / Enroll / ..."]
   end
+  prov ~~~ run
 ```
 
 - **Provisioning** is a DSL-wide authority: the central `faculty`/`admin` teams, granted
@@ -138,13 +139,13 @@ cohort in the course's `cohort-courses-pages.yml`.
 sequenceDiagram
   actor F as Faculty, instructors
   participant A as Release materials
-  participant Src as materials-fYYYY, course
+  participant Src as course-materials-fYYYY, course
   participant Coh as cohort materials repo
   F->>A: dispatch (cohort, week)
   A->>A: check-team — repo permission
   A->>Src: read lectures/week-N + readings/week-N
   A->>Coh: copy whole folders under week-N/ (private, students read)
-  Note over A,Coh: only released weeks appear; syllabus/README optional
+  Note over A,Coh: only released weeks appear, syllabus/README optional
 ```
 
 ### Release assignment
