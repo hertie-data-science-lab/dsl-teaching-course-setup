@@ -101,6 +101,67 @@ def create_default_teams(org: str) -> None:
     )
 
 
+# The course-org teams that may run the seeded buttons, and their grant on `.github`:
+# `instructors` run releases day-to-day (write); `course-admin` manage the org (admin).
+# Access is per-course - only this course's teaching team goes in these teams. The central
+# hertie-data-science-lab faculty/admin teams are a SEPARATE concern (who may bootstrap an
+# org at all - the central action's gate); they are deliberately NOT mirrored in here.
+BUTTON_TEAMS = {"instructors": "push", "course-admin": "admin"}
+
+
+def grant_team_repo_access(org: str, team: str, repo: str, permission: str) -> bool:
+    """Grant a team a permission level on one repo (idempotent)."""
+    code, out = gh(
+        "api",
+        "-X",
+        "PUT",
+        f"orgs/{org}/teams/{team}/repos/{org}/{repo}",
+        "-f",
+        f"permission={permission}",
+    )
+    if code == 0:
+        return True
+    log_err(f"  ! could not grant {team} {permission} on {org}/{repo}: {out[:120]}")
+    return False
+
+
+def grant_button_access(org: str) -> None:
+    """Give the course-org teams write/admin on `.github`, so faculty in them can see +
+    run the seeded workflow_dispatch buttons. GitHub only shows the 'Run workflow' button
+    to write+ users, so without this only the org owner can run the buttons - the seeded
+    check-team gate (repo permission) then enforces it at run time too."""
+    log_step("Granting course-org teams button access (.github)")
+    for team, perm in BUTTON_TEAMS.items():
+        if grant_team_repo_access(org, team, ".github", perm):
+            log_ok(f"  {team} -> {perm} on {org}/.github")
+
+
+def add_course_admins(org: str, handles: str) -> None:
+    """Add this course's admin(s) to its `course-admin` team (per-course, so nobody is
+    added to a course they don't run). `handles` is a comma/space-separated list of GitHub
+    logins; each gets an org invite they accept once (membership shows `pending` until
+    then). Instructors/TAs are added later to the `instructors` team via the Teams page."""
+    logins = [h.strip() for h in handles.replace(",", " ").split() if h.strip()]
+    if not logins:
+        return
+    log_step(f"Adding {len(logins)} admin(s) to {org}/course-admin")
+    for login in logins:
+        code, out = gh(
+            "api",
+            "-X",
+            "PUT",
+            f"orgs/{org}/teams/course-admin/memberships/{login}",
+            "-f",
+            "role=member",
+            "--jq",
+            ".state",
+        )
+        if code == 0:
+            log_ok(f"  {login}: {out.strip() or 'added'}")
+        else:
+            log_err(f"  ! could not add {login}: {out[:120]}")
+
+
 def create_profile_repo(
     org: str,
     org_name: str,
@@ -368,6 +429,13 @@ def main() -> int:
         help="Set DSL_BOT_TOKEN on this org to the DSL_BOT_TOKEN/GH_TOKEN env value "
         "(lets the central bootstrap auto-provision the token - no manual per-org step).",
     )
+    parser.add_argument(
+        "--admins",
+        default="",
+        help="GitHub handle(s) of this course's admin(s), comma/space-separated. Added to "
+        "the course-admin team (admin on .github) so they can run the buttons. Each accepts "
+        "an org invite once. Add instructors/TAs later via the org's Teams page.",
+    )
     args = parser.parse_args()
 
     org_name = args.org_name or args.org
@@ -406,6 +474,13 @@ def main() -> int:
     else:
         # Course: seed the org-level buttons (incl. the central Release actions) into .github.
         seed_workflows(args.org)
+
+    # 3c. Button access: grant this course's own instructors/course-admin teams write/admin
+    # on .github (without it only the org owner can run the buttons), then seed the named
+    # admin(s) into course-admin. Access is per-course - central DSL faculty/admin are a
+    # separate concern (who may bootstrap), not auto-added here.
+    grant_button_access(args.org)
+    add_course_admins(args.org, args.admins)
 
     # 4. Secret (set or validate)
     if args.set_secret:
@@ -450,14 +525,17 @@ DONE (automated):
 - Workflows in .github: Release materials, Release assignment, Enroll student,
   Bootstrap cohort, Refresh actions
 - DSL_BOT_TOKEN secret validated (or set)
+- Button access: instructors (write) + course-admin (admin) granted on .github; any
+  --admins handles added to course-admin (they accept the org invite once, then the
+  buttons appear in their Actions tab)
 
 NEXT STEPS (manual):
 ============================================================
 
 1. Review org settings: https://github.com/{args.org}/settings
 
-2. Invite course instructors and admins:
-   https://github.com/{args.org}/settings/members
+2. Add THIS course's instructors/TAs to the `instructors` team (write) - only the people
+   who run this course: https://github.com/orgs/{args.org}/teams
 
 3. Put content in the materials repo (lectures/week-N/, readings/week-N/) and create
    assignment-N-f2026 template repos, then run "Refresh actions" so they appear in the

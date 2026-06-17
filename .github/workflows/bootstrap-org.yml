@@ -34,6 +34,10 @@ on:
         description: "For a COHORT: its parent course org (registers the cohort in that course's dropdowns)"
         required: false
         default: ""
+      admin:
+        description: "Course admin GitHub handle(s), comma-separated - added to the course-admin team so they can run the buttons (they accept an org invite once)"
+        required: false
+        default: ""
 
 jobs:
   check-team:
@@ -75,6 +79,7 @@ jobs:
           DSL_BOT_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
           COHORT: ${{ inputs.cohort }}
           COURSE: ${{ inputs.course }}
+          ADMIN: ${{ inputs.admin }}
         run: |
           args=(--org "${{ inputs.org }}"
                 --org-name "${{ inputs.org_name }}"
@@ -83,4 +88,5 @@ jobs:
                 --propagate-secret)
           [ "$COHORT" = "true" ] && args+=(--cohort)
           [ -n "$COURSE" ] && args+=(--course "$COURSE")
+          [ -n "$ADMIN" ] && args+=(--admins "$ADMIN")
           python3 -m dsl_course.bootstrap_course "${args[@]}"
