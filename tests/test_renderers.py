@@ -42,13 +42,19 @@ def test_renders_valid_yaml(name):
 
 
 def test_publish_site_inputs():
-    inp = workflow_inputs(seed.render_publish_site(["course-materials-f2026", "course-materials-f2025"]))
+    inp = workflow_inputs(
+        seed.render_publish_site(["course-materials-f2026", "course-materials-f2025"])
+    )
     assert set(inp) == {"source_repo", "readings_mode", "include_lectures"}
     assert inp["source_repo"]["options"] == [
         "course-materials-f2026",
         "course-materials-f2025",
     ]
-    assert inp["readings_mode"]["options"] == ["reading-list", "actual-readings", "none"]
+    assert inp["readings_mode"]["options"] == [
+        "reading-list",
+        "actual-readings",
+        "none",
+    ]
     assert inp["readings_mode"]["default"] == "reading-list"
     assert inp["include_lectures"]["type"] == "boolean"
 
@@ -59,6 +65,15 @@ def test_publish_site_has_publish_job_running_public_sync():
     assert "dsl_course.site public-sync" in rendered
     # include_lectures off must map to the CLI flag.
     assert "--no-include-lectures" in rendered
+
+
+def test_provision_has_group_toggle():
+    inp = workflow_inputs(
+        seed.render_provision(["Cohort-f2026"], ["assignment-4-project-f2026"])
+    )
+    assert inp["group"]["type"] == "boolean"
+    assert inp["group"]["default"] is False
+    assert "--group" in seed.render_provision(["Cohort-f2026"], [])
 
 
 def test_choice_falls_back_when_empty():
