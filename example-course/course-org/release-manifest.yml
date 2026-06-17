@@ -1,0 +1,23 @@
+# Release manifest - what opens each week (stable across years). Lives in the course org's
+# .github repo. The daily Scheduled release cron joins this with each cohort's schedule.csv
+# (week -> date) and releases everything due. Manual buttons still work for early/ad-hoc
+# release. Every release is idempotent, so re-runs are no-ops.
+weeks:
+  week-1:
+    materials:
+      source_repo: course-materials-f2026
+      cohort_repo: materials
+  week-3:
+    materials:
+      source_repo: course-materials-f2026
+      cohort_repo: materials
+    code:
+      # Phased package disclosure: reveal a topic-subpackage when you teach it.
+      - source_repo: course-materials-f2026
+        path: mlpkg/simulation
+        cohort_repo: materials
+  week-5:
+    materials:
+      source_repo: course-materials-f2026
+      cohort_repo: materials
+    assignment: assignment-2-f2026
