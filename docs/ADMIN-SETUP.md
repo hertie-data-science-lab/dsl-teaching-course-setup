@@ -42,6 +42,11 @@ Two **separate** populations - keep them distinct:
   **`faculty`/`admin`** teams in **`hertie-data-science-lab`** (`bootstrap-org.yml`
   `check-team`). This is a DSL-wide authority - it gates *creating/configuring* any course
   org, and nothing else. It does **not** grant access to any course's buttons.
+  The same "write to see the button" rule applies, so as a **one-time setup** the central
+  `dsl-teaching-course-setup` repo grants **`faculty` → write**, **`admin` → admin**, and
+  its `main` is **branch-protected** (require a PR) so that write can't push to `main`
+  directly. Without the grant, only org owners would see the Bootstrap button - team
+  membership alone wouldn't surface it.
 - **Who may run a specific course's buttons** (Release materials/assignment, New
   materials/assignment, Enroll, Bootstrap cohort, Sync site, Refresh actions): members of
   **that course org's own** `instructors` (write) or `course-admin` (admin) team. The

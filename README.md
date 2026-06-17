@@ -48,8 +48,9 @@ _Steps 1 & 2 require manual setup - the rest is automatically configured via Git
   - (Which account is "the DSL bot"? See [The bot account](docs/ADMIN-SETUP.md#the-bot-account).)*
 
 ### 3. Bootstrap the new org 
-  - On _this_ repo's Actions tab -> [**Bootstrap Course Org**](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions/workflows/bootstrap-org.yml) (`org` =  the new org).
-  - This sets teams, 2FA, the `.github` profile, all the faculty buttons, and propagates `DSL_BOT_TOKEN`.
+  - On _this_ repo's Actions tab -> [**Bootstrap Course Org**](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions/workflows/bootstrap-org.yml) (`org` =  the new org; optionally `admin` = the course admin's GitHub handle(s)).
+  - This sets teams, 2FA, the `.github` profile, all the faculty buttons, grants the `instructors`/`course-admin` teams access to run them, and propagates `DSL_BOT_TOKEN`.
+  - Add this course's instructors/TAs to the **`instructors`** team (write) via the org's Teams page; only the people who run this course - they then see the buttons in the Actions tab.
 
 ### 4. Add content repos
   - Recommend to use the boostrapped `new materials repo` & `new assignment` actions - these automatically configure the required file directory for the `release materials` and `release assignments` action workflows.
@@ -119,12 +120,12 @@ weeks.
 records their authenticated handle + GitHub id, and grants org + `students`-team access.
 No CLI.
 
-_**Access**: the day-to-day buttons are gated on **repo permission** - the triggering user
-must have write/maintain/admin on the repo the action runs in. The one exception is the
-central **Bootstrap Course Org** action, which additionally needs **`faculty`/`admin` team
-membership** in `hertie-data-science-lab` (a brand-new org has no repos to gate on yet).
-To let a new faculty member stand up courses, add them to the `faculty` team - that is the
-whole grant; they never hold the token. See
+_**Access** is by **team membership → repo write**, and splits into two separate
+populations: a course org's own **`instructors`/`course-admin`** teams may run **that
+course's** buttons (bootstrap grants them write/admin on `.github`), while the central
+**`faculty`/`admin`** teams in `hertie-data-science-lab` may run **Bootstrap Course Org**
+(provision any org) - nobody is added to a course they don't teach. Either way they never
+hold the token. See
 [`docs/ADMIN-SETUP.md`](docs/ADMIN-SETUP.md#who-can-run-which-action)._
 
 ## Technical & admin reference
