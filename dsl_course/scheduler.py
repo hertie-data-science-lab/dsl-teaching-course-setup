@@ -1,12 +1,13 @@
 """dsl-course scheduler -- date-driven auto-release (manifest x calendar).
 
 The same idempotent release functions as the manual buttons, fired automatically. A
-**release manifest** (what opens each week) lives in the course org's `.github` repo; a
-per-cohort **calendar** (week -> date) lives in `classroom-config`. A daily cron joins
+**per-cohort release manifest** (what opens each week) lives course-side in the `.github`
+repo as `manifests/<cohort-org>.yml` (one per cohort - source repos are year-tagged); each
+cohort's **calendar** (week -> date) lives in its `classroom-config`. A daily cron joins
 them: every week whose date has arrived is (re-)released. Because every release is
 idempotent, re-runs are no-ops and there is no "already released" state to track.
 
-Manifest (`release-manifest.yml` in `<course>/.github`):
+Manifest (`manifests/<cohort-org>.yml` in `<course>/.github`):
     weeks:
       week-1:
         materials: {source_repo: course-materials-f2026, cohort_repo: materials}
@@ -39,8 +40,8 @@ import yaml
 
 from .utils import get_file_content, log, log_err, log_ok, log_step
 
-MANIFEST_REPO = ".github"
-MANIFEST_PATH = "release-manifest.yml"
+MANIFEST_REPO = ".github"  # the course org's .github repo
+MANIFEST_DIR = "manifests"  # one manifest per cohort: manifests/<cohort-org>.yml
 CALENDAR_REPO = "classroom-config"
 CALENDAR_PATH = "schedule.csv"
 
@@ -121,11 +122,14 @@ def describe(action: dict) -> str:
 # ---------------------------------------------------------------------- gh/git wiring
 
 
-def _load_manifest(course_org: str) -> dict:
-    content = get_file_content(course_org, MANIFEST_REPO, MANIFEST_PATH)
+def _load_manifest(course_org: str, cohort_org: str) -> dict:
+    """Load this cohort's manifest from the course org's .github repo. Each cohort has its
+    own file (source repos are year-tagged), so a missing one just means 'not scheduled'."""
+    path = f"{MANIFEST_DIR}/{cohort_org}.yml"
+    content = get_file_content(course_org, MANIFEST_REPO, path)
     if content is None:
-        log_err(
-            f"no {MANIFEST_PATH} in {course_org}/{MANIFEST_REPO} - nothing to schedule."
+        log(
+            f"  (no {path} in {course_org}/{MANIFEST_REPO} - {cohort_org} not scheduled)"
         )
         return {}
     return yaml.safe_load(content) or {}
@@ -172,20 +176,13 @@ def _execute(course_org: str, cohort_org: str, action: dict) -> int:
     return 1
 
 
-def run(
-    course_org: str,
-    cohort_org: str,
-    today: date,
-    dry_run: bool = False,
-    manifest: dict | None = None,
-) -> int:
-    # The manifest is the same for every cohort (it lives in the course .github repo), so
-    # the all-cohorts cron loads it once and passes it in; a single-cohort run loads it here.
-    if manifest is None:
-        manifest = _load_manifest(course_org)
+def run(course_org: str, cohort_org: str, today: date, dry_run: bool = False) -> int:
+    manifest = _load_manifest(course_org, cohort_org)
+    if not manifest:
+        return 0  # cohort not using scheduled release - nothing to do
     calendar = _load_calendar(cohort_org)
-    if not manifest or not calendar:
-        return 1
+    if not calendar:
+        return 1  # has a manifest but no dates - a misconfiguration (already logged)
     weeks = due_weeks(calendar, today)
     actions = plan(manifest, weeks)
     log_step(
@@ -239,14 +236,9 @@ def main() -> int:
         if not cohorts:
             log_err(f"no cohorts registered with {args.course_org}.")
             return 1
-        manifest = _load_manifest(args.course_org)  # same for all cohorts - load once
-        if not manifest:
-            return 1
         rc = 0
         for cohort in cohorts:
-            rc |= run(
-                args.course_org, cohort, today, dry_run=args.dry_run, manifest=manifest
-            )
+            rc |= run(args.course_org, cohort, today, dry_run=args.dry_run)
         return rc
 
     if not args.cohort_org:

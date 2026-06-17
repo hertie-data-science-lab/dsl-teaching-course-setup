@@ -486,7 +486,7 @@ def render_scheduler() -> str:
     scheduler only calls idempotent release functions (manual dispatch still needs write)."""
     return f"""name: Scheduled release
 
-# Joins release-manifest.yml (in this .github repo) with each cohort's classroom-config
+# Joins each cohort's manifests/<cohort>.yml (in this .github repo) with its classroom-config
 # schedule.csv and releases everything now due. Idempotent, so a daily run re-releasing
 # past weeks is a no-op. On the cron it releases for real; manual runs default to dry-run.
 
@@ -935,7 +935,7 @@ repo; there the `week` is a dropdown of that repo's weeks).
 - [**Render grades (preview)**](https://github.com/{org}/.github/actions/workflows/render-grades.yml) - build per-student `gradebook/<handle>.yml` from `classroom-config/grades/<assignment>.csv` and open ONE pull request. **That PR is the preview** - review every student's grades in the diff before sending.
 - [**Distribute grades**](https://github.com/{org}/.github/actions/workflows/distribute-grades.yml) - after merging the preview PR, copy each student's gradebook into their private repo and (optionally) @-mention them so GitHub emails the update.
 
-- [**Scheduled release**](https://github.com/{org}/.github/actions/workflows/scheduled-release.yml) - daily cron that auto-releases whatever your `release-manifest.yml` (in `.github`) and each cohort's `schedule.csv` say is due. Manual runs default to a dry-run preview ("what opens when"). Manual buttons above still work for early/ad-hoc release.
+- [**Scheduled release**](https://github.com/{org}/.github/actions/workflows/scheduled-release.yml) - daily cron that auto-releases whatever each cohort's `manifests/<cohort>.yml` (in `.github`) and its `schedule.csv` say is due. Manual runs default to a dry-run preview ("what opens when"). Manual buttons above still work for early/ad-hoc release.
 
 - _[**Sync site**](https://github.com/{org}/.github/actions/workflows/sync-site.yml) - regenerate a cohort's website from the org structure (releases do this automatically; standard workflow has no need for manual sync)._
 
