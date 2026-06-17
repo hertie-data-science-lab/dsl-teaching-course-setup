@@ -480,6 +480,51 @@ jobs:
 """
 
 
+def render_scheduler() -> str:
+    """Daily cron that auto-releases whatever the manifest x calendar says is due, across
+    every registered cohort. No check-team gate: scheduled runs have no actor, and the
+    scheduler only calls idempotent release functions (manual dispatch still needs write)."""
+    return f"""name: Scheduled release
+
+# Joins release-manifest.yml (in this .github repo) with each cohort's classroom-config
+# schedule.csv and releases everything now due. Idempotent, so a daily run re-releasing
+# past weeks is a no-op. On the cron it releases for real; manual runs default to dry-run.
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Preview only - list what WOULD open, release nothing"
+        type: boolean
+        default: true
+
+jobs:
+  scheduled-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: {CENTRAL}
+          ref: {CENTRAL_REF}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Run scheduler
+        env:
+          GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
+          COURSE: ${{{{ github.repository_owner }}}}
+          DRY_RUN: ${{{{ inputs.dry_run }}}}
+        run: |
+          gh auth setup-git
+          args=(--course-org "$COURSE" --all-cohorts)
+          [ "$DRY_RUN" = "true" ] && args+=(--dry-run)
+          python3 -m dsl_course.scheduler "${{args[@]}}"
+"""
+
+
 def render_refresh() -> str:
     """Repopulate dropdowns, re-seed content actions, propagate the repo secret, and
     rebuild the profile README across the course org."""
@@ -890,6 +935,8 @@ repo; there the `week` is a dropdown of that repo's weeks).
 - [**Render grades (preview)**](https://github.com/{org}/.github/actions/workflows/render-grades.yml) - build per-student `gradebook/<handle>.yml` from `classroom-config/grades/<assignment>.csv` and open ONE pull request. **That PR is the preview** - review every student's grades in the diff before sending.
 - [**Distribute grades**](https://github.com/{org}/.github/actions/workflows/distribute-grades.yml) - after merging the preview PR, copy each student's gradebook into their private repo and (optionally) @-mention them so GitHub emails the update.
 
+- [**Scheduled release**](https://github.com/{org}/.github/actions/workflows/scheduled-release.yml) - daily cron that auto-releases whatever your `release-manifest.yml` (in `.github`) and each cohort's `schedule.csv` say is due. Manual runs default to a dry-run preview ("what opens when"). Manual buttons above still work for early/ad-hoc release.
+
 - _[**Sync site**](https://github.com/{org}/.github/actions/workflows/sync-site.yml) - regenerate a cohort's website from the org structure (releases do this automatically; standard workflow has no need for manual sync)._
 
 ## How the actions behave
@@ -1009,6 +1056,7 @@ def seed_github_workflows(course_org: str) -> None:
         ".github/workflows/distribute-grades.yml": render_distribute_grades(cohorts),
         ".github/workflows/bootstrap-cohort.yml": render_bootstrap_cohort(),
         ".github/workflows/refresh-actions.yml": render_refresh(),
+        ".github/workflows/scheduled-release.yml": render_scheduler(),
     }
     log_step(f"Seeding org-level workflows into {course_org}/.github")
     for path, content in files.items():

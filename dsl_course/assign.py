@@ -215,27 +215,47 @@ def main() -> int:
     )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+    return provision_all(
+        args.master_org,
+        args.template,
+        args.cohort_org,
+        roster_path=args.roster,
+        solution=args.solution,
+        group=args.group,
+        dry_run=args.dry_run,
+    )
 
-    if args.master_org == args.cohort_org:
-        log_err("--master-org and --cohort-org must differ.")
+
+def provision_all(
+    master_org: str,
+    template: str,
+    cohort_org: str,
+    roster_path: str | None = None,
+    solution: bool = False,
+    group: bool = False,
+    dry_run: bool = False,
+) -> int:
+    """Freeze the cohort template, then provision a repo per unit (student, or team).
+
+    Callable directly (e.g. by the scheduler) as well as from the CLI."""
+    if master_org == cohort_org:
+        log_err("master-org and cohort-org must differ.")
         return 1
 
-    students = (
-        roster.load_path(args.roster) if args.roster else roster.load(args.cohort_org)
-    )
+    students = roster.load_path(roster_path) if roster_path else roster.load(cohort_org)
     if not students:
         return 1
     onboarded = [s for s in students if s.onboarded]
     skipped = len(students) - len(onboarded)
-    slug = assignment_slug(args.template)
+    slug = assignment_slug(template)
 
     # A provisioning unit is (repo_name, [member handles]). Individual = one per student
     # (a team of one); group = one per team from teams.csv, keyed on this assignment slug.
-    if args.group:
-        groups = teams.teams_for(teams.load(args.cohort_org), slug)
+    if group:
+        groups = teams.teams_for(teams.load(cohort_org), slug)
         if not groups:
             log_err(
-                f"no teams for `{slug}` in {args.cohort_org}/classroom-config/teams.csv - "
+                f"no teams for `{slug}` in {cohort_org}/classroom-config/teams.csv - "
                 f"students self-select via the welcome 'Join team' issue, or seed the CSV."
             )
             return 1
@@ -248,24 +268,22 @@ def main() -> int:
         what = f"{len(units)} student(s)"
 
     log_step(
-        f"Releasing {slug} to {args.cohort_org}: freeze cohort template, then provision "
-        f"{what}{' + solution' if args.solution else ''}"
+        f"Releasing {slug} to {cohort_org}: freeze cohort template, then provision "
+        f"{what}{' + solution' if solution else ''}"
     )
     if skipped:
         log(f"  ({skipped} not-yet-onboarded row(s) skipped)")
 
-    if args.dry_run:
-        log(f"    DRY-RUN  cohort template {args.cohort_org}/{slug}")
+    if dry_run:
+        log(f"    DRY-RUN  cohort template {cohort_org}/{slug}")
         for repo, handles in units:
             log(
-                f"    DRY-RUN  {args.cohort_org}/{repo}  <- {', '.join('@' + h for h in handles)}"
+                f"    DRY-RUN  {cohort_org}/{repo}  <- {', '.join('@' + h for h in handles)}"
             )
         return 0
 
     # Stage 1: freeze the cohort-level template.
-    cohort_template = ensure_cohort_template(
-        args.master_org, args.template, args.cohort_org, slug
-    )
+    cohort_template = ensure_cohort_template(master_org, template, cohort_org, slug)
     if cohort_template is None:
         log_err("could not create the cohort assignment template.")
         return 1
@@ -273,8 +291,8 @@ def main() -> int:
     with tempfile.TemporaryDirectory() as soldir:
         # Solution still comes from the COURSE template's solution branch.
         sol_dir = None
-        if args.solution:
-            sol_dir = fetch_solution(args.master_org, args.template, Path(soldir) / "t")
+        if solution:
+            sol_dir = fetch_solution(master_org, template, Path(soldir) / "t")
             if sol_dir is None:
                 return 1
 
@@ -283,20 +301,14 @@ def main() -> int:
         for repo, handles in units:
             log_step(repo)
             status = provision_one(
-                args.cohort_org,
-                cohort_template,
-                args.cohort_org,
-                repo,
-                handles,
-                slug,
-                sol_dir,
+                cohort_org, cohort_template, cohort_org, repo, handles, slug, sol_dir
             )
             results[status] = results.get(status, 0) + 1
 
     log_ok(f"Done - {json.dumps(results)}")
     from . import site
 
-    site.sync_site(args.master_org, args.cohort_org)
+    site.sync_site(master_org, cohort_org)
     return 1 if any(k.startswith("failed") for k in results) else 0
 
 
