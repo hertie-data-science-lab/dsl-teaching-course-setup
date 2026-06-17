@@ -35,17 +35,12 @@ Faculty trigger everything as **GitHub Actions**.
 
 _Steps 1 & 2 require manual setup - the rest is automatically configured via GitHub actions buttons._
 
-### 1. Create the empty course org 
-  - https://github.com/account/organizations/new
-  - Pick the Free plan.
-  - Every org (course or cohort) is  created once in GitHub's web UI
-    
-### 2. Add the DSL bot as an owner:
-  - Open the org's **People** tab: `https://github.com/orgs/<ORG>/people` → **Invite member**
-  - Invite the bot account - currently **`henrycgbaker`** (production target `hertie-dsl-bot`) - → role **Owner** (the bot then accepts the emailed-notification invite).
-  -  _Skip if you created the org as the bot account: if you created
-  the org while signed in *as* the bot account, it's already the owner - nothing to do._
-  - (Which account is "the DSL bot"? See [The bot account](docs/ADMIN-SETUP.md#the-bot-account).)*
+### 1. Create the empty course org
+  - Create the org at https://github.com/account/organizations/new (Free plan). Creating the org in the web UI is the one manual step - GitHub has no org-creation API.
+
+### 2. Add the DSL bot as an owner
+  - Org **People** tab `https://github.com/orgs/<ORG>/people` → **Invite member** → **`hertie-dsl-bot`** → role **Owner**. The bot accepts the invite once (GitHub requires the invitee to accept - there's no API to force-add a member).
+  - (Which account is "the DSL bot"? See [The bot account](docs/ADMIN-SETUP.md#the-bot-account).)
 
 ### 3. Bootstrap the new org 
   - On _this_ repo's Actions tab -> [**Bootstrap Course Org**](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions/workflows/bootstrap-org.yml) (`org` =  the new org; optionally `admin` = the course admin's GitHub handle(s)).
@@ -130,6 +125,10 @@ hold the token. See
 
 ## Technical & admin reference
 
-The bot credential, the token / secret-propagation model, the dynamic-dropdown mechanics,
-the cohort-website pipeline, and the repo layout now live in
-**[`docs/ADMIN-SETUP.md`](docs/ADMIN-SETUP.md)** - faculty delivering a course don't need them.
+For admins / developers (faculty delivering a course don't need these):
+
+- **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)** - how the system is built and how the
+  pieces move: system + token-propagation + access diagrams, workflow sequences, the bot
+  lifecycle, and the code map.
+- **[`docs/ADMIN-SETUP.md`](docs/ADMIN-SETUP.md)** - operational reference: the bot
+  credential + exact PAT scopes, the token / secret model, and who-can-run access.
