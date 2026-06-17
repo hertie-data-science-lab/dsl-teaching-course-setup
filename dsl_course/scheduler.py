@@ -172,8 +172,17 @@ def _execute(course_org: str, cohort_org: str, action: dict) -> int:
     return 1
 
 
-def run(course_org: str, cohort_org: str, today: date, dry_run: bool = False) -> int:
-    manifest = _load_manifest(course_org)
+def run(
+    course_org: str,
+    cohort_org: str,
+    today: date,
+    dry_run: bool = False,
+    manifest: dict | None = None,
+) -> int:
+    # The manifest is the same for every cohort (it lives in the course .github repo), so
+    # the all-cohorts cron loads it once and passes it in; a single-cohort run loads it here.
+    if manifest is None:
+        manifest = _load_manifest(course_org)
     calendar = _load_calendar(cohort_org)
     if not manifest or not calendar:
         return 1
@@ -230,9 +239,14 @@ def main() -> int:
         if not cohorts:
             log_err(f"no cohorts registered with {args.course_org}.")
             return 1
+        manifest = _load_manifest(args.course_org)  # same for all cohorts - load once
+        if not manifest:
+            return 1
         rc = 0
         for cohort in cohorts:
-            rc |= run(args.course_org, cohort, today, dry_run=args.dry_run)
+            rc |= run(
+                args.course_org, cohort, today, dry_run=args.dry_run, manifest=manifest
+            )
         return rc
 
     if not args.cohort_org:
