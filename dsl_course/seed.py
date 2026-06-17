@@ -44,6 +44,7 @@ INFRA_REPOS = {"welcome", "classroom-config", ".github"}
 WORKFLOWS = (
     ".github/workflows/release-materials.yml",
     ".github/workflows/release-assignment.yml",
+    ".github/workflows/release-code.yml",
 )
 
 _CHECK_TEAM = """  check-team:
@@ -180,6 +181,46 @@ def render_release(
         inputs_block=f"{cohort}\n{_week_input(weeks or [])}",
         src_repo_expr="${{ github.event.repository.name }}",
     )
+
+
+def render_release_code(cohort_orgs: list[str], cohort_repos: list[str]) -> str:
+    """Run-from-repo: copy a package PATH (subpackage folder or module file) from THIS
+    repo into a cohort repo's tree, additively. Phased disclosure of a growing package."""
+    cohort = _COHORT_INPUTS.format(
+        cohort_orgs=_choice(cohort_orgs), cohort_repos=_choice(cohort_repos)
+    )
+    return f"""name: Release code
+
+# Run from the repo that holds your package (this repo = SOURCE). Copies a chosen path
+# - a subpackage folder (e.g. mlpkg/simulation) or a single module (mlpkg/train/warmup.py)
+# - into the cohort repo's tree, additively. Release a topic when you teach it; the
+# package must tolerate not-yet-released submodules so partial release still imports.
+
+on:
+  workflow_dispatch:
+    inputs:
+{cohort}
+      path:
+        description: "Path to release (e.g. mlpkg/simulation or mlpkg/train/warmup.py)"
+        required: true
+
+jobs:
+{_CHECK_TEAM}
+  release-code:
+{_RUN_PREAMBLE}      - name: Release code
+        env:
+          GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
+          SRC_ORG: ${{{{ github.repository_owner }}}}
+          SRC_REPO: ${{{{ github.event.repository.name }}}}
+          COHORT_ORG: ${{{{ inputs.cohort_org }}}}
+          COHORT_REPO: ${{{{ inputs.cohort_repo }}}}
+          REL_PATH: ${{{{ inputs.path }}}}
+        run: |
+          gh auth setup-git
+          python3 -m dsl_course.release_code --source-org "$SRC_ORG" \\
+            --source-repo "$SRC_REPO" --cohort-org "$COHORT_ORG" \\
+            --cohort-repo "$COHORT_REPO" --path "$REL_PATH"
+"""
 
 
 def render_central_release(
@@ -713,6 +754,13 @@ def _push_workflows(
         render_provision(cohort_orgs, assignments).encode(),
         "ci: release-assignment wrapper",
     )
+    put_file(
+        org,
+        repo,
+        WORKFLOWS[2],
+        render_release_code(cohort_orgs, cohort_repos).encode(),
+        "ci: release-code wrapper",
+    )
     log_ok(f"workflows -> {org}/{repo}")
 
 
@@ -825,6 +873,8 @@ _(automatically bootstrapped from the central
 ### Weekly cadence actions:
 - [**Release materials**](https://github.com/{org}/.github/actions/workflows/release-materials.yml) - publish a given week's `lectures/`+`readings/` into a cohort repo.
 - [**Release assignment**](https://github.com/{org}/.github/actions/workflows/release-assignment.yml) - generate one private repo per student from a chosen `assignment-*` template repo.
+
+- [**Release code**](https://github.com/{org}/.github/actions/workflows/release-code.yml) - run from the repo holding your package; copy a chosen path (a subpackage folder, or a single module file) into a cohort repo's tree, additively. Phased disclosure of a growing importable package - release a topic when you teach it.
 
 NB: alternatively each materials repo *also* carries its own **Release** buttons (run from inside the
 repo; there the `week` is a dropdown of that repo's weeks).
