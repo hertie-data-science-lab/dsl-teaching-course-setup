@@ -120,6 +120,12 @@ workflow does the rest. See [How students are managed](#how-students-are-managed
     generates one private `<assignment>-<handle>` repo per onboarded student.
 13. Students onboard themselves via the Join issue; **Enroll student** is the faculty override.
 
+**Optional - public course website (open courseware):**
+14. Course org → **Publish course website** (pick a materials repo; choose readings as
+    `reading-list` or `actual-readings`). The first run scaffolds a public
+    `<course-org>.github.io` and publishes the chosen lectures/readings; re-run to refresh.
+    Opt-in and manual - skip it entirely if you don't want a public site.
+
 ## How students are managed
 
 TODO: CHANGE THIS - REGISTRAR HAS JUST EMAIL -> STUDENT HAS TO PROVIDE BOTH EMAIL & GH ID IN JOIN ISSUE (EMAIL IS VERIFIED AND IMMUTABLY JOINED AGAINST THE UNSPOOFABLE GH ID)

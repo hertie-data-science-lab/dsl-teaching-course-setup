@@ -1,21 +1,26 @@
-"""dsl-course site -- regenerate a cohort website from the live org structure.
+"""dsl-course site -- regenerate a course/cohort website from the live org structure.
 
-The cohort site (`<cohort>.github.io`, from course-website-template) renders Jekyll
-collections: `_lectures/` and `_assignments/`. This module regenerates those entries
-from what actually exists:
+Two sites, two audiences, one Jekyll template (course-website-template):
 
-- **lectures** - one entry per released week in the cohort's `materials` repo
-  (`lectures/week-N/`, `readings/week-N/`), linking to the released files;
-- **assignments** - one entry per `assignment-*` template repo in the course org,
-  with the assignment's README as the body.
+- **cohort site** (`<cohort>.github.io`, `sync_site`) - student-facing. Its lecture links
+  point at the cohort's PRIVATE `materials` repo, so they 404 for non-members (the gate is
+  deliberate). Regenerates `_lectures/`, `_assignments/`, `_events/` from the release state.
+  Releases call it; the Sync site action runs it on demand.
 
-So the site stops being placeholder content and tracks the real release state. Run after
-each release (release/assign call it) or via the Sync site action. Pushing the site repo
-redeploys it.
+- **course site** (`<course-org>.github.io`, `sync_public_site`) - PUBLIC open courseware,
+  opt-in. The course `course-materials-*` repos are private, so public links to them 404;
+  instead this HOSTS the shared files in the public site repo (Jekyll serves any path not
+  starting with `_`) and links to site-relative URLs. Lecture files are always hosted;
+  readings are either a text-only list (`reading-list`) or hosted+linked (`actual-readings`).
+  Lectures + readings only - no assignments/events. Button-only; never auto-synced.
+
+Pushing the site repo redeploys it either way.
 
 Usage:
     python3 -m dsl_course.site sync --course-org TEST-HERTIE-COURSE \\
         --cohort-org TEST-HERTIE-COHORT-f2026
+    python3 -m dsl_course.site public-sync --course-org TEST-HERTIE-COURSE \\
+        --source-repo course-materials-f2026 --readings-mode reading-list
 """
 
 from __future__ import annotations
@@ -25,8 +30,10 @@ import re
 import shutil
 import sys
 import tempfile
+import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from urllib.parse import quote
 
 import yaml
 
@@ -44,6 +51,10 @@ from .utils import (
 )
 
 MATERIALS_REPO = "materials"
+# Public course site: served folder for hosted lecture/reading files, and the text-file
+# extensions treated as the (publishable) reading list rather than copyrighted material.
+PUBLIC_MATERIALS_DIR = "public-materials"
+READING_LIST_EXTS = {".md", ".markdown", ".txt", ".bib"}
 _GIT_ENV = GIT_ENV
 
 
@@ -74,7 +85,9 @@ def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-") or "exam"
 
 
-def _schedule(meta: dict) -> tuple[date | None, dict[str, date], list[tuple[str, date]]]:
+def _schedule(
+    meta: dict,
+) -> tuple[date | None, dict[str, date], list[tuple[str, date]]]:
     """Faculty schedule overrides from the course `.github/dsl-course.yml` `schedule:` block.
 
     Returns `(semester_start, {assignment_slug: due_date}, [(exam_name, date), ...])`.
@@ -422,13 +435,246 @@ def sync_site(course_org: str, cohort_org: str) -> int:
     return 0
 
 
+def _public_links(local_dir: Path, url_prefix: str) -> list[tuple[str, str]]:
+    """(display-name, site-relative URL) for every file under a copied week folder.
+
+    URLs are relative to the public site root (`/PUBLIC_MATERIALS_DIR/...`), so they
+    resolve for the public - never blob/raw URLs into the private source repo. Names are
+    URL-encoded so spaces etc. survive."""
+    out = []
+    for p in sorted(local_dir.rglob("*")):
+        if p.is_file():
+            rel = p.relative_to(local_dir).as_posix()
+            out.append((p.name, f"{url_prefix}/{quote(rel)}"))
+    return out
+
+
+def _reading_list_md(readings_week_dir: Path) -> str:
+    """The readings rendered as TEXT for `reading-list` mode (no files hosted, no links).
+
+    Text/citation files (`.md/.txt/.bib/.markdown`) are inlined verbatim - that is the
+    faculty-written reading list. Any other file (a PDF, say) is listed by name only, so
+    the public sees WHAT to read without the copyrighted bytes being published."""
+    parts = []
+    for p in sorted(readings_week_dir.rglob("*")):
+        if not p.is_file():
+            continue
+        if p.suffix.lower() in READING_LIST_EXTS:
+            text = p.read_text(encoding="utf-8", errors="replace").strip()
+            if text:
+                parts.append(text)
+        else:
+            parts.append(f"- {p.name}")
+    return "\n\n".join(parts)
+
+
+def _public_lecture_entry(
+    week: str,
+    when: date,
+    lecture_links: list[tuple[str, str]],
+    reading_links: list[tuple[str, str]],
+    reading_list_md: str,
+) -> str:
+    """A public week entry: hosted lecture (and, in actual-readings mode, reading) links,
+    plus the reading list as inline text when in reading-list mode. Public-facing body -
+    no 'enrolled students only' gate."""
+    links = []
+    for label, pairs in (("lecture", lecture_links), ("reading", reading_links)):
+        for name, url in pairs:
+            safe = name.replace('"', "'")
+            links.append(f'    - url: {url}\n      name: "{label} - {safe}"')
+    links_block = ("links:\n" + "\n".join(links)) if links else "links: []"
+    body = f"Lecture materials and readings for week {week}."
+    if reading_list_md:
+        body += "\n\n### Reading list\n\n" + reading_list_md
+    return (
+        f"---\n"
+        f"type: lecture\n"
+        f"date: {when.isoformat()}T09:00:00\n"
+        f'title: "Week {week}"\n'
+        f'tldr: "Materials for week {week}."\n'
+        f"{links_block}\n"
+        f"---\n"
+        f"{body}\n"
+    )
+
+
+def sync_public_site(
+    course_org: str,
+    source_repo: str,
+    readings_mode: str = "reading-list",
+    include_lectures: bool = True,
+) -> int:
+    """Build/refresh the PUBLIC course site `<course-org>.github.io` (open courseware).
+
+    Opt-in + manual: the first run scaffolds the site (Pages), later runs re-sync it.
+    Hosts the chosen `course-materials-*` repo's lecture files (and, in `actual-readings`
+    mode, reading files) in the public site repo and links to them with site-relative
+    URLs. `reading-list` mode publishes the citation text only. Lectures + readings only -
+    no assignments/events. Served files are namespaced per source repo so several years
+    can coexist on one site."""
+    if not include_lectures and readings_mode == "none":
+        log_err("nothing to publish - lectures off and readings set to none.")
+        return 1
+
+    site = f"{course_org.lower()}.github.io"
+    if not repo_exists(course_org, site):
+        from . import scaffold
+
+        log_step(f"No public site yet - scaffolding {course_org}/{site}")
+        if scaffold.scaffold_site(course_org) != 0:
+            return 1
+
+    from . import (
+        release,
+    )  # _week_dir padding tolerance (avoid an import cycle at module load)
+
+    weeks = seed.discover_weeks(course_org, source_repo)
+    log_step(
+        f"Publishing {course_org}/{site} from {source_repo}: {len(weeks)} week(s), "
+        f"readings={readings_mode}, lectures={'on' if include_lectures else 'off'}"
+    )
+
+    meta_raw = get_file_content(course_org, ".github", "dsl-course.yml") or ""
+    meta = yaml.safe_load(meta_raw) if meta_raw else {}
+    if not isinstance(meta, dict):
+        meta = {}
+    sched = meta.get("schedule") if isinstance(meta.get("schedule"), dict) else {}
+    start = _coerce_date(sched.get("semester_start")) or date(2025, 1, 1)
+
+    with tempfile.TemporaryDirectory() as work:
+        src, site_wd = Path(work) / "src", Path(work) / "site"
+        if (
+            gh("repo", "clone", f"{course_org}/{source_repo}", str(src), "--", "-q")[0]
+            != 0
+        ):
+            log_err(f"could not clone {course_org}/{source_repo}")
+            return 1
+        # A just-generated site repo can lag the template-generate call, so retry the clone.
+        for _ in range(6):
+            if (
+                gh("repo", "clone", f"{course_org}/{site}", str(site_wd), "--", "-q")[0]
+                == 0
+            ):
+                break
+            time.sleep(5)
+        else:
+            log_err(f"could not clone {course_org}/{site}")
+            return 1
+
+        # Wipe only THIS source's served subtree (idempotent re-publish; multi-repo safe).
+        served_root = site_wd / PUBLIC_MATERIALS_DIR / source_repo
+        if served_root.exists():
+            shutil.rmtree(served_root)
+
+        lecture_entries = {}
+        for w in weeks:
+            if not w.isdigit():
+                continue
+            site_week = served_root / f"week-{w}"
+            url_base = f"/{PUBLIC_MATERIALS_DIR}/{source_repo}/week-{w}"
+            lecture_links, reading_links, reading_list_md = [], [], ""
+
+            if include_lectures:
+                lec_src = release._week_dir(src / "lectures", w)
+                if lec_src is not None:
+                    dest = site_week / "lectures"
+                    shutil.copytree(lec_src, dest, dirs_exist_ok=True)
+                    lecture_links = _public_links(dest, f"{url_base}/lectures")
+
+            read_src = release._week_dir(src / "readings", w)
+            if read_src is not None:
+                if readings_mode == "actual-readings":
+                    dest = site_week / "readings"
+                    shutil.copytree(read_src, dest, dirs_exist_ok=True)
+                    reading_links = _public_links(dest, f"{url_base}/readings")
+                elif readings_mode == "reading-list":
+                    reading_list_md = _reading_list_md(read_src)
+
+            when = start + timedelta(days=(int(w) - 1) * 7)
+            lecture_entries[f"week-{int(w):02d}.md"] = _public_lecture_entry(
+                w, when, lecture_links, reading_links, reading_list_md
+            )
+
+        # Course identity into _config.yml; semester is neutral (the site is multi-year).
+        cfg_path = site_wd / "_config.yml"
+        if cfg_path.is_file():
+            cfg = cfg_path.read_text()
+            if meta.get("course_name"):
+                cfg = _set_config(cfg, "course_name", str(meta["course_name"]))
+            if meta.get("course_code"):
+                cfg = _set_config(cfg, "course_code", str(meta["course_code"]))
+            cfg = _set_config(cfg, "course_semester", "Open Courseware")
+            cfg_path.write_text(cfg)
+
+        # People from the declared `people:` block (else the GitHub teams).
+        data_dir = site_wd / "_data"
+        data_dir.mkdir(exist_ok=True)
+        (data_dir / "people.yml").write_text(_people_yaml(course_org, meta))
+
+        # Lectures + readings only: regen _lectures, and clear _assignments/_events so any
+        # template placeholders (and content from a previous run) don't appear publicly.
+        for coll, gen in (
+            ("_lectures", lecture_entries),
+            ("_assignments", {}),
+            ("_events", {}),
+        ):
+            d = site_wd / coll
+            if d.is_dir():
+                shutil.rmtree(d)
+            d.mkdir(parents=True)
+            (d / ".gitkeep").write_text("")
+            for fname, content in gen.items():
+                (d / fname).write_text(content)
+
+        git("-C", str(site_wd), *_GIT_ENV, "add", "-A")
+        code, _ = git(
+            "-C",
+            str(site_wd),
+            *_GIT_ENV,
+            "commit",
+            "-q",
+            "--no-verify",
+            "-m",
+            f"site: publish public course site from {source_repo}",
+        )
+        if code != 0:
+            log_ok("public site already up to date")
+            return 0
+        if git("-C", str(site_wd), *_GIT_ENV, "push", "-q", "origin", "HEAD")[0] != 0:
+            log_err("public site push failed")
+            return 1
+    log_ok(f"public site published -> https://{course_org.lower()}.github.io/")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="cmd", required=True)
     ps = sub.add_parser("sync")
     ps.add_argument("--course-org", required=True)
     ps.add_argument("--cohort-org", required=True)
+    pp = sub.add_parser("public-sync")
+    pp.add_argument("--course-org", required=True)
+    pp.add_argument(
+        "--source-repo", required=True, help="Course materials repo to publish"
+    )
+    pp.add_argument(
+        "--readings-mode",
+        choices=["reading-list", "actual-readings", "none"],
+        default="reading-list",
+    )
+    pp.add_argument(
+        "--no-include-lectures", action="store_true", help="Skip lecture files"
+    )
     args = parser.parse_args()
+    if args.cmd == "public-sync":
+        return sync_public_site(
+            args.course_org,
+            args.source_repo,
+            args.readings_mode,
+            include_lectures=not args.no_include_lectures,
+        )
     return sync_site(args.course_org, args.cohort_org)
 
 

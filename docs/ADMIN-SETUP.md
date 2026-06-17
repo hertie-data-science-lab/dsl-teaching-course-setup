@@ -45,8 +45,11 @@ Two **separate** populations - keep them distinct:
   directly. Without the grant, only org owners would see the Bootstrap button - team
   membership alone wouldn't surface it.
 - **Who may run a specific course's buttons** (Release materials/assignment, New
-  materials/assignment, Enroll, Bootstrap cohort, Sync site, Refresh actions): members of
-  **that course org's own** `instructors` (write) or `course-admin` (admin) team. The
+  materials/assignment, Enroll, Bootstrap cohort, Sync site, Publish course website,
+  Refresh actions): members of **that course org's own** `instructors` (write) or
+  `course-admin` (admin) team. (**Publish course website** carries an editorial
+  responsibility: `actual-readings` mode hosts the reading files publicly, so only publish
+  materials you hold the rights to share - use `reading-list` for copyrighted readings.) The
   day-to-day buttons gate on **repo permission** on the repo they run in
   (`seed.py` `_CHECK_TEAM`), and bootstrap grants those two teams write/admin on `.github`
   (`grant_button_access`). GitHub only shows the "Run workflow" button to write+ users, so
@@ -76,6 +79,6 @@ GitHub Team/Enterprise, org secrets reach private repos and this propagation is 
 
 ## How it works (dropdowns, website, code map)
 
-The dynamic-dropdown regeneration, the cohort-website pipeline, and the repo/code map now
-live in **[ARCHITECTURE.md](ARCHITECTURE.md)** alongside the system diagrams and workflow
-sequences - this doc keeps the operational reference above.
+The dynamic-dropdown regeneration, the cohort-website and public course-website pipelines,
+and the repo/code map now live in **[ARCHITECTURE.md](ARCHITECTURE.md)** alongside the
+system diagrams and workflow sequences - this doc keeps the operational reference above.

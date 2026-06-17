@@ -72,7 +72,13 @@ def scaffold_materials(org: str, tag: str) -> int:
         "- `readings/week-N/` - one folder per week's readings\n"
         "- `*syllabus*`, this `README.md` (root) - released via the syllabus / README toggles\n\n"
         "Add more weeks by creating `lectures/week-2/`, `readings/week-2/`, ... then run "
-        "**Refresh actions** so the week dropdown picks them up.\n"
+        "**Refresh actions** so the week dropdown picks them up.\n\n"
+        "## Public course website (optional)\n\n"
+        "The **Publish course website** action can share this repo's materials on a public "
+        "open-courseware site. Lecture files are always hosted; for readings you choose "
+        "`reading-list` (text/citation files are shown as a list - keep copyrighted PDFs out "
+        "of the list by leaving them as non-text files) or `actual-readings` (every reading "
+        "file is hosted and downloadable - you carry the copyright responsibility).\n"
     )
     files = {
         "README.md": readme.encode(),
@@ -164,14 +170,15 @@ def scaffold_assignment(org: str, number: str, tag: str) -> int:
 
 
 def scaffold_site(org: str) -> int:
-    """Generate the cohort's public website (from course-website-template) and enable
-    GitHub Pages with the template's deploy-on-push workflow.
+    """Generate an org's public website (from course-website-template) and enable GitHub
+    Pages with the template's deploy-on-push workflow. Used for both the per-cohort
+    student-facing site and the opt-in public course site - the org is whatever's passed.
 
     The repo is named `<org>.github.io` so it serves at the org root. It must be PUBLIC
     on the Free plan (Pages requires it); on GitHub Enterprise Cloud / Campus it can be
     made private with Pages access control. The site redeploys on every push."""
     site = f"{org.lower()}.github.io"
-    log_step(f"Scaffolding cohort website {org}/{site}")
+    log_step(f"Scaffolding website {org}/{site}")
     if repo_exists(org, site):
         log_skip(f"repo {org}/{site}")
     elif not generate_from_template(
@@ -180,7 +187,7 @@ def scaffold_site(org: str) -> int:
         owner=org,
         name=site,
         private=False,
-        description="Cohort course website (auto-deployed on push)",
+        description="Course website (auto-deployed on push)",
     ):
         log_err(
             f"  ! could not generate the site from {WEBSITE_TEMPLATE_ORG}/{WEBSITE_TEMPLATE}"
