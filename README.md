@@ -7,12 +7,12 @@ single implementation behind every button.
 ## The model
 
 Two org tiers:
-1. the **course** org is the faculty-facing source of truth - the historical registry of
+1. the **course** org is the faculty-facing control plane - the historical registry of
    course materials, persistent across years, where faculty push version-controlled materials
    from;
-2. the **cohort** org is the per-year student-facing target - materials are released here,
-   student assignments are submitted here, and student-facing features (onboarding, the
-   website) live here.
+2. the **cohort** org is the per-year student-facing delivery target - materials are released
+   here, student assignments are submitted and assessed here, and student-facing features
+   (onboarding, the website) live here.
 
 ```mermaid
 flowchart TB
@@ -20,6 +20,8 @@ flowchart TB
     mat["course-materials-f2026<br/>lectures/week-N/ + readings/week-N/ (+ syllabus, README at root)"]
     tmpl["assignment-1-f2026 ...<br/>template repos (is_template) + autograder"]
     gh[".github<br/>profile (auto) + ALL faculty buttons + cohort registry"]
+    pub["&lt;course-org&gt;.github.io<br/>PUBLIC open-courseware site (opt-in)<br/>hosts shared lectures + readings"]
+    mat -.->|"public-sync (opt-in)"| pub
   end
 
   subgraph COHORT["COHORT org — e.g. Deep-Learning-f2026 (per-year, private)"]
