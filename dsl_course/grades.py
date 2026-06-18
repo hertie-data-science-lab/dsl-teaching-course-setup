@@ -158,6 +158,37 @@ def render_yaml(book: dict) -> str:
     return yaml.safe_dump(book, sort_keys=False, allow_unicode=True)
 
 
+def dump_grades(rows: list[GradeRow]) -> str:
+    """Serialise grade rows back to CSV text (header + one row per GradeRow)."""
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow(GRADE_FIELDS)
+    for r in rows:
+        writer.writerow([getattr(r, f) for f in GRADE_FIELDS])
+    return out.getvalue()
+
+
+def merge_auto(text: str, updates: list[tuple[str, dict[str, str]]]) -> str:
+    """Upsert machine-graded fields into a grades CSV, returning new CSV text.
+
+    Each update is (github_handle, {field: value}); the handle's row is updated in place
+    (preserving every other column a faculty member has already filled) or created and
+    appended if absent. Used by the collector to record `auto` (individual) or
+    `team`/`team_grade` (group) without disturbing manual marks, comments, or final."""
+    rows = parse_grades(text) if text.strip() else []
+    order = [r.github_handle for r in rows]
+    by_handle = {r.github_handle: r for r in rows}
+    for handle, fields in updates:
+        row = by_handle.get(handle)
+        if row is None:
+            row = GradeRow(github_handle=handle)
+            by_handle[handle] = row
+            order.append(handle)
+        for key, value in fields.items():
+            setattr(row, key, value)
+    return dump_grades([by_handle[h] for h in order])
+
+
 # ---------------------------------------------------------------------- gh/git wiring
 
 
