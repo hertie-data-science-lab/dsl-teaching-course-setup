@@ -89,3 +89,28 @@ def test_render_yaml_roundtrips_and_is_student_scoped():
     parsed = yaml.safe_load(grades.render_yaml(book))
     assert parsed["student"] == "ada"
     assert parsed["assignments"]["assignment-1"]["final"] == "88"
+
+
+def test_merge_auto_upserts_without_clobbering_manual():
+    existing = grades.dump_grades(
+        [grades.GradeRow(github_handle="ada", manual="18", comments="Nice")]
+    )
+    out = grades.merge_auto(existing, [("ada", {"auto": "70"}), ("alan", {"auto": "60"})])
+    rows = {r.github_handle: r for r in grades.parse_grades(out)}
+    # the collector's auto score lands without touching the faculty's manual mark/comment
+    assert rows["ada"].auto == "70" and rows["ada"].manual == "18"
+    assert rows["ada"].comments == "Nice"
+    assert rows["alan"].auto == "60"  # a not-yet-listed student is appended
+
+
+def test_merge_auto_group_sets_team_grade_per_member():
+    out = grades.merge_auto(
+        "",
+        [
+            ("ada", {"team": "wizards", "team_grade": "85"}),
+            ("alan", {"team": "wizards", "team_grade": "85"}),
+        ],
+    )
+    rows = {r.github_handle: r for r in grades.parse_grades(out)}
+    assert rows["ada"].team == "wizards" and rows["ada"].team_grade == "85"
+    assert rows["alan"].team_grade == "85"
