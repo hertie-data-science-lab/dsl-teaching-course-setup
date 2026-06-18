@@ -19,9 +19,10 @@ into a tracking issue and tick as you go.)
 - [ ] `[required]` Create the **course org** in the GitHub web UI, then add **`hertie-dsl-bot`** as **Owner** (the one manual step - no org-creation API).
 - [ ] `[required]` Run [**Bootstrap Course Org**](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions/workflows/bootstrap-org.yml) from this repo's Actions tab (`org`, `org_name`; optional `course_name`, `course_code`, `admin`). This also sets `DSL_BOT_TOKEN` on the org - you don't set the secret by hand. See [Token](#token).
 - [ ] `[required]` **Materials**: scaffold with **New materials repo**, then fill `course-materials-fYYYY/lectures/week-N/` and `readings/week-N/` with any files. *(optional: a `*syllabus*` file + `README` at the repo root.)*
-- [ ] `[required]` **Assignments** (≥1): scaffold with **New assignment**, then on `main` add the brief (`README.md`) + starter. *(optional: solutions go in a `solution/` folder on a branch named `solution`; an autograder at `.github/workflows/autograde.yml`.)*
+- [ ] `[required]` **Assignments** (≥1): scaffold with **New assignment**, then on `main` add the brief (`README.md`) + starter. *(optional: on the `solution` branch, the model solution in `solution/`, and - to autograde - hidden tests in `tests/` plus a `grading.yml`. Student repos get `main` only.)*
 - [ ] *(optional)* **People**: edit the `people:` block in `.github/dsl-course.yml` (instructor/TA cards). If omitted, falls back to GitHub teams + avatars.
 - [ ] *(optional)* **Schedule**: edit the `schedule:` block in `.github/dsl-course.yml` (real dates). If omitted, dates are synthesised.
+- [ ] *(optional)* **Email**: to actually send enrolment-code + grade emails, add the `GRAPH_*` (Microsoft Graph, preferred) or `SMTP_*` Actions secrets. Probe what your tenant allows with `scripts/m365_mail_probe.py`. See [Email](#email-optional). *(Without them, every email step still runs as a `dry_run` preview.)*
 - [ ] `[required]` Run **Refresh actions** so every content repo gets its Release buttons, the secret propagates, and all dropdowns populate.
 
 ### Cohort setup (per year)
@@ -30,6 +31,7 @@ into a tracking issue and tick as you go.)
 - [ ] `[required]` Run **Bootstrap cohort** (`cohort` ticked, `course` = parent course org). Seeds `welcome` + `classroom-config`, scaffolds the site, registers the cohort, propagates the token.
 - [ ] `[required]` **Roster**: edit `classroom-config/students.csv` with registrar data - `student_id, hertie_email, name, section`. Leave `github_handle, github_id` blank; students fill them by onboarding.
 - [ ] `[required]` Run the weekly loop: **Release materials** (per week) and **Release assignment** (per assignment). Students onboard themselves via the **Join** issue in `welcome`; **Enroll student** is the faculty override.
+- [ ] *(optional)* **Grade + return marks**: **Grade assignment** (autogrades after the deadline, if you added hidden tests) → edit `classroom-config/grades/<assignment>.csv` (add manual marks) → **Sync gradebooks** → **Render grades** (preview PR) → **Distribute grades** (emails each student).
 
 ## What you end up with
 
@@ -77,7 +79,7 @@ running course. _Anything you don't supply is synthesised or skipped, never bloc
 | **Lectures** | `course-materials-fYYYY/lectures/week-N/` (any files) |  weekly lecture entries linking the released files |
 | **Readings** | `course-materials-fYYYY/readings/week-N/` (any files) |  weekly reading links |
 | **Syllabus** | `course-materials-fYYYY/` root file matching `*syllabus*` |  cohort root + syllabus link |
-| **Assignments** | `assignment-N-fYYYY` template repo: `README.md` (brief), `starter.*`, `solution` branch, `.github/workflows/autograde.yml` | assignment briefs on the site + one private `<slug>-<handle>` repo per student |
+| **Assignments** | `assignment-N-fYYYY` template repo: `README.md` (brief), `starter.*` on `main`; `solution` branch with the model solution, `grading.yml`, and hidden tests | assignment briefs on the site + one private `<slug>-<handle>` repo per student |
 | **Roster** | cohort `classroom-config/students.csv` (`student_id, hertie_email, name, section`) | enrolment + per-student provisioning |
 
 ## The inputs, grouped
@@ -88,7 +90,8 @@ running course. _Anything you don't supply is synthesised or skipped, never bloc
 |---|-------|-------------|-------|
 | A1 | **Create the course org** | GitHub web UI | GitHub has **no org-creation API** ([ADR 0011 §9]). Add the bot account as an **owner**. |
 | A2 | **Create the cohort org** | GitHub web UI | Same - one per year. Add the bot as owner. |
-| A3 | **`DSL_BOT_TOKEN`** | The bot's classic PAT | Scopes: `repo` + `admin:org` + `workflow`. The bot must be **owner on both orgs**. This is the only secret. See [Token](#token). |
+| A3 | **`DSL_BOT_TOKEN`** | The bot's classic PAT | Scopes: `repo` + `admin:org` + `workflow`. The bot must be **owner on both orgs**. The only *required* secret. See [Token](#token). |
+| A4 | **Email secrets** (optional) | `GRAPH_TENANT_ID/CLIENT_ID/CLIENT_SECRET/SENDER` (Microsoft Graph, preferred) **or** `SMTP_HOST/USER/PASSWORD` as org/repo Actions secrets | Only needed to *send* enrolment-code / grade emails; `dry_run` previews work without them. See [Email](#email-optional). |
 
 Everything below is a button or a file edit.
 
@@ -100,7 +103,7 @@ Everything below is a button or a file edit.
 | B2 | **People** (instructors + TAs: name, photo, bio link, title) | Edit the `people:` block in `.github/dsl-course.yml` | for the site cards | declared input → cards carry institutional headshots + bio links. *(If omitted, falls back to the `instructors`/`teaching-assistants` GitHub teams → GitHub avatars.)* |
 | B3 | **Materials**: a `course-materials-fYYYY` repo with `lectures/week-N/` and `readings/week-N/` folders | **New materials repo** button scaffolds it; you add files | yes | course org repo |
 | B4 | Syllabus / root README (optional) | Files at the materials-repo root | optional | copied to the cohort on release if toggled on |
-| B5 | **Assignments**: one `assignment-N-fYYYY` **template** repo each (starter + autograder on `main`, empty `solution` branch) | **New assignment** button scaffolds it; you add the brief + starter | yes | course org template repos (`is_template`) |
+| B5 | **Assignments**: one `assignment-N-fYYYY` **template** repo each (starter on `main`; the `solution` branch carries the model solution, `grading.yml`, and hidden tests) | **New assignment** button scaffolds it; you add the brief + starter (+ hidden tests on `solution` to autograde) | yes | course org template repos (`is_template`) |
 | B6 | **Schedule dates** (assignment due dates, exam dates, real semester start) | Edit the `schedule:` block in `.github/dsl-course.yml` | optional (synthesised if blank) | see [Schedule](#the-schedule) |
 | B7 | **Release manifest** (optional, for scheduled auto-release): `weeks:` → what opens each week (`materials` / `code` paths / `assignment`). **One file per cohort** (source repos are year-tagged) | Edit `.github/manifests/<cohort-org>.yml` | no (manual buttons work without it) | course org `.github` repo |
 
@@ -110,7 +113,7 @@ Everything below is a button or a file edit.
 |---|-------|--------------|-----------|
 | C1 | The empty cohort org name | **Bootstrap cohort** button | yes |
 | C2 | **Roster**: registrar columns of `students.csv` (`student_id, hertie_email, name, section`) | Edit `classroom-config/students.csv` (private) | yes |
-| C3 | **Grades** (optional, when returning marks): one CSV per assignment, `classroom-config/grades/<assignment>.csv` (`github_handle, team, team_grade, adjustment, final, comments`) | Edit the CSV (private), then **Sync gradebooks** → **Render grades** → **Distribute grades** | no |
+| C3 | **Grades** (optional, when returning marks): one CSV per assignment, `classroom-config/grades/<assignment>.csv` (`github_handle, team, auto, manual, team_grade, adjustment, final, comments, team_comments`) | **Grade assignment** can pre-fill `auto`/`team_grade` from hidden tests; faculty fill the rest, then **Sync gradebooks** → **Render grades** → **Distribute grades** | no |
 | C4 | **Teams** (optional, for group assignments): `classroom-config/teams.csv` (`assignment, team, github_handle`) | Students self-select via the welcome **Join team** issue, or faculty edit the CSV directly | no |
 | C5 | **Calendar** (optional, pairs with the release manifest): `classroom-config/schedule.csv` (`week, date`) | Edit the CSV; the daily **Scheduled release** cron opens each week's manifest items on its date | no |
 
@@ -119,11 +122,20 @@ Everything below is a button or a file edit.
 **Grades are private and previewable.** Each student gets one private `grades-<handle>`
 repo (the single home for every mark - team project repos may be public, so grades never
 go there). For an individual assignment, fill just `final` + `comments`; for a group
-project, fill `team`, `team_grade`, and that member's private `adjustment` (`final` is
-authoritative). **Render grades** builds per-student `gradebook/<handle>.yml` and opens one
-PR - *that diff is the preview* - and **Distribute grades** fans the merged files out to
-each private repo. A teammate never sees another member's adjustment: it lives only in
-their own repo.
+project, fill `team`, `team_grade`, that member's private `adjustment`, and the shared
+`team_comments` (`final` is authoritative). **Render grades** builds per-student
+`gradebook/<handle>.yml` and opens one PR - *that diff is the preview* - and **Distribute
+grades** fans the merged files out to each private repo. A teammate never sees another
+member's adjustment: it lives only in their own repo.
+
+**Autograding is optional, partial, and fully private.** If an assignment's `solution`
+branch carries hidden tests + a `grading.yml`, **Grade assignment** (a manual button, or a
+`grade:` entry in the release manifest) runs those tests *faculty-side after the deadline*,
+pinning each submission to its last commit on or before the deadline. It archives the raw
+`result.json` under `classroom-config/autograde/` and writes the machine score into the
+CSV's `auto` (individual) / `team_grade` (group) column. The `auto`/`manual` split lets you
+autograde part and hand-mark the rest; neither column is ever shown to the student - their
+repo gets no tests, no workflow, and no score, and they learn their mark only by email.
 
 ### D. Per-student (self-service, no faculty input)
 
@@ -230,9 +242,23 @@ One secret, `DSL_BOT_TOKEN`, runs every workflow. It needs, **on both orgs**: re
   on each private content repo. On GitHub Team/Enterprise org secrets reach private repos and
   this propagation is unnecessary.
 
+## Email (optional)
+
+Enrolment-code and grade-notification emails go through `dsl_course.mailer`, which uses
+whichever transport is configured (a `--dry-run` preview needs neither):
+
+- **Microsoft Graph (preferred)** - secrets `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`,
+  `GRAPH_CLIENT_SECRET`, `GRAPH_SENDER`. Needs an Entra app registration with the **Mail.Send**
+  application permission, admin-consented and scoped to one shared mailbox.
+- **SMTP (fallback)** - secrets `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD` (+ optional
+  `SMTP_PORT`, `SMTP_FROM`). Works only where the tenant still allows SMTP AUTH.
+
+Run `scripts/m365_mail_probe.py` locally (with your bot creds) to discover which your tenant
+allows - it flags the `5.7.139 SMTP AUTH disabled` lockout and recommends a path. Set the
+chosen secrets at org level (or on the `.github` repo). Deliverability still needs
+SPF/DKIM/DMARC on the sending domain.
+
 ## Known limits (not blockers)
 
-- **Autograding** is deferred - the template ships a dormant autograder shim; no runner is
-  wired ([ADR 0010 §2]).
 - **Moodle** roster-in / grade-out is manual CSV until Hertie IT enables Web Services.
 - **Pages are public** on the Free plan; access-controlled once on Campus/Enterprise.
