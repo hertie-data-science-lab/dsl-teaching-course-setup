@@ -81,7 +81,11 @@ _RUN_PREAMBLE = f"""    needs: check-team
 
 # SMTP secrets, wired into the env of the buttons that send email (enrolment codes, grade
 # notifications). A plain string (not the f-string body) so the GitHub `${{ }}` is literal.
-_SMTP_ENV = """\
+_MAIL_ENV = """\
+          GRAPH_TENANT_ID: ${{ secrets.GRAPH_TENANT_ID }}
+          GRAPH_CLIENT_ID: ${{ secrets.GRAPH_CLIENT_ID }}
+          GRAPH_CLIENT_SECRET: ${{ secrets.GRAPH_CLIENT_SECRET }}
+          GRAPH_SENDER: ${{ secrets.GRAPH_SENDER }}
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
@@ -433,12 +437,16 @@ def render_distribute_grades(cohort_orgs: list[str]) -> str:
 
 # Run AFTER merging the Render grades preview PR. Copies each merged gradebook/<handle>.yml
 # into that student's private grades-<handle> repo and (unless silenced) emails them a
-# notification to their university inbox. Needs the SMTP_* secrets for the email.
+# notification to their university inbox. Needs the GRAPH_* (or SMTP_*) secrets for the email.
 
 on:
   workflow_dispatch:
     inputs:
 {_cohort_dropdown(cohort_orgs)}
+      dry_run:
+        description: "Preview the grade emails - push nothing, send nothing"
+        type: boolean
+        default: true
       silent:
         description: "Skip the email notification (just push the grades)"
         type: boolean
@@ -451,10 +459,12 @@ jobs:
         env:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
           COHORT_ORG: ${{{{ inputs.cohort_org }}}}
+          DRY_RUN: ${{{{ inputs.dry_run }}}}
           SILENT: ${{{{ inputs.silent }}}}
-{_SMTP_ENV}
+{_MAIL_ENV}
         run: |
           args=(--cohort-org "$COHORT_ORG")
+          [ "$DRY_RUN" = "true" ] && args+=(--dry-run)
           [ "$SILENT" = "true" ] && args+=(--no-notify)
           python3 -m dsl_course.grades distribute "${{args[@]}}"
 """
@@ -467,7 +477,7 @@ def render_send_codes(cohort_orgs: list[str]) -> str:
 # Generates a random enrolment code per student (into classroom-config/students.csv) and
 # emails each not-yet-onboarded student their code to their university inbox. Students paste
 # the code into the welcome Join issue - no personal data in the public repo. dry_run
-# previews the codes + emails without writing or sending. Needs the SMTP_* secrets.
+# previews the codes + emails without writing or sending. Needs the GRAPH_* (or SMTP_*) secrets.
 
 on:
   workflow_dispatch:
@@ -486,7 +496,7 @@ jobs:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
           COHORT_ORG: ${{{{ inputs.cohort_org }}}}
           DRY_RUN: ${{{{ inputs.dry_run }}}}
-{_SMTP_ENV}
+{_MAIL_ENV}
         run: |
           args=(--cohort-org "$COHORT_ORG")
           [ "$DRY_RUN" = "true" ] && args+=(--dry-run)
@@ -958,7 +968,7 @@ _(automatically bootstrapped from the central
 
 ### One-time setup actions:
 - [**Bootstrap cohort**](https://github.com/{org}/.github/actions/workflows/bootstrap-cohort.yml) - configure a freshly-created cohort org (sets up scaffold repos), register it with the course org, refresh dropdowns.
-- [**Send enrolment codes**](https://github.com/{org}/.github/actions/workflows/send-codes.yml) - generate a random non-PII enrolment code per student and email each their code (to their university inbox). Students paste the code into the welcome Join issue - no personal data in the public repo. `dry_run` previews codes + emails. Needs the `SMTP_*` secrets.
+- [**Send enrolment codes**](https://github.com/{org}/.github/actions/workflows/send-codes.yml) - generate a random non-PII enrolment code per student and email each their code (to their university inbox). Students paste the code into the welcome Join issue - no personal data in the public repo. `dry_run` previews codes + emails. Needs the `GRAPH_*` (or `SMTP_*`) secrets.
 - [**Enroll student**](https://github.com/{org}/.github/actions/workflows/enroll-student.yml) - grant a student access to the cohort org; provision them with student-level permissions.
 - [**New materials repo**](https://github.com/{org}/.github/actions/workflows/new-materials.yml) - scaffold a correctly-structured `course-materials-<year>` repo (week folders + the Release buttons).
 - [**New assignment**](https://github.com/{org}/.github/actions/workflows/new-assignment.yml) - scaffold an `assignment-N-<year>` template repo (starter + autograder on `main`, an empty `solution` branch).
@@ -979,7 +989,7 @@ repo; there the `week` is a dropdown of that repo's weeks).
 ### Grades (private, previewable):
 - [**Sync gradebooks**](https://github.com/{org}/.github/actions/workflows/sync-gradebooks.yml) - ensure every onboarded student has a PRIVATE `grades-<handle>` repo (the single home for all their grades). Idempotent.
 - [**Render grades (preview)**](https://github.com/{org}/.github/actions/workflows/render-grades.yml) - build per-student `gradebook/<handle>.yml` from `classroom-config/grades/<assignment>.csv` and open ONE pull request. **That PR is the preview** - review every student's grades in the diff before sending.
-- [**Distribute grades**](https://github.com/{org}/.github/actions/workflows/distribute-grades.yml) - after merging the preview PR, copy each student's gradebook into their private repo and (unless silenced) email each student a notification to their university inbox (needs the `SMTP_*` secrets).
+- [**Distribute grades**](https://github.com/{org}/.github/actions/workflows/distribute-grades.yml) - after merging the preview PR, copy each student's gradebook into their private repo and (unless silenced) email each student a notification to their university inbox (needs the `GRAPH_*` or `SMTP_*` secrets).
 
 - [**Scheduled release**](https://github.com/{org}/.github/actions/workflows/scheduled-release.yml) - daily cron that auto-releases whatever each cohort's `manifests/<cohort>.yml` (in `.github`) and its `schedule.csv` say is due. Manual runs default to a dry-run preview ("what opens when"). Manual buttons above still work for early/ad-hoc release.
 

@@ -67,3 +67,16 @@ def test_smtp_config_from_env_needs_all_three(monkeypatch):
     monkeypatch.setenv("SMTP_PASSWORD", "p")
     cfg = mailer.smtp_config_from_env()
     assert cfg and cfg.port == 587 and cfg.from_addr == "u"  # defaults applied
+
+
+def test_graph_config_from_env_needs_all_four(monkeypatch):
+    for k in ("GRAPH_TENANT_ID", "GRAPH_CLIENT_ID", "GRAPH_CLIENT_SECRET", "GRAPH_SENDER"):
+        monkeypatch.delenv(k, raising=False)
+    assert mailer.graph_config_from_env() is None
+    monkeypatch.setenv("GRAPH_TENANT_ID", "t")
+    monkeypatch.setenv("GRAPH_CLIENT_ID", "c")
+    monkeypatch.setenv("GRAPH_CLIENT_SECRET", "s")
+    assert mailer.graph_config_from_env() is None  # sender still missing
+    monkeypatch.setenv("GRAPH_SENDER", "bot@x.edu")
+    cfg = mailer.graph_config_from_env()
+    assert cfg and cfg.sender == "bot@x.edu" and cfg.tenant_id == "t"
