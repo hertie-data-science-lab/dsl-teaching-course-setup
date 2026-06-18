@@ -305,12 +305,15 @@ def render(cohort_org: str) -> int:
     return 0
 
 
-def distribute(cohort_org: str, notify: bool = True) -> int:
+def distribute(cohort_org: str, notify: bool = True, dry_run: bool = False) -> int:
     """Fan the merged gradebook/<handle>.yml files out into each private grades-<handle>,
     then (unless silenced) email each student a notification to their university inbox.
 
     Clone classroom-config once and read the files locally (rather than an API GET per
-    student); the only per-student call left is the unavoidable write to each repo."""
+    student); the only per-student call left is the unavoidable write to each repo.
+
+    dry_run pushes nothing and only previews the email notifications (the grade values
+    themselves were already previewed in the render PR)."""
     with tempfile.TemporaryDirectory() as work:
         wd = Path(work) / "cfg"
         if (
@@ -331,15 +334,22 @@ def distribute(cohort_org: str, notify: bool = True) -> int:
         results: dict[str, int] = {}
         pushed: list[str] = []
         for f in files:
+            if dry_run:
+                log(f"    DRY-RUN  would update {GRADEBOOK_PREFIX}{f.stem}/grades.yml")
+                pushed.append(f.stem)
+                continue
             status = _push_gradebook(cohort_org, f.stem, f.read_text())
             results[status] = results.get(status, 0) + 1
             if status == "ok":
                 pushed.append(f.stem)
-    log_ok(f"Done - {json.dumps(results)}")
+    if dry_run:
+        log_ok(f"DRY-RUN previewed {len(pushed)} gradebook update(s) - nothing pushed")
+    else:
+        log_ok(f"Done - {json.dumps(results)}")
 
     if notify and pushed:
-        _email_updates(cohort_org, pushed)
-    return 1 if any(k.startswith("failed") for k in results) else 0
+        _email_updates(cohort_org, pushed, dry_run=dry_run)
+    return 0 if dry_run else (1 if any(k.startswith("failed") for k in results) else 0)
 
 
 def _push_gradebook(cohort_org: str, handle: str, content: str) -> str:
@@ -351,7 +361,7 @@ def _push_gradebook(cohort_org: str, handle: str, content: str) -> str:
     return "ok"
 
 
-def _email_updates(cohort_org: str, handles: list[str]) -> None:
+def _email_updates(cohort_org: str, handles: list[str], dry_run: bool = False) -> None:
     """Email each student a 'grades updated' notification to their university inbox,
     linking to their private gradebook repo (the grade's source of truth)."""
     by_handle = {s.github_handle: s for s in roster.load(cohort_org) if s.github_handle}
@@ -368,7 +378,7 @@ def _email_updates(cohort_org: str, handles: list[str]) -> None:
         )
         messages.append((student.hertie_email, "Your grades have been updated", body))
     if messages:
-        mailer.send_bulk(messages)
+        mailer.send_bulk(messages, dry_run=dry_run)
 
 
 def main() -> int:
@@ -385,13 +395,18 @@ def main() -> int:
                 action="store_true",
                 help="Skip the email notification (just push the grades).",
             )
+            p.add_argument(
+                "--dry-run",
+                action="store_true",
+                help="Preview the grade emails; push nothing, send nothing.",
+            )
     args = parser.parse_args()
 
     if args.action == "sync":
         return sync(args.cohort_org, dry_run=args.dry_run)
     if args.action == "render":
         return render(args.cohort_org)
-    return distribute(args.cohort_org, notify=not args.no_notify)
+    return distribute(args.cohort_org, notify=not args.no_notify, dry_run=args.dry_run)
 
 
 if __name__ == "__main__":
