@@ -305,6 +305,103 @@ jobs:
 """
 
 
+def _cohort_dropdown(cohort_orgs: list[str]) -> str:
+    return (
+        '      cohort_org:\n        description: "Cohort org"\n'
+        "        required: true\n        type: choice\n        options:\n"
+        + _choice(cohort_orgs)
+    )
+
+
+def render_sync_gradebooks(cohort_orgs: list[str]) -> str:
+    """Provision one private grades-<handle> repo per onboarded student (idempotent)."""
+    return f"""name: Sync gradebooks
+
+# Ensures every onboarded student has a PRIVATE grades-<handle> repo (student = read) -
+# the single home for all their grades. Idempotent; safe to re-run after new enrolments.
+
+on:
+  workflow_dispatch:
+    inputs:
+{_cohort_dropdown(cohort_orgs)}
+      dry_run:
+        description: "Preview only - list the gradebook repos that WOULD be created"
+        type: boolean
+        default: false
+
+jobs:
+{_CHECK_TEAM}
+  sync-gradebooks:
+{_RUN_PREAMBLE}      - name: Sync gradebooks
+        env:
+          GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
+          COHORT_ORG: ${{{{ inputs.cohort_org }}}}
+          DRY_RUN: ${{{{ inputs.dry_run }}}}
+        run: |
+          args=(--cohort-org "$COHORT_ORG")
+          [ "$DRY_RUN" = "true" ] && args+=(--dry-run)
+          python3 -m dsl_course.grades sync "${{args[@]}}"
+"""
+
+
+def render_render_grades(cohort_orgs: list[str]) -> str:
+    """Build per-student gradebook YAML from the grade CSVs and open the preview PR."""
+    return f"""name: Render grades (preview)
+
+# Reads classroom-config/grades/<assignment>.csv, builds one gradebook/<handle>.yml per
+# student, and opens ONE pull request in classroom-config. THAT PR IS THE PREVIEW: review
+# every student's grades in the diff, then merge to distribute (Distribute grades).
+
+on:
+  workflow_dispatch:
+    inputs:
+{_cohort_dropdown(cohort_orgs)}
+
+jobs:
+{_CHECK_TEAM}
+  render-grades:
+{_RUN_PREAMBLE}      - name: Render grades
+        env:
+          GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
+          COHORT_ORG: ${{{{ inputs.cohort_org }}}}
+        run: |
+          gh auth setup-git
+          python3 -m dsl_course.grades render --cohort-org "$COHORT_ORG"
+"""
+
+
+def render_distribute_grades(cohort_orgs: list[str]) -> str:
+    """Fan the merged gradebook/<handle>.yml files out into each private grades-<handle>."""
+    return f"""name: Distribute grades
+
+# Run AFTER merging the Render grades preview PR. Copies each merged gradebook/<handle>.yml
+# into that student's private grades-<handle> repo and (unless silenced) opens an
+# @-mention issue so GitHub emails them.
+
+on:
+  workflow_dispatch:
+    inputs:
+{_cohort_dropdown(cohort_orgs)}
+      silent:
+        description: "Skip the @-mention notification issue"
+        type: boolean
+        default: false
+
+jobs:
+{_CHECK_TEAM}
+  distribute-grades:
+{_RUN_PREAMBLE}      - name: Distribute grades
+        env:
+          GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
+          COHORT_ORG: ${{{{ inputs.cohort_org }}}}
+          SILENT: ${{{{ inputs.silent }}}}
+        run: |
+          args=(--cohort-org "$COHORT_ORG")
+          [ "$SILENT" = "true" ] && args+=(--no-notify)
+          python3 -m dsl_course.grades distribute "${{args[@]}}"
+"""
+
+
 def render_bootstrap_cohort() -> str:
     """Configure a (pre-created, empty) cohort org from the course org: welcome +
     classroom-config + tightened perms, register it, and refresh the dropdowns."""
@@ -732,6 +829,11 @@ _(automatically bootstrapped from the central
 NB: alternatively each materials repo *also* carries its own **Release** buttons (run from inside the
 repo; there the `week` is a dropdown of that repo's weeks).
 
+### Grades (private, previewable):
+- [**Sync gradebooks**](https://github.com/{org}/.github/actions/workflows/sync-gradebooks.yml) - ensure every onboarded student has a PRIVATE `grades-<handle>` repo (the single home for all their grades). Idempotent.
+- [**Render grades (preview)**](https://github.com/{org}/.github/actions/workflows/render-grades.yml) - build per-student `gradebook/<handle>.yml` from `classroom-config/grades/<assignment>.csv` and open ONE pull request. **That PR is the preview** - review every student's grades in the diff before sending.
+- [**Distribute grades**](https://github.com/{org}/.github/actions/workflows/distribute-grades.yml) - after merging the preview PR, copy each student's gradebook into their private repo and (optionally) @-mention them so GitHub emails the update.
+
 - _[**Sync site**](https://github.com/{org}/.github/actions/workflows/sync-site.yml) - regenerate a cohort's website from the org structure (releases do this automatically; standard workflow has no need for manual sync)._
 
 ## How the actions behave
@@ -846,6 +948,9 @@ def seed_github_workflows(course_org: str) -> None:
         ".github/workflows/sync-site.yml": render_sync_site(cohorts),
         ".github/workflows/publish-site.yml": render_publish_site(source_repos),
         ".github/workflows/enroll-student.yml": render_enroll(cohorts),
+        ".github/workflows/sync-gradebooks.yml": render_sync_gradebooks(cohorts),
+        ".github/workflows/render-grades.yml": render_render_grades(cohorts),
+        ".github/workflows/distribute-grades.yml": render_distribute_grades(cohorts),
         ".github/workflows/bootstrap-cohort.yml": render_bootstrap_cohort(),
         ".github/workflows/refresh-actions.yml": render_refresh(),
     }
