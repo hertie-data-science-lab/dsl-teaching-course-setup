@@ -1028,7 +1028,7 @@ _(automatically bootstrapped from the central
 - [**Send enrolment codes**](https://github.com/{org}/.github/actions/workflows/send-codes.yml) - generate a random non-PII enrolment code per student and email each their code (to their university inbox). Students paste the code into the welcome Join issue - no personal data in the public repo. `dry_run` previews codes + emails. Needs the `GRAPH_*` (or `SMTP_*`) secrets.
 - [**Enroll student**](https://github.com/{org}/.github/actions/workflows/enroll-student.yml) - grant a student access to the cohort org; provision them with student-level permissions.
 - [**New materials repo**](https://github.com/{org}/.github/actions/workflows/new-materials.yml) - scaffold a correctly-structured `course-materials-<year>` repo (week folders + the Release buttons).
-- [**New assignment**](https://github.com/{org}/.github/actions/workflows/new-assignment.yml) - scaffold an `assignment-N-<year>` template repo (starter + autograder on `main`, an empty `solution` branch).
+- [**New assignment**](https://github.com/{org}/.github/actions/workflows/new-assignment.yml) - scaffold an `assignment-N-<year>` template repo (starter on `main`; the `solution` branch carries the model solution, `grading.yml`, and the hidden tests).
 - [**Refresh actions**](https://github.com/{org}/.github/actions/workflows/refresh-actions.yml) - repopulate the cohort/week/assignment dropdowns, re-equip content repos, and rebuild this index.
 
 ### Optional: public course website (open courseware)
@@ -1109,8 +1109,8 @@ The course-level actions assume this layout - use **New materials repo** / **New
 - `*syllabus*`, `README.md` at the **root** (optional) - released via the syllabus / README toggles.
 
 **Assignment repo** (`assignment-N-<year>`, an `is_template` repo) - the source for Release assignment:
-- **`main` branch** - the starter code + `.github/workflows/autograde.yml`. This is exactly what students receive (native template-generate copies `main` only).
-- **`solution` branch** - a `solution/` folder with the model solution. **Solutions MUST live on this branch, never on `main`** - that is what guarantees they are never copied into student repos on generate. They reach students only when you run Release assignment with **include_solution** ticked, which pushes the `solution/` folder into each student repo as a separate, later commit.
+- **`main` branch** - the starter code only (no tests, no autograder). This is exactly what students receive (native template-generate copies `main` only).
+- **`solution` branch** - the model solution (`solution/`), plus **`grading.yml`** and the **hidden tests** that the Grade assignment button runs faculty-side. **All of this MUST live on this branch, never on `main`** - that is what guarantees it is never copied into student repos on generate. Only the `solution/` folder reaches students, and only when you run Release assignment with **include_solution** ticked (a separate, later commit); the hidden tests and `grading.yml` never do.
 
 ---
 Maintained by the [Hertie Data Science Lab](https://github.com/hertie-data-science-lab).
