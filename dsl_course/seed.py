@@ -327,6 +327,63 @@ jobs:
 """
 
 
+def render_grade_assignment(
+    cohort_orgs: list[str], assignments: list[str] | None = None
+) -> str:
+    """Faculty-side autograder button: run hidden tests after the deadline, record scores."""
+    return f"""name: Grade assignment
+
+# Faculty-side autograder. Clones each submission as of the deadline, runs the HIDDEN tests
+# from the template's solution branch, archives result.json, and records the machine score
+# into the private grades CSV (faculty then add manual marks; Render + Distribute send them).
+# Nothing is written to student repos. dry_run lists what would be graded.
+
+on:
+  workflow_dispatch:
+    inputs:
+      cohort_org:
+        description: "Cohort org (submissions)"
+        required: true
+        type: choice
+        options:
+{_choice(cohort_orgs)}
+{_assignment_input(assignments or [])}
+      deadline:
+        description: "Submission deadline (YYYY-MM-DD) - grades the last commit on/before it"
+        required: true
+        default: ""
+      group:
+        description: "Group assignment - grade one repo per team"
+        type: boolean
+        default: false
+      dry_run:
+        description: "Preview only - list the repos that WOULD be graded"
+        type: boolean
+        default: false
+
+jobs:
+{_CHECK_TEAM}
+  grade:
+{_RUN_PREAMBLE}      - name: Grade
+        env:
+          GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
+          MASTER_ORG: ${{{{ github.repository_owner }}}}
+          COHORT_ORG: ${{{{ inputs.cohort_org }}}}
+          TEMPLATE: ${{{{ inputs.assignment }}}}
+          DEADLINE: ${{{{ inputs.deadline }}}}
+          GROUP: ${{{{ inputs.group }}}}
+          DRY_RUN: ${{{{ inputs.dry_run }}}}
+        run: |
+          gh auth setup-git
+          pip install --quiet pytest nbconvert
+          args=(--master-org "$MASTER_ORG" --template "$TEMPLATE" --cohort-org "$COHORT_ORG")
+          [ -n "$DEADLINE" ] && args+=(--deadline "$DEADLINE")
+          [ "$GROUP" = "true" ] && args+=(--group)
+          [ "$DRY_RUN" = "true" ] && args+=(--dry-run)
+          python3 -m dsl_course.collect "${{args[@]}}"
+"""
+
+
 def render_enroll(cohort_orgs: list[str]) -> str:
     """Org-level enrol (faculty override for the self-service Join issue)."""
     return f"""name: Enroll student
@@ -987,6 +1044,7 @@ NB: alternatively each materials repo *also* carries its own **Release** buttons
 repo; there the `week` is a dropdown of that repo's weeks).
 
 ### Grades (private, previewable):
+- [**Grade assignment**](https://github.com/{org}/.github/actions/workflows/grade-assignment.yml) - faculty-side autograder: after the deadline, run the HIDDEN tests (from the template's `solution` branch) against each submission and record the machine score into `classroom-config/grades/<assignment>.csv`. Nothing is written to student repos; faculty then add manual marks. Optional per assignment (skipped if `grading.yml` sets `autograde: false`).
 - [**Sync gradebooks**](https://github.com/{org}/.github/actions/workflows/sync-gradebooks.yml) - ensure every onboarded student has a PRIVATE `grades-<handle>` repo (the single home for all their grades). Idempotent.
 - [**Render grades (preview)**](https://github.com/{org}/.github/actions/workflows/render-grades.yml) - build per-student `gradebook/<handle>.yml` from `classroom-config/grades/<assignment>.csv` and open ONE pull request. **That PR is the preview** - review every student's grades in the diff before sending.
 - [**Distribute grades**](https://github.com/{org}/.github/actions/workflows/distribute-grades.yml) - after merging the preview PR, copy each student's gradebook into their private repo and (unless silenced) email each student a notification to their university inbox (needs the `GRAPH_*` or `SMTP_*` secrets).
@@ -1100,6 +1158,9 @@ def seed_github_workflows(course_org: str) -> None:
             source_repos, cohorts, cohort_repos
         ),
         ".github/workflows/release-assignment.yml": render_provision(
+            cohorts, assignments
+        ),
+        ".github/workflows/grade-assignment.yml": render_grade_assignment(
             cohorts, assignments
         ),
         ".github/workflows/new-materials.yml": render_new_materials(),

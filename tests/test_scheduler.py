@@ -60,6 +60,32 @@ def test_plan_empty_when_nothing_due():
     assert scheduler.plan(MANIFEST, []) == []
 
 
+def test_plan_grade_action_string_and_dict_forms():
+    manifest = {
+        "weeks": {
+            "week-6": {"grade": "assignment-1-f2026"},
+            "week-7": {
+                "grade": {
+                    "template": "assignment-2-f2026",
+                    "deadline": "2026-10-15",
+                    "group": True,
+                }
+            },
+        }
+    }
+    a6 = scheduler.plan(manifest, ["week-6"])[0]
+    assert a6 == {
+        "kind": "grade",
+        "template": "assignment-1-f2026",
+        "deadline": None,
+        "group": False,
+    }
+    a7 = scheduler.plan(manifest, ["week-7"])[0]
+    assert a7["template"] == "assignment-2-f2026"
+    assert a7["deadline"] == "2026-10-15" and a7["group"] is True
+    assert scheduler.describe(a7).startswith("grade assignment-2-f2026")
+
+
 def test_scheduler_workflow_valid_yaml_and_ungated():
     doc = yaml.safe_load(seed.render_scheduler())
     assert doc.get("name") == "Scheduled release"
