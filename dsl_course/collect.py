@@ -121,6 +121,11 @@ def summary_lines(result: dict) -> list[str]:
     return lines
 
 
+def _zero_result(max_auto: int, note: str) -> dict:
+    """A zero score carrying an explanatory note (non-submission / grading failure)."""
+    return {"score": 0, "max": max_auto, "tests": [], "note": note}
+
+
 # ---------------------------------------------------------------------- gh/git wiring
 
 
@@ -185,10 +190,10 @@ def _grade_target(cohort_org: str, repo: str, spec: dict, tests_src: Path, deadl
             return None
         sha = _pin_commit(wd, deadline)
         if sha is None:
-            return {"score": 0, "max": max_auto, "tests": [], "note": f"no submission on/before {deadline}"}
+            return _zero_result(max_auto, f"no submission on/before {deadline}")
         result = _run_tests(wd, spec["format"], tests_src)
         if result is None:
-            return {"score": 0, "max": max_auto, "tests": [], "note": "grading failed to run"}
+            return _zero_result(max_auto, "grading failed to run")
         result["commit"] = sha
         return result
 
