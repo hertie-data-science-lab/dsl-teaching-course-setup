@@ -19,6 +19,9 @@ ALL_RENDERED = {
         ["course-materials-f2026"], ["Cohort-f2026"], ["materials"]
     ),
     "provision": seed.render_provision(["Cohort-f2026"], ["assignment-1-f2026"]),
+    "grade_assignment": seed.render_grade_assignment(
+        ["Cohort-f2026"], ["assignment-1-f2026"]
+    ),
     "release_code": seed.render_release_code(["Cohort-f2026"], ["materials"]),
     "enroll": seed.render_enroll(["Cohort-f2026"]),
     "send_codes": seed.render_send_codes(["Cohort-f2026"]),
@@ -75,6 +78,14 @@ def test_provision_has_group_toggle():
     assert inp["group"]["type"] == "boolean"
     assert inp["group"]["default"] is False
     assert "--group" in seed.render_provision(["Cohort-f2026"], [])
+
+
+def test_grade_assignment_has_deadline_and_calls_collect():
+    rendered = seed.render_grade_assignment(["Cohort-f2026"], ["assignment-1-f2026"])
+    inp = workflow_inputs(rendered)
+    assert "deadline" in inp and inp["group"]["type"] == "boolean"
+    assert "dsl_course.collect" in rendered
+    assert "--group" in rendered and "--deadline" in rendered
 
 
 def test_choice_falls_back_when_empty():

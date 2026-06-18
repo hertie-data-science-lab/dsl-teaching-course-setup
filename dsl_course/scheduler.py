@@ -17,6 +17,10 @@ Manifest (`manifests/<cohort-org>.yml` in `<course>/.github`):
           - {source_repo: lecture-code, path: mlpkg/simulation, cohort_repo: materials}
       week-5:
         assignment: assignment-2-f2026
+      week-7:
+        grade:
+          template: assignment-2-f2026
+          deadline: 2026-10-15   # grade the last commit on/before this date
 
 Calendar (`schedule.csv` in `<cohort>/classroom-config`):
     week,date
@@ -106,6 +110,21 @@ def plan(manifest: dict, weeks: list[str]) -> list[dict]:
             )
         if entry.get("assignment"):
             actions.append({"kind": "assignment", "template": entry["assignment"]})
+        if entry.get("grade"):
+            g = entry["grade"]
+            if isinstance(g, str):
+                actions.append(
+                    {"kind": "grade", "template": g, "deadline": None, "group": False}
+                )
+            else:
+                actions.append(
+                    {
+                        "kind": "grade",
+                        "template": g.get("template"),
+                        "deadline": g.get("deadline"),
+                        "group": bool(g.get("group", False)),
+                    }
+                )
     return actions
 
 
@@ -116,6 +135,8 @@ def describe(action: dict) -> str:
         return f"materials week {action['week']} from {action['source_repo']} -> {action['cohort_repo']}"
     if k == "code":
         return f"code {action['path']} from {action['source_repo']} -> {action['cohort_repo']}"
+    if k == "grade":
+        return f"grade {action['template']} (deadline {action['deadline'] or 'today'})"
     return f"assignment {action['template']}"
 
 
@@ -172,6 +193,13 @@ def _execute(course_org: str, cohort_org: str, action: dict) -> int:
         from .assign import provision_all
 
         return provision_all(course_org, action["template"], cohort_org)
+    if kind == "grade":
+        from .collect import collect
+
+        deadline = action["deadline"] or date.today().isoformat()
+        return collect(
+            course_org, action["template"], cohort_org, deadline, group=action["group"]
+        )
     log_err(f"unknown action kind: {kind}")
     return 1
 
