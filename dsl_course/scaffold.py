@@ -90,7 +90,9 @@ def scaffold_materials(org: str, tag: str) -> int:
         put_file(org, repo, path, content, "init: materials skeleton")
     # Equip the run-from-repo Release buttons (same as Refresh does for content repos).
     cohorts = seed.discover_cohorts(org)
-    seed._push_workflows(org, repo, cohorts, seed.discover_cohort_repos(cohorts))
+    seed._push_workflows(
+        org, repo, cohorts, seed.discover_cohort_repos(cohorts), seed.discover_assignments(org)
+    )
     log_ok(f"materials repo ready: {org}/{repo}")
     return 0
 
