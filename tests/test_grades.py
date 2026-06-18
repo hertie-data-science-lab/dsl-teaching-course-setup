@@ -24,16 +24,35 @@ def test_parse_grades_tolerates_blank_and_missing_columns():
 
 
 def test_individual_entry_drops_group_fields():
-    row = grades.GradeRow("ada", "", "", "", "88", "Nice")
+    row = grades.GradeRow(github_handle="ada", final="88", comments="Nice")
     assert grades.gradebook_entry(row) == {"final": "88", "comments": "Nice"}
 
 
-def test_group_entry_keeps_team_grade_and_private_adjustment():
-    row = grades.GradeRow("alan", "wizards", "85", "+4", "89", "Led the model work")
+def test_auto_and_manual_are_internal_not_in_gradebook():
+    # auto/manual are faculty working columns - the student sees only the published final
+    row = grades.GradeRow(
+        github_handle="ada", auto="70", manual="18", final="88", comments="Nice"
+    )
+    entry = grades.gradebook_entry(row)
+    assert entry == {"final": "88", "comments": "Nice"}
+    assert "auto" not in entry and "manual" not in entry
+
+
+def test_group_entry_keeps_team_grade_private_adjustment_and_shared_comment():
+    row = grades.GradeRow(
+        github_handle="alan",
+        team="wizards",
+        team_grade="85",
+        adjustment="+4",
+        final="89",
+        comments="Led the model work",
+        team_comments="Strong project; thin evaluation",
+    )
     assert grades.gradebook_entry(row) == {
         "team": "wizards",
         "team_grade": "85",
         "adjustment": "+4",
+        "team_comments": "Strong project; thin evaluation",
         "final": "89",
         "comments": "Led the model work",
     }
@@ -41,10 +60,14 @@ def test_group_entry_keeps_team_grade_and_private_adjustment():
 
 def test_build_gradebooks_pivots_per_student_across_assignments():
     per = {
-        "assignment-1": [grades.GradeRow("ada", "", "", "", "88", "")],
+        "assignment-1": [grades.GradeRow(github_handle="ada", final="88")],
         "assignment-4": [
-            grades.GradeRow("ada", "wizards", "85", "0", "85", ""),
-            grades.GradeRow("alan", "wizards", "85", "+4", "89", ""),
+            grades.GradeRow(
+                github_handle="ada", team="wizards", team_grade="85", adjustment="0", final="85"
+            ),
+            grades.GradeRow(
+                github_handle="alan", team="wizards", team_grade="85", adjustment="+4", final="89"
+            ),
         ],
     }
     books = grades.build_gradebooks(per)
@@ -56,12 +79,12 @@ def test_build_gradebooks_pivots_per_student_across_assignments():
 
 
 def test_build_gradebooks_skips_blank_handles():
-    per = {"assignment-1": [grades.GradeRow("", "", "", "", "50", "ghost row")]}
+    per = {"assignment-1": [grades.GradeRow(github_handle="", final="50", comments="ghost row")]}
     assert grades.build_gradebooks(per) == {}
 
 
 def test_render_yaml_roundtrips_and_is_student_scoped():
-    per = {"assignment-1": [grades.GradeRow("ada", "", "", "", "88", "Nice")]}
+    per = {"assignment-1": [grades.GradeRow(github_handle="ada", final="88", comments="Nice")]}
     book = grades.build_gradebooks(per)["ada"]
     parsed = yaml.safe_load(grades.render_yaml(book))
     assert parsed["student"] == "ada"
