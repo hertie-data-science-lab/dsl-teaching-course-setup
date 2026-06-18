@@ -22,7 +22,7 @@ into a tracking issue and tick as you go.)
 - [ ] `[required]` **Assignments** (≥1): scaffold with **New assignment**, then on `main` add the brief (`README.md`) + starter. *(optional: on the `solution` branch, the model solution in `solution/`, and - to autograde - hidden tests in `tests/` plus a `grading.yml`. Student repos get `main` only.)*
 - [ ] *(optional)* **People**: edit the `people:` block in `.github/dsl-course.yml` (instructor/TA cards). If omitted, falls back to GitHub teams + avatars.
 - [ ] *(optional)* **Schedule**: edit the `schedule:` block in `.github/dsl-course.yml` (real dates). If omitted, dates are synthesised.
-- [ ] *(optional)* **Email**: to actually send enrolment-code + grade emails, add the `GRAPH_*` (Microsoft Graph, preferred) or `SMTP_*` Actions secrets. Probe what your tenant allows with `scripts/m365_mail_probe.py`. See [Email](#email-optional). *(Without them, every email step still runs as a `dry_run` preview.)*
+- [ ] *(optional)* **Email**: to actually send enrolment-code + grade emails, add the `GRAPH_*` (Microsoft Graph, preferred) or `SMTP_*` Actions secrets. See [Email](#email-optional). *(Without them, every email step still runs as a `dry_run` preview.)*
 - [ ] `[required]` Run **Refresh actions** so every content repo gets its Release buttons, the secret propagates, and all dropdowns populate.
 
 ### Cohort setup (per year)
@@ -253,10 +253,10 @@ whichever transport is configured (a `--dry-run` preview needs neither):
 - **SMTP (fallback)** - secrets `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD` (+ optional
   `SMTP_PORT`, `SMTP_FROM`). Works only where the tenant still allows SMTP AUTH.
 
-Run `scripts/m365_mail_probe.py` locally (with your bot creds) to discover which your tenant
-allows - it flags the `5.7.139 SMTP AUTH disabled` lockout and recommends a path. Set the
-chosen secrets at org level (or on the `.github` repo). Deliverability still needs
-SPF/DKIM/DMARC on the sending domain.
+Modern M365 tenants usually have SMTP AUTH disabled (the `5.7.139` error), so the Graph path
+is typically required - confirm with your M365 admin which is available. Set the chosen secrets
+at org level (or on the `.github` repo). Deliverability still needs SPF/DKIM/DMARC on the
+sending domain.
 
 ## Known limits (not blockers)
 
