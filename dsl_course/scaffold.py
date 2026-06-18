@@ -7,8 +7,9 @@ code, so a new repo is always laid out the way the Release actions expect.
     scaffold assignment  --org X --number 1 --tag f2026      -> assignment-1-f2026
 
 Materials repos get `lectures/week-1/` + `readings/week-1/` skeletons and the
-run-from-repo Release buttons. Assignment repos get a starter + autograder on `main`
-and an (empty) `solution` branch - solutions live there so generate never ships them.
+run-from-repo Release buttons. Assignment repos get a starter on `main` (no tests - grading
+is faculty-side) and a `solution` branch carrying the model solution, `grading.yml`, and the
+HIDDEN tests, so generate never ships any of them to students.
 """
 
 from __future__ import annotations
@@ -41,17 +42,25 @@ WEBSITE_TEMPLATE = "course-website-template"
 
 _GIT_ENV = GIT_ENV
 
-_AUTOGRADE = """name: Autograde
+_GRADING_YML = """\
+# How the Grade assignment button autogrades this assignment (faculty-side, after the
+# deadline). Delete this file (or set autograde: false) for a purely manually-graded one.
+type: individual      # or group
+format: py            # or notebook
+autograde: true       # false -> skip autograding (all-manual)
+max_auto: 0           # points the hidden tests are worth (0 = informational)
+tests: tests          # path (on THIS solution branch) holding the hidden tests
+"""
 
-# Dormant autograder (runs on push to main). Wire up Otter/nbgrader -> result.json later.
-on:
-  push:
-    branches: [main]
-jobs:
-  autograde:
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "Autograding deferred - submission = this push (${{ github.sha }})."
+_HIDDEN_TEST = """\
+# HIDDEN tests - run faculty-side by the Grade assignment button, never shipped to
+# students. They import the student's submission (the repo root) and check it. Replace
+# this placeholder with the real grading tests.
+from starter import solve
+
+
+def test_solve_runs():
+    assert solve() is not None
 """
 
 
@@ -106,7 +115,8 @@ def scaffold_assignment(org: str, number: str, tag: str) -> int:
         description=f"Assignment {number} template",
     ):
         return 1
-    # main: starter + autograder (what students receive on generate).
+    # main: starter only (what students receive on generate). No tests, no autograder -
+    # grading runs faculty-side from the solution branch (see Grade assignment).
     put_file(
         org,
         repo,
@@ -122,16 +132,10 @@ def scaffold_assignment(org: str, number: str, tag: str) -> int:
         f'"""Assignment {number}."""\n\n\ndef solve():\n    raise NotImplementedError  # TODO\n'.encode(),
         "init: starter",
     )
-    put_file(
-        org,
-        repo,
-        ".github/workflows/autograde.yml",
-        _AUTOGRADE.encode(),
-        "ci: autograder",
-    )
     set_repo_topics(org, repo, [f"assignment-{number}", "assignment"])
 
-    # solution branch: a solution/ folder, kept OFF main so generate never copies it.
+    # solution branch: the model solution, grading.yml, and the HIDDEN tests - all kept OFF
+    # main so generate never copies them into student repos.
     with tempfile.TemporaryDirectory() as work:
         wd = Path(work) / "r"
         if gh("repo", "clone", f"{org}/{repo}", str(wd), "--", "-q")[0] != 0:
@@ -148,6 +152,11 @@ def scaffold_assignment(org: str, number: str, tag: str) -> int:
             "Released to students after the deadline via Release assignment with "
             "**include_solution** ticked.\n"
         )
+        # grading.yml + hidden tests for the faculty-side Grade assignment button.
+        (wd / "grading.yml").write_text(_GRADING_YML)
+        tests = wd / "tests"
+        tests.mkdir()
+        (tests / "test_solution.py").write_text(_HIDDEN_TEST)
         git("-C", str(wd), *_GIT_ENV, "add", "-A")
         git(
             "-C",
@@ -157,7 +166,7 @@ def scaffold_assignment(org: str, number: str, tag: str) -> int:
             "-q",
             "--no-verify",
             "-m",
-            f"solution: assignment {number} (stub)",
+            f"solution: assignment {number} (model + grading.yml + hidden tests)",
         )
         if (
             git("-C", str(wd), *_GIT_ENV, "push", "-q", "-u", "origin", "solution")[0]
