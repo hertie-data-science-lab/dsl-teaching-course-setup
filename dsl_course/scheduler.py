@@ -111,20 +111,16 @@ def plan(manifest: dict, weeks: list[str]) -> list[dict]:
         if entry.get("assignment"):
             actions.append({"kind": "assignment", "template": entry["assignment"]})
         if entry.get("grade"):
-            g = entry["grade"]
-            if isinstance(g, str):
-                actions.append(
-                    {"kind": "grade", "template": g, "deadline": None, "group": False}
-                )
-            else:
-                actions.append(
-                    {
-                        "kind": "grade",
-                        "template": g.get("template"),
-                        "deadline": g.get("deadline"),
-                        "group": bool(g.get("group", False)),
-                    }
-                )
+            # accept either `grade: <template>` or `grade: {template, deadline, group}`
+            g = {"template": entry["grade"]} if isinstance(entry["grade"], str) else entry["grade"]
+            actions.append(
+                {
+                    "kind": "grade",
+                    "template": g.get("template"),
+                    "deadline": g.get("deadline"),
+                    "group": bool(g.get("group", False)),
+                }
+            )
     return actions
 
 
