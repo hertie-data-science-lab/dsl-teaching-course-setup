@@ -419,12 +419,7 @@ def render_sync_teams(cohort_orgs: list[str]) -> str:
 on:
   workflow_dispatch:
     inputs:
-      cohort_org:
-        description: "Cohort org"
-        required: true
-        type: choice
-        options:
-{_choice(cohort_orgs)}
+{_cohort_dropdown(cohort_orgs)}
       prune:
         description: "Off-board: remove team members no longer in teams.csv"
         type: boolean
