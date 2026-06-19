@@ -970,6 +970,55 @@ def _repo_table(repos: list[dict]) -> str:
     return "\n".join(rows) or "| _(no repos yet)_ | | |"
 
 
+def render_dotgithub_readme(org: str, course_name: str, is_cohort: bool) -> str:
+    """The `.github` repo's OWN README - the orientation a faculty member sees on landing
+    in this repo just after bootstrap. Distinct from profile/README.md (the org landing
+    page); this shows on the repo itself, next to the Actions tab where the buttons live."""
+    if is_cohort:
+        return f"""# {course_name} - cohort control repo
+
+This is the **`.github` repo** for the `{org}` cohort org. It holds this cohort's configuration
+and the auto-generated student-facing org page - **you rarely touch it directly.**
+
+- The **faculty action buttons** (Release, Grade, Sync ...) live in the **parent course org's**
+  `.github` **Actions** tab, not here.
+- `dsl-course.yml` - this cohort's identity / people / schedule overrides (edit in the web UI,
+  then run **Sync site**).
+- `profile/README.md` - the student-facing org landing page (auto-generated; don't hand-edit).
+- Students join via the **welcome** repo's "Join" issue; the roster lives in **classroom-config**.
+
+Built and kept in sync by the [DSL teaching toolkit](https://github.com/{CENTRAL}).
+"""
+    return f"""# {course_name} - course control panel
+
+This is the **`.github` repo** for the `{org}` course org - the control panel faculty use to run
+the course. **You never need a CLI or to write code: every action is a button.**
+
+## Run an action
+
+Open the **[Actions tab](https://github.com/{org}/.github/actions)**, pick a workflow, and click
+**Run workflow**. Buttons only show if you have write access (you're in this org's `instructors`
+or `course-admin` team). The full, annotated list of actions is on the
+**[org home page](https://github.com/{org})**.
+
+## Typical flow
+
+1. **New materials repo** / **New assignment** - scaffold your content repos, then fill them in.
+2. Create an empty **cohort org** for the year, add the bot as an Owner, then run **Bootstrap cohort**.
+3. Each week: **Release materials** / **Release assignment**. Students self-onboard via the cohort's
+   **welcome** "Join" issue.
+4. Grading: **Grade assignment** -> **Sync gradebooks** -> **Render grades** -> **Distribute grades**.
+
+## What's in here
+
+- `.github/workflows/` - the action buttons (seeded from the central toolkit; refreshed by **Refresh actions**).
+- `dsl-course.yml` - this course's identity, people, and schedule (edit in the web UI).
+- `profile/README.md` - the public org landing page (auto-generated repo index).
+
+Built and kept in sync by the [DSL teaching toolkit](https://github.com/{CENTRAL}).
+"""
+
+
 def render_profile_readme(
     org: str,
     org_name: str,
@@ -1160,7 +1209,14 @@ def update_profile_readme(
         body.encode(),
         "docs: refresh org profile README (repo index)",
     )
-    log_ok("profile README refreshed")
+    put_file(
+        org,
+        ".github",
+        "README.md",
+        render_dotgithub_readme(org, course_name, is_cohort).encode(),
+        "docs: orientation README for the .github repo",
+    )
+    log_ok("profile + .github READMEs refreshed")
 
 
 def seed_github_workflows(course_org: str) -> None:
