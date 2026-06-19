@@ -41,7 +41,7 @@ flowchart TB
     site["org.github.io<br/>auto-deployed website"]
   end
   repo -->|"Bootstrap Course Org"| course
-  repo -->|"Bootstrap (cohort=true)"| cohort
+  cg -->|"Bootstrap cohort"| cohort
   course -->|"Release materials / assignment"| cohort
   bot -.->|"operates via DSL_BOT_TOKEN"| course
   bot -.->|"operates via DSL_BOT_TOKEN"| cohort
@@ -118,7 +118,7 @@ sequenceDiagram
   participant Bot as bot, DSL_BOT_TOKEN
   participant Org as new course org
   Note over F,Org: org created by hand + bot invited as Owner first
-  F->>A: workflow_dispatch (org, org_name, admin?)
+  F->>A: workflow_dispatch (org, org_name, course_code, admin?)
   A->>A: check-team — faculty/admin in central org
   A->>Bot: bootstrap_course --propagate-secret
   Bot->>Org: org settings (2FA) + role teams
@@ -129,9 +129,10 @@ sequenceDiagram
   Bot->>Org: build profile README
 ```
 
-A **cohort** is the same action with `cohort=true` (+ parent `course`): it additionally seeds
-`welcome` + `classroom-config`, tightens permissions, scaffolds the website, and registers the
-cohort in the course's `cohort-courses-pages.yml`.
+A **cohort** is bootstrapped from the course org's own **Bootstrap cohort** button (not the
+central action) - you give it the empty cohort org's name. It runs the same `bootstrap_course`
+with `--cohort`, additionally seeding `welcome` + `classroom-config`, tightening permissions,
+scaffolding the website, and registering the cohort in the course's `cohort-courses-pages.yml`.
 
 ### Release materials
 
