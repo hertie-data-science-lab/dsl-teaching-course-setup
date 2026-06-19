@@ -16,23 +16,29 @@ Two org tiers:
 
 ```mermaid
 flowchart TB
-  subgraph COURSE["COURSE org — e.g. Hertie-School-Deep-Learning-E1394 (persistent, private)"]
-    mat["course-materials-f2026<br/>lectures/week-N/ + readings/week-N/ (+ syllabus, README at root)"]
-    tmpl["assignment-1-f2026 ...<br/>template repos (is_template) + autograder"]
-    gh[".github<br/>profile (auto) + ALL faculty buttons + cohort registry"]
-    pub["&lt;course-org&gt;.github.io<br/>PUBLIC open-courseware site (opt-in)<br/>hosts shared lectures + readings"]
-    mat -.->|"public-sync (opt-in)"| pub
+  subgraph COURSE["COURSE org — e.g. Hertie-School-Deep-Learning-E1394 (persistent)"]
+    mat["course-materials-f2026 · PRIVATE<br/>lectures/week-N/ + readings/week-N/ (+ syllabus, README)"]
+    tmpl["assignment-1-f2026 ... · PRIVATE<br/>template repos (is_template) + autograder"]
+    gh[".github · PUBLIC<br/>profile (auto) + ALL faculty buttons + cohort registry"]
   end
 
-  subgraph COHORT["COHORT org — e.g. Deep-Learning-f2026 (per-year, private)"]
-    welcome["welcome<br/>Join issue → onboard.yml (enrol)"]
-    cfg["classroom-config<br/>students.csv roster (PRIVATE)"]
-    cmat["materials<br/>released lectures/readings (students-team read)"]
-    repos["&lt;assignment&gt;-&lt;handle&gt;<br/>one private repo per student (generated; autograder rides along)"]
-    team["students team"]
+  subgraph COHORT["COHORT org — e.g. Deep-Learning-f2026 (per-year)"]
+    welcome["welcome · PUBLIC<br/>Join issue → onboard.yml (enrol)"]
+    cfg["classroom-config · PRIVATE<br/>students.csv roster + grades"]
+    cmat["materials · PRIVATE<br/>released lectures/readings (students-team read)"]
+    repos["&lt;assignment&gt;-&lt;handle&gt; · PRIVATE<br/>one private repo per student (generated; autograder rides along)"]
+    team["students team · PRIVATE"]
   end
+
+  pub["&lt;course-org&gt;.github.io · PUBLIC (opt-in)<br/>open-courseware site — hosts shared lectures + readings"]
 
   COURSE -->|"release / generate (bot token, cross-org)"| COHORT
+  gh -.->|"Publish course website (opt-in)"| pub
+
+  classDef public fill:#e6f4ea,stroke:#2e7d32,color:#1b5e20;
+  classDef private fill:#f3f3f3,stroke:#8a8a8a,color:#3c3c3c;
+  class gh,welcome,pub public;
+  class mat,tmpl,cfg,cmat,repos,team private;
 ```
 
 Each cohort gets an auto-deployed `<cohort>.github.io` site whose material links are private
