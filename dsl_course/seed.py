@@ -327,6 +327,63 @@ jobs:
 """
 
 
+def render_grade_assignment(
+    cohort_orgs: list[str], assignments: list[str] | None = None
+) -> str:
+    """Faculty-side autograder button: run hidden tests after the deadline, record scores."""
+    return f"""name: Grade assignment
+
+# Faculty-side autograder. Clones each submission as of the deadline, runs the HIDDEN tests
+# from the template's solution branch, archives result.json, and records the machine score
+# into the private grades CSV (faculty then add manual marks; Render + Distribute send them).
+# Nothing is written to student repos. dry_run lists what would be graded.
+
+on:
+  workflow_dispatch:
+    inputs:
+      cohort_org:
+        description: "Cohort org (submissions)"
+        required: true
+        type: choice
+        options:
+{_choice(cohort_orgs)}
+{_assignment_input(assignments or [])}
+      deadline:
+        description: "Submission deadline (YYYY-MM-DD) - grades the last commit on/before it"
+        required: true
+        default: ""
+      group:
+        description: "Group assignment - grade one repo per team"
+        type: boolean
+        default: false
+      dry_run:
+        description: "Preview only - list the repos that WOULD be graded"
+        type: boolean
+        default: false
+
+jobs:
+{_CHECK_TEAM}
+  grade:
+{_RUN_PREAMBLE}      - name: Grade
+        env:
+          GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
+          MASTER_ORG: ${{{{ github.repository_owner }}}}
+          COHORT_ORG: ${{{{ inputs.cohort_org }}}}
+          TEMPLATE: ${{{{ inputs.assignment }}}}
+          DEADLINE: ${{{{ inputs.deadline }}}}
+          GROUP: ${{{{ inputs.group }}}}
+          DRY_RUN: ${{{{ inputs.dry_run }}}}
+        run: |
+          gh auth setup-git
+          pip install --quiet pytest nbconvert
+          args=(--master-org "$MASTER_ORG" --template "$TEMPLATE" --cohort-org "$COHORT_ORG")
+          [ -n "$DEADLINE" ] && args+=(--deadline "$DEADLINE")
+          [ "$GROUP" = "true" ] && args+=(--group)
+          [ "$DRY_RUN" = "true" ] && args+=(--dry-run)
+          python3 -m dsl_course.collect "${{args[@]}}"
+"""
+
+
 def render_enroll(cohort_orgs: list[str]) -> str:
     """Org-level enrol (faculty override for the self-service Join issue)."""
     return f"""name: Enroll student
@@ -971,7 +1028,7 @@ _(automatically bootstrapped from the central
 - [**Send enrolment codes**](https://github.com/{org}/.github/actions/workflows/send-codes.yml) - generate a random non-PII enrolment code per student and email each their code (to their university inbox). Students paste the code into the welcome Join issue - no personal data in the public repo. `dry_run` previews codes + emails. Needs the `GRAPH_*` (or `SMTP_*`) secrets.
 - [**Enroll student**](https://github.com/{org}/.github/actions/workflows/enroll-student.yml) - grant a student access to the cohort org; provision them with student-level permissions.
 - [**New materials repo**](https://github.com/{org}/.github/actions/workflows/new-materials.yml) - scaffold a correctly-structured `course-materials-<year>` repo (week folders + the Release buttons).
-- [**New assignment**](https://github.com/{org}/.github/actions/workflows/new-assignment.yml) - scaffold an `assignment-N-<year>` template repo (starter + autograder on `main`, an empty `solution` branch).
+- [**New assignment**](https://github.com/{org}/.github/actions/workflows/new-assignment.yml) - scaffold an `assignment-N-<year>` template repo (starter on `main`; the `solution` branch carries the model solution, `grading.yml`, and the hidden tests).
 - [**Refresh actions**](https://github.com/{org}/.github/actions/workflows/refresh-actions.yml) - repopulate the cohort/week/assignment dropdowns, re-equip content repos, and rebuild this index.
 
 ### Optional: public course website (open courseware)
@@ -987,6 +1044,7 @@ NB: alternatively each materials repo *also* carries its own **Release** buttons
 repo; there the `week` is a dropdown of that repo's weeks).
 
 ### Grades (private, previewable):
+- [**Grade assignment**](https://github.com/{org}/.github/actions/workflows/grade-assignment.yml) - faculty-side autograder: after the deadline, run the HIDDEN tests (from the template's `solution` branch) against each submission and record the machine score into `classroom-config/grades/<assignment>.csv`. Nothing is written to student repos; faculty then add manual marks. Optional per assignment (skipped if `grading.yml` sets `autograde: false`).
 - [**Sync gradebooks**](https://github.com/{org}/.github/actions/workflows/sync-gradebooks.yml) - ensure every onboarded student has a PRIVATE `grades-<handle>` repo (the single home for all their grades). Idempotent.
 - [**Render grades (preview)**](https://github.com/{org}/.github/actions/workflows/render-grades.yml) - build per-student `gradebook/<handle>.yml` from `classroom-config/grades/<assignment>.csv` and open ONE pull request. **That PR is the preview** - review every student's grades in the diff before sending.
 - [**Distribute grades**](https://github.com/{org}/.github/actions/workflows/distribute-grades.yml) - after merging the preview PR, copy each student's gradebook into their private repo and (unless silenced) email each student a notification to their university inbox (needs the `GRAPH_*` or `SMTP_*` secrets).
@@ -1051,8 +1109,8 @@ The course-level actions assume this layout - use **New materials repo** / **New
 - `*syllabus*`, `README.md` at the **root** (optional) - released via the syllabus / README toggles.
 
 **Assignment repo** (`assignment-N-<year>`, an `is_template` repo) - the source for Release assignment:
-- **`main` branch** - the starter code + `.github/workflows/autograde.yml`. This is exactly what students receive (native template-generate copies `main` only).
-- **`solution` branch** - a `solution/` folder with the model solution. **Solutions MUST live on this branch, never on `main`** - that is what guarantees they are never copied into student repos on generate. They reach students only when you run Release assignment with **include_solution** ticked, which pushes the `solution/` folder into each student repo as a separate, later commit.
+- **`main` branch** - the starter code only (no tests, no autograder). This is exactly what students receive (native template-generate copies `main` only).
+- **`solution` branch** - the model solution (`solution/`), plus **`grading.yml`** and the **hidden tests** that the Grade assignment button runs faculty-side. **All of this MUST live on this branch, never on `main`** - that is what guarantees it is never copied into student repos on generate. Only the `solution/` folder reaches students, and only when you run Release assignment with **include_solution** ticked (a separate, later commit); the hidden tests and `grading.yml` never do.
 
 ---
 Maintained by the [Hertie Data Science Lab](https://github.com/hertie-data-science-lab).
@@ -1100,6 +1158,9 @@ def seed_github_workflows(course_org: str) -> None:
             source_repos, cohorts, cohort_repos
         ),
         ".github/workflows/release-assignment.yml": render_provision(
+            cohorts, assignments
+        ),
+        ".github/workflows/grade-assignment.yml": render_grade_assignment(
             cohorts, assignments
         ),
         ".github/workflows/new-materials.yml": render_new_materials(),
