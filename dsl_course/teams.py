@@ -4,9 +4,9 @@
 truth for who is in which team for which assignment:
 
     assignment,team,github_handle
-    assignment-4-project,wizards,ada-lovelace
-    assignment-4-project,wizards,alan-turing
-    assignment-4-project,hackers,grace-hopper
+    assignment-4-project,team-x,anna-adams
+    assignment-4-project,team-x,ben-baker
+    assignment-4-project,team-y,carla-cohen
 
 Students self-select by opening a "Join team" issue in `welcome` (the workflow appends a
 row - authenticated author, size-capped); faculty override by editing the CSV directly.

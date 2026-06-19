@@ -1,5 +1,5 @@
 github_handle,team,auto,manual,team_grade,adjustment,final,comments,team_comments
-ada-lovelace,wizards,,,85,+4,89,"Led the model architecture; carried the team's core work.","Strong project: excellent model design, but a thin evaluation section."
-alan-turing,wizards,,,85,0,85,"Solid, even contribution.","Strong project: excellent model design, but a thin evaluation section."
-grace-hopper,hackers,,,78,+2,80,"Strong data pipeline; good documentation.","Good pipeline and docs; the report lacked error analysis."
-katherine-johnson,hackers,,,78,-3,75,"Limited commits; missed two team check-ins.","Good pipeline and docs; the report lacked error analysis."
+anna-adams,team-x,,,85,+4,89,"Led the model architecture; carried the team's core work.","Strong project: excellent model design, but a thin evaluation section."
+ben-baker,team-x,,,85,0,85,"Solid, even contribution.","Strong project: excellent model design, but a thin evaluation section."
+carla-cohen,team-y,,,78,+2,80,"Strong data pipeline; good documentation.","Good pipeline and docs; the report lacked error analysis."
+dan-davies,team-y,,,78,-3,75,"Limited commits; missed two team check-ins.","Good pipeline and docs; the report lacked error analysis."
