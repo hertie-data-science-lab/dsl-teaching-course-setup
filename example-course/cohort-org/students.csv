@@ -1,5 +1,5 @@
 student_id,hertie_email,name,github_handle,github_id,section,enrol_code
-220001,ada.lovelace@students.demo.edu,Ada Lovelace,,,A,
-220002,alan.turing@students.demo.edu,Alan Turing,,,A,
-220003,grace.hopper@students.demo.edu,Grace Hopper,,,B,
-220004,katherine.johnson@students.demo.edu,Katherine Johnson,,,B,
+220001,anna.adams@students.demo.edu,Anna Adams,,,A,
+220002,ben.baker@students.demo.edu,Ben Baker,,,A,
+220003,carla.cohen@students.demo.edu,Carla Cohen,,,B,
+220004,dan.davies@students.demo.edu,Dan Davies,,,B,

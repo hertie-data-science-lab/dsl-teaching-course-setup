@@ -22,7 +22,7 @@ body:
     attributes:
       label: Team
       description: "Team name (letters, numbers, dashes). Create a new one or join an existing team."
-      placeholder: "e.g. wizards"
+      placeholder: "e.g. team-x"
     validations:
       required: true
   - type: checkboxes
