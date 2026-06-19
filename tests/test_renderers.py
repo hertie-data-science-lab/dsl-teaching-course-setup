@@ -23,7 +23,7 @@ ALL_RENDERED = {
         ["Cohort-f2026"], ["assignment-1-f2026"]
     ),
     "release_code": seed.render_release_code(["Cohort-f2026"], ["materials"]),
-    "enroll": seed.render_enroll(["Cohort-f2026"]),
+    "sync_enrolment": seed.render_sync_enrolment(["Cohort-f2026"]),
     "send_codes": seed.render_send_codes(["Cohort-f2026"]),
     "sync_gradebooks": seed.render_sync_gradebooks(["Cohort-f2026"]),
     "render_grades": seed.render_render_grades(["Cohort-f2026"]),
@@ -86,6 +86,17 @@ def test_grade_assignment_has_deadline_and_calls_collect():
     assert "deadline" in inp and inp["group"]["type"] == "boolean"
     assert "dsl_course.collect" in rendered
     assert "--group" in rendered and "--deadline" in rendered
+
+
+def test_sync_enrolment_is_a_single_reconcile():
+    # One idempotent reconcile: cohort + optional off-board, no single-handle override.
+    rendered = seed.render_sync_enrolment(["Cohort-f2026"])
+    inp = workflow_inputs(rendered)
+    assert set(inp) == {"cohort_org", "prune"}
+    assert inp["prune"]["type"] == "boolean"
+    assert inp["prune"]["default"] is False
+    assert "dsl_course.sync_roster" in rendered
+    assert "--handle" not in rendered
 
 
 def test_choice_falls_back_when_empty():

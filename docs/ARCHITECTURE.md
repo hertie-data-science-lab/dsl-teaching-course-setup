@@ -93,7 +93,7 @@ flowchart TD
     ct["hertie-data-science-lab<br/>faculty / admin teams"] -->|"write/admin on"| cr["central repo"] --> ba["run Bootstrap Course Org"]
   end
   subgraph run["2 · Run a course's buttons (per-course)"]
-    it["course org's own<br/>instructors (write) / course-admin (admin)"] -->|"granted on"| gh["that org's .github"] --> rb["run Release / Refresh / Enroll / ..."]
+    it["course org's own<br/>instructors (write) / course-admin (admin)"] -->|"granted on"| gh["that org's .github"] --> rb["run Release / Refresh / Sync enrolment / ..."]
   end
   prov ~~~ run
 ```
@@ -178,7 +178,7 @@ sequenceDiagram
   St->>W: open Join issue (student id + email + GitHub handle)
   O->>R: match + verify against the private roster
   O->>St: grant org membership + students-team read
-  Note over O,St: "Enroll student" is the faculty override (type a handle)
+  Note over O,St: "Sync enrolment" reconciles the students team from students.csv (faculty true-up)
 ```
 
 ## Dynamic dropdowns

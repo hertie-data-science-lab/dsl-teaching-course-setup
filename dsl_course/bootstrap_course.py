@@ -5,9 +5,9 @@ Sets up org-level infrastructure that persists across semesters:
 - Default teams (instructors, students, auditors)
 - Org settings (2FA enforcement, Pages default branch)
 - Profile README (.github repo with description)
-- Org-level workflows in .github (enroll-student, bootstrap-cohort, refresh-actions)
+- Org-level workflows in .github (sync-enrolment, bootstrap-cohort, refresh-actions)
 - Central faculty workflows seeded into .github (Release materials/assignment +
-  Enroll/Bootstrap-cohort/Refresh); the run-from-repo copies are equipped by Refresh
+  Sync enrolment/Bootstrap-cohort/Refresh); the run-from-repo copies are equipped by Refresh
 
 With --cohort, instead tightens the org and seeds the student-facing welcome (onboard)
 and classroom-config (roster) repos.
@@ -370,7 +370,7 @@ def setup_cohort_extras(org: str) -> None:
 
 def seed_workflows(org: str) -> None:
     """Seed the org-level workflows into the course org's .github repo. The full set
-    (central Release materials/assignment + Enroll/Bootstrap-cohort/Refresh) is rendered
+    (central Release materials/assignment + Sync enrolment/Bootstrap-cohort/Refresh) is rendered
     by dsl_course.seed (single source of truth)."""
     seed.seed_github_workflows(org)
 
@@ -536,7 +536,7 @@ DONE (automated):
 - Org-level teams: instructors, students, auditors, course-admin
 - Org settings: 2FA enforcement enabled
 - .github profile repo with README
-- Workflows in .github: Release materials, Release assignment, Enroll student,
+- Workflows in .github: Release materials, Release assignment, Sync enrolment,
   Bootstrap cohort, Refresh actions
 - DSL_BOT_TOKEN secret validated (or set)
 - Button access: instructors (write) + course-admin (admin) granted on .github; any

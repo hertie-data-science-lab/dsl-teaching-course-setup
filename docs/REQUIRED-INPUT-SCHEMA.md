@@ -30,7 +30,7 @@ into a tracking issue and tick as you go.)
 - [ ] `[required]` Create the **cohort org** in the GitHub web UI; add **`hertie-dsl-bot`** as **Owner**.
 - [ ] `[required]` From the **course org's** Actions tab, run **Bootstrap cohort** (give it the empty cohort org's name). Seeds `welcome` + `classroom-config`, scaffolds the site, registers the cohort, propagates the token.
 - [ ] `[required]` **Roster**: edit `classroom-config/students.csv` with registrar data - `student_id, hertie_email, name, section`. Leave `github_handle, github_id` blank; students fill them by onboarding.
-- [ ] `[required]` Run the weekly loop: **Release materials** (per week) and **Release assignment** (per assignment). Students onboard themselves via the **Join** issue in `welcome`; **Enroll student** is the faculty override.
+- [ ] `[required]` Run the weekly loop: **Release materials** (per week) and **Release assignment** (per assignment). Students onboard themselves via the **Join** issue in `welcome`; **Sync enrolment** reconciles the `students` team from the roster (faculty true-up).
 - [ ] *(optional)* **Grade + return marks**: **Grade assignment** (autogrades after the deadline, if you added hidden tests) → edit `classroom-config/grades/<assignment>.csv` (add manual marks) → **Sync gradebooks** → **Render grades** (preview PR) → **Distribute grades** (emails each student).
 
 ## What you end up with
@@ -162,8 +162,8 @@ Student lifecycle is **two separate stages** - *enrol once, provision per assign
      released materials unlock);
    - comments confirmation, labels `enrolled`, closes the issue.
 
-   The faculty override is the **Enroll student** button (type a handle; a blank handle
-   reconciles the whole roster). `sync_roster` materialises team membership from the CSV.
+   The faculty true-up is the **Sync enrolment** button: `sync_roster` reads `students.csv`
+   and reconciles the whole `students` team from it (idempotent).
 
 2. **Provisioning (per-assignment repos).** **Release assignment** for
    each students the `release assignment` workflow generates a private
@@ -172,8 +172,8 @@ Student lifecycle is **two separate stages** - *enrol once, provision per assign
    
 **Submission** is a plain `git push` to `main` in the student's repo.
 
-**Removal / rollover:** drop the row from `students.csv` and re-run **Enroll student** with a
-blank handle and `--prune` to reconcile team membership.
+**Removal / rollover:** drop the row from `students.csv` and re-run **Sync enrolment** with
+`prune` to off-board the member from the `students` team.
 
 Roster columns:
 

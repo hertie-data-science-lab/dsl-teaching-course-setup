@@ -1,19 +1,18 @@
 """dsl-course sync-roster -- materialise org + team access from students.csv.
 
-The enrolment "access" half: ensure every onboarded student in the cohort's
-students.csv is (a) a member of the cohort org and (b) in the single `students` team
-(which carries cohort-private read on released materials/solutions). Idempotent.
+The enrolment "access" half: a single idempotent reconcile that ensures every onboarded
+student in the cohort's students.csv is (a) a member of the cohort org and (b) in the
+single `students` team (which carries cohort-private read on released materials/solutions).
 
-Two modes:
-  - whole roster (default): reconcile the `students` team to the roster.
-  - single handle (--handle): faculty override / the welcome onboard path - enrol one.
+Students normally grant themselves on Join (templates/welcome/onboard.yml); this is the
+faculty true-up - edit students.csv, then re-run to reconcile the whole team to the roster.
 
 With --prune, students no longer on the roster are removed from the team (off-boarding);
 off by default so a stale roster never silently revokes access.
 
 Usage:
     python3 -m dsl_course.sync_roster --cohort-org Deep-Learning-EXAMPLE-f2026
-    python3 -m dsl_course.sync_roster --cohort-org Deep-Learning-EXAMPLE-f2026 --handle ada-lovelace
+    python3 -m dsl_course.sync_roster --cohort-org Deep-Learning-EXAMPLE-f2026 --prune
 """
 
 from __future__ import annotations
@@ -98,22 +97,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cohort-org", required=True)
     parser.add_argument(
-        "--handle", default=None, help="Enrol a single handle (faculty override)."
-    )
-    parser.add_argument(
         "--prune",
         action="store_true",
         help="Remove team members no longer on the roster.",
     )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
-
-    if args.handle:
-        log_step(f"Enrolling @{args.handle} into {args.cohort_org}")
-        if args.dry_run:
-            log(f"    DRY-RUN enroll: {args.handle}")
-            return 0
-        return 0 if enroll(args.cohort_org, args.handle) else 1
 
     errors = sync(args.cohort_org, prune=args.prune, dry_run=args.dry_run)
     if errors:
