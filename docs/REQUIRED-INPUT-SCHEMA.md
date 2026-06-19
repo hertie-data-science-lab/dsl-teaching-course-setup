@@ -17,7 +17,7 @@ into a tracking issue and tick as you go.)
 ### Course setup (once)
 
 - [ ] `[required]` Create the **course org** in the GitHub web UI, then add **`hertie-dsl-bot`** as **Owner** (the one manual step - no org-creation API).
-- [ ] `[required]` Run [**Bootstrap Course Org**](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions/workflows/bootstrap-org.yml) from this repo's Actions tab (`org`, `org_name`; optional `course_name`, `course_code`, `admin`). This also sets `DSL_BOT_TOKEN` on the org - you don't set the secret by hand. See [Token](#token).
+- [ ] `[required]` Run [**Bootstrap Course Org**](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions/workflows/bootstrap-org.yml) from this repo's Actions tab (`org`, `org_name`, `course_code`; optional `admin`). This also sets `DSL_BOT_TOKEN` on the org - you don't set the secret by hand. See [Token](#token).
 - [ ] `[required]` **Materials**: scaffold with **New materials repo**, then fill `course-materials-fYYYY/lectures/week-N/` and `readings/week-N/` with any files. *(optional: a `*syllabus*` file + `README` at the repo root.)*
 - [ ] `[required]` **Assignments** (≥1): scaffold with **New assignment**, then on `main` add the brief (`README.md`) + starter. *(optional: on the `solution` branch, the model solution in `solution/`, and - to autograde - hidden tests in `tests/` plus a `grading.yml`. Student repos get `main` only.)*
 - [ ] *(optional)* **People**: edit the `people:` block in `.github/dsl-course.yml` (instructor/TA cards). If omitted, falls back to GitHub teams + avatars.
@@ -28,7 +28,7 @@ into a tracking issue and tick as you go.)
 ### Cohort setup (per year)
 
 - [ ] `[required]` Create the **cohort org** in the GitHub web UI; add **`hertie-dsl-bot`** as **Owner**.
-- [ ] `[required]` Run **Bootstrap cohort** (`cohort` ticked, `course` = parent course org). Seeds `welcome` + `classroom-config`, scaffolds the site, registers the cohort, propagates the token.
+- [ ] `[required]` From the **course org's** Actions tab, run **Bootstrap cohort** (give it the empty cohort org's name). Seeds `welcome` + `classroom-config`, scaffolds the site, registers the cohort, propagates the token.
 - [ ] `[required]` **Roster**: edit `classroom-config/students.csv` with registrar data - `student_id, hertie_email, name, section`. Leave `github_handle, github_id` blank; students fill them by onboarding.
 - [ ] `[required]` Run the weekly loop: **Release materials** (per week) and **Release assignment** (per assignment). Students onboard themselves via the **Join** issue in `welcome`; **Enroll student** is the faculty override.
 - [ ] *(optional)* **Grade + return marks**: **Grade assignment** (autogrades after the deadline, if you added hidden tests) → edit `classroom-config/grades/<assignment>.csv` (add manual marks) → **Sync gradebooks** → **Render grades** (preview PR) → **Distribute grades** (emails each student).
@@ -99,7 +99,7 @@ Everything below is a button or a file edit.
 
 | # | Input | Supplied via | Mandatory | Stored as |
 |---|-------|--------------|-----------|-----------|
-| B1 | Course identity: `org`, `org_name`, `course_name`, `course_code` | **Bootstrap Course Org** button inputs | org + org_name | `.github/dsl-course.yml` |
+| B1 | Course identity: `org`, `org_name`, `course_code` | **Bootstrap Course Org** button inputs | org + org_name + course_code | `.github/dsl-course.yml` |
 | B2 | **People** (instructors + TAs: name, photo, bio link, title) | Edit the `people:` block in `.github/dsl-course.yml` | for the site cards | declared input → cards carry institutional headshots + bio links. *(If omitted, falls back to the `instructors`/`teaching-assistants` GitHub teams → GitHub avatars.)* |
 | B3 | **Materials**: a `course-materials-fYYYY` repo with `lectures/week-N/` and `readings/week-N/` folders | **New materials repo** button scaffolds it; you add files | yes | course org repo |
 | B4 | Syllabus / root README (optional) | Files at the materials-repo root | optional | copied to the cohort on release if toggled on |

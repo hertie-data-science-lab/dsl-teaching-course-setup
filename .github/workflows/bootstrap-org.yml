@@ -4,38 +4,24 @@ on:
   workflow_dispatch:
     inputs:
       org:
-        description: "Course org to bootstrap (e.g. Hertie-School-Deep-Learning-E1394)"
+        description: "Course org to bootstrap (e.g. Hertie-School-DSL-Demo-E1234)"
         required: true
       org_name:
-        description: "Display name for org profile (e.g. Deep Learning)"
+        description: "Display name for org profile (e.g. DSL Demo)"
         required: true
-      course_name:
-        description: "Full course name for README (optional, defaults to org_name)"
-        required: false
-        default: ""
       course_code:
-        description: "Hertie course code (e.g. GRAD-E1394). Optional but recommended for inventory discovery."
-        required: false
-        default: ""
+        description: "Course code (e.g. GRAD-E1234)."
+        required: true
       set_secret:
-        description: "Set DSL_BOT_TOKEN secret? (requires secret file in repo, or manually add to Settings → Secrets)"
+        description: "Set the DSL_BOT_TOKEN org secret automatically (recommended; uncheck only to set it by hand)"
         required: false
-        default: "false"
+        default: "true"
         type: choice
         options:
-          - "false"
           - "true"
-      cohort:
-        description: "Is this a COHORT org? Also seeds welcome (onboard) + classroom-config (roster) and tightens permissions."
-        required: false
-        default: false
-        type: boolean
-      course:
-        description: "For a COHORT: its parent course org (registers the cohort in that course's dropdowns)"
-        required: false
-        default: ""
+          - "false"
       admin:
-        description: "Course admin GitHub handle(s), comma-separated - added to the course-admin team so they can run the buttons (they accept an org invite once)"
+        description: "Course admin GitHub handle(s), comma-separated"
         required: false
         default: ""
 
@@ -77,16 +63,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
           DSL_BOT_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
-          COHORT: ${{ inputs.cohort }}
-          COURSE: ${{ inputs.course }}
+          SET_SECRET: ${{ inputs.set_secret }}
           ADMIN: ${{ inputs.admin }}
         run: |
           args=(--org "${{ inputs.org }}"
                 --org-name "${{ inputs.org_name }}"
-                --course-name "${{ inputs.course_name || inputs.org_name }}"
-                --course-code "${{ inputs.course_code }}"
-                --propagate-secret)
-          [ "$COHORT" = "true" ] && args+=(--cohort)
-          [ -n "$COURSE" ] && args+=(--course "$COURSE")
+                --course-code "${{ inputs.course_code }}")
+          [ "$SET_SECRET" = "true" ] && args+=(--propagate-secret)
           [ -n "$ADMIN" ] && args+=(--admins "$ADMIN")
           python3 -m dsl_course.bootstrap_course "${args[@]}"
