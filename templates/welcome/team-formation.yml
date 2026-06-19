@@ -118,7 +118,7 @@ jobs:
             // Confirm.
             await github.rest.issues.createComment({
               owner: org, repo: context.repo.repo, issue_number: issue.number, body: [
-                `Done **@${handle}** 🤝 - you're in team **${team}** for \`${assignment}\`.`,
+                `Done **@${handle}** - you're in team **${team}** for \`${assignment}\`.`,
                 ``,
                 `- Membership is recorded; your team's repo appears once the teaching team provisions this assignment.`,
                 `- Need to change teams? Contact the teaching team.`,

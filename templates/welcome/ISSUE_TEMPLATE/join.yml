@@ -7,14 +7,14 @@ body:
     attributes:
       value: |
         Your **GitHub handle is captured automatically** - you are the issue author, so it is authenticated and cannot be faked.
-        Enter your **university email** so we can match you to the enrolment list.
-        🔒 For privacy, the bot **redacts your email from this issue** as soon as it has matched you (this is a public repo, so don't add any other personal data).
+        Paste the **enrolment code** the teaching team emailed to your university address.
+        The code is random and **not personal data**, so it's safe here even though this is a public repo - but **don't add any other personal details**.
   - type: input
-    id: email
+    id: enrol_code
     attributes:
-      label: University email
-      description: Used only to match you to the enrolment list; redacted right after.
-      placeholder: "e.g. a.lovelace@students.hertie-school.org"
+      label: Enrolment code
+      description: The code emailed to your university address (looks like dsl-xxxxxx).
+      placeholder: "dsl-ab3k9m"
     validations:
       required: true
   - type: checkboxes
