@@ -361,13 +361,15 @@ def seed_workflows(org: str) -> None:
 
 
 def preflight(org: str) -> bool:
-    """Verify the org exists and is accessible before configuring anything.
+    """Verify the org exists AND the bot can administer it before configuring anything.
 
-    GitHub has NO API to create an organisation (github.com); it must be created
-    in the web UI first. If the org is missing, stop with instructions rather than
-    404-ing through every step and falsely reporting success.
+    GitHub has NO API to create an organisation (github.com); it must be created in the
+    web UI first, with the bot added as an Owner. A token that is only a *pending* or
+    member-level org member can READ the org but every create call 403s - so check for an
+    active Owner up front and stop with actionable instructions, rather than 403-ing
+    through every step and falsely reporting success.
     """
-    log_step(f"Preflight: checking org {org} exists and is accessible")
+    log_step(f"Preflight: checking org {org} + bot permissions")
     code, _ = gh("api", f"orgs/{org}", "--jq", ".login")
     if code != 0:
         log_err(f"org '{org}' not found or not accessible by this token.")
@@ -379,7 +381,25 @@ def preflight(org: str) -> bool:
             f"  3. Re-run bootstrap with --org {org}.\n"
         )
         return False
-    log_ok(f"org {org} is accessible")
+    # The token must be an ACTIVE OWNER. A pending/invited or member-level token reads the
+    # org fine but cannot create the .github repo, role teams, or org secret (all 403).
+    bot = gh("api", "user", "--jq", ".login")[1].strip() or "the bot"
+    code, membership = gh(
+        "api", f"user/memberships/orgs/{org}", "--jq", '.state + "/" + .role'
+    )
+    membership = membership.strip() if code == 0 else "not a member"
+    if membership != "active/admin":
+        log_err(f"@{bot} cannot administer {org} (membership: {membership}).")
+        log(
+            f"\nThe bot must be an ACTIVE OWNER of {org} - creating the .github repo, role "
+            f"teams, and org secret all require Owner. Fix by the matching case, then re-run:\n"
+            f"  - 'pending/admin'  -> @{bot} was invited but hasn't accepted: sign in as "
+            f"@{bot} and accept at https://github.com/orgs/{org}/invitation\n"
+            f"  - 'not a member'   -> invite @{bot} to {org} as Owner, then accept as @{bot}\n"
+            f"  - 'active/member'  -> promote @{bot} to Owner in the org's People page\n"
+        )
+        return False
+    log_ok(f"org {org} accessible; @{bot} is an active owner")
     return True
 
 
