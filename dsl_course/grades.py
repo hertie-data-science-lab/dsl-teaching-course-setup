@@ -65,17 +65,22 @@ GRADEBOOK_DIR = "gradebook"  # rendered per-student YAML staged for the preview 
 GRADEBOOK_PREFIX = "grades-"  # per-student repo: grades-<handle>
 RENDER_BRANCH = "grades-update"
 
-# One assignment CSV row. Individual rows leave the group columns blank; group rows carry
-# the shared team grade plus that member's private adjustment, with `final` authoritative
-# (stored explicitly so faculty own any rounding). Values stay strings - a grade may be a
-# letter, a percentage, or "+4" - we never coerce.
+# One assignment CSV row. Individual rows use `auto` (machine score) + `manual` (faculty's
+# hand-marked part); group rows carry the shared `team_grade`, that member's private
+# `adjustment`, and the shared `team_comments`. `final` is authoritative (stored explicitly so
+# faculty own any rounding/combination). `auto`/`manual` are faculty-internal working columns -
+# they never appear in the student's gradebook. Values stay strings - a grade may be a letter,
+# a percentage, or "+4" - we never coerce.
 GRADE_FIELDS = (
     "github_handle",
     "team",
+    "auto",
+    "manual",
     "team_grade",
     "adjustment",
     "final",
     "comments",
+    "team_comments",
 )
 
 _STARTER_README = (
@@ -87,12 +92,15 @@ _STARTER_README = (
 
 @dataclass
 class GradeRow:
-    github_handle: str
-    team: str
-    team_grade: str
-    adjustment: str
-    final: str
-    comments: str
+    github_handle: str = ""
+    team: str = ""
+    auto: str = ""
+    manual: str = ""
+    team_grade: str = ""
+    adjustment: str = ""
+    final: str = ""
+    comments: str = ""
+    team_comments: str = ""
 
 
 # --------------------------------------------------------------------------- pure core
@@ -107,8 +115,10 @@ def parse_grades(text: str) -> list[GradeRow]:
 
 
 def gradebook_entry(row: GradeRow) -> dict:
-    """One assignment's entry for a student. Group fields appear only for group rows;
-    empty fields are dropped so an individual assignment reads as just final + comments."""
+    """One assignment's entry for a student. Group fields appear only for group rows; the
+    faculty-internal auto/manual columns are never surfaced (the student sees the authoritative
+    final, not the machine/manual split); empty fields are dropped so an individual assignment
+    reads as just final + comments."""
     entry: dict[str, str] = {}
     if row.team:
         entry["team"] = row.team
@@ -116,6 +126,8 @@ def gradebook_entry(row: GradeRow) -> dict:
             entry["team_grade"] = row.team_grade
         if row.adjustment:
             entry["adjustment"] = row.adjustment
+        if row.team_comments:
+            entry["team_comments"] = row.team_comments
     if row.final:
         entry["final"] = row.final
     if row.comments:
@@ -144,6 +156,37 @@ def build_gradebooks(per_assignment: dict[str, list[GradeRow]]) -> dict[str, dic
 def render_yaml(book: dict) -> str:
     """Serialise one student's gradebook to YAML text (insertion order preserved)."""
     return yaml.safe_dump(book, sort_keys=False, allow_unicode=True)
+
+
+def dump_grades(rows: list[GradeRow]) -> str:
+    """Serialise grade rows back to CSV text (header + one row per GradeRow)."""
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow(GRADE_FIELDS)
+    for r in rows:
+        writer.writerow([getattr(r, f) for f in GRADE_FIELDS])
+    return out.getvalue()
+
+
+def merge_auto(text: str, updates: list[tuple[str, dict[str, str]]]) -> str:
+    """Upsert machine-graded fields into a grades CSV, returning new CSV text.
+
+    Each update is (github_handle, {field: value}); the handle's row is updated in place
+    (preserving every other column a faculty member has already filled) or created and
+    appended if absent. Used by the collector to record `auto` (individual) or
+    `team`/`team_grade` (group) without disturbing manual marks, comments, or final."""
+    rows = parse_grades(text) if text.strip() else []
+    order = [r.github_handle for r in rows]
+    by_handle = {r.github_handle: r for r in rows}
+    for handle, fields in updates:
+        row = by_handle.get(handle)
+        if row is None:
+            row = GradeRow(github_handle=handle)
+            by_handle[handle] = row
+            order.append(handle)
+        for key, value in fields.items():
+            setattr(row, key, value)
+    return dump_grades([by_handle[h] for h in order])
 
 
 # ---------------------------------------------------------------------- gh/git wiring
