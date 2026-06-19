@@ -329,7 +329,21 @@ def setup_cohort_extras(org: str) -> None:
             _welcome_template("ISSUE_TEMPLATE/join.yml"),
             "ci: seed Join issue form",
         )
-        log_ok("welcome repo seeded (onboard.yml + Join form)")
+        put_file(
+            org,
+            "welcome",
+            ".github/workflows/team-formation.yml",
+            _welcome_template("team-formation.yml"),
+            "ci: seed team-formation workflow",
+        )
+        put_file(
+            org,
+            "welcome",
+            ".github/ISSUE_TEMPLATE/join-team.yml",
+            _welcome_template("ISSUE_TEMPLATE/join-team.yml"),
+            "ci: seed Join team issue form",
+        )
+        log_ok("welcome repo seeded (onboard + team-formation + Join forms)")
 
     if create_repo(
         org,
