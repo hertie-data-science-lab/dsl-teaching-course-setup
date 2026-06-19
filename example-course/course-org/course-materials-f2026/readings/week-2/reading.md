@@ -1,3 +1,4 @@
-# Week 2 reading
+# Week 2 readings - Intro to deep learning
 
-- ISLR ch.3 (placeholder).
+- Goodfellow et al., *Deep Learning*, ch. 2 (citation only).
+- A blog post or paper relevant to: Intro to deep learning.

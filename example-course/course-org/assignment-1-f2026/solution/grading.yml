@@ -1,0 +1,5 @@
+type: individual
+format: py
+autograde: true
+max_auto: 10
+tests: tests

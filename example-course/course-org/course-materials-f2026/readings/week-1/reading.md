@@ -1,3 +1,4 @@
-# Week 1 reading
+# Week 1 readings - 
 
-- *The Hertie DSL handbook*, ch.1 (placeholder).
+- Goodfellow et al., *Deep Learning*, ch. 1 (citation only).
+- A blog post or paper relevant to: .
