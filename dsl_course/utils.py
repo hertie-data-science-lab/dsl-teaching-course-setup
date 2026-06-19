@@ -191,6 +191,22 @@ def add_team_member(org: str, team_slug: str, login: str, role: str = "member") 
     return False
 
 
+def grant_team_repo_access(org: str, team: str, repo: str, permission: str) -> bool:
+    """Grant a team a permission level on one repo (idempotent)."""
+    code, out = gh(
+        "api",
+        "-X",
+        "PUT",
+        f"orgs/{org}/teams/{team}/repos/{org}/{repo}",
+        "-f",
+        f"permission={permission}",
+    )
+    if code == 0:
+        return True
+    log_err(f"  ! could not grant {team} {permission} on {org}/{repo}: {out[:120]}")
+    return False
+
+
 def create_repo(
     org: str,
     name: str,

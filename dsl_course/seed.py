@@ -412,6 +412,34 @@ jobs:
 """
 
 
+def render_sync_teams(cohort_orgs: list[str]) -> str:
+    """Materialise a GitHub Team per project group from the cohort's teams.csv."""
+    return f"""name: Sync teams
+
+on:
+  workflow_dispatch:
+    inputs:
+{_cohort_dropdown(cohort_orgs)}
+      prune:
+        description: "Off-board: remove team members no longer in teams.csv"
+        type: boolean
+        default: false
+
+jobs:
+{_CHECK_TEAM}
+  sync:
+{_RUN_PREAMBLE}      - name: Sync teams
+        env:
+          GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
+          COHORT_ORG: ${{{{ inputs.cohort_org }}}}
+          PRUNE: ${{{{ inputs.prune }}}}
+        run: |
+          args=(--cohort-org "$COHORT_ORG")
+          [ "$PRUNE" = "true" ] && args+=(--prune)
+          python3 -m dsl_course.sync_teams "${{args[@]}}"
+"""
+
+
 def _cohort_dropdown(cohort_orgs: list[str]) -> str:
     return (
         '      cohort_org:\n        description: "Cohort org"\n'
@@ -1026,6 +1054,7 @@ _(automatically bootstrapped from the central
 ### Weekly cadence actions:
 - [**Release materials**](https://github.com/{org}/.github/actions/workflows/release-materials.yml) - publish a given week's `lectures/`+`readings/` into a cohort repo.
 - [**Release assignment**](https://github.com/{org}/.github/actions/workflows/release-assignment.yml) - generate one private repo per student from a chosen `assignment-*` template repo.
+- [**Sync teams**](https://github.com/{org}/.github/actions/workflows/sync-teams.yml) - materialise a GitHub Team per project group from `classroom-config/teams.csv` (students self-select via the welcome Join-team issue). A group `Release assignment` grants each team its shared repo; `prune` off-boards members no longer listed.
 
 - [**Release code**](https://github.com/{org}/.github/actions/workflows/release-code.yml) - run from the repo holding your package; copy a chosen path (a subpackage folder, or a single module file) into a cohort repo's tree, additively. Phased disclosure of a growing importable package - release a topic when you teach it.
 
@@ -1159,6 +1188,7 @@ def seed_github_workflows(course_org: str) -> None:
         ".github/workflows/sync-enrolment.yml": render_sync_enrolment(cohorts),
         ".github/workflows/send-codes.yml": render_send_codes(cohorts),
         ".github/workflows/sync-gradebooks.yml": render_sync_gradebooks(cohorts),
+        ".github/workflows/sync-teams.yml": render_sync_teams(cohorts),
         ".github/workflows/render-grades.yml": render_render_grades(cohorts),
         ".github/workflows/distribute-grades.yml": render_distribute_grades(cohorts),
         ".github/workflows/bootstrap-cohort.yml": render_bootstrap_cohort(),

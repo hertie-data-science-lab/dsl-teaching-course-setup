@@ -29,6 +29,7 @@ from .utils import (
     create_repo,
     create_team,
     gh,
+    grant_team_repo_access,
     log,
     log_err,
     log_ok,
@@ -107,22 +108,6 @@ def create_default_teams(org: str) -> None:
 # hertie-data-science-lab faculty/admin teams are a SEPARATE concern (who may bootstrap an
 # org at all - the central action's gate); they are deliberately NOT mirrored in here.
 BUTTON_TEAMS = {"instructors": "push", "course-admin": "admin"}
-
-
-def grant_team_repo_access(org: str, team: str, repo: str, permission: str) -> bool:
-    """Grant a team a permission level on one repo (idempotent)."""
-    code, out = gh(
-        "api",
-        "-X",
-        "PUT",
-        f"orgs/{org}/teams/{team}/repos/{org}/{repo}",
-        "-f",
-        f"permission={permission}",
-    )
-    if code == 0:
-        return True
-    log_err(f"  ! could not grant {team} {permission} on {org}/{repo}: {out[:120]}")
-    return False
 
 
 def grant_button_access(org: str) -> None:

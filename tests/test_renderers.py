@@ -26,6 +26,7 @@ ALL_RENDERED = {
     "sync_enrolment": seed.render_sync_enrolment(["Cohort-f2026"]),
     "send_codes": seed.render_send_codes(["Cohort-f2026"]),
     "sync_gradebooks": seed.render_sync_gradebooks(["Cohort-f2026"]),
+    "sync_teams": seed.render_sync_teams(["Cohort-f2026"]),
     "render_grades": seed.render_render_grades(["Cohort-f2026"]),
     "distribute_grades": seed.render_distribute_grades(["Cohort-f2026"]),
     "bootstrap_cohort": seed.render_bootstrap_cohort(),
@@ -97,6 +98,16 @@ def test_sync_enrolment_is_a_single_reconcile():
     assert inp["prune"]["default"] is False
     assert "dsl_course.sync_roster" in rendered
     assert "--handle" not in rendered
+
+
+def test_sync_teams_is_a_reconcile():
+    # One idempotent reconcile of project teams from teams.csv: cohort + optional off-board.
+    rendered = seed.render_sync_teams(["Cohort-f2026"])
+    inp = workflow_inputs(rendered)
+    assert set(inp) == {"cohort_org", "prune"}
+    assert inp["prune"]["type"] == "boolean"
+    assert inp["prune"]["default"] is False
+    assert "dsl_course.sync_teams" in rendered
 
 
 def test_choice_falls_back_when_empty():
