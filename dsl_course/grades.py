@@ -306,41 +306,40 @@ def render(cohort_org: str) -> int:
 
 
 def distribute(cohort_org: str, notify: bool = True) -> int:
-    """Fan the merged gradebook/<handle>.yml files out into each private grades-<handle>."""
-    code, out = gh(
-        "api",
-        f"repos/{cohort_org}/{CONFIG_REPO}/contents/{GRADEBOOK_DIR}",
-        "--jq",
-        ".[].name",
-    )
-    if code != 0:
-        log_err(
-            f"no {GRADEBOOK_DIR}/ in {cohort_org}/{CONFIG_REPO} - run `render` first."
-        )
-        return 1
-    handles = [n[:-4] for n in sorted(out.splitlines()) if n.endswith(".yml")]
-    log_step(f"Distributing {len(handles)} gradebook(s) in {cohort_org}")
+    """Fan the merged gradebook/<handle>.yml files out into each private grades-<handle>.
 
-    results: dict[str, int] = {}
-    for handle in handles:
-        content = get_file_content(
-            cohort_org, CONFIG_REPO, f"{GRADEBOOK_DIR}/{handle}.yml"
-        )
-        if content is None:
-            results["failed-read"] = results.get("failed-read", 0) + 1
-            continue
-        status = _push_gradebook(cohort_org, handle, content, notify)
-        results[status] = results.get(status, 0) + 1
+    Clone classroom-config once and read the files locally (rather than an API GET per
+    student); the only per-student call left is the unavoidable write to each repo."""
+    with tempfile.TemporaryDirectory() as work:
+        wd = Path(work) / "cfg"
+        if (
+            gh("repo", "clone", f"{cohort_org}/{CONFIG_REPO}", str(wd), "--", "-q")[0]
+            != 0
+        ):
+            log_err(f"could not clone {cohort_org}/{CONFIG_REPO}")
+            return 1
+        gbdir = wd / GRADEBOOK_DIR
+        files = sorted(gbdir.glob("*.yml")) if gbdir.is_dir() else []
+        if not files:
+            log_err(
+                f"no {GRADEBOOK_DIR}/ in {cohort_org}/{CONFIG_REPO} - run `render` first."
+            )
+            return 1
+        log_step(f"Distributing {len(files)} gradebook(s) in {cohort_org}")
+
+        results: dict[str, int] = {}
+        for f in files:
+            status = _push_gradebook(cohort_org, f.stem, f.read_text(), notify)
+            results[status] = results.get(status, 0) + 1
     log_ok(f"Done - {json.dumps(results)}")
     return 1 if any(k.startswith("failed") for k in results) else 0
 
 
 def _push_gradebook(cohort_org: str, handle: str, content: str, notify: bool) -> str:
-    """Write grades.yml into grades-<handle> and (optionally) open an @-mention issue."""
+    """Write grades.yml into grades-<handle> and (optionally) open an @-mention issue.
+
+    A missing repo (sync not run) surfaces as a put_file failure -> failed-push."""
     repo = f"{GRADEBOOK_PREFIX}{handle}"
-    if not repo_exists(cohort_org, repo):
-        log_err(f"  ! {cohort_org}/{repo} missing - run `sync` first")
-        return "failed-missing-repo"
     if not put_file(cohort_org, repo, "grades.yml", content.encode(), "grades: update"):
         return "failed-push"
     log_ok(f"+ {repo}/grades.yml")

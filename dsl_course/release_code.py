@@ -40,18 +40,16 @@ def release_code(
     source_repo: str,
     cohort_org: str,
     cohort_repo: str,
-    src_path: str,
-    dest_path: str | None = None,
+    path: str,
 ) -> int:
-    src_path = src_path.strip("/")
-    dest_path = (dest_path or src_path).strip("/")
-    if not src_path:
+    path = path.strip("/")
+    if not path:
         log_err("--path is empty.")
         return 1
 
     log_step(
-        f"Releasing code `{src_path}` from {source_org}/{source_repo} "
-        f"-> {cohort_org}/{cohort_repo}/{dest_path} (cohort-private)"
+        f"Releasing code `{path}` from {source_org}/{source_repo} "
+        f"-> {cohort_org}/{cohort_repo}/{path} (cohort-private)"
     )
     create_repo(
         cohort_org,
@@ -76,20 +74,20 @@ def release_code(
             log_err(f"could not clone {cohort_org}/{cohort_repo}")
             return 1
 
-        srcp = src / src_path
+        srcp = src / path
         if not srcp.exists():
             log_err(
-                f"`{src_path}` not found in {source_org}/{source_repo} - nothing released."
+                f"`{path}` not found in {source_org}/{source_repo} - nothing released."
             )
             return 1
 
-        destp = out / dest_path
+        destp = out / path
         if srcp.is_dir():
             shutil.copytree(srcp, destp, dirs_exist_ok=True)
         else:
             destp.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(srcp, destp)
-        log_ok(f"+ {dest_path}")
+        log_ok(f"+ {path}")
 
         git("-C", str(out), *_GIT_ENV, "add", "-A")
         code, _ = git(
@@ -100,7 +98,7 @@ def release_code(
             "-q",
             "--no-verify",
             "-m",
-            f"release code: {dest_path}",
+            f"release code: {path}",
         )
         if code != 0:
             log_ok("nothing new to release (already published at this path)")
@@ -127,11 +125,6 @@ def main() -> int:
         required=True,
         help="Path to release (subpackage folder or module file)",
     )
-    parser.add_argument(
-        "--dest-path",
-        default=None,
-        help="Target path in the cohort repo (default: same as --path)",
-    )
     args = parser.parse_args()
 
     if (args.source_org, args.source_repo) == (args.cohort_org, args.cohort_repo):
@@ -143,7 +136,6 @@ def main() -> int:
         args.cohort_org,
         args.cohort_repo,
         args.path,
-        dest_path=args.dest_path,
     )
 
 

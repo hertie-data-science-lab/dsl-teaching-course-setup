@@ -102,6 +102,7 @@ Everything below is a button or a file edit.
 | B4 | Syllabus / root README (optional) | Files at the materials-repo root | optional | copied to the cohort on release if toggled on |
 | B5 | **Assignments**: one `assignment-N-fYYYY` **template** repo each (starter + autograder on `main`, empty `solution` branch) | **New assignment** button scaffolds it; you add the brief + starter | yes | course org template repos (`is_template`) |
 | B6 | **Schedule dates** (assignment due dates, exam dates, real semester start) | Edit the `schedule:` block in `.github/dsl-course.yml` | optional (synthesised if blank) | see [Schedule](#the-schedule) |
+| B7 | **Release manifest** (optional, for scheduled auto-release): `weeks:` → what opens each week (`materials` / `code` paths / `assignment`). **One file per cohort** (source repos are year-tagged) | Edit `.github/manifests/<cohort-org>.yml` | no (manual buttons work without it) | course org `.github` repo |
 
 ### C. Per-cohort (each year)
 
@@ -111,6 +112,7 @@ Everything below is a button or a file edit.
 | C2 | **Roster**: registrar columns of `students.csv` (`student_id, hertie_email, name, section`) | Edit `classroom-config/students.csv` (private) | yes |
 | C3 | **Grades** (optional, when returning marks): one CSV per assignment, `classroom-config/grades/<assignment>.csv` (`github_handle, team, team_grade, adjustment, final, comments`) | Edit the CSV (private), then **Sync gradebooks** → **Render grades** → **Distribute grades** | no |
 | C4 | **Teams** (optional, for group assignments): `classroom-config/teams.csv` (`assignment, team, github_handle`) | Students self-select via the welcome **Join team** issue, or faculty edit the CSV directly | no |
+| C5 | **Calendar** (optional, pairs with the release manifest): `classroom-config/schedule.csv` (`week, date`) | Edit the CSV; the daily **Scheduled release** cron opens each week's manifest items on its date | no |
 
 `github_handle` and `github_id` are **left blank** - students fill them by onboarding (below).
 
@@ -125,22 +127,25 @@ their own repo.
 
 ### D. Per-student (self-service, no faculty input)
 
-A student opens a **Join** issue in `welcome` and types their **student ID**. The onboard
-workflow does the rest. See [How students are managed](#how-students-are-managed).
+A student opens a **Join** issue in `welcome` and types their **university email**. The
+onboard workflow does the rest. See [How students are managed](#how-students-are-managed).
 
 ## How students are managed
 
 Student lifecycle is **two separate stages** - *enrol once, provision per assignment*:
 
-1. **Enrolment (access).** The registrar seeds `students.csv` with `student_id` (+ email,
-   name, section); `github_handle`/`github_id` start blank. A student opens a **Join** issue
-   in the public `welcome` repo and types **only their student ID** (never PII - that's
-   already on the private roster). `onboard.yml` (the one cohort-side action):
+1. **Enrolment (access).** The registrar seeds `students.csv` with `hertie_email` (+ name,
+   section, optional `student_id`); `github_handle`/`github_id` start blank. A student opens
+   a **Join** issue in the public `welcome` repo and types their **university email**.
+   `onboard.yml` (the one cohort-side action):
    - takes the issue **author** as the authenticated, unspoofable GitHub handle;
-   - matches the typed `student_id` against the private roster - **non-enrolees are
-     rejected** with a clear comment;
-   - writes the handle + immutable `github_id` back onto that row (keyed on the id, so a
-     later handle rename never orphans repos), serialised against append races;
+   - matches the typed email against the private roster's `hertie_email` - **non-enrolees
+     are rejected** with a clear comment;
+   - **redacts the email** from the public issue as soon as it's read (welcome is public;
+     GitHub keeps edit history, so this minimises rather than eliminates exposure);
+   - writes the handle + immutable `github_id` back onto that row - this *is* the email ↔
+     GitHub-id mapping (keyed on the id, so a later handle rename never orphans repos),
+     serialised against append races;
    - grants **org membership + `students` team** (the team carries cohort-private read, so
      released materials unlock);
    - comments confirmation, labels `enrolled`, closes the issue.

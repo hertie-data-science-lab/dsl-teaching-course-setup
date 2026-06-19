@@ -1,0 +1,24 @@
+# Release manifest for the DSL-Demo-f2026 cohort - what opens each week. One file per
+# cohort (source repos are year-tagged), kept course-side in the .github repo under
+# manifests/<cohort-org>.yml. The daily Scheduled release cron joins this with the
+# cohort's classroom-config/schedule.csv (week -> date) and releases everything due.
+# Manual buttons still work for early/ad-hoc release. Every release is idempotent.
+weeks:
+  week-1:
+    materials:
+      source_repo: course-materials-f2026
+      cohort_repo: materials
+  week-3:
+    materials:
+      source_repo: course-materials-f2026
+      cohort_repo: materials
+    code:
+      # Phased package disclosure: reveal a topic-subpackage when you teach it.
+      - source_repo: course-materials-f2026
+        path: mlpkg/simulation
+        cohort_repo: materials
+  week-5:
+    materials:
+      source_repo: course-materials-f2026
+      cohort_repo: materials
+    assignment: assignment-2-f2026
