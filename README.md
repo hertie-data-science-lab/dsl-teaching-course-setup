@@ -78,7 +78,7 @@ assignment-template repo ("run-from-repo"), where `week` is a dropdown of that r
 | Action | Where | Effect |
 | --- | --- | --- |
 | **Bootstrap cohort** | `.github` | Configure a pre-created cohort org (welcome + roster + tighten + website), register it, refresh. |
-| **Enroll student** | `.github` | Grant a handle org + `students`-team access (faculty override for the Join issue). Blank handle = reconcile the whole roster. |
+| **Sync enrolment** | `.github` | Reconcile org + `students`-team access from `students.csv` (students self-onboard via the Join issue; faculty run this to true-up). `prune` off-boards members no longer on the roster. |
 | **New materials repo** | `.github` | Scaffold a structured `course-materials-<year>` repo (week folders + Release buttons). |
 | **New assignment** | `.github` | Scaffold an `assignment-N-<year>` template (starter + autograder on `main`, an empty `solution` branch). |
 | **Refresh actions** | `.github` | Re-seed the run-from-repo buttons into every content repo, propagate the repo secret, repopulate all dropdowns, rebuild the profile READMEs. _(Across all DSL-managed repos at once: [`Refresh Course Org Inventory`](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions/workflows/refresh-inventory.yml) in this repo.)_ |

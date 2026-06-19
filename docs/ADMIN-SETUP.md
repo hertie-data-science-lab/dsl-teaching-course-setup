@@ -45,7 +45,7 @@ Two **separate** populations - keep them distinct:
   directly. Without the grant, only org owners would see the Bootstrap button - team
   membership alone wouldn't surface it.
 - **Who may run a specific course's buttons** (Release materials/assignment, New
-  materials/assignment, Enroll, Bootstrap cohort, Sync site, Publish course website,
+  materials/assignment, Sync enrolment, Bootstrap cohort, Sync site, Publish course website,
   Refresh actions): members of **that course org's own** `instructors` (write) or
   `course-admin` (admin) team. (**Publish course website** carries an editorial
   responsibility: `actual-readings` mode hosts the reading files publicly, so only publish

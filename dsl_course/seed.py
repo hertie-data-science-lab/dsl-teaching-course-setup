@@ -384,40 +384,29 @@ jobs:
 """
 
 
-def render_enroll(cohort_orgs: list[str]) -> str:
-    """Org-level enrol (faculty override for the self-service Join issue)."""
-    return f"""name: Enroll student
+def render_sync_enrolment(cohort_orgs: list[str]) -> str:
+    """Reconcile org + students-team access from students.csv (faculty true-up)."""
+    return f"""name: Sync enrolment
 
 on:
   workflow_dispatch:
     inputs:
-      cohort_org:
-        description: "Cohort org"
-        required: true
-        type: choice
-        options:
-{_choice(cohort_orgs)}
-      handle:
-        description: "GitHub handle to enroll (blank = sync whole roster)"
-        required: false
-        default: ""
+{_cohort_dropdown(cohort_orgs)}
       prune:
-        description: "When syncing the whole roster, remove members no longer on it"
+        description: "Off-board: remove team members no longer on the roster"
         type: boolean
         default: false
 
 jobs:
 {_CHECK_TEAM}
-  enroll:
-{_RUN_PREAMBLE}      - name: Enroll
+  sync:
+{_RUN_PREAMBLE}      - name: Sync enrolment
         env:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
           COHORT_ORG: ${{{{ inputs.cohort_org }}}}
-          HANDLE: ${{{{ inputs.handle }}}}
           PRUNE: ${{{{ inputs.prune }}}}
         run: |
           args=(--cohort-org "$COHORT_ORG")
-          [ -n "$HANDLE" ] && args+=(--handle "$HANDLE")
           [ "$PRUNE" = "true" ] && args+=(--prune)
           python3 -m dsl_course.sync_roster "${{args[@]}}"
 """
@@ -1026,7 +1015,7 @@ _(automatically bootstrapped from the central
 ### One-time setup actions:
 - [**Bootstrap cohort**](https://github.com/{org}/.github/actions/workflows/bootstrap-cohort.yml) - configure a freshly-created cohort org (sets up scaffold repos), register it with the course org, refresh dropdowns.
 - [**Send enrolment codes**](https://github.com/{org}/.github/actions/workflows/send-codes.yml) - generate a random non-PII enrolment code per student and email each their code (to their university inbox). Students paste the code into the welcome Join issue - no personal data in the public repo. `dry_run` previews codes + emails. Needs the `GRAPH_*` (or `SMTP_*`) secrets.
-- [**Enroll student**](https://github.com/{org}/.github/actions/workflows/enroll-student.yml) - grant a student access to the cohort org; provision them with student-level permissions.
+- [**Sync enrolment**](https://github.com/{org}/.github/actions/workflows/sync-enrolment.yml) - reconcile org + `students`-team access from `students.csv`. Students self-onboard via the welcome Join issue; run this to true-up the whole roster. `prune` off-boards members no longer on it.
 - [**New materials repo**](https://github.com/{org}/.github/actions/workflows/new-materials.yml) - scaffold a correctly-structured `course-materials-<year>` repo (week folders + the Release buttons).
 - [**New assignment**](https://github.com/{org}/.github/actions/workflows/new-assignment.yml) - scaffold an `assignment-N-<year>` template repo (starter on `main`; the `solution` branch carries the model solution, `grading.yml`, and the hidden tests).
 - [**Refresh actions**](https://github.com/{org}/.github/actions/workflows/refresh-actions.yml) - repopulate the cohort/week/assignment dropdowns, re-equip content repos, and rebuild this index.
@@ -1147,8 +1136,8 @@ def update_profile_readme(
 
 def seed_github_workflows(course_org: str) -> None:
     """Seed/refresh the org-level workflows into the course org's .github repo: the
-    CENTRAL Release materials (source-repo dropdown), Release assignment, plus Enroll /
-    Bootstrap cohort / Refresh."""
+    CENTRAL Release materials (source-repo dropdown), Release assignment, plus Sync
+    enrolment / Bootstrap cohort / Refresh."""
     cohorts = discover_cohorts(course_org)
     cohort_repos = discover_cohort_repos(cohorts)
     source_repos = discover_content_repos(course_org)
@@ -1167,7 +1156,7 @@ def seed_github_workflows(course_org: str) -> None:
         ".github/workflows/new-assignment.yml": render_new_assignment(),
         ".github/workflows/sync-site.yml": render_sync_site(cohorts),
         ".github/workflows/publish-site.yml": render_publish_site(source_repos),
-        ".github/workflows/enroll-student.yml": render_enroll(cohorts),
+        ".github/workflows/sync-enrolment.yml": render_sync_enrolment(cohorts),
         ".github/workflows/send-codes.yml": render_send_codes(cohorts),
         ".github/workflows/sync-gradebooks.yml": render_sync_gradebooks(cohorts),
         ".github/workflows/render-grades.yml": render_render_grades(cohorts),
