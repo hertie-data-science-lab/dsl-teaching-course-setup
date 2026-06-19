@@ -31,6 +31,7 @@ import re
 import shutil
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 from . import roster, teams
@@ -59,6 +60,20 @@ def assignment_slug(template: str) -> str:
     return re.sub(r"-[fs]\d{4}$", "", template)
 
 
+def _wait_for_content(org: str, repo: str, attempts: int = 12, delay: float = 1.5) -> bool:
+    """Poll until a freshly template-generated repo has content.
+
+    GitHub's template-generate is asynchronous: a just-created repo can briefly be empty,
+    and using it as a generate *source* (the next stage) then fails with `... is empty`.
+    Returns True once the repo's root has files."""
+    for _ in range(attempts):
+        code, out = gh("api", f"repos/{org}/{repo}/contents", "--jq", "length")
+        if code == 0 and out.strip().isdigit() and int(out.strip()) > 0:
+            return True
+        time.sleep(delay)
+    return False
+
+
 def ensure_cohort_template(
     master_org: str, template: str, cohort_org: str, slug: str
 ) -> str | None:
@@ -79,6 +94,14 @@ def ensure_cohort_template(
     ):
         return None
     log_ok(f"created cohort template {cohort_org}/{slug}")
+    # template-generate is async; wait for the new template to populate before per-student
+    # repos generate FROM it, else the first one fails with "<slug> is empty".
+    if not _wait_for_content(cohort_org, slug):
+        log_err(
+            f"  ! cohort template {cohort_org}/{slug} did not populate in time "
+            f"(template-generate is async) - re-run the release"
+        )
+        return None
     gh(
         "api",
         "--method",
