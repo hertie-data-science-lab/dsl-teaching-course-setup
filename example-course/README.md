@@ -25,16 +25,28 @@ This file is the demo-specific concretisation of it.
 ```
 example-course/
   course-org/
-    dsl-course.yml                  # course identity + a FILLED schedule block (real dates)
+    dsl-course.yml                  # course identity + people + a FILLED schedule block
     course-materials-f2026/
-      lectures/week-1..3/           # 3 weeks of placeholder lecture files
-      readings/week-1..3/           # 3 weeks of placeholder readings
+      lectures/week-1..5/           # 5 weeks (slides.md + a code demo each)
+      readings/week-1..5/           # 5 weeks of placeholder readings
       syllabus.md
-    assignment-1-f2026/README.md    # brief shown on the site + starter.py
-    assignment-2-f2026/README.md    # brief + starter.py
+    lecture-code-f2026/mlpkg/       # a growing package, disclosed module-by-module (release_code)
+    assignment-1-f2026/             # individual (.py)
+      main/                         #   -> main branch: README brief + starter.py
+      solution/                     #   -> solution branch: solution/ + grading.yml + hidden tests/
+    assignment-2-f2026/             # individual (notebook): main/ + solution/
+    assignment-4-project-f2026/     # GROUP project: main/ + solution/ (grading.yml type: group)
+    manifests/DSL-Demo-f2026.yml    # what auto-releases each week (materials/code/assignment/grade)
   cohort-org/
-    students.csv                    # 4 dummy students (registrar columns; handles blank)
+    students.csv                    # 4 dummy students (handles blank - filled on onboard)
+    teams.csv                       # team membership for the group project
+    schedule.csv                    # week -> date calendar for the Scheduled-release cron
+    grades/*.csv                    # per-assignment faculty grade tables (auto/manual/final)
 ```
+
+> **Assignment layout:** each `assignment-*/` splits into `main/` (-> the repo's `main` branch,
+> what students get) and `solution/` (-> the `solution` branch: the model solution, `grading.yml`,
+> and the HIDDEN `tests/` the faculty-side **Grade assignment** runs). Student repos never get `solution/`.
 
 ## Deploy it (≈20 min)
 
