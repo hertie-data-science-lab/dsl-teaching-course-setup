@@ -119,6 +119,11 @@ Everything below is a button or a file edit.
 
 `github_handle` and `github_id` are **left blank** - students fill them by onboarding (below).
 
+**Group teams materialise from `teams.csv`.** The **Sync teams** button (and a group
+**Release assignment**) reconciles a GitHub Team `<assignment>-<team>` from the CSV - one-way,
+so the CSV stays authoritative and the Team can't drift. See
+[ARCHITECTURE → Project teams](ARCHITECTURE.md#project-teams-group-assignments).
+
 **Grades are private and previewable.** Each student gets one private `grades-<handle>`
 repo (the single home for every mark - team project repos may be public, so grades never
 go there). For an individual assignment, fill just `final` + `comments`; for a group

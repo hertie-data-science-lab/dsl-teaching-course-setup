@@ -3,9 +3,10 @@ name: Form team
 # Seed this into a cohort's public `welcome` repo as
 # .github/workflows/team-formation.yml. Students open a "Join team" issue here; the issue
 # AUTHOR is the authenticated GitHub handle (unspoofable). We verify they are an onboarded
-# student, then append a row to the PRIVATE classroom-config/teams.csv. Membership lives
-# only in that CSV - no GitHub Org Team is created, so nothing can drift out of sync (the
-# Classroom bug). Group-assignment provisioning reads this CSV to make one repo per team.
+# student, then append a row to the PRIVATE classroom-config/teams.csv - the only writer
+# surface for team membership. A GitHub Team is materialised FROM that CSV later (one-way, by
+# dsl_course.sync_teams), so the Team is a downstream projection that can't drift the way a
+# Classroom-managed team does. Group-assignment provisioning grants that team its shared repo.
 #
 # Runs under secrets.DSL_BOT_TOKEN, which needs, on the cohort org: Contents R/W on
 # classroom-config, Issues R/W on welcome.

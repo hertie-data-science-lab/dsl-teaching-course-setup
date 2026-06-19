@@ -181,6 +181,28 @@ sequenceDiagram
   Note over O,St: "Sync enrolment" reconciles the students team from students.csv (faculty true-up)
 ```
 
+### Project teams (group assignments)
+
+Group membership follows the same CSV-is-truth pattern as enrolment. `teams.csv` (in
+`classroom-config`, columns `assignment,team,github_handle`) is the **only writer surface**:
+students self-select by opening a "Join team" issue (`team-formation.yml` appends a row -
+authenticated author, one team per assignment, size-capped), and faculty can edit it directly.
+
+```mermaid
+flowchart LR
+  St["Student: Join team issue"] -->|"append row"| CSV["teams.csv (SSOT)"]
+  Fac["Faculty edit"] -->|"append / edit row"| CSV
+  CSV -->|"Sync teams (sync_teams)"| GT["GitHub Team per assignment-team"]
+  CSV -->|"Release assignment --group"| RP["one shared repo per team, granted to that team"]
+```
+
+`sync_teams` materialises a GitHub Team `<assignment>-<team>` from the CSV - **one-way and
+idempotent**, so the Team is a downstream projection that can't drift (a `--prune` sync also
+off-boards members no longer in the CSV). Provisioning a group assignment grants that team its
+shared repo, so post-sync membership edits propagate to access and members get @mentions + a
+team space. The cohort-wide `students` team and these per-project teams are all real GitHub
+Teams; only the CSV is authoritative.
+
 ## Dynamic dropdowns
 
 `workflow_dispatch` dropdowns are static YAML and can't depend on another input, so **Refresh
@@ -277,8 +299,9 @@ Self-contained - workflows + their Python implementation live in this repo.
   - `assign` - freeze a cohort assignment template, then fan out per-student repos.
   - `scaffold` - create structured materials / assignment repos + the website (cohort or course).
   - `site` - regenerate the cohort website (`sync_site`) and the public course website (`sync_public_site`) from the live org structure.
-  - `sync_roster` - enrol / materialise team access from `students.csv`.
-  - `roster` - read the per-cohort `students.csv`.
+  - `sync_roster` / `sync_teams` - reconcile the `students` team / per-project teams from
+    `students.csv` / `teams.csv` (one-way: the CSV is truth, the GitHub Teams are the projection).
+  - `roster` / `teams` - read the per-cohort `students.csv` / `teams.csv`.
   - `utils` - shared `gh`/git helpers with rate-limit backoff.
   - `new_semester` / `post_migrate` / `bootstrap_org` / `list_orgs` - legacy create-tier
     (older course-side model; the next slimming target).

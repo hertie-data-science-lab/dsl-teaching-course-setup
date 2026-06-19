@@ -9,9 +9,11 @@ truth for who is in which team for which assignment:
     assignment-4-project,team-y,carla-cohen
 
 Students self-select by opening a "Join team" issue in `welcome` (the workflow appends a
-row - authenticated author, size-capped); faculty override by editing the CSV directly.
-Group-assignment provisioning reads this to make one repo per team. No GitHub Org Team is
-created, so - unlike Classroom - there is nothing to drift out of sync.
+row - authenticated author, size-capped); faculty override by editing the CSV directly. This
+CSV is the only writer surface for membership. `sync_teams` then materialises a GitHub Team
+`<assignment>-<team>` from it (one-way, idempotent), and group-assignment provisioning grants
+that team its shared repo. Because the Team is a downstream projection of the CSV - never
+authoritative - it can't drift out of sync the way a Classroom-managed team does.
 """
 
 from __future__ import annotations
