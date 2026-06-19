@@ -12,10 +12,11 @@ never use a CLI. Idempotent: existing repos are left alone.
     cohort/<slug>-<handle>   (private; student = collaborator)
     where <slug> is the template name minus a trailing -fYYYY / -sYYYY.
 
-With --group it instead makes ONE repo per team, `cohort/<slug>-<team>`, adding every
-member (from classroom-config/teams.csv, keyed on <slug>) as a collaborator - for group
-projects. Grades are never written here; they go to each student's private gradebook repo
-(see dsl_course.grades), so a possibly-public team repo never carries marks.
+With --group it instead makes ONE repo per team, `cohort/<slug>-<team>`, and grants the
+GitHub Team materialised from classroom-config/teams.csv (see dsl_course.sync_teams) - so
+membership changes propagate to access. Grades are never written here; they go to each
+student's private gradebook repo (see dsl_course.grades), so a possibly-public team repo
+never carries marks.
 
 Usage:
     python3 -m dsl_course.assign \\
@@ -34,13 +35,14 @@ import tempfile
 import time
 from pathlib import Path
 
-from . import roster, teams
+from . import roster, sync_teams, teams
 from .utils import (
     GIT_ENV,
     add_collaborator,
     generate_from_template,
     gh,
     git,
+    grant_team_repo_access,
     log,
     log_err,
     log_ok,
@@ -60,7 +62,9 @@ def assignment_slug(template: str) -> str:
     return re.sub(r"-[fs]\d{4}$", "", template)
 
 
-def _wait_for_content(org: str, repo: str, attempts: int = 12, delay: float = 1.5) -> bool:
+def _wait_for_content(
+    org: str, repo: str, attempts: int = 12, delay: float = 1.5
+) -> bool:
     """Poll until a freshly template-generated repo has content.
 
     GitHub's template-generate is asynchronous: a just-created repo can briefly be empty,
@@ -170,11 +174,14 @@ def provision_one(
     handles: list[str],
     slug: str,
     sol_dir: Path | None = None,
+    team: str | None = None,
 ) -> str:
-    """Generate one submission repo and add every `handles` member as a collaborator.
+    """Generate one submission repo and grant its members access.
 
-    Individual assignments pass a single-element list (a team of one); group assignments
-    pass the whole team, so all members share the one repo."""
+    Individual assignments pass a single-element `handles` list (a team of one) and no
+    `team`, so each member is added as a collaborator. Group assignments also pass the
+    GitHub Team slug: the team is materialised from `handles` and granted on the repo, so
+    membership changes propagate to access (and members get @mentions + a team space)."""
     existed = repo_exists(cohort_org, repo)
     if existed:
         log_skip(f"repo {cohort_org}/{repo}")
@@ -196,6 +203,15 @@ def provision_one(
             log_ok("  + solution pushed")
         else:
             log_err("  ! could not push solution")
+
+    if team is not None:
+        # Group: materialise the team from its members and grant it on the repo, so
+        # post-sync membership edits propagate to access (vs. one-off collaborator grants).
+        sync_teams.ensure_team(cohort_org, team, set(handles), prune=False)
+        if grant_team_repo_access(cohort_org, team, repo, "maintain"):
+            log_ok(f"  + team {team} (maintain)")
+            return "skipped" if existed else "ok"
+        return "created-no-collaborator"
 
     added = 0
     for handle in handles:
@@ -234,7 +250,7 @@ def main() -> int:
         "--group",
         action="store_true",
         help="Group assignment: one repo per team (from classroom-config/teams.csv), "
-        "all members as collaborators, instead of one per student.",
+        "granted to the team materialised from the CSV, instead of one repo per student.",
     )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
@@ -283,11 +299,14 @@ def provision_all(
             )
             return 1
         units = [
-            (f"{slug}-{team}", members) for team, members in sorted(groups.items())
+            (f"{slug}-{team}", members, sync_teams.team_slug(slug, team))
+            for team, members in sorted(groups.items())
         ]
         what = f"{len(units)} team(s)"
     else:
-        units = [(f"{slug}-{s.github_handle}", [s.github_handle]) for s in onboarded]
+        units = [
+            (f"{slug}-{s.github_handle}", [s.github_handle], None) for s in onboarded
+        ]
         what = f"{len(units)} student(s)"
 
     log_step(
@@ -299,9 +318,10 @@ def provision_all(
 
     if dry_run:
         log(f"    DRY-RUN  cohort template {cohort_org}/{slug}")
-        for repo, handles in units:
+        for repo, handles, team in units:
+            via = f" (team {team})" if team else ""
             log(
-                f"    DRY-RUN  {cohort_org}/{repo}  <- {', '.join('@' + h for h in handles)}"
+                f"    DRY-RUN  {cohort_org}/{repo}{via}  <- {', '.join('@' + h for h in handles)}"
             )
         return 0
 
@@ -321,10 +341,17 @@ def provision_all(
 
         # Stage 2: fan out one repo per unit (student, or team) FROM the cohort template.
         results: dict[str, int] = {}
-        for repo, handles in units:
+        for repo, handles, team in units:
             log_step(repo)
             status = provision_one(
-                cohort_org, cohort_template, cohort_org, repo, handles, slug, sol_dir
+                cohort_org,
+                cohort_template,
+                cohort_org,
+                repo,
+                handles,
+                slug,
+                sol_dir,
+                team=team,
             )
             results[status] = results.get(status, 0) + 1
 
