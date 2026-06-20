@@ -110,6 +110,18 @@ def test_sync_teams_is_a_reconcile():
     assert "dsl_course.sync_teams" in rendered
 
 
+def test_dotgithub_readme_orients_faculty():
+    # The .github repo's own README points faculty at the Actions tab where the buttons live.
+    course = seed.render_dotgithub_readme("My-Course-E1", "My Course", is_cohort=False)
+    assert "control panel" in course
+    assert "My-Course-E1/.github/actions" in course
+    # A cohort org sends faculty to the parent course org for the buttons instead.
+    cohort = seed.render_dotgithub_readme(
+        "My-Course-f2026", "My Course", is_cohort=True
+    )
+    assert "parent course org" in cohort
+
+
 def test_choice_falls_back_when_empty():
     # An empty dropdown must still be valid YAML (a placeholder option), never blank.
     assert "(none-yet)" in seed._choice([])
