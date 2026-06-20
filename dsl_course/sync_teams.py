@@ -70,7 +70,8 @@ def ensure_team(org: str, slug: str, members: set[str], prune: bool) -> bool:
 def sync(cohort_org: str, prune: bool = False, dry_run: bool = False) -> int:
     wanted = desired_teams(teams.load(cohort_org))
     if not wanted:
-        return 1
+        log_ok("no project teams defined yet - nothing to sync.")
+        return 0
     log_step(f"Materialising {len(wanted)} project team(s) in {cohort_org}")
     errors = 0
     for slug in sorted(wanted):
