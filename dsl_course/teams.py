@@ -21,7 +21,7 @@ from __future__ import annotations
 import csv
 import io
 
-from .utils import get_file_content, log_err
+from .utils import get_file_content
 
 CONFIG_REPO = "classroom-config"
 TEAMS_PATH = "teams.csv"
@@ -47,16 +47,13 @@ def parse(text: str) -> dict[str, dict[str, list[str]]]:
 
 
 def load(cohort_org: str) -> dict[str, dict[str, list[str]]]:
-    """Fetch + parse teams.csv from the cohort's PRIVATE classroom-config repo."""
+    """Fetch + parse teams.csv from the cohort's PRIVATE classroom-config repo.
+
+    A pure loader: a missing CSV returns {} silently. Whether that is benign (a
+    cohort with no group assignments yet) or an error (group provisioning/grading
+    asked for) is the caller's call - each contextualises it for itself."""
     content = get_file_content(cohort_org, CONFIG_REPO, TEAMS_PATH)
-    if content is None:
-        log_err(
-            f"Could not find {TEAMS_PATH} in {cohort_org}/{CONFIG_REPO} - "
-            f"no teams defined yet (students self-select via the welcome 'Join team' "
-            f"issue, or faculty seed the CSV)."
-        )
-        return {}
-    return parse(content)
+    return parse(content) if content is not None else {}
 
 
 def teams_for(
