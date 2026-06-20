@@ -41,6 +41,8 @@ CENTRAL_REF = "main"
 # repos), so the only default target is `materials`; real content repos are discovered.
 DEFAULT_COHORT_REPOS = ["materials"]
 INFRA_REPOS = {"welcome", "classroom-config", ".github"}
+# Per-org identity/people/schedule config, lives at the root of each org's `.github` repo.
+COURSE_CONFIG = "dsl-course.yml"
 WORKFLOWS = (
     ".github/workflows/release-materials.yml",
     ".github/workflows/release-assignment.yml",
@@ -978,11 +980,11 @@ def render_dotgithub_readme(org: str, course_name: str, is_cohort: bool) -> str:
         return f"""# {course_name} - cohort control repo
 
 This is the **`.github` repo** for the `{org}` cohort org. It holds this cohort's configuration
-and the auto-generated student-facing org page - **you rarely touch it directly.**
+and the auto-generated student-facing org page - **faculty / FAs delivering the course rarely need to touch it directly.**
 
 - The **faculty action buttons** (Release, Grade, Sync ...) live in the **parent course org's**
   `.github` **Actions** tab, not here.
-- `dsl-course.yml` - this cohort's identity / people / schedule overrides (edit in the web UI,
+- `{COURSE_CONFIG}` - this cohort's identity / people / schedule overrides (edit in the web UI,
   then run **Sync site**).
 - `profile/README.md` - the student-facing org landing page (auto-generated; don't hand-edit).
 - Students join via the **welcome** repo's "Join" issue; the roster lives in **classroom-config**.
@@ -992,7 +994,7 @@ Built and kept in sync by the [DSL teaching toolkit](https://github.com/{CENTRAL
     return f"""# {course_name} - course control panel
 
 This is the **`.github` repo** for the `{org}` course org - the control panel faculty use to run
-the course. **You never need a CLI or to write code: every action is a button.**
+the course. **You never need a CLI or to write code: every action is a clickable UI button.**
 
 ## Run an action
 
@@ -1012,7 +1014,7 @@ or `course-admin` team). The full, annotated list of actions is on the
 ## What's in here
 
 - `.github/workflows/` - the action buttons (seeded from the central toolkit; refreshed by **Refresh actions**).
-- `dsl-course.yml` - this course's identity, people, and schedule (edit in the web UI).
+- `{COURSE_CONFIG}` - this course's identity, people, and schedule (edit in the web UI).
 - `profile/README.md` - the public org landing page (auto-generated repo index).
 
 Built and kept in sync by the [DSL teaching toolkit](https://github.com/{CENTRAL}).
@@ -1193,7 +1195,7 @@ def update_profile_readme(
     gets the faculty-facing one."""
     if org_name is None or course_name is None:
         cfg = {}
-        content = get_file_content(org, ".github", "dsl-course.yml")
+        content = get_file_content(org, ".github", COURSE_CONFIG)
         if content:
             cfg = yaml.safe_load(content) or {}
         org_name = org_name or cfg.get("org_name") or org
