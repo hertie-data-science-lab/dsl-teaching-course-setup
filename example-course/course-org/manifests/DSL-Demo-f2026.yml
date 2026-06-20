@@ -5,20 +5,29 @@
 # Manual buttons still work for early/ad-hoc release. Every release is idempotent.
 weeks:
   week-1:
-    materials:
-      source_repo: course-materials-f2026
-      cohort_repo: materials
-  week-3:
-    materials:
-      source_repo: course-materials-f2026
-      cohort_repo: materials
+    materials: {source_repo: course-materials-f2026, cohort_repo: materials}
     code:
-      # Phased package disclosure: reveal a topic-subpackage when you teach it.
-      - source_repo: course-materials-f2026
-        path: mlpkg/simulation
-        cohort_repo: materials
+      # Release the package base early so partial releases still import.
+      - {source_repo: lecture-code-f2026, path: mlpkg/core, cohort_repo: materials}
+  week-2:
+    materials: {source_repo: course-materials-f2026, cohort_repo: materials}
+  week-3:
+    materials: {source_repo: course-materials-f2026, cohort_repo: materials}
+    code:
+      # Phased disclosure: reveal a topic-subpackage when you teach it.
+      - {source_repo: lecture-code-f2026, path: mlpkg/simulation, cohort_repo: materials}
+    assignment: assignment-1-f2026
+  week-4:
+    materials: {source_repo: course-materials-f2026, cohort_repo: materials}
   week-5:
-    materials:
-      source_repo: course-materials-f2026
-      cohort_repo: materials
+    materials: {source_repo: course-materials-f2026, cohort_repo: materials}
+    code:
+      - {source_repo: lecture-code-f2026, path: mlpkg/training, cohort_repo: materials}
     assignment: assignment-2-f2026
+  # Grade actions fire AFTER each deadline (faculty-side autograde).
+  week-7:
+    grade: {template: assignment-1-f2026, deadline: '2026-10-13'}
+  week-9:
+    grade: {template: assignment-2-f2026, deadline: '2026-10-27'}
+  week-11:
+    grade: {template: assignment-4-project-f2026, deadline: '2026-11-15', group: true}
