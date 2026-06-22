@@ -226,7 +226,7 @@ def scaffold_site(org: str) -> int:
         )
 
     # The auto-created github-pages environment restricts which branches may deploy, and
-    # the template's default branch (master) is not on that list - clear the policy so
+    # the template's default branch (main) is not on that list - clear the policy so
     # any branch can deploy.
     gh(
         "api",
