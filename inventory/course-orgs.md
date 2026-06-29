@@ -12,8 +12,15 @@ _Auto-generated from GitHub. Discovered via topic `dsl-course-hub` on each org's
 
 | Org | Course | Code |
 | --- | --- | --- |
-| [Hertie-School-Deep-Learning-EXAMPLE](https://github.com/Hertie-School-Deep-Learning-EXAMPLE) | Deep Learning | GRAD-E1394 |
+| [DSL-Demo-Course-E1234](https://github.com/DSL-Demo-Course-E1234) | Demo Course | GRAD-123445 |
+| [DSL-Demo-f2025](https://github.com/DSL-Demo-f2025) | DSL-Demo-f2025 | - |
+| [DSL-Demo-f2027](https://github.com/DSL-Demo-f2027) | DSL-Demo-f2027 | - |
+| [Hertie-DSL-Demo](https://github.com/Hertie-DSL-Demo) | Deep Learning (Demo) | GRAD-DEMO |
+| [Hertie-School-Deep-Learning-EXAMPLE](https://github.com/Hertie-School-Deep-Learning-EXAMPLE) | Deep Learning | - |
 | [Hertie-School-Example-Course](https://github.com/Hertie-School-Example-Course) | Example Course (prototype) | - |
+| [THROWAWAY-HERTIE-1](https://github.com/THROWAWAY-HERTIE-1) | THROWAWAY-HERTIE-1 | - |
+| [THROWAWAY-HERTIE-COURSE-2](https://github.com/THROWAWAY-HERTIE-COURSE-2) | THROWAWAY-HERTIE-COURSE-2 | - |
+| [THROWAWAY-HERTIE-F2026](https://github.com/THROWAWAY-HERTIE-F2026) | THROWAWAY-HERTIE-F2026 | - |
 
 <!-- DSL-AUTOGEN-COURSE-ORGS-END -->
 
