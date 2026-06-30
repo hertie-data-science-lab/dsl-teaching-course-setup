@@ -19,13 +19,10 @@ later copies week folders from here into a cohort. One repo per year: `course-ma
    - a placeholder `syllabus.md`,
    - and the three run-from-repo Release buttons (`release-materials`, `release-assignment`, `release-code`)
 
+   Your `instructors` team is granted **write** on the new repo automatically, so you can
+   push straight away (no owner hand-grant needed).
 
-2. **Get write on the new repo.** The scaffold does **not** grant your team write on the new
-   repo (only `.github` is granted at bootstrap), so a non-owner can't push yet. An org owner
-   grants `instructors` → write on `course-materials-f2026` once, or you push as an owner.
-   *(Rough edge - the scaffold could grant this automatically; tracked as a fix.)*
-
-3. **Push your content** to `main` (git push or the web uploader), following the schema:
+2. **Push your content** to `main` (git push or the web uploader), following the schema:
 
    ```
    lectures/week-N/   any files - slides, demo code, notebooks …
@@ -35,7 +32,7 @@ later copies week folders from here into a cohort. One repo per year: `course-ma
 
    NB: You can add the full course content here as a 'staging' repo - it remains private and non-viewable by students; while only the weeks you you choose to 'release to cohort' get dispatched to the student-facing cohort org. 
 
-4. **Refresh actions** (course `.github`) so the `week` dropdowns pick up the new weeks you just added.
+3. **Refresh actions** (course `.github`) so the `week` dropdowns pick up the new weeks you just added.
 
 ## Next
 

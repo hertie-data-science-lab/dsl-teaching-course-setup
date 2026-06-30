@@ -19,9 +19,9 @@ the model solution + autograder. One per assignment: `assignment-N-fYYYY`.
    | `main` | `README.md` (brief) + `starter.*` | **what students get** |
    | `solution` | `solution/` (model answer) + `grading.yml` + hidden `tests/` | **faculty only** |
 
-2. **Get write on the new repo** (same one-off grant as [materials](02-add-materials-to-course.md#steps), step 2).
+   Your `instructors` team is granted **write** on it automatically, so you can push straight away.
 
-3. **Push your content.**
+2. **Push your content.**
    - to **`main`**: the real brief (`README.md`) + starter (`starter.py`, a notebook, …).
    - to **`solution`**: the model solution, `grading.yml`, and the hidden `tests/` that
      **Grade assignment** runs after the deadline.
@@ -29,7 +29,7 @@ the model solution + autograder. One per assignment: `assignment-N-fYYYY`.
    Student repos are generated from **`main` only** - the `solution` branch is never
    distributed (unless you tick `include_solution` at release time).
 
-4. **Refresh actions** so the assignment dropdowns update.
+3. **Refresh actions** so the assignment dropdowns update.
 
 Repeat for each assignment (`number` = 2, 3, …). A group project uses the same flow with
 `type: group` in its `grading.yml`.
