@@ -27,6 +27,7 @@ from .utils import (
     generate_from_template,
     gh,
     git,
+    grant_course_team_access,
     log,
     log_err,
     log_ok,
@@ -74,6 +75,7 @@ def scaffold_materials(org: str, tag: str) -> int:
         description="Course materials (lectures/readings by week)",
     ):
         return 1
+    grant_course_team_access(org, repo)
     readme = (
         f"# {repo}\n\nCourse materials - the source for the **Release materials** action.\n\n"
         "## Structure\n\n"
@@ -100,7 +102,11 @@ def scaffold_materials(org: str, tag: str) -> int:
     # Equip the run-from-repo Release buttons (same as Refresh does for content repos).
     cohorts = seed.discover_cohorts(org)
     seed._push_workflows(
-        org, repo, cohorts, seed.discover_cohort_repos(cohorts), seed.discover_assignments(org)
+        org,
+        repo,
+        cohorts,
+        seed.discover_cohort_repos(cohorts),
+        seed.discover_assignments(org),
     )
     log_ok(f"materials repo ready: {org}/{repo}")
     return 0
@@ -117,6 +123,7 @@ def scaffold_assignment(org: str, number: str, tag: str) -> int:
         description=f"Assignment {number} template",
     ):
         return 1
+    grant_course_team_access(org, repo)
     # main: starter only (what students receive on generate). No tests, no autograder -
     # grading runs faculty-side from the solution branch (see Grade assignment).
     put_file(
