@@ -1,7 +1,7 @@
 # Architecture & workflows
 
 Admin / developer reference - **how the system is built and how the pieces move**. For the
-faculty-facing overview see the [root README](../README.md); for operational specifics (exact
+faculty-facing overview see the [root README](../../README.md); for operational specifics (exact
 PAT scopes, how to grant access) see [admin-setup.md](admin-setup.md).
 
 - [System overview](#system-overview)

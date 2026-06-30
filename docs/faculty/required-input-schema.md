@@ -2,7 +2,7 @@
 
 This is the authoritative checklist of **every input** needed to stand up a fully working
 course + cohort from scratch. For a ready-to-run worked example
-with dummy data, see [`example-course/`](../example-course/README.md).
+with dummy data, see [`example-course/`](../../example-course/README.md).
 
 Everything faculty-facing is a **GitHub Actions button** (also exposed as CLI commandds). The Python
 in `dsl_course/` is the single implementation behind every button.
@@ -126,7 +126,7 @@ Everything below is a button or a file edit.
 **Group teams materialise from `teams.csv`.** The **Sync teams** button (and a group
 **Release assignment**) reconciles a GitHub Team `<assignment>-<team>` from the CSV - one-way,
 so the CSV stays authoritative and the Team can't drift. See
-[ARCHITECTURE → Project teams](architecture.md#project-teams-group-assignments).
+[ARCHITECTURE → Project teams](../admin/architecture.md#project-teams-group-assignments).
 
 **Grades are private and previewable.** Each student gets one private `grades-<handle>`
 repo (the single home for every mark - team project repos may be public, so grades never

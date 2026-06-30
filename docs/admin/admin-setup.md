@@ -4,7 +4,7 @@ Operational detail behind the faculty buttons: the bot credential, its exact per
 the token / secret model, and who-can-run access. For **how the system is built and how the
 pieces move** - diagrams, the workflow sequences, the token-propagation flow, the bot
 lifecycle, and the code map - see **[architecture.md](architecture.md)**. **Faculty
-delivering a course don't need either** - see the [root README](../README.md) for the
+delivering a course don't need either** - see the [root README](../../README.md) for the
 button workflow.
 
 ## The bot account

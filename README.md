@@ -52,16 +52,16 @@ Deployment is three phases - **set up the course** (once), **add a cohort** (per
 **run the course** (release weekly). Every step is one of the buttons in the
 [Faculty actions](#faculty-actions-reference) reference below.
 
-> **Follow the [deployment checklist](docs/required-input-schema.md#deployment-checklist)** -
+> **Follow the [deployment checklist](docs/faculty/required-input-schema.md#deployment-checklist)** -
 > the canonical, tickable, deploy-ordered sequence, naming the exact place each input lives.
-> [`docs/required-input-schema.md`](docs/required-input-schema.md) is the full input reference
+> [`docs/faculty/required-input-schema.md`](docs/faculty/required-input-schema.md) is the full input reference
 > behind it.
 >
 > **Worked example:** [`example-course/`](example-course/README.md) is a ready-to-deploy dummy
 > course you can stand up end to end on `Hertie-DSL-Demo` / `DSL-Demo-f2026`.
 
 The only manual steps are creating each org in the GitHub web UI (there is no org-creation
-API) and inviting **`hertie-dsl-bot`** as **Owner** ([which account?](docs/admin-setup.md#the-bot-account)) -
+API) and inviting **`hertie-dsl-bot`** as **Owner** ([which account?](docs/admin/admin-setup.md#the-bot-account)) -
 everything after that is a button. Provisioning an org is done by
 [**Bootstrap Course Org**](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions/workflows/bootstrap-org.yml)
 in *this* repo's Actions tab; it sets teams, 2FA, the `.github` profile, all the buttons
@@ -104,14 +104,14 @@ org's own **`instructors`/`course-admin`** teams may run **that course's** butto
 grants them write/admin on `.github`), while the central **`faculty`/`admin`** teams in
 `hertie-data-science-lab` may run **Bootstrap Course Org** (provision any org). Either way they
 never hold the token. Full detail:
-[`docs/admin-setup.md`](docs/admin-setup.md#who-can-run-which-action).
+[`docs/admin/admin-setup.md`](docs/admin/admin-setup.md#who-can-run-which-action).
 
 ## Admin & developer reference
 
 Faculty delivering a course don't need these:
 
-- **[`docs/architecture.md`](docs/architecture.md)** - how the system is built and how the
+- **[`docs/admin/architecture.md`](docs/admin/architecture.md)** - how the system is built and how the
   pieces move: system + token-propagation + access diagrams, workflow sequences, the bot
   lifecycle, and the code map.
-- **[`docs/admin-setup.md`](docs/admin-setup.md)** - operational reference: the bot credential
+- **[`docs/admin/admin-setup.md`](docs/admin/admin-setup.md)** - operational reference: the bot credential
   + exact PAT scopes, the token / secret model, and who-can-run access.

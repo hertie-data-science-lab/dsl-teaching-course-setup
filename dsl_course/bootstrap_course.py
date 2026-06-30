@@ -203,7 +203,7 @@ _CLASSROOM_README = """# classroom-config - this cohort's private config
 **PRIVATE.** Roster and grades for this cohort. No PII (emails, ids, names) leaves this
 repo. Faculty/FAs edit these files; the buttons in the **course org's** Actions tab read
 them. Canonical, engine-wide schema:
-<https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/blob/main/docs/required-input-schema.md>.
+<https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/blob/main/docs/faculty/required-input-schema.md>.
 
 ## students.csv - the roster (required)
 
