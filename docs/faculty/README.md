@@ -25,7 +25,9 @@ model: [`../admin/architecture.md`](../admin/architecture.md).
 
 ```mermaid
 flowchart TD
-  A["<b>Admin</b>: add faculty to<br/>hertie-data-science-lab / faculty team"] --> B
+  subgraph CENTRAL["Central DSL org · hertie-data-science-lab"]
+    A["<b>Admin</b>: add faculty<br/>to the faculty team"]
+  end
 
   subgraph COURSE["Course org (one-time)"]
     B["<b>New course org</b><br/>create + bootstrap"]
@@ -38,36 +40,28 @@ flowchart TD
   subgraph COHORT["Cohort org (once / year)"]
     E["<b>New cohort org</b><br/>create + bootstrap"]
     F["<b>Enrol students</b><br/>Join issue + Sync enrolment"]
+    G["<b>Release materials</b><br/>per week"]
+    H["<b>Release assignment</b><br/>per-student repos"]
+    I["Sync site (automatic)"]
     E --> F
   end
 
+  A --> B
   B --> E
-  C --> G["<b>Release materials</b> → cohort"]
-  D --> H["<b>Release assignment</b> → cohort"]
+  C --> G
+  D --> H
   E --> G
-  E --> H
-  G --> I["Sync site (automatic)"]
+  F --> H
+  G --> I
   H --> I
+
+  style CENTRAL fill:#fff3c4,stroke:#d4a017,color:#5c4500
 ```
-
-## Who can run what (access)
-
-Two separate populations - neither ever holds the bot token:
-
-| Button | Gated by | Where it lives |
-|--------|----------|----------------|
-| **Bootstrap Course Org** | `faculty` / `admin` team in **`hertie-data-science-lab`** | [central repo Actions](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions) |
-| Every **course button** (New materials/assignment, Refresh, Bootstrap cohort, Release, Sync) | write on the course org's `.github` → its **`instructors`** / **`course-admin`** team | the course org's `.github` Actions tab |
-
-Team membership is **not** automatic - an org owner/admin adds you (see each workflow's
-prerequisites). The bot account (`hertie-dsl-bot`) must be an **Owner** of every org; that is
-the one irreducible manual prerequisite (no org-creation API).
 
 ## The workflows
 
-Numbered in reading order:
-
-All **course-level** workflows (1-3) come before the **cohort-level** ones (4-7):
+Numbered in reading order. All **course-level** workflows (1-3) come before the
+**cohort-level** ones (4-7):
 
 | # | Workflow | Tier | When |
 |---|----------|------|------|
@@ -81,6 +75,19 @@ All **course-level** workflows (1-3) come before the **cohort-level** ones (4-7)
 
 For a one-page summary of **every button** (not the step-by-step flow), see
 [`actions-reference.md`](actions-reference.md).
+
+## Who can run what (access)
+
+Two separate populations - neither ever holds the bot token:
+
+| Button | Gated by | Where it lives |
+|--------|----------|----------------|
+| **Bootstrap Course Org** | `faculty` / `admin` team in **`hertie-data-science-lab`** | [central repo Actions](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions) |
+| Every **course button** (New materials/assignment, Refresh, Bootstrap cohort, Release, Sync) | write on the course org's `.github` → its **`instructors`** / **`course-admin`** team | the course org's `.github` Actions tab |
+
+Team membership is **not** automatic - an org owner/admin adds you (see each workflow's
+prerequisites). The bot account (`hertie-dsl-bot`) must be an **Owner** of every org; that is
+the one irreducible manual prerequisite (no org-creation API).
 
 ## Demo orgs (live reference)
 
