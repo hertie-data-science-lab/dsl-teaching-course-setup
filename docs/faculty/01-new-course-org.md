@@ -2,23 +2,18 @@
 
 Stand up the **persistent** control plane for a course: its teams, the faculty console
 (`.github` with all the buttons), and its identity card. Do this **once** per course - it
-serves every future cohort (year). Per-year setup is [New cohort org](new-cohort-org.md).
+serves every future cohort (year). Per-year setup is [New cohort org](02-new-cohort-org.md).
 
 ## Prerequisites
 
-- **`hertie-dsl-bot` is an Owner of the org you're about to bootstrap**. This is the one
-  irreducible manual prerequisite (there is no org-creation API, and the bot needs Owner to
-  create repos/teams and set the token). ([which account?](../admin/admin-setup.md#the-bot-account))
-- **You are in the `faculty` (or `admin`) team of [`hertie-data-science-lab`](https://github.com/orgs/hertie-data-science-lab/teams)** -
-  this gates the *Bootstrap Course Org* button. An org owner adds you (one-time; you accept an
-  email invite). It does **not** "vary by year" - it's a standing credential.
+- **You are in the `faculty` (or `admin`) team of [`hertie-data-science-lab`](https://github.com/orgs/hertie-data-science-lab/teams)** - this gates the *Bootstrap Course Org* button. 
 
 ## Steps
 
 1. **Create the org** in the GitHub web UI. Naming convention: **`<course-name>-<CODE>`**
    (e.g. `DSL-Demo-Course-E1234`). The org is persistent, so the name carries **no year**.
 
-2. **Invite `hertie-dsl-bot` as Owner** (Org → People → Invite → role *Owner*).
+2. **Invite `hertie-dsl-bot` as Owner** of the org you're about to bootstrap: (Org → People → Invite → role *Owner*). This is the one irreducible manual prerequisite (there is no org-creation API, and the bot needs Owner to create repos/teams and set the token). ([which account?](../admin/admin-setup.md#the-bot-account))
 
 3. **Run [Bootstrap Course Org](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions/workflows/bootstrap-org.yml)** 
    (central DSL repo → Actions → *Run workflow*):
@@ -41,21 +36,7 @@ serves every future cohort (year). Per-year setup is [New cohort org](new-cohort
    `instructors` the same way.
 
 5. *(optional)* **Adjust the identity card.** Bootstrap writes `.github/dsl-course.yml` from
-   your inputs - usually nothing to change. It now holds **identity only**:
-
-   ```yaml
-   org: DSL-Demo-Course-E1234
-   org_name: DSL Demo Course
-   course_name: Deep Learning (Demo)   # site title
-   course_code: E1234                  # site header
-   ```
-
-   > People (instructors/TAs) and the schedule are **not** here - they vary by year and live
-   > in each [cohort's](new-cohort-org.md) `dsl-course.yml`.
-
-   If you edit it (web UI → commit to `main`), run **Refresh actions** to rebuild the profile
-   README; the cohort site picks up identity on its next *Sync site*. There is no dedicated
-   "sync identity" button.
+   your inputs - usually nothing to change. If you do edit it (via web UI → commit to `main`), run **Refresh actions** to rebuild the profile README.
 
 ## What it creates
 
@@ -64,7 +45,7 @@ In the org's **`.github`** repo (public):
 - **All faculty buttons** in the Actions tab (New materials/assignment, Refresh, Bootstrap
   cohort, Release, Sync, Grade, …) - seeded from the [central toolkit](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup).
 - **`dsl-course.yml`** - the identity card (above).
-- **`README.md`** - an orientation page (you're reading the long-form version of it).
+- **`README.md`** - an orientation page (you're reading the long-form version of it here).
 - **`profile/README.md`** - the org landing page (auto-generated; don't hand-edit).
 
 Plus, org-wide: the **`instructors` / `course-admin` / `auditors` / `students` teams** (with
@@ -81,8 +62,8 @@ flowchart LR
 
 ## Next
 
-- [Add materials](add-materials.md) and [Add assignment](add-assignment.md) to the course org.
-- When the year starts: [New cohort org](new-cohort-org.md).
+- [Add materials](04-add-materials.md) and [Add assignment](06-add-assignment.md) to the course org.
+- When the year starts: [New cohort org](02-new-cohort-org.md).
 
 ---
 **Demo:** course org [`DSL-Demo-Course-E1234`](https://github.com/DSL-Demo-Course-E1234) ·

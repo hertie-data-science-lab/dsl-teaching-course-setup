@@ -1,7 +1,7 @@
 # New cohort org (once per year)
 
 Stand up the per-year, student-facing org: onboarding, the roster, released materials, and
-the cohort website. Do this each year; the [course org](new-course-org.md) it hangs off is
+the cohort website. Do this each year; the [course org](01-new-course-org.md) it hangs off is
 permanent.
 
 ## Prerequisites
@@ -51,8 +51,8 @@ permanent.
 
 ## Next
 
-- [Enrol students](enrol-students.md).
-- [Release to the cohort](release-to-cohort.md).
+- [Enrol students](03-enrol-students.md).
+- [Release to the cohort](05-release-materials.md).
 
 ---
 **Demo:** cohort [`DSL-Demo-f2026`](https://github.com/DSL-Demo-f2026), bootstrapped from

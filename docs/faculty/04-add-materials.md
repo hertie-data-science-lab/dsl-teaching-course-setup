@@ -1,11 +1,11 @@
 # Add materials to the course org
 
 Create the year's materials repo and fill it with lectures + readings. **Release materials**
-later copies week folders from here into a cohort. One repo per year: `course-materials-fYYYY`.
+later copies week folders from here into a cohort. One repo per year: `course-materials-{f/s}YYYY`.
 
 ## Prerequisites
 
-- A bootstrapped [course org](new-course-org.md), and you're in its `instructors` /
+- A bootstrapped [course org](01-new-course-org.md), and you're in its `instructors` /
   `course-admin` team.
 
 ## Steps
@@ -14,8 +14,11 @@ later copies week folders from here into a cohort. One repo per year: `course-ma
    [New materials repo](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/new-materials.yml),
    input `tag` = `f2026` → creates **`course-materials-f2026`** (private) with the schema the
    downstream actions expect:
-   - the three run-from-repo Release buttons (`release-materials`, `release-assignment`, `release-code`)
-   - `README.md`, a placeholder `syllabus.md`, and empty `lectures/week-1/` + `readings/week-1/`
+   - empty `lectures/week-1/` + `readings/week-1/`
+   - a `README.md`, 
+   - a placeholder `syllabus.md`,
+   - and the three run-from-repo Release buttons (`release-materials`, `release-assignment`, `release-code`)
+
 
 2. **Get write on the new repo.** The scaffold does **not** grant your team write on the new
    repo (only `.github` is granted at bootstrap), so a non-owner can't push yet. An org owner
@@ -30,14 +33,14 @@ later copies week folders from here into a cohort. One repo per year: `course-ma
    syllabus.md        optional; matched case-insensitively on release
    ```
 
-   Only the weeks you add exist (add `week-2`, `week-3`, … as the course runs).
+   NB: You can add the full course content here as a 'staging' repo - it remains private and non-viewable by students; while only the weeks you you choose to 'release to cohort' get dispatched to the student-facing cohort org. 
 
-4. **Refresh actions** (course `.github`) so the `week` dropdowns pick up the new weeks.
+4. **Refresh actions** (course `.github`) so the `week` dropdowns pick up the new weeks you just added.
 
 ## Next
 
-- [Release to a cohort](release-to-cohort.md) - open weeks up to students.
-- [Add an assignment](add-assignment.md).
+- [Release to a cohort](05-release-materials.md) - open weeks up to students.
+- [Add an assignment](06-add-assignment.md).
 
 ---
 **Demo:** [`DSL-Demo-Course-E1234`](https://github.com/DSL-Demo-Course-E1234) → New materials repo.

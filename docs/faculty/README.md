@@ -65,14 +65,17 @@ the one irreducible manual prerequisite (no org-creation API).
 
 ## The workflows
 
+Numbered in reading order:
+
 | # | Workflow | When |
 |---|----------|------|
-| 1 | [New course org](new-course-org.md) | once, when a course first goes on the platform |
-| 2 | [Add materials](add-materials.md) | per materials repo (usually once/year) |
-| 3 | [Add assignment](add-assignment.md) | per assignment |
-| 4 | [New cohort org](new-cohort-org.md) | once per year |
-| 5 | [Enrol students](enrol-students.md) | start of each cohort |
-| 6 | [Release to cohort](release-to-cohort.md) | weekly cadence |
+| 1 | [New course org](01-new-course-org.md) | once, when a course first goes on the platform |
+| 2 | [New cohort org](02-new-cohort-org.md) | once per year |
+| 3 | [Enrol students](03-enrol-students.md) | start of each cohort |
+| 4 | [Add materials](04-add-materials.md) | per materials repo (usually once/year) |
+| 5 | [Release materials](05-release-materials.md) | weekly cadence |
+| 6 | [Add assignment](06-add-assignment.md) | per assignment |
+| 7 | [Release assignment](07-release-assignment.md) | per assignment, once students have onboarded |
 
 ## Demo orgs (live reference)
 
