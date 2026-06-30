@@ -6,7 +6,7 @@ GitHub handle is captured unspoofably.
 
 ## Prerequisites
 
-- A bootstrapped [cohort org](02-new-cohort-org.md) with the roster loaded in
+- A bootstrapped [cohort org](04-new-cohort-org.md) with the roster loaded in
   `classroom-config/students.csv`.
 - To actually *send* email: the `GRAPH_*` (preferred) or `SMTP_*` Actions secrets. Without
   them every send runs as a **`dry_run`** preview (codes are still written to the roster).
@@ -52,7 +52,7 @@ GitHub team per group; a group **Release assignment** then grants each team its 
 
 ## Next
 
-- [Release to the cohort](07-release-assignment.md) - once students are onboarded, assignment
+- [Release to the cohort](07-release-assignment-to-cohort.md) - once students are onboarded, assignment
   release generates one private repo per student.
 
 ---

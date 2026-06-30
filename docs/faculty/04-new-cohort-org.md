@@ -51,8 +51,8 @@ permanent.
 
 ## Next
 
-- [Enrol students](03-enrol-students.md).
-- [Release to the cohort](05-release-materials.md).
+- [Enrol students](05-enrol-students-to-cohort.md).
+- [Release to the cohort](06-release-materials-to-cohort.md).
 
 ---
 **Demo:** cohort [`DSL-Demo-f2026`](https://github.com/DSL-Demo-f2026), bootstrapped from

@@ -67,15 +67,17 @@ the one irreducible manual prerequisite (no org-creation API).
 
 Numbered in reading order:
 
-| # | Workflow | When |
-|---|----------|------|
-| 1 | [New course org](01-new-course-org.md) | once, when a course first goes on the platform |
-| 2 | [New cohort org](02-new-cohort-org.md) | once per year |
-| 3 | [Enrol students](03-enrol-students.md) | start of each cohort |
-| 4 | [Add materials](04-add-materials.md) | per materials repo (usually once/year) |
-| 5 | [Release materials](05-release-materials.md) | weekly cadence |
-| 6 | [Add assignment](06-add-assignment.md) | per assignment |
-| 7 | [Release assignment](07-release-assignment.md) | per assignment, once students have onboarded |
+All **course-level** workflows (1-3) come before the **cohort-level** ones (4-7):
+
+| # | Workflow | Tier | When |
+|---|----------|------|------|
+| 1 | [New course org](01-new-course-org.md) | course | once, when a course first goes on the platform |
+| 2 | [Add materials to course](02-add-materials-to-course.md) | course | per materials repo (usually once/year) |
+| 3 | [Add assignment to course](03-add-assignment-to-course.md) | course | per assignment |
+| 4 | [New cohort org](04-new-cohort-org.md) | cohort | once per year |
+| 5 | [Enrol students to cohort](05-enrol-students-to-cohort.md) | cohort | start of each cohort |
+| 6 | [Release materials to cohort](06-release-materials-to-cohort.md) | cohort | weekly cadence |
+| 7 | [Release assignment to cohort](07-release-assignment-to-cohort.md) | cohort | per assignment, once students have onboarded |
 
 ## Demo orgs (live reference)
 

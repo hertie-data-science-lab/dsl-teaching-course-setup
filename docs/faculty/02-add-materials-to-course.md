@@ -39,8 +39,8 @@ later copies week folders from here into a cohort. One repo per year: `course-ma
 
 ## Next
 
-- [Release to a cohort](05-release-materials.md) - open weeks up to students.
-- [Add an assignment](06-add-assignment.md).
+- [Release to a cohort](06-release-materials-to-cohort.md) - open weeks up to students.
+- [Add an assignment](03-add-assignment-to-course.md).
 
 ---
 **Demo:** [`DSL-Demo-Course-E1234`](https://github.com/DSL-Demo-Course-E1234) → New materials repo.

@@ -2,7 +2,7 @@
 
 Stand up the **persistent** control plane for a course: its teams, the faculty console
 (`.github` with all the buttons), and its identity card. Do this **once** per course - it
-serves every future cohort (year). Per-year setup is [New cohort org](02-new-cohort-org.md).
+serves every future cohort (year). Per-year setup is [New cohort org](04-new-cohort-org.md).
 
 ## Prerequisites
 
@@ -62,8 +62,8 @@ flowchart LR
 
 ## Next
 
-- [Add materials](04-add-materials.md) and [Add assignment](06-add-assignment.md) to the course org.
-- When the year starts: [New cohort org](02-new-cohort-org.md).
+- [Add materials](02-add-materials-to-course.md) and [Add assignment](03-add-assignment-to-course.md) to the course org.
+- When the year starts: [New cohort org](04-new-cohort-org.md).
 
 ---
 **Demo:** course org [`DSL-Demo-Course-E1234`](https://github.com/DSL-Demo-Course-E1234) ·

@@ -19,7 +19,7 @@ the model solution + autograder. One per assignment: `assignment-N-fYYYY`.
    | `main` | `README.md` (brief) + `starter.*` | **what students get** |
    | `solution` | `solution/` (model answer) + `grading.yml` + hidden `tests/` | **faculty only** |
 
-2. **Get write on the new repo** (same one-off grant as [materials](04-add-materials.md#steps), step 2).
+2. **Get write on the new repo** (same one-off grant as [materials](02-add-materials-to-course.md#steps), step 2).
 
 3. **Push your content.**
    - to **`main`**: the real brief (`README.md`) + starter (`starter.py`, a notebook, …).
@@ -36,7 +36,7 @@ Repeat for each assignment (`number` = 2, 3, …). A group project uses the same
 
 ## Next
 
-- [Release to a cohort](07-release-assignment.md) - freeze + hand out per-student repos.
+- [Release to a cohort](07-release-assignment-to-cohort.md) - freeze + hand out per-student repos.
 
 ---
 **Demo:** [`DSL-Demo-Course-E1234`](https://github.com/DSL-Demo-Course-E1234) → New assignment.

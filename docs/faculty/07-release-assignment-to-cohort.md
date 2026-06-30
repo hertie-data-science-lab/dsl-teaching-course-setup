@@ -5,8 +5,8 @@ student**, autograder included.
 
 ## Prerequisites
 
-- A course [assignment template](06-add-assignment.md) with the brief + starter on `main`.
-- A bootstrapped [cohort](02-new-cohort-org.md) with [students onboarded](03-enrol-students.md) -
+- A course [assignment template](03-add-assignment-to-course.md) with the brief + starter on `main`.
+- A bootstrapped [cohort](04-new-cohort-org.md) with [students onboarded](05-enrol-students-to-cohort.md) -
   one repo is generated per onboarded student.
 
 ## Release assignment
@@ -22,7 +22,7 @@ Two stages:
 `include_solution` pushes the template's `solution` branch into each student repo (default off).
 
 > Group projects (`grading.yml` `type: group`) release one shared repo per **team** instead of
-> per student - see [Enrol students → groups](03-enrol-students.md#group-assignments-optional).
+> per student - see [Enrol students → groups](05-enrol-students-to-cohort.md#group-assignments-optional).
 
 ## The site
 

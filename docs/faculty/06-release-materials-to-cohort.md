@@ -5,8 +5,8 @@ Open lecture + reading weeks up to a cohort, one week at a time. Every release a
 
 ## Prerequisites
 
-- A course [materials repo](04-add-materials.md) with the weeks you want to release.
-- A bootstrapped [cohort](02-new-cohort-org.md).
+- A course [materials repo](02-add-materials-to-course.md) with the weeks you want to release.
+- A bootstrapped [cohort](04-new-cohort-org.md).
 
 ## Release materials
 
@@ -37,7 +37,7 @@ manually only if you've edited `dsl-course.yml` (people/schedule) and want it li
 
 ## Next
 
-- [Add an assignment](06-add-assignment.md), then [release it](07-release-assignment.md).
+- [Add an assignment](03-add-assignment-to-course.md), then [release it](07-release-assignment-to-cohort.md).
 
 ---
 **Demo:** released into [`DSL-Demo-f2026`](https://github.com/DSL-Demo-f2026); site at
