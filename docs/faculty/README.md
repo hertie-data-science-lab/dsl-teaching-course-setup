@@ -79,6 +79,9 @@ All **course-level** workflows (1-3) come before the **cohort-level** ones (4-7)
 | 6 | [Release materials to cohort](06-release-materials-to-cohort.md) | cohort | weekly cadence |
 | 7 | [Release assignment to cohort](07-release-assignment-to-cohort.md) | cohort | per assignment, once students have onboarded |
 
+For a one-page summary of **every button** (not the step-by-step flow), see
+[`actions-reference.md`](actions-reference.md).
+
 ## Demo orgs (live reference)
 
 A standing demo you can point at while reading:

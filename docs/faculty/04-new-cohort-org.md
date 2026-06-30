@@ -41,11 +41,6 @@ Stand up the per-year, student-facing org: onboarding, the roster, released mate
      exams: [{ name: MidTerm Exam, date: 2026-11-03 }]
    ```
 
-   Anything you omit is **synthesised** (GitHub avatars from the teams; dates every 2 weeks;
-   exams at weeks 8 & 15). The `assignments` due dates also drive autograding - `grace_days`
-   (default 0) extends only the grading pin, not what students see. See
-   [Release assignment → Deadlines](07-release-assignment-to-cohort.md#deadlines).
-
 5. **Load the roster.** Replace the example row in `classroom-config/students.csv` with
    registrar data (`student_id, hertie_email, name, section`; leave `github_handle, github_id`
    blank - onboarding fills them). The repo's own `README.md` documents every column.
