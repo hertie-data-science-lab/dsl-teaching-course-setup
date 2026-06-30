@@ -13,7 +13,7 @@ serves every future cohort (year). Per-year setup is [New cohort org](04-new-coh
 1. **Create the org** in the GitHub web UI. Naming convention: **`<course-name>-<CODE>`**
    (e.g. `DSL-Demo-Course-E1234`). The org is persistent, so the name carries **no year**.
 
-2. **Invite `hertie-dsl-bot` as Owner** of the org you're about to bootstrap: (Org → People → Invite → role *Owner*). This is the one irreducible manual prerequisite (there is no org-creation API, and the bot needs Owner to create repos/teams and set the token). ([which account?](../admin/admin-setup.md#the-bot-account))
+2. **Invite `hertie-dsl-bot` as Owner** of the org you're about to bootstrap: (Org → People → Invite → role *Owner*).
 
 3. **Run [Bootstrap Course Org](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions/workflows/bootstrap-org.yml)** 
    (central DSL repo → Actions → *Run workflow*):
