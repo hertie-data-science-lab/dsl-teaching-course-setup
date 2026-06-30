@@ -225,7 +225,9 @@ One row per student. Leave `github_handle`/`github_id` blank - students fill the
 One file per assignment, e.g. `grades/assignment-1.csv`:
 `github_handle, team, auto, manual, team_grade, adjustment, final, comments, team_comments`.
 **Grade assignment** can pre-fill `auto`/`team_grade` from hidden tests; faculty fill the
-rest, then **Sync gradebooks** -> **Render grades** -> **Distribute grades**.
+rest, then **Sync gradebooks** -> **Render grades** -> **Distribute grades**. The autograder
+pins to each assignment's **due date** from the cohort `schedule` (in `.github/dsl-course.yml`,
+plus optional `grace_days`) - there is no separate deadline input.
 
 ## teams.csv - group membership (optional, for group assignments)
 

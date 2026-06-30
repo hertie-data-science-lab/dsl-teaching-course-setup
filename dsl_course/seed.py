@@ -679,7 +679,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Year tag (e.g. f2026) - creates course-materials-<tag>"
+        description: "Year tag, e.g. f2026 or s2026 - creates course-materials-<tag>"
         required: true
 
 jobs:
@@ -708,7 +708,7 @@ on:
         description: "Assignment number (e.g. 1)"
         required: true
       tag:
-        description: "Year tag (e.g. f2026) - creates assignment-<number>-<tag>"
+        description: "Year tag, e.g. f2026 or s2026 - creates assignment-<number>-<tag>"
         required: true
 
 jobs:
