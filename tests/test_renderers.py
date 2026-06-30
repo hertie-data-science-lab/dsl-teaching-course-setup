@@ -81,12 +81,14 @@ def test_provision_has_group_toggle():
     assert "--group" in seed.render_provision(["Cohort-f2026"], [])
 
 
-def test_grade_assignment_has_deadline_and_calls_collect():
+def test_grade_assignment_calls_collect_with_no_deadline_input():
+    # SSOT: the grading deadline comes from the cohort schedule, so the button has no
+    # deadline input and never passes --deadline (collect derives it).
     rendered = seed.render_grade_assignment(["Cohort-f2026"], ["assignment-1-f2026"])
     inp = workflow_inputs(rendered)
-    assert "deadline" in inp and inp["group"]["type"] == "boolean"
+    assert "deadline" not in inp and inp["group"]["type"] == "boolean"
     assert "dsl_course.collect" in rendered
-    assert "--group" in rendered and "--deadline" in rendered
+    assert "--group" in rendered and "--deadline" not in rendered
 
 
 def test_sync_enrolment_is_a_single_reconcile():

@@ -40,7 +40,7 @@ import subprocess
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
-from datetime import date
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import yaml
@@ -161,15 +161,29 @@ def _run_tests(workdir: Path, fmt: str, tests_src: Path) -> dict | None:
             # Convert each notebook to an importable script first (Otter can slot in here).
             for nb in workdir.rglob("*.ipynb"):
                 subprocess.run(
-                    [sys.executable, "-m", "jupyter", "nbconvert", "--to", "script", str(nb)],
-                    cwd=workdir, env=env, timeout=RUN_TIMEOUT, capture_output=True,
+                    [
+                        sys.executable,
+                        "-m",
+                        "jupyter",
+                        "nbconvert",
+                        "--to",
+                        "script",
+                        str(nb),
+                    ],
+                    cwd=workdir,
+                    env=env,
+                    timeout=RUN_TIMEOUT,
+                    capture_output=True,
                 )
         dest = workdir / "_grading_tests"
         shutil.copytree(tests_src, dest, dirs_exist_ok=True)
         report = workdir / "report.xml"
         subprocess.run(
             [sys.executable, "-m", "pytest", "-q", str(dest), f"--junitxml={report}"],
-            cwd=workdir, env=env, timeout=RUN_TIMEOUT, capture_output=True,
+            cwd=workdir,
+            env=env,
+            timeout=RUN_TIMEOUT,
+            capture_output=True,
         )
     except subprocess.TimeoutExpired:
         log_err(f"  ! grading timed out after {RUN_TIMEOUT}s")
@@ -179,7 +193,9 @@ def _run_tests(workdir: Path, fmt: str, tests_src: Path) -> dict | None:
     return score_from_junit(report.read_text())
 
 
-def _grade_target(cohort_org: str, repo: str, spec: dict, tests_src: Path, deadline: str) -> dict | None:
+def _grade_target(
+    cohort_org: str, repo: str, spec: dict, tests_src: Path, deadline: str
+) -> dict | None:
     """Clone one submission, pin to the deadline, run the hidden tests. Always returns a
     result dict (a zero with a note for non-submissions / failures), or None if unclonable."""
     max_auto = spec.get("max_auto") or 0
@@ -198,11 +214,47 @@ def _grade_target(cohort_org: str, repo: str, spec: dict, tests_src: Path, deadl
         return result
 
 
+def _as_date(value: object) -> date | None:
+    """A YAML date/datetime or ISO `YYYY-MM-DD` string -> date (None if unparseable)."""
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        try:
+            return date.fromisoformat(value.strip()[:10])
+        except ValueError:
+            return None
+    return None
+
+
+def _grading_deadline(meta: dict, slug: str) -> str | None:
+    """The grading pin for `slug` from the cohort schedule - the single source of truth: the
+    published due date (`schedule.assignments[slug]`) plus optional `schedule.grace_days[slug]`
+    (default 0). Returns an ISO date, or None when the assignment has no scheduled due date."""
+    sched = (meta or {}).get("schedule") or {}
+    due = _as_date((sched.get("assignments") or {}).get(slug))
+    if due is None:
+        return None
+    try:
+        grace = int((sched.get("grace_days") or {}).get(slug, 0))
+    except (TypeError, ValueError):
+        grace = 0
+    return (due + timedelta(days=grace)).isoformat()
+
+
+def _scheduled_deadline(cohort_org: str, slug: str) -> str | None:
+    """Grading deadline from the cohort's `.github/dsl-course.yml` schedule (the SSOT)."""
+    raw = get_file_content(cohort_org, ".github", "dsl-course.yml") or ""
+    meta = yaml.safe_load(raw) if raw else {}
+    return _grading_deadline(meta if isinstance(meta, dict) else {}, slug)
+
+
 def collect(
     master_org: str,
     template: str,
     cohort_org: str,
-    deadline: str,
+    deadline: str | None = None,
     group: bool = False,
     dry_run: bool = False,
 ) -> int:
@@ -212,12 +264,26 @@ def collect(
         log_err("master-org and cohort-org must differ.")
         return 1
     slug = assignment_slug(template)
+    # SSOT: default the grading pin to the cohort schedule's due date (+ grace_days); an
+    # explicit `deadline` (CLI override) wins; fall back to today only if unscheduled.
+    deadline = (
+        deadline or _scheduled_deadline(cohort_org, slug) or date.today().isoformat()
+    )
 
     with tempfile.TemporaryDirectory() as sd:
         soldir = Path(sd) / "sol"
         if (
-            gh("repo", "clone", f"{master_org}/{template}", str(soldir), "--", "-q",
-               "-b", SOLUTION_BRANCH)[0] != 0
+            gh(
+                "repo",
+                "clone",
+                f"{master_org}/{template}",
+                str(soldir),
+                "--",
+                "-q",
+                "-b",
+                SOLUTION_BRANCH,
+            )[0]
+            != 0
         ):
             log_err(
                 f"no `{SOLUTION_BRANCH}` branch on {master_org}/{template} - no hidden "
@@ -227,24 +293,36 @@ def collect(
         spec_path = soldir / GRADING_FILE
         spec = parse_grading_spec(spec_path.read_text() if spec_path.is_file() else "")
         if not spec["autograde"]:
-            log_ok(f"{slug}: autograde disabled in {GRADING_FILE} - all-manual, nothing to collect.")
+            log_ok(
+                f"{slug}: autograde disabled in {GRADING_FILE} - all-manual, nothing to collect."
+            )
             return 0
         is_group = group or spec["type"] == "group"
         tests_src = soldir / str(spec["tests"])
         if not tests_src.is_dir():
-            log_err(f"{slug}: tests path `{spec['tests']}` not found on the solution branch.")
+            log_err(
+                f"{slug}: tests path `{spec['tests']}` not found on the solution branch."
+            )
             return 1
 
         # Targets: one per team (group) or one per onboarded student (individual).
         if is_group:
             groups = teams.teams_for(teams.load(cohort_org), slug)
             if not groups:
-                log_err(f"no teams for `{slug}` in {cohort_org}/{CONFIG_REPO}/teams.csv.")
+                log_err(
+                    f"no teams for `{slug}` in {cohort_org}/{CONFIG_REPO}/teams.csv."
+                )
                 return 1
-            targets = [(f"{slug}-{team}", team, members) for team, members in sorted(groups.items())]
+            targets = [
+                (f"{slug}-{team}", team, members)
+                for team, members in sorted(groups.items())
+            ]
         else:
             onboarded = [s for s in roster.load(cohort_org) if s.onboarded]
-            targets = [(f"{slug}-{s.github_handle}", s.github_handle, [s.github_handle]) for s in onboarded]
+            targets = [
+                (f"{slug}-{s.github_handle}", s.github_handle, [s.github_handle])
+                for s in onboarded
+            ]
             if not targets:
                 log_err(f"no onboarded students in {cohort_org} to grade.")
                 return 1
@@ -258,7 +336,9 @@ def collect(
         for repo, key, members in targets:
             log_step(repo)
             if dry_run:
-                log(f"    DRY-RUN would grade {cohort_org}/{repo} (pin to <= {deadline})")
+                log(
+                    f"    DRY-RUN would grade {cohort_org}/{repo} (pin to <= {deadline})"
+                )
                 continue
             result = _grade_target(cohort_org, repo, spec, tests_src, deadline)
             if result is None:
@@ -266,8 +346,11 @@ def collect(
             for line in summary_lines(result):
                 log(line)
             put_file(
-                cohort_org, CONFIG_REPO, f"{AUTOGRADE_DIR}/{slug}/{key}.json",
-                json.dumps(result, indent=2).encode(), f"autograde: {slug}/{key}",
+                cohort_org,
+                CONFIG_REPO,
+                f"{AUTOGRADE_DIR}/{slug}/{key}.json",
+                json.dumps(result, indent=2).encode(),
+                f"autograde: {slug}/{key}",
             )
             score = str(result["score"])
             if is_group:
@@ -285,30 +368,48 @@ def collect(
         existing = get_file_content(cohort_org, CONFIG_REPO, path) or ""
         new_csv = grades.merge_auto(existing, updates)
         if not put_file(
-            cohort_org, CONFIG_REPO, path, new_csv.encode(),
+            cohort_org,
+            CONFIG_REPO,
+            path,
+            new_csv.encode(),
             f"autograde: record auto scores for {slug}",
         ):
             log_err(f"could not write {path}")
             return 1
-    log_ok(f"recorded {len(updates)} auto score(s) -> {path} (faculty add manual marks, then render)")
+    log_ok(
+        f"recorded {len(updates)} auto score(s) -> {path} (faculty add manual marks, then render)"
+    )
     return 0
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--master-org", required=True, help="Course org (template source)")
-    parser.add_argument("--template", required=True, help="Assignment template (e.g. assignment-1-f2026)")
+    parser.add_argument(
+        "--master-org", required=True, help="Course org (template source)"
+    )
+    parser.add_argument(
+        "--template",
+        required=True,
+        help="Assignment template (e.g. assignment-1-f2026)",
+    )
     parser.add_argument("--cohort-org", required=True, help="Cohort org (submissions)")
     parser.add_argument(
-        "--deadline", default=None, help="ISO date; grade the last commit on/before it (default: today)"
+        "--deadline",
+        default=None,
+        help="ISO date override; default = the cohort schedule's due date + grace_days, else today",
     )
-    parser.add_argument("--group", action="store_true", help="Group assignment (one repo per team)")
+    parser.add_argument(
+        "--group", action="store_true", help="Group assignment (one repo per team)"
+    )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
-    deadline = args.deadline or date.today().isoformat()
     return collect(
-        args.master_org, args.template, args.cohort_org, deadline,
-        group=args.group, dry_run=args.dry_run,
+        args.master_org,
+        args.template,
+        args.cohort_org,
+        args.deadline,
+        group=args.group,
+        dry_run=args.dry_run,
     )
 
 

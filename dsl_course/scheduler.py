@@ -112,7 +112,11 @@ def plan(manifest: dict, weeks: list[str]) -> list[dict]:
             actions.append({"kind": "assignment", "template": entry["assignment"]})
         if entry.get("grade"):
             # accept either `grade: <template>` or `grade: {template, deadline, group}`
-            g = {"template": entry["grade"]} if isinstance(entry["grade"], str) else entry["grade"]
+            g = (
+                {"template": entry["grade"]}
+                if isinstance(entry["grade"], str)
+                else entry["grade"]
+            )
             actions.append(
                 {
                     "kind": "grade",
@@ -132,7 +136,7 @@ def describe(action: dict) -> str:
     if k == "code":
         return f"code {action['path']} from {action['source_repo']} -> {action['cohort_repo']}"
     if k == "grade":
-        return f"grade {action['template']} (deadline {action['deadline'] or 'today'})"
+        return f"grade {action['template']} (deadline {action['deadline'] or 'from schedule'})"
     return f"assignment {action['template']}"
 
 
@@ -192,9 +196,13 @@ def _execute(course_org: str, cohort_org: str, action: dict) -> int:
     if kind == "grade":
         from .collect import collect
 
-        deadline = action["deadline"] or date.today().isoformat()
+        # deadline=None -> collect resolves it from the cohort schedule (SSOT)
         return collect(
-            course_org, action["template"], cohort_org, deadline, group=action["group"]
+            course_org,
+            action["template"],
+            cohort_org,
+            action["deadline"],
+            group=action["group"],
         )
     log_err(f"unknown action kind: {kind}")
     return 1

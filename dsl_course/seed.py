@@ -335,7 +335,8 @@ def render_grade_assignment(
     """Faculty-side autograder button: run hidden tests after the deadline, record scores."""
     return f"""name: Grade assignment
 
-# Faculty-side autograder. Clones each submission as of the deadline, runs the HIDDEN tests
+# Faculty-side autograder. Clones each submission as of its scheduled due date (the cohort
+# schedule's date + grace_days - SSOT, no input here), runs the HIDDEN tests
 # from the template's solution branch, archives result.json, and records the machine score
 # into the private grades CSV (faculty then add manual marks; Render + Distribute send them).
 # Nothing is written to student repos. dry_run lists what would be graded.
@@ -350,10 +351,6 @@ on:
         options:
 {_choice(cohort_orgs)}
 {_assignment_input(assignments or [])}
-      deadline:
-        description: "Submission deadline (YYYY-MM-DD) - grades the last commit on/before it"
-        required: true
-        default: ""
       group:
         description: "Group assignment - grade one repo per team"
         type: boolean
@@ -372,14 +369,12 @@ jobs:
           MASTER_ORG: ${{{{ github.repository_owner }}}}
           COHORT_ORG: ${{{{ inputs.cohort_org }}}}
           TEMPLATE: ${{{{ inputs.assignment }}}}
-          DEADLINE: ${{{{ inputs.deadline }}}}
           GROUP: ${{{{ inputs.group }}}}
           DRY_RUN: ${{{{ inputs.dry_run }}}}
         run: |
           gh auth setup-git
           pip install --quiet pytest nbconvert
           args=(--master-org "$MASTER_ORG" --template "$TEMPLATE" --cohort-org "$COHORT_ORG")
-          [ -n "$DEADLINE" ] && args+=(--deadline "$DEADLINE")
           [ "$GROUP" = "true" ] && args+=(--group)
           [ "$DRY_RUN" = "true" ] && args+=(--dry-run)
           python3 -m dsl_course.collect "${{args[@]}}"
