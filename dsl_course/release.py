@@ -64,6 +64,17 @@ def _week_dir(section_dir: Path, week: str) -> Path | None:
     return None
 
 
+def _syllabus_files(root: Path) -> list[Path]:
+    """Root-level syllabus file(s), matched case-insensitively so SYLLABUS.md,
+    Syllabus.md, syllabus.txt, course-syllabus.pdf, ... all release. Sorted so the
+    order is deterministic when more than one matches."""
+    if not root.is_dir():
+        return []
+    return sorted(
+        f for f in root.iterdir() if f.is_file() and "syllabus" in f.name.lower()
+    )
+
+
 def release(
     source_org: str,
     source_repo: str,
@@ -120,11 +131,10 @@ def release(
         # Optional root files (default off): syllabus + README, deployed to the cohort
         # root, overwriting whatever is there.
         if include_syllabus:
-            for f in sorted(src.glob("*[Ss]yllabus*")):
-                if f.is_file():
-                    shutil.copy2(f, out / f.name)
-                    log_ok(f"+ {f.name}")
-                    copied += 1
+            for f in _syllabus_files(src):
+                shutil.copy2(f, out / f.name)
+                log_ok(f"+ {f.name}")
+                copied += 1
         readme_from_source = False
         if include_readme and (src / "README.md").is_file():
             shutil.copy2(src / "README.md", out / "README.md")
