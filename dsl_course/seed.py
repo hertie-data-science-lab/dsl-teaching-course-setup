@@ -984,8 +984,8 @@ and the auto-generated student-facing org page - **faculty / FAs delivering the 
 
 - The **faculty action buttons** (Release, Grade, Sync ...) live in the **parent course org's**
   `.github` **Actions** tab, not here.
-- `{COURSE_CONFIG}` - this cohort's identity / people / schedule overrides (edit in the web UI,
-  then run **Sync site**).
+- `{COURSE_CONFIG}` - this cohort's people / schedule overrides for the site (edit in the web UI,
+  then run **Sync site**). Course identity (name/code) is inherited from the parent course org.
 - `profile/README.md` - the student-facing org landing page (auto-generated; don't hand-edit).
 - Students join via the **welcome** repo's "Join" issue; the roster lives in **classroom-config**.
 
@@ -1014,7 +1014,7 @@ or `course-admin` team). The full, annotated list of actions is on the
 ## What's in here
 
 - `.github/workflows/` - the action buttons (seeded from the central toolkit; refreshed by **Refresh actions**).
-- `{COURSE_CONFIG}` - this course's identity, people, and schedule (edit in the web UI).
+- `{COURSE_CONFIG}` - this course's identity (name/code). People + schedule are declared per cohort.
 - `profile/README.md` - the public org landing page (auto-generated repo index).
 
 Built and kept in sync by the [DSL teaching toolkit](https://github.com/{CENTRAL}).

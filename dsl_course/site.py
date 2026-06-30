@@ -93,7 +93,8 @@ def _slug(text: str) -> str:
 def _schedule(
     meta: dict,
 ) -> tuple[date | None, dict[str, date], list[tuple[str, date]]]:
-    """Faculty schedule overrides from the course `.github/dsl-course.yml` `schedule:` block.
+    """Faculty schedule overrides from a `.github/dsl-course.yml` `schedule:` block
+    (the cohort's, for a cohort site).
 
     Returns `(semester_start, {assignment_slug: due_date}, [(exam_name, date), ...])`.
     Any missing/blank field falls back to the synthesised date at the call site, so the
@@ -161,7 +162,8 @@ def _team_people(course_org: str, team: str) -> list[tuple[str, str, str]]:
 
 
 def _people_from_meta(meta: dict) -> tuple[list[tuple], list[tuple]] | None:
-    """Declared people from the course `.github/dsl-course.yml` `people:` block.
+    """Declared people from a `.github/dsl-course.yml` `people:` block (the cohort's,
+    for a cohort site; the course org's for the public course site).
 
     The block is the canonical input for who appears on the site (name + photo + bio
     link + optional title), so cards carry institutional headshots/profiles rather than
@@ -197,13 +199,13 @@ def _people_from_meta(meta: dict) -> tuple[list[tuple], list[tuple]] | None:
 
 
 def _people_yaml(course_org: str, meta: dict | None = None) -> str:
-    """Build _data/people.yml. Prefer the declared `people:` block in the course
-    dsl-course.yml; else fall back to the GitHub instructors / teaching-assistants teams
-    (GitHub display name + avatar + profile link)."""
+    """Build _data/people.yml. Prefer the declared `people:` block in the supplied
+    dsl-course.yml meta; else fall back to the GitHub instructors / teaching-assistants
+    teams of `course_org` (GitHub display name + avatar + profile link)."""
     override = _people_from_meta(meta or {})
     if override is not None:
         instructors, tas = override
-        note = "declared in the course .github/dsl-course.yml `people:` block"
+        note = "declared in the .github/dsl-course.yml `people:` block"
     else:
         instructors = [(*t, "") for t in _team_people(course_org, "instructors")]
         tas = [(*t, "") for t in _team_people(course_org, "teaching-assistants")]
@@ -348,10 +350,14 @@ def sync_site(course_org: str, cohort_org: str) -> int:
         # cohort tag, into _config.yml (site.course_name / _semester / _code).
         meta_raw = get_file_content(course_org, ".github", "dsl-course.yml") or ""
         meta = yaml.safe_load(meta_raw) if meta_raw else {}
+        meta = meta if isinstance(meta, dict) else {}
+        # People + schedule are cohort-specific (they vary by year), so they come from the
+        # cohort's own .github/dsl-course.yml, not the persistent course org's.
+        cohort_raw = get_file_content(cohort_org, ".github", "dsl-course.yml") or ""
+        cohort_meta = yaml.safe_load(cohort_raw) if cohort_raw else {}
+        cohort_meta = cohort_meta if isinstance(cohort_meta, dict) else {}
         # Faculty schedule overrides (all optional; blanks keep the synthesised dates).
-        sched_start, due_overrides, exam_overrides = _schedule(
-            meta if isinstance(meta, dict) else {}
-        )
+        sched_start, due_overrides, exam_overrides = _schedule(cohort_meta)
         if sched_start:
             start = sched_start
         cfg_path = wd / "_config.yml"
@@ -365,10 +371,11 @@ def sync_site(course_org: str, cohort_org: str) -> int:
                 cfg = _set_config(cfg, "course_code", str(meta["course_code"]))
             cfg_path.write_text(cfg)
 
-        # People: regenerate _data/people.yml from the declared `people:` block (else teams).
+        # People: regenerate _data/people.yml from the cohort's declared `people:` block
+        # (else fall back to the course org's instructors / teaching-assistants teams).
         data_dir = wd / "_data"
         data_dir.mkdir(exist_ok=True)
-        (data_dir / "people.yml").write_text(_people_yaml(course_org, meta))
+        (data_dir / "people.yml").write_text(_people_yaml(course_org, cohort_meta))
 
         # Exam rows render red via the template's schedule_row_exam.html. Use faculty
         # dates from the schedule block; else stub mid/end dates of a ~15-week semester.
