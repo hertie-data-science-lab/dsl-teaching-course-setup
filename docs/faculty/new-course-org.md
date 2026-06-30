@@ -6,9 +6,9 @@ serves every future cohort (year). Per-year setup is [New cohort org](new-cohort
 
 ## Prerequisites
 
-- **`hertie-dsl-bot` is an Owner** of the org you're about to bootstrap. This is the one
-  irreducible manual prerequisite - there is no org-creation API, and the bot needs Owner to
-  create repos/teams and set the token. ([which account?](../admin/admin-setup.md#the-bot-account))
+- **`hertie-dsl-bot` is an Owner of the org you're about to bootstrap**. This is the one
+  irreducible manual prerequisite (there is no org-creation API, and the bot needs Owner to
+  create repos/teams and set the token). ([which account?](../admin/admin-setup.md#the-bot-account))
 - **You are in the `faculty` (or `admin`) team of [`hertie-data-science-lab`](https://github.com/orgs/hertie-data-science-lab/teams)** -
   this gates the *Bootstrap Course Org* button. An org owner adds you (one-time; you accept an
   email invite). It does **not** "vary by year" - it's a standing credential.
@@ -20,8 +20,8 @@ serves every future cohort (year). Per-year setup is [New cohort org](new-cohort
 
 2. **Invite `hertie-dsl-bot` as Owner** (Org → People → Invite → role *Owner*).
 
-3. **Run [Bootstrap Course Org](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions/workflows/bootstrap-org.yml)**
-   (central repo → Actions → *Run workflow*):
+3. **Run [Bootstrap Course Org](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions/workflows/bootstrap-org.yml)** 
+   (central DSL repo → Actions → *Run workflow*):
 
    | Input | Value | Notes |
    |-------|-------|-------|
