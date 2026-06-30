@@ -6,7 +6,6 @@ permanent.
 
 ## Prerequisites
 
-- **`hertie-dsl-bot` is an Owner** of the cohort org.
 - **You're in the course org's `instructors` / `course-admin` team** - the *Bootstrap cohort*
   button lives in the **course** org's console and runs with the bot token, so you do **not**
   need any membership in the cohort org itself.
@@ -17,7 +16,8 @@ permanent.
    (e.g. `DSL-Demo-f2026`). The `fYYYY` / `sYYYY` tag drives the semester label ("Fall 2026")
    and which year's `assignment-*` templates the site lists.
 
-2. **Invite `hertie-dsl-bot` as Owner.**
+2. **Invite `hertie-dsl-bot` as Owner** of the cohort org you're about to bootstrap: (Org → People → Invite → role *Owner*). This is the one irreducible manual prerequisite (there is no org-creation API, and the bot needs Owner to create repos/teams and set the token). ([which account?](../admin/admin-setup.md#the-bot-account))
+
 
 3. **Run [Bootstrap cohort](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/bootstrap-cohort.yml)**
    from the **course** org's `.github` Actions tab, input `cohort_org` = `DSL-Demo-f2026`. It:

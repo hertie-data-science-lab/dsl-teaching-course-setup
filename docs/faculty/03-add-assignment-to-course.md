@@ -1,7 +1,7 @@
 # Add an assignment to the course org
 
 Scaffold an assignment **template** repo, then fill in the brief, starter, and (optionally)
-the model solution + autograder. One per assignment: `assignment-N-fYYYY`.
+the model solution + autograder. One per assignment: `assignment-N-{f/s}YYYY`.
 
 ## Prerequisites
 
@@ -26,13 +26,17 @@ the model solution + autograder. One per assignment: `assignment-N-fYYYY`.
    - to **`solution`**: the model solution, `grading.yml`, and the hidden `tests/` that
      **Grade assignment** runs after the deadline.
 
-   Student repos are generated from **`main` only** - the `solution` branch is never
+   Student repos are generated within the cohort org from **`main` only** - the `solution` branch is never
    distributed (unless you tick `include_solution` at release time).
 
 3. **Refresh actions** so the assignment dropdowns update.
 
 Repeat for each assignment (`number` = 2, 3, …). A group project uses the same flow with
 `type: group` in its `grading.yml`.
+
+> **Deadlines aren't set here.** The due date students see is **per cohort** (it changes each
+> year), set in the cohort's `schedule:` block - see
+> [Release assignment → Deadlines](07-release-assignment-to-cohort.md#deadlines).
 
 ## Next
 

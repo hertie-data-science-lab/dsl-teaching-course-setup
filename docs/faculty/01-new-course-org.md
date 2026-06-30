@@ -44,12 +44,12 @@ In the org's **`.github`** repo (public):
 
 - **All faculty buttons** in the Actions tab (New materials/assignment, Refresh, Bootstrap
   cohort, Release, Sync, Grade, …) - seeded from the [central toolkit](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup).
-- **`dsl-course.yml`** - the identity card (above).
-- **`README.md`** - an orientation page (you're reading the long-form version of it here).
+- **`dsl-course.yml`** - the identity card (editable).
+- **`README.md`** - an orientation page (editable/deletable - you're reading the long-form version of it here).
 - **`profile/README.md`** - the org landing page (auto-generated; don't hand-edit).
 
-Plus, org-wide: the **`instructors` / `course-admin` / `auditors` / `students` teams** (with
-`instructors`→write, `course-admin`→admin on `.github`), **2FA enforcement**, and the
+Plus, org-wide: the **`instructors` / `course-admin` teams** (with
+`instructors`→ write, `course-admin`→ admin on `.github`), **2FA enforcement**, and the
 **`DSL_BOT_TOKEN`** org secret (scoped to `.github`).
 
 ```mermaid

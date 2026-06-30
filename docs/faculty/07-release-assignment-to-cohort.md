@@ -24,6 +24,27 @@ Two stages:
 > Group projects (`grading.yml` `type: group`) release one shared repo per **team** instead of
 > per student - see [Enrol students → groups](05-enrol-students-to-cohort.md#group-assignments-optional).
 
+## Deadlines
+
+**One source of truth** - the **cohort's** `.github/dsl-course.yml` `schedule:` block, keyed by
+the assignment **slug** (the repo name minus `-fYYYY`/`-sYYYY`):
+
+```yaml
+schedule:
+  assignments:
+    assignment-1: 2026-10-13     # the due date students see
+  grace_days:                    # OPTIONAL, grading-only (default 0)
+    assignment-1: 2              # autograder pins to 2026-10-15; students still see 10-13
+```
+
+- **The due date students see** (cohort site schedule + the brief's "due" event) is
+  `schedule.assignments[slug]` (23:59 that day). Edit → commit → **Sync site**. Omit it and the
+  date is **synthesised** (fortnightly).
+- **The grading pin** (which commit the autograder marks) is that **same date + `grace_days`** -
+  there is **no separate deadline input** on the Grade assignment button. `grace_days` is the one
+  knob for a quiet grace period: grade later than the published date without changing what
+  students were told.
+
 ## The site
 
 Releases call **Sync site** automatically (the assignment brief appears on the cohort site).
