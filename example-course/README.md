@@ -10,7 +10,7 @@ website with a **real schedule**. Use it two ways:
 - **Artifact B - self-serve.** A faculty member follows the same steps to stand up *their
   own* course and feel the workflow. Same dataset, same runbook.
 
-The canonical, engine-wide input reference is [`docs/REQUIRED-INPUT-SCHEMA.md`](../docs/REQUIRED-INPUT-SCHEMA.md).
+The canonical, engine-wide input reference is [`docs/required-input-schema.md`](../docs/faculty/required-input-schema.md).
 This file is the demo-specific concretisation of it.
 
 ## The demo orgs
@@ -51,7 +51,7 @@ example-course/
 ## Deploy it (≈20 min)
 
 Prereqs: the bot account is an **owner** of both demo orgs, and `DSL_BOT_TOKEN`
-(`repo` + `admin:org` + `workflow`) is available. See [the token section](../docs/REQUIRED-INPUT-SCHEMA.md#token).
+(`repo` + `admin:org` + `workflow`) is available. See [the token section](../docs/faculty/required-input-schema.md#token).
 
 1. **Create** `Hertie-DSL-Demo` and `DSL-Demo-f2026` in the GitHub web UI; add the bot as
    owner of each. *(The only manual step - there is no org-creation API.)*

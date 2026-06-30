@@ -3,8 +3,8 @@
 Operational detail behind the faculty buttons: the bot credential, its exact permissions,
 the token / secret model, and who-can-run access. For **how the system is built and how the
 pieces move** - diagrams, the workflow sequences, the token-propagation flow, the bot
-lifecycle, and the code map - see **[ARCHITECTURE.md](ARCHITECTURE.md)**. **Faculty
-delivering a course don't need either** - see the [root README](../README.md) for the
+lifecycle, and the code map - see **[architecture.md](architecture.md)**. **Faculty
+delivering a course don't need either** - see the [root README](../../README.md) for the
 button workflow.
 
 ## The bot account
@@ -18,7 +18,7 @@ email + 2FA, added as **Owner** of every course/cohort org; its classic PAT is
 `DSL_BOT_TOKEN`. One account, one token, rotated centrally; nobody shares the password. The
 account to **invite as Owner** of each new org (course setup step 2) is `hertie-dsl-bot` -
 standing it up and rotating it is the
-[ARCHITECTURE → Bot lifecycle](ARCHITECTURE.md#bot-lifecycle--setup--rotation).
+[ARCHITECTURE → Bot lifecycle](architecture.md#bot-lifecycle--setup--rotation).
 
 **Exact permissions.** It must be an **Owner** of every course and cohort org, and its token
 must carry:
@@ -80,5 +80,5 @@ GitHub Team/Enterprise, org secrets reach private repos and this propagation is 
 ## How it works (dropdowns, website, code map)
 
 The dynamic-dropdown regeneration, the cohort-website and public course-website pipelines,
-and the repo/code map now live in **[ARCHITECTURE.md](ARCHITECTURE.md)** alongside the
+and the repo/code map now live in **[architecture.md](architecture.md)** alongside the
 system diagrams and workflow sequences - this doc keeps the operational reference above.

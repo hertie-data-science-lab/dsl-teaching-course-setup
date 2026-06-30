@@ -1,8 +1,8 @@
 # Architecture & workflows
 
 Admin / developer reference - **how the system is built and how the pieces move**. For the
-faculty-facing overview see the [root README](../README.md); for operational specifics (exact
-PAT scopes, how to grant access) see [ADMIN-SETUP.md](ADMIN-SETUP.md).
+faculty-facing overview see the [root README](../../README.md); for operational specifics (exact
+PAT scopes, how to grant access) see [admin-setup.md](admin-setup.md).
 
 - [System overview](#system-overview)
 - [The bot identity](#the-bot-identity)
@@ -55,7 +55,7 @@ Every button runs server-side under **one** credential, `DSL_BOT_TOKEN` - "the b
 The bot is the shared service account **`hertie-dsl-bot`** - its own email + 2FA, **Owner of
 every course and cohort org**, and its classic PAT is `DSL_BOT_TOKEN`. One account, one token,
 rotated centrally; nobody shares the password. Exact PAT scopes are in
-[ADMIN-SETUP](ADMIN-SETUP.md#the-bot-account); standing it up and rotating it is the
+[ADMIN-SETUP](admin-setup.md#the-bot-account); standing it up and rotating it is the
 [Bot lifecycle](#bot-lifecycle--setup--rotation).
 
 ## Token & secret propagation
@@ -105,7 +105,7 @@ flowchart TD
 - GitHub shows "Run workflow" only to **write+** users; the seeded `check-team` re-checks repo
   permission at run time. Nobody is added to a course they don't teach (teams are org-scoped,
   so cross-org grants aren't possible anyway). Full detail + how to add people:
-  [ADMIN-SETUP "Who can run which action"](ADMIN-SETUP.md#who-can-run-which-action).
+  [ADMIN-SETUP "Who can run which action"](admin-setup.md#who-can-run-which-action).
 
 ## Core workflows
 
