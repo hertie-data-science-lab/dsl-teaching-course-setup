@@ -2,7 +2,7 @@
 
 Sets up org-level infrastructure that persists across semesters:
 - DSL_BOT_TOKEN secret (required for all workflows)
-- Default teams (instructors, students, auditors)
+- Faculty teams (instructors, course-admin); cohort bootstrap adds students + auditors
 - Org settings (2FA enforcement, Pages default branch)
 - Profile README (.github repo with description)
 - Org-level workflows in .github (sync-enrolment, bootstrap-cohort, refresh-actions)
@@ -74,33 +74,40 @@ def set_org_secret(org: str, secret_name: str, secret_value: str) -> bool:
     return False
 
 
-def create_default_teams(org: str) -> None:
-    """Create org-level role teams. Semester-specific teams are created by new_semester."""
-    log_step("Creating org-level teams")
-    create_team(
-        org,
-        "instructors",
-        "Instructors and TAs (across all semesters)",
-        privacy="closed",
-    )
-    create_team(
-        org,
-        "students",
-        "Students (across all semesters)",
-        privacy="closed",
-    )
-    create_team(
-        org,
+# Faculty role teams - created in EVERY org (course + cohort): instructors run the buttons
+# and push content (write); course-admin manage the org (admin).
+FACULTY_TEAMS = [
+    ("instructors", "Instructors and TAs", "closed"),
+    ("course-admin", "Course administrators - DSL team", "closed"),
+]
+# Cohort-only role teams: enrolled students + read-only auditors. The persistent course org
+# never gets these - it holds unreleased materials, model solutions, and hidden tests, so
+# students/auditors must not be near it. Auditors are read-only: assignment release is
+# roster-driven (onboarded students only), so auditors never receive assignment repos.
+COHORT_TEAMS = [
+    ("students", "Enrolled students", "closed"),
+    (
         "auditors",
-        "Auditors (across all semesters, read-only)",
-        privacy="closed",
-    )
-    create_team(
-        org,
-        "course-admin",
-        "Course administrators - DSL team",
-        privacy="closed",
-    )
+        "Auditors - read-only (released materials only, no assignments)",
+        "closed",
+    ),
+]
+
+
+def create_default_teams(org: str) -> None:
+    """Create the faculty role teams (FACULTY_TEAMS) - in both course and cohort orgs. The
+    cohort-only teams (students, auditors) are created separately by create_cohort_teams."""
+    log_step("Creating faculty teams")
+    for slug, desc, privacy in FACULTY_TEAMS:
+        create_team(org, slug, desc, privacy=privacy)
+
+
+def create_cohort_teams(org: str) -> None:
+    """Create the cohort-only role teams (COHORT_TEAMS): enrolled students + read-only
+    auditors. Called at cohort bootstrap only - never on the persistent course org."""
+    log_step("Creating cohort teams (students, auditors)")
+    for slug, desc, privacy in COHORT_TEAMS:
+        create_team(org, slug, desc, privacy=privacy)
 
 
 # The course-org teams that may run the seeded buttons, and their grant on `.github`:
@@ -374,6 +381,8 @@ def setup_cohort_extras(org: str) -> None:
     The `materials` repo is created on the first release, so it's not made here.
     """
     log_step("Cohort setup: tighten org + seed welcome/classroom-config")
+
+    create_cohort_teams(org)
 
     code, out = gh(
         "api",
@@ -671,7 +680,7 @@ Course org bootstrap complete: {args.org}
 
 DONE (automated):
 ============================================================
-- Org-level teams: instructors, students, auditors, course-admin
+- Faculty teams: instructors, course-admin (students + auditors are created per cohort)
 - Org settings: 2FA enforcement enabled
 - .github profile repo with README
 - Workflows in .github: Release materials, Release assignment, Sync enrolment,
