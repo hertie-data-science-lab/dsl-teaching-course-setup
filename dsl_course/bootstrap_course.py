@@ -147,15 +147,144 @@ def add_course_admins(org: str, handles: str) -> None:
             log_err(f"  ! could not add {login}: {out[:120]}")
 
 
+# People + schedule change year to year, so they are templated into each COHORT's
+# dsl-course.yml (read by that cohort's website), never the persistent course org's.
+_PEOPLE_BLOCK = (
+    "# People shown on THIS cohort's website. Declared per cohort because the teaching\n"
+    "# team changes year to year. Cards carry institutional headshots + bio links (not\n"
+    "# GitHub avatars); the first instructor is featured. photo = image URL, url =\n"
+    "# bio/profile link, title = optional role. Uncomment:\n"
+    "#\n"
+    "# people:\n"
+    "#   instructors:\n"
+    '#     - name: "Prof. Jane Doe"\n'
+    '#       title: "Professor of ..."\n'
+    '#       photo: "https://.../jane.jpg"\n'
+    '#       url: "https://.../profile/jane"\n'
+    "#   teaching_assistants:\n"
+    '#     - name: "A. N. Other"\n'
+    '#       photo: "https://.../other.jpg"\n'
+    '#       url: "https://.../profile/other"\n'
+)
+_SCHEDULE_BLOCK = (
+    "# Schedule overrides for THIS cohort's website. Edit here (GitHub web UI is fine -\n"
+    "# no CLI) then run Sync site. Anything you leave out is synthesised (semester start\n"
+    "# from the cohort's fYYYY tag; assignments every 2 weeks; exams at weeks 8 and 15).\n"
+    "# Uncomment and fill what you want to pin:\n"
+    "#\n"
+    "# schedule:\n"
+    "#   semester_start: 2026-09-07        # YYYY-MM-DD\n"
+    "#   assignments:                      # keyed by assignment slug (no -fYYYY)\n"
+    "#     assignment-1: 2026-10-13\n"
+    "#     assignment-2: 2026-11-10\n"
+    "#   exams:\n"
+    "#     - name: MidTerm Exam\n"
+    "#       date: 2026-11-03\n"
+    "#     - name: Final Exam\n"
+    "#       date: 2026-12-15\n"
+)
+
+
+# classroom-config (cohort, private) contract: the roster/grades/teams/schedule schema,
+# documented next to the files faculty edit. Samples use a `.sample` suffix so the engine
+# (sync_teams, scheduled-release, grade sync) never ingests them - only the real names.
+_CLASSROOM_README = """# classroom-config - this cohort's private config
+
+**PRIVATE.** Roster and grades for this cohort. No PII (emails, ids, names) leaves this
+repo. Faculty/FAs edit these files; the buttons in the **course org's** Actions tab read
+them. Canonical, engine-wide schema:
+<https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/blob/main/docs/REQUIRED-INPUT-SCHEMA.md>.
+
+## students.csv - the roster (required)
+
+One row per student. Leave `github_handle`/`github_id` blank - students fill them on join.
+
+| column | filled by | notes |
+|--------|-----------|-------|
+| student_id | registrar | institutional id |
+| hertie_email | registrar | **match key** - enrolment reconciles on this |
+| name | registrar | display name |
+| github_handle | onboarding | blank until they join via the welcome "Join" issue |
+| github_id | onboarding | numeric id captured on join - **immutable; never hand-edit** |
+| section | registrar | optional grouping (e.g. A/B) |
+
+**Sync enrolment** reconciles the `students` team from this file (`prune` off-boards leavers).
+
+## grades/<assignment>.csv - marks (optional, when returning grades)
+
+One file per assignment, e.g. `grades/assignment-1.csv`:
+`github_handle, team, auto, manual, team_grade, adjustment, final, comments, team_comments`.
+**Grade assignment** can pre-fill `auto`/`team_grade` from hidden tests; faculty fill the
+rest, then **Sync gradebooks** -> **Render grades** -> **Distribute grades**.
+
+## teams.csv - group membership (optional, for group assignments)
+
+`assignment, team, github_handle`. Students self-select via the welcome "Join team" issue,
+or edit directly. See `teams.csv.sample` - **the engine only acts on a real `teams.csv`.**
+
+## schedule.csv - release calendar (optional, pairs with the manifest)
+
+`week, date` - the daily **Scheduled release** cron opens each week's manifest items on its
+date. See `schedule.csv.sample`.
+"""
+
+_TEAMS_CSV_SAMPLE = """# Sample. Rename to teams.csv to activate. Students normally self-select via
+# the welcome "Join team" issue, so you rarely edit this by hand.
+assignment,team,github_handle
+assignment-4-project,team-1,alice
+assignment-4-project,team-1,bob
+assignment-4-project,team-2,carol
+"""
+
+_SCHEDULE_CSV_SAMPLE = """# Sample. Rename to schedule.csv to activate. Maps each teaching week to the
+# calendar date the Scheduled release cron opens that week's manifest items.
+week,date
+1,2026-09-07
+2,2026-09-14
+3,2026-09-21
+"""
+
+
+def _course_metadata(
+    org: str, org_name: str, course_name: str, course_code: str
+) -> str:
+    """dsl-course.yml for the persistent COURSE org: identity only. The course org
+    spans many cohorts, so cohort-specific people + schedule live per cohort."""
+    return (
+        f"org: {org}\n"
+        f"org_name: {org_name}\n"
+        f"course_name: {course_name}\n"
+        f"course_code: {course_code or ''}\n"
+        "\n"
+        "# This is the persistent COURSE org - it spans many cohorts (years). People\n"
+        "# (instructors/TAs) and the schedule change year to year, so they are declared\n"
+        "# PER COHORT in <cohort-org>/.github/dsl-course.yml, not here. Cohorts are\n"
+        "# registered separately in .github/cohort-courses-pages.yml.\n"
+    )
+
+
+def _cohort_metadata(org: str, course_org: str) -> str:
+    """dsl-course.yml for a per-year COHORT org: the cohort-specific people + schedule
+    its website reads. Course identity (name/code) comes from the parent course org."""
+    course_line = f"course: {course_org}\n" if course_org else ""
+    return f"org: {org}\n{course_line}\n{_PEOPLE_BLOCK}\n{_SCHEDULE_BLOCK}"
+
+
 def create_profile_repo(
     org: str,
     org_name: str,
     course_name: str,
     course_code: str = "",
+    *,
+    is_cohort: bool = False,
+    course_org: str = "",
 ) -> None:
     """Create the .github profile repo with README and course metadata.
 
     Also tags the repo with `dsl-course-hub` so `list_orgs.py` can discover it.
+
+    The course org's dsl-course.yml carries identity only; a cohort's instead carries
+    the cohort-specific people + schedule its website reads (these vary by year).
     """
     log_step("Setting up .github profile repo")
     if not create_repo(
@@ -170,41 +299,9 @@ def create_profile_repo(
     # (The org-overview profile/README.md is generated at the end of bootstrap, once
     # all repos exist, by seed.update_profile_readme - see main.)
     metadata = (
-        f"org: {org}\n"
-        f"org_name: {org_name}\n"
-        f"course_name: {course_name}\n"
-        f"course_code: {course_code or ''}\n"
-        "\n"
-        "# People shown on the cohort website. Declared here so cards carry institutional\n"
-        "# headshots + bio links (not GitHub avatars). The first instructor is featured.\n"
-        "# photo = image URL, url = bio/profile link, title = optional role. Uncomment:\n"
-        "#\n"
-        "# people:\n"
-        "#   instructors:\n"
-        '#     - name: "Prof. Jane Doe"\n'
-        '#       title: "Professor of ..."\n'
-        '#       photo: "https://.../jane.jpg"\n'
-        '#       url: "https://.../profile/jane"\n'
-        "#   teaching_assistants:\n"
-        '#     - name: "A. N. Other"\n'
-        '#       photo: "https://.../other.jpg"\n'
-        '#       url: "https://.../profile/other"\n'
-        "\n"
-        "# Optional schedule overrides for the cohort website. Edit here (GitHub web UI\n"
-        "# is fine - no CLI) then run Sync site. Anything you leave out is synthesised\n"
-        "# (semester start from the cohort's fYYYY tag; assignments every 2 weeks; exams\n"
-        "# at weeks 8 and 15). Uncomment and fill what you want to pin:\n"
-        "#\n"
-        "# schedule:\n"
-        "#   semester_start: 2026-09-07        # YYYY-MM-DD\n"
-        "#   assignments:                      # keyed by assignment slug (no -fYYYY)\n"
-        "#     assignment-1: 2026-10-13\n"
-        "#     assignment-2: 2026-11-10\n"
-        "#   exams:\n"
-        "#     - name: MidTerm Exam\n"
-        "#       date: 2026-11-03\n"
-        "#     - name: Final Exam\n"
-        "#       date: 2026-12-15\n"
+        _cohort_metadata(org, course_org)
+        if is_cohort
+        else _course_metadata(org, org_name, course_name, course_code)
     )
     put_file(
         org,
@@ -347,7 +444,35 @@ def setup_cohort_extras(org: str) -> None:
             roster.encode(),
             "init: starter roster (replace the example row with registrar data)",
         )
-        log_ok("classroom-config seeded (students.csv starter)")
+        put_file(
+            org,
+            "classroom-config",
+            "README.md",
+            _CLASSROOM_README.encode(),
+            "docs: classroom-config schema + contract",
+        )
+        put_file(
+            org,
+            "classroom-config",
+            "grades/.gitkeep",
+            b"",
+            "init: grades/ (add one <assignment>.csv per assignment to return marks)",
+        )
+        put_file(
+            org,
+            "classroom-config",
+            "teams.csv.sample",
+            _TEAMS_CSV_SAMPLE.encode(),
+            "docs: sample teams.csv (group assignments)",
+        )
+        put_file(
+            org,
+            "classroom-config",
+            "schedule.csv.sample",
+            _SCHEDULE_CSV_SAMPLE.encode(),
+            "docs: sample schedule.csv (scheduled release)",
+        )
+        log_ok("classroom-config seeded (roster + README + grades/ + samples)")
 
     # Public, auto-deployed cohort website (from course-website-template).
     scaffold.scaffold_site(org)
@@ -474,8 +599,15 @@ def main() -> int:
     # 2. Default teams
     create_default_teams(args.org)
 
-    # 3. Profile repo
-    create_profile_repo(args.org, org_name, course_name, args.course_code)
+    # 3. Profile repo (course = identity only; cohort = its people + schedule)
+    create_profile_repo(
+        args.org,
+        org_name,
+        course_name,
+        args.course_code,
+        is_cohort=args.cohort,
+        course_org=args.course or "",
+    )
 
     # 3b. Course vs cohort wiring.
     if args.cohort:
