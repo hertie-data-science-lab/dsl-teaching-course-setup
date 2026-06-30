@@ -207,6 +207,19 @@ def grant_team_repo_access(org: str, team: str, repo: str, permission: str) -> b
     return False
 
 
+# The course-org faculty teams that get standing access to course repos: instructors run
+# releases day-to-day (write), course-admin manage (admin). Applied to `.github` at bootstrap
+# and to every scaffolded materials/assignment repo, so faculty can push content without an
+# owner hand-granting each new repo.
+COURSE_TEAM_ACCESS = {"instructors": "push", "course-admin": "admin"}
+
+
+def grant_course_team_access(org: str, repo: str) -> None:
+    """Give the course-org faculty teams their standing access to `repo` (COURSE_TEAM_ACCESS)."""
+    for team, perm in COURSE_TEAM_ACCESS.items():
+        grant_team_repo_access(org, team, repo, perm)
+
+
 def create_repo(
     org: str,
     name: str,

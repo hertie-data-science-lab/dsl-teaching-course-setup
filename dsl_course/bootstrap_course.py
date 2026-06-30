@@ -26,6 +26,7 @@ from pathlib import Path
 
 from . import scaffold, seed, site
 from .utils import (
+    COURSE_TEAM_ACCESS,
     create_repo,
     create_team,
     gh,
@@ -107,7 +108,7 @@ def create_default_teams(org: str) -> None:
 # Access is per-course - only this course's teaching team goes in these teams. The central
 # hertie-data-science-lab faculty/admin teams are a SEPARATE concern (who may bootstrap an
 # org at all - the central action's gate); they are deliberately NOT mirrored in here.
-BUTTON_TEAMS = {"instructors": "push", "course-admin": "admin"}
+BUTTON_TEAMS = COURSE_TEAM_ACCESS
 
 
 def grant_button_access(org: str) -> None:
