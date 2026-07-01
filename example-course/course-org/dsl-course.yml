@@ -3,13 +3,16 @@ org_name: DSL Demo Course
 course_name: Deep Learning (Demo)
 course_code: GRAD-DEMO
 
-# Instructors/TAs/course-admins - the SSOT for both GitHub access (instructors/
-# course-admin teams, applied here AND mirrored into every cohort org by sync_faculty)
-# and website display. github_handle is the only required field (it's what actually
-# grants access); start/end are optional ISO dates for auto-rotation. name/title/photo/
-# url are optional, display-only - cards carry institutional headshots + bio links
-# rather than GitHub avatars. The first instructor is the "featured" one.
+# course_admins is the SSOT for course-wide GitHub admin access (applied here AND
+# mirrored into every cohort org's own course-admin team by sync_faculty).
+# instructors/teaching_assistants below are DISPLAY ONLY at this level - website
+# cards (institutional headshots + bio links), not access. Their real, per-cohort
+# push access is declared in the cohort's own classroom-config/people.yml instead
+# (see ../cohort-org/people.yml) - most cohorts have different lecturers/TAs, so
+# that's where it's actually reconciled.
 people:
+  course_admins:
+    - github_handle: "lkaack"
   instructors:
     - github_handle: "lkaack"
       name: "Prof. Lynn Kaack, PhD"

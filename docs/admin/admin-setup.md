@@ -46,24 +46,35 @@ Two **separate** populations - keep them distinct:
   membership alone wouldn't surface it.
 - **Who may run a specific course's buttons** (Release materials/assignment, New
   materials/assignment, Sync membership, Bootstrap cohort, Sync site, Publish course website,
-  Refresh actions): members of **that course org's own** `instructors` (write) or
-  `course-admin` (admin) team. (**Publish course website** carries an editorial
-  responsibility: `actual-readings` mode hosts the reading files publicly, so only publish
-  materials you hold the rights to share - use `reading-list` for copyrighted readings.) The
-  day-to-day buttons gate on **repo permission** on the repo they run in
-  (`seed.py` `_CHECK_TEAM`), and bootstrap grants those two teams write/admin on `.github`
-  (`grant_button_access`). GitHub only shows the "Run workflow" button to write+ users, so
-  without that grant only the org owner can run anything.
+  Refresh actions): members of **that course org's own** `course-admin` (admin) team, or any
+  cohort's own **`instructors-<tag>`** team (write, scoped to that tag's own content repos +
+  `.github`). (**Publish course website** carries an editorial responsibility:
+  `actual-readings` mode hosts the reading files publicly, so only publish materials you hold
+  the rights to share - use `reading-list` for copyrighted readings.) The day-to-day buttons
+  gate on **repo permission** on the repo they run in (`seed.py` `_CHECK_TEAM`); bootstrap
+  grants `course-admin` admin on `.github`, and `sync_faculty` grants each `instructors-<tag>`
+  team push on `.github` + that tag's repos as soon as a cohort declares any instructor for
+  that tag. GitHub only shows the "Run workflow" button to write+ users, so without one of
+  these grants only the org owner can run anything.
 
-**Access is per-course - deliberately.** Central `hertie-data-science-lab` faculty are
-*not* mirrored into course orgs (no one is added to a course they don't teach; teams are
-org-scoped, so cross-org grants aren't possible anyway). To give someone a course's
+**Access is split by role, not per-course-generically.** Central `hertie-data-science-lab`
+faculty are *not* mirrored into course orgs (no one is added to a course they don't teach;
+teams are org-scoped, so cross-org grants aren't possible anyway). To give someone a course's
 buttons:
 
-- at bootstrap, pass the **`admin`** input (course admin handle(s)) → added to
-  `course-admin`; or
-- anytime, add the person to that course org's **`instructors`** team (write) via the org's
-  Teams page.
+- **Admin rights** (course-wide, every cohort): declare them in the course org's
+  `.github/dsl-course.yml` `people:` → `course_admins`, or at bootstrap pass the **`admin`**
+  input (course admin handle(s)). Either way it's reconciled (add + remove) by **Sync
+  membership** - a deleted entry revokes access on the next sync.
+- **Push rights** (a specific cohort's content only): declare them in that cohort's own
+  `classroom-config/people.yml` → `instructors`/`teaching_assistants`. Also reconciled -
+  removing them from that file revokes both their cohort-team and `instructors-<tag>` access.
+- **A permanent, undeclared exception** (rare - e.g. a guest with standing access nobody
+  wants to type into a config file): add the person directly to the course org's generic
+  **`instructors`** team via the org's Teams page. Unlike the two paths above, nothing
+  reconciles this team any more (it predates the per-cohort/tag split), so a manual add here
+  sticks until manually removed - a genuine escape hatch, not a bug, but also not visible to
+  **Show status** or any config file, so use it sparingly and document who's on it elsewhere.
 
 Either way they accept a one-time org invite (membership shows `pending` until then), after
 which the buttons appear in their Actions tab. Students never get write, so never see them.

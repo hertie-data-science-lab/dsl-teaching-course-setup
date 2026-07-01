@@ -25,7 +25,7 @@ This file is the demo-specific concretisation of it.
 ```
 example-course/
   course-org/
-    dsl-course.yml                  # course identity + people (the SSOT) - no schedule here
+    dsl-course.yml                  # course identity + course_admins (the SSOT) + display-only instructor/TA cards
     course-materials-f2026/
       lectures/00_week-1../04_week-5/  # 5 sessions (ordinal-prefixed dirs; slides.md + a code demo each)
       readings/00_week-1../04_week-5/  # 5 sessions of placeholder readings
@@ -41,6 +41,7 @@ example-course/
     students.csv                    # 4 dummy students (handles blank - filled on onboard)
     teams.csv                       # team membership for the group project
     schedule.yml                    # release calendar (Scheduled-release cron) + due dates + exams
+    people.yml                      # this cohort's own instructors/TAs (real push access)
     grades/*.csv                    # per-assignment faculty grade tables (auto/manual/final)
 ```
 
@@ -59,9 +60,10 @@ Prereqs: the bot account is an **owner** of both demo orgs, and `DSL_BOT_TOKEN`
    `org_name=DSL Demo Course`, `course_name=Deep Learning (Demo)`, `course_code=GRAD-DEMO`,
    `set_secret=true`.
 3. Copy this dataset's [`course-org/dsl-course.yml`](course-org/dsl-course.yml) into
-   `Hertie-DSL-Demo/.github/dsl-course.yml` (web editor is fine). It declares the **people**
-   (instructor + TA cards, with headshots + bio links) - so the site shows intended cards,
-   not GitHub avatars.
+   `Hertie-DSL-Demo/.github/dsl-course.yml` (web editor is fine). It declares
+   `course_admins` (real, course-wide access) plus **display-only** instructor/TA cards
+   (headshots + bio links) - so the site shows intended cards, not GitHub avatars. Real
+   instructor/TA push access comes from the cohort's own `people.yml` instead (step 8).
 4. **New materials repo** (`tag=f2026`), then push the contents of `course-org/course-materials-f2026/`
    into it (lectures/readings/syllabus).
 5. **New assignment** twice (`number=1` then `2`, `tag=f2026`), then push each
@@ -73,7 +75,9 @@ Prereqs: the bot account is an **owner** of both demo orgs, and `DSL_BOT_TOKEN`
    [`cohort-org/schedule.yml`](cohort-org/schedule.yml) into
    `DSL-Demo-f2026/classroom-config/schedule.yml` - the release calendar (Scheduled release
    cron) and the **schedule** (real due/exam dates), so the site shows intended dates, not
-   synthesised ones.
+   synthesised ones. Also copy [`cohort-org/people.yml`](cohort-org/people.yml) into
+   `DSL-Demo-f2026/classroom-config/people.yml` - this cohort's real instructor/TA push
+   access (a `instructors-f2026` team on the course org, scoped to this year's repos).
 9. **Release materials** for sessions 0-4 (the `00_week-1` ... `04_week-5` directories). **Release assignment** for `assignment-1`.
 10. **Sync site** (releases also trigger it).
 

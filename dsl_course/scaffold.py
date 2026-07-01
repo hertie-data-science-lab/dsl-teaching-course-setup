@@ -30,6 +30,7 @@ from .utils import (
     gh,
     git,
     grant_course_team_access,
+    grant_tagged_team_access,
     log,
     log_err,
     log_ok,
@@ -78,6 +79,7 @@ def scaffold_materials(org: str, tag: str) -> int:
     ):
         return 1
     grant_course_team_access(org, repo)
+    grant_tagged_team_access(org, repo, tag)
     readme = (
         f"# {repo}\n\nCourse materials - the source for the **Release materials** action.\n\n"
         "## Structure\n\n"
@@ -130,6 +132,7 @@ def scaffold_assignment(org: str, number: str, tag: str) -> int:
     ):
         return 1
     grant_course_team_access(org, repo)
+    grant_tagged_team_access(org, repo, tag)
     # main: starter only (what students receive on generate). No tests, no autograder -
     # grading runs faculty-side from the solution branch (see Grade assignment).
     put_file(

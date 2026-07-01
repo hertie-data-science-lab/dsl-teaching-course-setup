@@ -318,6 +318,20 @@ def grant_course_team_access(org: str, repo: str) -> None:
         grant_team_repo_access(org, team, repo, perm)
 
 
+def grant_tagged_team_access(course_org: str, repo: str, tag: str) -> None:
+    """Give this tag's cohort-declared instructors team (`instructors-<tag>`) push
+    access on `repo` - scoped to just that tag's own content, unlike the standing
+    COURSE_TEAM_ACCESS grant every repo gets. No course-admin-<tag> variant: admin
+    access stays on the single, course-wide `course-admin` team.
+
+    Ensures the team exists first (idempotent) - callable in either order, whether
+    a tag's content repo is scaffolded before or after its cohort first declares
+    instructors."""
+    team = f"instructors-{tag}"
+    create_team(course_org, team, f"Instructors for {tag} (cohort-declared)")
+    grant_team_repo_access(course_org, team, repo, "push")
+
+
 def create_repo(
     org: str,
     name: str,
