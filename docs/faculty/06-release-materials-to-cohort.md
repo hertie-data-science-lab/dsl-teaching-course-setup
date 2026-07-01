@@ -29,8 +29,8 @@ released sessions appear; idempotent (re-running a released session is a no-op).
 ## Scheduled release (optional)
 
 A per-cohort manifest, `course-org/.github/manifests/<cohort-org>.yml` (`sessions:` → what
-opens each session), joined with the cohort's `classroom-config/schedule.csv`
-(`session,date`), lets the daily **Scheduled release** cron open each session's items on its
+opens each session), joined with the cohort's `classroom-config/schedule.yml`
+(`sessions`/`labs`), lets the daily **Scheduled release** cron open each session's items on its
 date - materials, lecture code, **and** assignments. The manual buttons still work for early /
 ad-hoc release.
 
@@ -38,7 +38,7 @@ ad-hoc release.
 
 Releases call **Sync site** for you. Run
 [Sync site](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/sync-site.yml)
-manually only if you've edited the cohort's `dsl-course.yml` (schedule) and want it live
+manually only if you've edited the cohort's `classroom-config/schedule.yml` and want it live
 immediately - people (instructors/TAs) live on the course org's `dsl-course.yml` instead, kept
 in sync automatically by **Sync membership**.
 

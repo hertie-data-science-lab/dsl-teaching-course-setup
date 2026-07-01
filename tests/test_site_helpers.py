@@ -7,25 +7,9 @@ publish citations as text without leaking copyrighted bytes.
 
 from __future__ import annotations
 
-from datetime import date, datetime
-
-import pytest
+from datetime import date
 
 from dsl_course import site
-
-
-@pytest.mark.parametrize(
-    "value,expected",
-    [
-        (date(2026, 9, 7), date(2026, 9, 7)),
-        (datetime(2026, 9, 7, 12, 0), date(2026, 9, 7)),
-        ("2026-09-07", date(2026, 9, 7)),
-        ("not-a-date", None),
-        (12345, None),
-    ],
-)
-def test_coerce_date(value, expected):
-    assert site._coerce_date(value) == expected
 
 
 def test_semester_label():
@@ -44,24 +28,6 @@ def test_set_config_replaces_only_the_named_key():
     out = site._set_config(cfg, "course_name", "Deep Learning")
     assert 'course_name: "Deep Learning"' in out
     assert 'course_code: "X"' in out  # untouched
-
-
-def test_schedule_parses_overrides():
-    meta = {
-        "schedule": {
-            "semester_start": "2026-09-07",
-            "assignments": {"assignment-1": "2026-10-13"},
-            "exams": [{"name": "Final", "date": "2026-12-15"}],
-        }
-    }
-    start, due, exams = site._schedule(meta)
-    assert start == date(2026, 9, 7)
-    assert due == {"assignment-1": date(2026, 10, 13)}
-    assert exams == [("Final", date(2026, 12, 15))]
-
-
-def test_schedule_empty_is_safe():
-    assert site._schedule({}) == (None, {}, [])
 
 
 def test_reading_list_md_inlines_text_lists_binaries_by_name(tmp_path):

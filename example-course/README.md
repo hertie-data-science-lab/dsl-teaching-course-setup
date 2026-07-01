@@ -25,7 +25,7 @@ This file is the demo-specific concretisation of it.
 ```
 example-course/
   course-org/
-    dsl-course.yml                  # course identity + people (the SSOT) + a FILLED schedule block
+    dsl-course.yml                  # course identity + people (the SSOT) - no schedule here
     course-materials-f2026/
       lectures/00_week-1../04_week-5/  # 5 sessions (ordinal-prefixed dirs; slides.md + a code demo each)
       readings/00_week-1../04_week-5/  # 5 sessions of placeholder readings
@@ -40,7 +40,7 @@ example-course/
   cohort-org/
     students.csv                    # 4 dummy students (handles blank - filled on onboard)
     teams.csv                       # team membership for the group project
-    schedule.csv                    # session -> date calendar for the Scheduled-release cron
+    schedule.yml                    # release calendar (Scheduled-release cron) + due dates + exams
     grades/*.csv                    # per-assignment faculty grade tables (auto/manual/final)
 ```
 
@@ -60,8 +60,8 @@ Prereqs: the bot account is an **owner** of both demo orgs, and `DSL_BOT_TOKEN`
    `set_secret=true`.
 3. Copy this dataset's [`course-org/dsl-course.yml`](course-org/dsl-course.yml) into
    `Hertie-DSL-Demo/.github/dsl-course.yml` (web editor is fine). It declares the **people**
-   (instructor + TA cards, with headshots + bio links) and the **schedule** (real due/exam
-   dates) - so the site shows intended cards + dates, not GitHub avatars or synthesised dates.
+   (instructor + TA cards, with headshots + bio links) - so the site shows intended cards,
+   not GitHub avatars.
 4. **New materials repo** (`tag=f2026`), then push the contents of `course-org/course-materials-f2026/`
    into it (lectures/readings/syllabus).
 5. **New assignment** twice (`number=1` then `2`, `tag=f2026`), then push each
@@ -69,7 +69,11 @@ Prereqs: the bot account is an **owner** of both demo orgs, and `DSL_BOT_TOKEN`
 6. **Refresh actions** (populates dropdowns + propagates the repo secret).
 7. **Bootstrap cohort**: `cohort_org=DSL-Demo-f2026`.
 8. Replace the starter row in `DSL-Demo-f2026/classroom-config/students.csv` with
-   `cohort-org/students.csv`.
+   `cohort-org/students.csv`, and copy this dataset's
+   [`cohort-org/schedule.yml`](cohort-org/schedule.yml) into
+   `DSL-Demo-f2026/classroom-config/schedule.yml` - the release calendar (Scheduled release
+   cron) and the **schedule** (real due/exam dates), so the site shows intended dates, not
+   synthesised ones.
 9. **Release materials** for sessions 0-4 (the `00_week-1` ... `04_week-5` directories). **Release assignment** for `assignment-1`.
 10. **Sync site** (releases also trigger it).
 
@@ -77,7 +81,7 @@ Prereqs: the bot account is an **owner** of both demo orgs, and `DSL_BOT_TOKEN`
 
 - **The site:** `https://dsl-demo-f2026.github.io` - course name, semester, instructor/TA
   cards, sessions 0-2 lectures linking the released files, two assignment briefs, and a schedule
-  with the **real dates** from step 6 (Assignment 1 due 13 Oct, MidTerm 3 Nov, Final 15 Dec).
+  with the **real dates** from step 8 (Assignment 1 due 13 Oct, MidTerm 3 Nov, Final 15 Dec).
 - **The console:** `Hertie-DSL-Demo/.github` Actions tab - every faculty button.
 - **Onboarding:** open a **Join** issue in `DSL-Demo-f2026/welcome`, type a student ID from
   the roster (e.g. `220001`), and watch the onboard action enrol you. *(Only IDs whose row

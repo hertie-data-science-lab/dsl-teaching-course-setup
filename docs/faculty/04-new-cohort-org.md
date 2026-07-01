@@ -20,25 +20,33 @@ Stand up the per-year, student-facing org: onboarding, the roster, released mate
    - seeds **`welcome`** repo (public; containing the Join issue + `onboard` workflow),
    - seeds **`classroom-config`** repo (private) with placeholders
       - `README.md`,
-      - `students.csv`, 
+      - `students.csv`,
       - `teams.csv`,
-      - `schedule.csv`,
-      - `grades/`, 
-   - writes the cohort **`.github/dsl-course.yml`** (people + schedule template),
+      - `schedule.yml`,
+      - `grades/`,
+   - applies the course org's current people (instructors/TAs/course-admins) to this
+     cohort's own teams,
    - scaffolds + deploys the site `dsl-demo-f2026.github.io`,
    - registers the cohort in the course org and propagates the token, then runs **Sync site**.
 
-4. **Fill the cohort identity card.** The cohort `.github/dsl-course.yml` holds **people + schedule** (these vary by year; course name/code come from the course org). Edit locally or in the web UI → commit to `main` → run **Sync site**:
+   The cohort org gets **no `dsl-course.yml`** of its own - people are declared once on
+   the [course org](01-new-course-org.md), mirrored down automatically; there's nothing
+   to hand-edit here for them.
+
+4. **Fill the cohort's schedule.** `classroom-config/schedule.yml` holds this cohort's
+   release calendar and due dates (these vary by year). Edit locally or in the web UI →
+   commit to `main` → run **Sync site**:
 
    ```yaml
-   people:
-     instructors:        [{ name: ..., photo: <url>, url: <bio> }]
-     teaching_assistants: [{ name: ..., photo: ..., url: ... }]
-   schedule:
-     semester_start: 2026-09-07
-     assignments: { assignment-1: 2026-10-13 }   # due dates students see (the SSOT)
-     grace_days:  { assignment-1: 0 }            # optional grading-only extension (default 0)
-     exams: [{ name: MidTerm Exam, date: 2026-11-03 }]
+   sessions:
+     "1": 2026-09-07
+     "3": 2026-09-21
+   semester_start: 2026-09-07
+   assignments:
+     assignment-1:
+       due: 2026-10-13        # due date students see (the SSOT)
+       grace_days: 0          # optional grading-only extension (default 0)
+   exams: [{ name: MidTerm Exam, date: 2026-11-03 }]
    ```
 
 5. **Load the roster.** Replace the example row in `classroom-config/students.csv` with

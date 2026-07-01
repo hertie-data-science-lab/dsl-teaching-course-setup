@@ -40,12 +40,12 @@ import subprocess
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
-from datetime import date, datetime, timedelta
+from datetime import date
 from pathlib import Path
 
 import yaml
 
-from . import grades, roster, teams
+from . import grades, roster, schedule, teams
 from .assign import SOLUTION_BRANCH, assignment_slug
 from .utils import (
     GIT_ENV,
@@ -214,40 +214,9 @@ def _grade_target(
         return result
 
 
-def _as_date(value: object) -> date | None:
-    """A YAML date/datetime or ISO `YYYY-MM-DD` string -> date (None if unparseable)."""
-    if isinstance(value, datetime):
-        return value.date()
-    if isinstance(value, date):
-        return value
-    if isinstance(value, str):
-        try:
-            return date.fromisoformat(value.strip()[:10])
-        except ValueError:
-            return None
-    return None
-
-
-def _grading_deadline(meta: dict, slug: str) -> str | None:
-    """The grading pin for `slug` from the cohort schedule - the single source of truth: the
-    published due date (`schedule.assignments[slug]`) plus optional `schedule.grace_days[slug]`
-    (default 0). Returns an ISO date, or None when the assignment has no scheduled due date."""
-    sched = (meta or {}).get("schedule") or {}
-    due = _as_date((sched.get("assignments") or {}).get(slug))
-    if due is None:
-        return None
-    try:
-        grace = int((sched.get("grace_days") or {}).get(slug, 0))
-    except (TypeError, ValueError):
-        grace = 0
-    return (due + timedelta(days=grace)).isoformat()
-
-
 def _scheduled_deadline(cohort_org: str, slug: str) -> str | None:
-    """Grading deadline from the cohort's `.github/dsl-course.yml` schedule (the SSOT)."""
-    raw = get_file_content(cohort_org, ".github", "dsl-course.yml") or ""
-    meta = yaml.safe_load(raw) if raw else {}
-    return _grading_deadline(meta if isinstance(meta, dict) else {}, slug)
+    """Grading deadline from the cohort's classroom-config/schedule.yml (the SSOT)."""
+    return schedule.grading_deadline(schedule.load(cohort_org), slug)
 
 
 def collect(

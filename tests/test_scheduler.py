@@ -26,19 +26,17 @@ MANIFEST = {
         "5": {"assignment": "assignment-2-f2026"},
     }
 }
-CALENDAR = "session,date\n1,2026-09-01\n3,2026-09-15\n5,2026-09-29\n"
-
-
-def test_parse_calendar_skips_bad_dates():
-    cal = scheduler.parse_calendar("session,date\n1,2026-09-01\n2,not-a-date\n3,\n")
-    assert cal == {"1": date(2026, 9, 1)}
+CALENDAR = {
+    "1": date(2026, 9, 1),
+    "3": date(2026, 9, 15),
+    "5": date(2026, 9, 29),
+}
 
 
 def test_due_sessions_in_calendar_order():
-    cal = scheduler.parse_calendar(CALENDAR)
-    assert scheduler.due_sessions(cal, date(2026, 9, 16)) == ["1", "3"]
-    assert scheduler.due_sessions(cal, date(2026, 8, 1)) == []
-    assert scheduler.due_sessions(cal, date(2026, 12, 1)) == ["1", "3", "5"]
+    assert scheduler.due_sessions(CALENDAR, date(2026, 9, 16)) == ["1", "3"]
+    assert scheduler.due_sessions(CALENDAR, date(2026, 8, 1)) == []
+    assert scheduler.due_sessions(CALENDAR, date(2026, 12, 1)) == ["1", "3", "5"]
 
 
 def test_plan_flattens_due_sessions_into_actions():

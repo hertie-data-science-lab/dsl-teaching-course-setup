@@ -64,6 +64,7 @@ GRADES_DIR = "grades"  # faculty-edited source tables, one CSV per assignment
 GRADEBOOK_DIR = "gradebook"  # rendered per-student YAML staged for the preview PR
 GRADEBOOK_PREFIX = "grades-"  # per-student repo: grades-<handle>
 RENDER_BRANCH = "grades-update"
+COHORT_CSV_NAME = "cohort-gradebook.csv"  # generated wide faculty-only glance view
 
 # One assignment CSV row. Individual rows use `auto` (machine score) + `manual` (faculty's
 # hand-marked part); group rows carry the shared `team_grade`, that member's private
@@ -165,6 +166,35 @@ def dump_grades(rows: list[GradeRow]) -> str:
     writer.writerow(GRADE_FIELDS)
     for r in rows:
         writer.writerow([getattr(r, f) for f in GRADE_FIELDS])
+    return out.getvalue()
+
+
+def render_cohort_csv(per: dict[str, list[GradeRow]]) -> str:
+    """Pivot every assignment's raw grade rows into one wide CSV - one row per student,
+    one column-group per assignment (sorted) - a faculty-only glance view. Generated,
+    never hand-edited; the per-assignment CSVs in GRADES_DIR remain the source of
+    truth. Unlike gradebook_entry (student-facing, redacted), this keeps auto/manual/
+    team_grade/adjustment too - it never leaves classroom-config."""
+    fields = tuple(f for f in GRADE_FIELDS if f != "github_handle")
+    assignments = sorted(per)
+    by_assignment: dict[str, dict[str, GradeRow]] = {}
+    handle_set: set[str] = set()
+    for a, rows in per.items():
+        by_assignment[a] = {r.github_handle: r for r in rows if r.github_handle}
+        handle_set.update(by_assignment[a])
+    handles = sorted(handle_set)
+
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow(
+        ["github_handle"] + [f"{a}_{f}" for a in assignments for f in fields]
+    )
+    for handle in handles:
+        row = [handle]
+        for a in assignments:
+            r = by_assignment[a].get(handle)
+            row.extend(getattr(r, f) if r else "" for f in fields)
+        writer.writerow(row)
     return out.getvalue()
 
 
@@ -295,6 +325,8 @@ def render(cohort_org: str) -> int:
         for handle in sorted(books):
             (gbdir / f"{handle}.yml").write_text(render_yaml(books[handle]))
             log_ok(f"+ {GRADEBOOK_DIR}/{handle}.yml")
+        (wd / COHORT_CSV_NAME).write_text(render_cohort_csv(per))
+        log_ok(f"+ {COHORT_CSV_NAME}")
 
         git("-C", str(wd), *GIT_ENV, "add", "-A")
         code, _ = git(

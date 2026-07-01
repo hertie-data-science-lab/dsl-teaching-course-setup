@@ -188,47 +188,18 @@ _FACULTY_BLOCK = (
     '#     - github_handle: "adminhandle"\n'
 )
 
-# Instructors/TAs/course-admins are managed at the COURSE org level (_FACULTY_BLOCK) -
-# this cohort file carries no `people:` block of its own to hand-edit. The cohort's
-# website/access are kept current by `sync_faculty`/`sync_membership`, not by editing
-# here.
-_PEOPLE_NOTE = (
-    "# People (instructors/TAs) are managed at the COURSE org level, not here - see\n"
-    "# that org's `.github/dsl-course.yml`. This cohort's website + team access are kept\n"
-    "# current automatically; there is nothing to hand-edit in this file for people.\n"
-)
-
-# The cohort's own schedule changes year to year, so it is templated into each COHORT's
-# dsl-course.yml (read by that cohort's website).
-_SCHEDULE_BLOCK = (
-    "# Schedule overrides for THIS cohort's website. Edit here (GitHub web UI is fine -\n"
-    "# no CLI) then run Sync site. Anything you leave out is synthesised (semester start\n"
-    "# from the cohort's fYYYY tag; assignments every 2 weeks; exams at weeks 8 and 15).\n"
-    "# Uncomment and fill what you want to pin:\n"
-    "#\n"
-    "# schedule:\n"
-    "#   semester_start: 2026-09-07        # YYYY-MM-DD\n"
-    "#   assignments:                      # due dates (keyed by slug, no -fYYYY) - the SSOT\n"
-    "#     assignment-1: 2026-10-13\n"
-    "#     assignment-2: 2026-11-10\n"
-    "#   grace_days:                        # OPTIONAL: extra days for GRADING only (not shown\n"
-    "#     assignment-1: 2                  # to students). Autograder pins to due + grace_days.\n"
-    "#   exams:\n"
-    "#     - name: MidTerm Exam\n"
-    "#       date: 2026-11-03\n"
-    "#     - name: Final Exam\n"
-    "#       date: 2026-12-15\n"
-)
-
 
 # classroom-config (cohort, private) contract: the roster/grades/teams/schedule schema,
 # documented next to the files faculty edit. Samples use a `.sample` suffix so the engine
 # (sync_teams, scheduled-release, grade sync) never ingests them - only the real names.
 _CLASSROOM_README = """# classroom-config - this cohort's private config
 
-**PRIVATE.** Roster and grades for this cohort. No PII (emails, ids, names) leaves this
-repo. Faculty/FAs edit these files; the buttons in the **course org's** Actions tab read
-them. Canonical, engine-wide schema:
+**PRIVATE.** This is the entire per-cohort data hub - roster, teams, grades, and
+schedule. No PII (emails, ids, names) leaves this repo. People (instructors/TAs) are
+managed at the **course org** level, not here - see that org's `.github/dsl-course.yml`;
+this cohort's team access is kept current automatically. Faculty/FAs edit these files;
+the buttons in the **course org's** Actions tab read them. Canonical, engine-wide
+schema:
 <https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/blob/main/docs/faculty/required-input-schema.md>.
 
 ## students.csv - the roster (required)
@@ -254,8 +225,11 @@ One file per assignment, e.g. `grades/assignment-1.csv`:
 `github_handle, team, auto, manual, team_grade, adjustment, final, comments, team_comments`.
 **Grade assignment** can pre-fill `auto`/`team_grade` from hidden tests; faculty fill the
 rest, then **Sync gradebooks** -> **Render grades** -> **Distribute grades**. The autograder
-pins to each assignment's **due date** from the cohort `schedule` (in `.github/dsl-course.yml`,
-plus optional `grace_days`) - there is no separate deadline input.
+pins to each assignment's **due date** from `schedule.yml` (`assignments.<slug>.due`,
+plus optional `grace_days`) - there is no separate deadline input. A generated,
+read-only `cohort-gradebook.csv` (one row per student, one column-group per
+assignment) appears alongside the per-student gradebooks on every **Render grades** -
+never hand-edit it, it's a glance view, not a source.
 
 ## teams.csv - group membership (optional, for group assignments)
 
@@ -263,10 +237,14 @@ plus optional `grace_days`) - there is no separate deadline input.
 or edit directly - a push here also triggers **Sync membership**. See `teams.csv.sample` -
 **the engine only acts on a real `teams.csv`.**
 
-## schedule.csv - release calendar (optional, pairs with the manifest)
+## schedule.yml - release calendar, due dates, and exams (optional, pairs with the manifest)
 
-`session, date` - the daily **Scheduled release** cron opens each session's manifest items on
-its date. See `schedule.csv.sample`.
+The whole schedule in one file: `sessions`/`labs` (release calendar - session ordinal ->
+date; the daily **Scheduled release** cron opens each session's manifest items on its
+date), `semester_start`/`semester_end`, `assignments` (due dates, keyed by slug, each
+with an optional `grace_days` for grading only), and `exams`. Seeded mostly-commented -
+uncomment and fill what you want to pin; anything left out is synthesised or simply not
+scheduled.
 """
 
 _TEAMS_CSV_SAMPLE = """# Sample. Rename to teams.csv to activate. Students normally self-select via
@@ -277,12 +255,39 @@ assignment-4-project,team-1,bob
 assignment-4-project,team-2,carol
 """
 
-_SCHEDULE_CSV_SAMPLE = """# Sample. Rename to schedule.csv to activate. Maps each teaching session to the
-# calendar date the Scheduled release cron opens that session's manifest items.
-session,date
-1,2026-09-07
-2,2026-09-14
-3,2026-09-21
+# This cohort's entire schedule - release calendar (sessions/labs) + due dates/exams -
+# lives in one file (classroom-config/schedule.yml, see dsl_course.schedule). Seeded
+# live (not a .sample) and mostly commented, so faculty uncomment what they want to
+# pin rather than rename a sample to activate it.
+_SCHEDULE_YML = """# This cohort's schedule - release calendar (sessions/labs), due dates, and exams.
+# Edit here (GitHub web UI is fine - no CLI). Anything you leave out is synthesised
+# (semester start from the cohort's fYYYY tag; assignments every 2 weeks; exams at
+# weeks 8 and 15) or simply not scheduled (no sessions: -> Scheduled release has
+# nothing to auto-open). Uncomment and fill what you want to pin:
+#
+# semester_start: 2026-09-07        # YYYY-MM-DD
+# semester_end: 2026-12-18
+#
+# sessions:                          # release calendar - session ordinal -> date;
+#   "1": 2026-09-07                  # the daily Scheduled release cron opens each
+#   "3": 2026-09-21                  # session's manifest items on its date
+#
+# labs:                              # optional - a second, parallel release calendar
+#   "1": 2026-09-09                  # for a labs/<NN>_.../ section on its own cadence
+#
+# assignments:                       # due dates (keyed by slug, no -fYYYY) - the SSOT
+#   assignment-1:
+#     due: 2026-10-13
+#     grace_days: 2                  # OPTIONAL: extra days for GRADING only (not shown
+#                                    # to students). Autograder pins to due + grace_days.
+#   assignment-2:
+#     due: 2026-11-10
+#
+# exams:
+#   - name: MidTerm Exam
+#     date: 2026-11-03
+#   - name: Final Exam
+#     date: 2026-12-15
 """
 
 
@@ -302,18 +307,10 @@ def _course_metadata(
         "\n"
         "# This is the persistent COURSE org - it spans many cohorts (years). Cohorts are\n"
         "# registered separately in .github/cohort-courses-pages.yml. The schedule changes\n"
-        "# year to year, so it's declared PER COHORT in <cohort-org>/.github/dsl-course.yml,\n"
-        "# not here.\n"
+        "# year to year, so it's declared PER COHORT in that cohort's own\n"
+        "# classroom-config/schedule.yml, not here.\n"
         f"\n{_FACULTY_BLOCK}"
     )
-
-
-def _cohort_metadata(org: str, course_org: str) -> str:
-    """dsl-course.yml for a per-year COHORT org: the cohort-specific schedule its
-    website reads. Course identity (name/code) and people (instructors/TAs) come from
-    the parent course org - see _PEOPLE_NOTE."""
-    course_line = f"course: {course_org}\n" if course_org else ""
-    return f"org: {org}\n{course_line}\n{_PEOPLE_NOTE}\n{_SCHEDULE_BLOCK}"
 
 
 def create_profile_repo(
@@ -323,14 +320,16 @@ def create_profile_repo(
     course_code: str = "",
     *,
     is_cohort: bool = False,
-    course_org: str = "",
 ) -> None:
-    """Create the .github profile repo with README and course metadata.
+    """Create the .github profile repo with README, and (course orgs only) course
+    metadata.
 
     Also tags the repo with `dsl-course-hub` so `list_orgs.py` can discover it.
 
-    The course org's dsl-course.yml carries identity only; a cohort's instead carries
-    the cohort-specific people + schedule its website reads (these vary by year).
+    The course org's dsl-course.yml carries identity + the faculty roster. A cohort
+    org gets no dsl-course.yml at all - its schedule (classroom-config/schedule.yml)
+    varies by year and lives there instead; nothing at runtime reads a cohort's own
+    org/course pointer fields, so there's nothing to seed here for it.
     """
     log_step("Setting up .github profile repo")
     if not create_repo(
@@ -341,21 +340,18 @@ def create_profile_repo(
     ):
         return
 
-    # Course metadata - canonical machine-readable source for discovery tooling.
-    # (The org-overview profile/README.md is generated at the end of bootstrap, once
-    # all repos exist, by seed.update_profile_readme - see main.)
-    metadata = (
-        _cohort_metadata(org, course_org)
-        if is_cohort
-        else _course_metadata(org, org_name, course_name, course_code)
-    )
-    put_file(
-        org,
-        ".github",
-        "dsl-course.yml",
-        metadata.encode(),
-        "init: course metadata for DSL discovery tooling",
-    )
+    if not is_cohort:
+        # Course metadata - canonical machine-readable source for discovery tooling.
+        # (The org-overview profile/README.md is generated at the end of bootstrap,
+        # once all repos exist, by seed.update_profile_readme - see main.)
+        metadata = _course_metadata(org, org_name, course_name, course_code)
+        put_file(
+            org,
+            ".github",
+            "dsl-course.yml",
+            metadata.encode(),
+            "init: course metadata for DSL discovery tooling",
+        )
 
     # Topic marker - list_orgs.py searches for this topic to enumerate course orgs
     topics = [COURSE_HUB_TOPIC]
@@ -523,9 +519,9 @@ def setup_cohort_extras(org: str) -> None:
         put_file(
             org,
             "classroom-config",
-            "schedule.csv.sample",
-            _SCHEDULE_CSV_SAMPLE.encode(),
-            "docs: sample schedule.csv (scheduled release)",
+            "schedule.yml",
+            _SCHEDULE_YML.encode(),
+            "docs: seed schedule.yml (release calendar + due dates + exams)",
         )
         put_file(
             org,
@@ -661,14 +657,14 @@ def main() -> int:
     # 2. Default teams
     create_default_teams(args.org)
 
-    # 3. Profile repo (course = identity only; cohort = its people + schedule)
+    # 3. Profile repo (course org only - identity + faculty roster; a cohort org
+    # gets no dsl-course.yml, its config all lives in classroom-config)
     create_profile_repo(
         args.org,
         org_name,
         course_name,
         args.course_code,
         is_cohort=args.cohort,
-        course_org=args.course or "",
     )
 
     # 3b. Course vs cohort wiring.
