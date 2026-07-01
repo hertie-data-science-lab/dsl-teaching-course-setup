@@ -6,10 +6,12 @@ code, so a new repo is always laid out the way the Release actions expect.
     scaffold materials   --org X --tag f2026                 -> course-materials-f2026
     scaffold assignment  --org X --number 1 --tag f2026      -> assignment-1-f2026
 
-Materials repos get `lectures/week-1/` + `readings/week-1/` skeletons and the
-run-from-repo Release buttons. Assignment repos get a starter on `main` (no tests - grading
-is faculty-side) and a `solution` branch carrying the model solution, `grading.yml`, and the
-HIDDEN tests, so generate never ships any of them to students.
+Materials repos get `lectures/00_session-1/` + `readings/00_session-1/` skeletons (any
+top-level directory with an ordinal-prefixed subdirectory is a releasable section - add
+more, e.g. `labs/`, freely) and the run-from-repo Release buttons. Assignment repos get
+a starter on `main` (no tests - grading is faculty-side) and a `solution` branch
+carrying the model solution, `grading.yml`, and the HIDDEN tests, so generate never
+ships any of them to students.
 """
 
 from __future__ import annotations
@@ -72,18 +74,22 @@ def scaffold_materials(org: str, tag: str) -> int:
         org,
         repo,
         private=True,
-        description="Course materials (lectures/readings by week)",
+        description="Course materials (lectures/readings by session)",
     ):
         return 1
     grant_course_team_access(org, repo)
     readme = (
         f"# {repo}\n\nCourse materials - the source for the **Release materials** action.\n\n"
         "## Structure\n\n"
-        "- `lectures/week-N/` - one folder per week's lecture files\n"
-        "- `readings/week-N/` - one folder per week's readings\n"
+        "Any top-level directory containing at least one ordinal-prefixed subdirectory "
+        "(`00_`, `01_`, `02_`, ...) is a releasable section - no config to declare it:\n\n"
+        "- `lectures/00_session-1/` - one folder per session's lecture files\n"
+        "- `readings/00_session-1/` - one folder per session's readings\n"
         "- `*syllabus*`, this `README.md` (root) - released via the syllabus / README toggles\n\n"
-        "Add more weeks by creating `lectures/week-2/`, `readings/week-2/`, ... then run "
-        "**Refresh actions** so the week dropdown picks them up.\n\n"
+        "Add more sessions by creating `lectures/01_session-2/`, `readings/01_session-2/`, ... "
+        "(only the ordinal prefix matters - name the rest whatever you like), or add a whole "
+        "new section (e.g. `labs/00_intro/`) - then run **Refresh actions** so the session "
+        "dropdown and Release button's section toggles pick it up.\n\n"
         "## Public course website (optional)\n\n"
         "The **Publish course website** action can share this repo's materials on a public "
         "open-courseware site. Lecture files are always hosted; for readings you choose "
@@ -93,8 +99,8 @@ def scaffold_materials(org: str, tag: str) -> int:
     )
     files = {
         "README.md": readme.encode(),
-        "lectures/week-1/.gitkeep": b"",
-        "readings/week-1/.gitkeep": b"",
+        "lectures/00_session-1/.gitkeep": b"",
+        "readings/00_session-1/.gitkeep": b"",
         "SYLLABUS.md": f"# {tag} syllabus\n\nReplace with the real syllabus.\n".encode(),
     }
     for path, content in files.items():

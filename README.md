@@ -17,7 +17,7 @@ Two org tiers:
 ```mermaid
 flowchart TB
   subgraph COURSE["COURSE org — e.g. Hertie-School-Deep-Learning-E1394 (persistent)"]
-    mat["course-materials-f2026 · PRIVATE<br/>lectures/week-N/ + readings/week-N/ (+ syllabus, README)"]
+    mat["course-materials-f2026 · PRIVATE<br/>lectures/00_.../ + readings/00_.../ (+ syllabus, README)"]
     tmpl["assignment-1-f2026 ... · PRIVATE<br/>template repos (is_template) + autograder"]
     gh[".github · PUBLIC<br/>profile (auto) + ALL faculty buttons + cohort registry"]
   end

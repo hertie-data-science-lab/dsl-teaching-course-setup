@@ -1,14 +1,14 @@
 """dsl-course release-code -- publish a package path (subpackage or module) to a cohort.
 
 Phased disclosure of a growing importable package. Where `release` copies a whole
-`lectures/week-N/` folder, this copies a chosen PATH from a source repo into the cohort's
+`lectures/<NN>_.../` folder, this copies a chosen PATH from a source repo into the cohort's
 package tree, additively + idempotently:
 
     source/<repo>/mlpkg/simulation/      (a subpackage folder - the default granularity)
     source/<repo>/mlpkg/training/warmup.py   (a single module - per-module when needed)
             |  copy that path
             v
-    cohort/<cohort-repo>/<same path>     (private + students read; accumulates over weeks)
+    cohort/<cohort-repo>/<same path>     (private + students read; accumulates over sessions)
 
 Granularity is just the path you pick. The package must tolerate unreleased modules (no
 eager `from . import <future_submodule>` in `__init__`) so a partial release still

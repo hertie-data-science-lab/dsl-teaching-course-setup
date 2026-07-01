@@ -13,46 +13,54 @@ import yaml
 from dsl_course import scheduler, seed
 
 MANIFEST = {
-    "weeks": {
-        "week-1": {
-            "materials": {"source_repo": "cm-f2026", "cohort_repo": "materials"}
-        },
-        "week-3": {
-            "materials": {"source_repo": "cm-f2026", "cohort_repo": "materials"},
+    "sessions": {
+        "1": {"materials": {"source_repo": "cm-f2026", "cohort_repo": "materials"}},
+        "3": {
+            "materials": {
+                "source_repo": "cm-f2026",
+                "cohort_repo": "materials",
+                "exclude": ["readings"],
+            },
             "code": [{"source_repo": "lecture-code", "path": "mlpkg/simulation"}],
         },
-        "week-5": {"assignment": "assignment-2-f2026"},
+        "5": {"assignment": "assignment-2-f2026"},
     }
 }
-CALENDAR = "week,date\nweek-1,2026-09-01\nweek-3,2026-09-15\nweek-5,2026-09-29\n"
+CALENDAR = "session,date\n1,2026-09-01\n3,2026-09-15\n5,2026-09-29\n"
 
 
 def test_parse_calendar_skips_bad_dates():
-    cal = scheduler.parse_calendar(
-        "week,date\nweek-1,2026-09-01\nweek-2,not-a-date\nweek-3,\n"
-    )
-    assert cal == {"week-1": date(2026, 9, 1)}
+    cal = scheduler.parse_calendar("session,date\n1,2026-09-01\n2,not-a-date\n3,\n")
+    assert cal == {"1": date(2026, 9, 1)}
 
 
-def test_due_weeks_in_calendar_order():
+def test_due_sessions_in_calendar_order():
     cal = scheduler.parse_calendar(CALENDAR)
-    assert scheduler.due_weeks(cal, date(2026, 9, 16)) == ["week-1", "week-3"]
-    assert scheduler.due_weeks(cal, date(2026, 8, 1)) == []
-    assert scheduler.due_weeks(cal, date(2026, 12, 1)) == ["week-1", "week-3", "week-5"]
+    assert scheduler.due_sessions(cal, date(2026, 9, 16)) == ["1", "3"]
+    assert scheduler.due_sessions(cal, date(2026, 8, 1)) == []
+    assert scheduler.due_sessions(cal, date(2026, 12, 1)) == ["1", "3", "5"]
 
 
-def test_plan_flattens_due_weeks_into_actions():
-    actions = scheduler.plan(MANIFEST, ["week-1", "week-3"])
+def test_plan_flattens_due_sessions_into_actions():
+    actions = scheduler.plan(MANIFEST, ["1", "3"])
     kinds = [a["kind"] for a in actions]
     assert kinds == ["materials", "materials", "code"]
-    # week-3 materials carries the stripped week number for release._week_dir
-    assert actions[1]["week"] == "3"
+    assert actions[1]["session"] == "3"
+    assert actions[1]["exclude"] == {"readings"}
     # code defaults its cohort_repo when omitted
     assert actions[2]["cohort_repo"] == "materials"
 
 
+def test_plan_manifest_accepts_int_yaml_keys():
+    # bare (unquoted) YAML keys like `1:` parse as int, not str - plan() must coerce.
+    manifest = {"sessions": {1: {"assignment": "assignment-1-f2026"}}}
+    assert scheduler.plan(manifest, ["1"]) == [
+        {"kind": "assignment", "template": "assignment-1-f2026"}
+    ]
+
+
 def test_plan_includes_assignment_when_due():
-    actions = scheduler.plan(MANIFEST, ["week-5"])
+    actions = scheduler.plan(MANIFEST, ["5"])
     assert actions == [{"kind": "assignment", "template": "assignment-2-f2026"}]
 
 
@@ -62,9 +70,9 @@ def test_plan_empty_when_nothing_due():
 
 def test_plan_grade_action_string_and_dict_forms():
     manifest = {
-        "weeks": {
-            "week-6": {"grade": "assignment-1-f2026"},
-            "week-7": {
+        "sessions": {
+            "6": {"grade": "assignment-1-f2026"},
+            "7": {
                 "grade": {
                     "template": "assignment-2-f2026",
                     "deadline": "2026-10-15",
@@ -73,14 +81,14 @@ def test_plan_grade_action_string_and_dict_forms():
             },
         }
     }
-    a6 = scheduler.plan(manifest, ["week-6"])[0]
+    a6 = scheduler.plan(manifest, ["6"])[0]
     assert a6 == {
         "kind": "grade",
         "template": "assignment-1-f2026",
         "deadline": None,
         "group": False,
     }
-    a7 = scheduler.plan(manifest, ["week-7"])[0]
+    a7 = scheduler.plan(manifest, ["7"])[0]
     assert a7["template"] == "assignment-2-f2026"
     assert a7["deadline"] == "2026-10-15" and a7["group"] is True
     assert scheduler.describe(a7).startswith("grade assignment-2-f2026")

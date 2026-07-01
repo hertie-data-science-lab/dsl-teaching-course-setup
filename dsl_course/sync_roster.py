@@ -8,7 +8,10 @@ Students normally grant themselves on Join (templates/welcome/onboard.yml); this
 faculty true-up - edit students.csv, then re-run to reconcile the whole team to the roster.
 
 With --prune, students no longer on the roster are removed from the team (off-boarding);
-off by default so a stale roster never silently revokes access.
+off by default here so a standalone/manual run never silently revokes access. The
+seeded **Sync membership** button (dsl_course.sync_membership) always calls this with
+prune=True - config is meant to be the live truth there; this module's own off-by-default
+is only for ad-hoc/CLI use outside that button.
 
 Usage:
     python3 -m dsl_course.sync_roster --cohort-org Deep-Learning-EXAMPLE-f2026
@@ -18,40 +21,21 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 
 from . import roster
 from .utils import (
     add_team_member,
-    gh,
+    get_team_members,
     log,
     log_err,
     log_ok,
     log_step,
+    remove_team_member,
     set_org_membership,
 )
 
 TEAM = "students"
-
-
-def get_team_members(org: str, team_slug: str) -> set[str]:
-    code, out = gh(
-        "api", f"orgs/{org}/teams/{team_slug}/members?per_page=100", "--paginate"
-    )
-    if code != 0:
-        return set()
-    try:
-        return {m["login"] for m in json.loads(out)}
-    except (json.JSONDecodeError, KeyError, TypeError):
-        return set()
-
-
-def remove_team_member(org: str, team_slug: str, login: str) -> bool:
-    code, _ = gh(
-        "api", "--method", "DELETE", f"orgs/{org}/teams/{team_slug}/memberships/{login}"
-    )
-    return code == 0
 
 
 def enroll(org: str, handle: str) -> bool:

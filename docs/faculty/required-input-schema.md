@@ -18,19 +18,19 @@ into a tracking issue and tick as you go.)
 
 - [ ] `[required]` Create the **course org** in the GitHub web UI, then add **`hertie-dsl-bot`** as **Owner** (the one manual step - no org-creation API).
 - [ ] `[required]` Run [**Bootstrap Course Org**](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions/workflows/bootstrap-org.yml) from this repo's Actions tab (`org`, `org_name`, `course_code`; optional `admin`). This also sets `DSL_BOT_TOKEN` on the org - you don't set the secret by hand. See [Token](#token).
-- [ ] `[required]` **Materials**: scaffold with **New materials repo**, then fill `course-materials-fYYYY/lectures/week-N/` and `readings/week-N/` with any files. *(optional: a `*syllabus*` file + `README` at the repo root.)*
+- [ ] `[required]` **Materials**: scaffold with **New materials repo**, then fill `course-materials-fYYYY/lectures/00_.../` and `readings/00_.../` with any files (any top-level dir with ordinal-prefixed subdirs is a releasable section - add more freely). *(optional: a `*syllabus*` file + `README` at the repo root.)*
 - [ ] `[required]` **Assignments** (≥1): scaffold with **New assignment**, then on `main` add the brief (`README.md`) + starter. *(optional: on the `solution` branch, the model solution in `solution/`, and - to autograde - hidden tests in `tests/` plus a `grading.yml`. Student repos get `main` only.)*
+- [ ] *(optional)* **People**: edit the `people:` block in the **course org's** `.github/dsl-course.yml` (`instructors`/`teaching_assistants`/`course_admins` - `github_handle` required per entry, grants GitHub access; optional `start`/`end` dates for auto-rotation, plus display fields). A push here (or the daily cron) reconciles access in the course org AND every cohort - no per-cohort declaration needed.
 - [ ] *(optional)* **Email**: to actually send enrolment-code + grade emails, add the `GRAPH_*` (Microsoft Graph, preferred) or `SMTP_*` Actions secrets. See [Email](#email-optional). *(Without them, every email step still runs as a `dry_run` preview.)*
 - [ ] `[required]` Run **Refresh actions** so every content repo gets its Release buttons, the secret propagates, and all dropdowns populate.
 
 ### Cohort setup (per year)
 
 - [ ] `[required]` Create the **cohort org** in the GitHub web UI; add **`hertie-dsl-bot`** as **Owner**.
-- [ ] `[required]` From the **course org's** Actions tab, run **Bootstrap cohort** (give it the empty cohort org's name). Seeds `welcome` + `classroom-config`, scaffolds the site, registers the cohort, propagates the token.
+- [ ] `[required]` From the **course org's** Actions tab, run **Bootstrap cohort** (give it the empty cohort org's name). Seeds `welcome` + `classroom-config`, scaffolds the site, registers the cohort, propagates the token, and applies the course org's current faculty roster.
 - [ ] `[required]` **Roster**: edit `classroom-config/students.csv` with registrar data - `student_id, hertie_email, name, section`. Leave `github_handle, github_id` blank; students fill them by onboarding.
-- [ ] *(optional)* **People**: edit the `people:` block in the **cohort's** `.github/dsl-course.yml` (instructor/TA cards - declared per cohort since the team varies by year). If omitted, falls back to the course org's GitHub teams + avatars.
 - [ ] *(optional)* **Schedule**: edit the `schedule:` block in the **cohort's** `.github/dsl-course.yml` (real dates). If omitted, dates are synthesised.
-- [ ] `[required]` Run the weekly loop: **Release materials** (per week) and **Release assignment** (per assignment). Students onboard themselves via the **Join** issue in `welcome`; **Sync enrolment** reconciles the `students` team from the roster (faculty true-up).
+- [ ] `[required]` Run the per-session loop: **Release materials** (per session) and **Release assignment** (per assignment). Students onboard themselves via the **Join** issue in `welcome`; a push to `students.csv` triggers **Sync membership** automatically to reconcile the `students` team from the roster.
 - [ ] *(optional)* **Grade + return marks**: **Grade assignment** (autogrades after the deadline, if you added hidden tests) → edit `classroom-config/grades/<assignment>.csv` (add manual marks) → **Sync gradebooks** → **Render grades** (preview PR) → **Distribute grades** (emails each student).
 
 ## What you end up with
@@ -38,14 +38,14 @@ into a tracking issue and tick as you go.)
 ```mermaid
 flowchart LR
   subgraph COURSE["COURSE org (persistent, private)"]
-    cfg[".github/dsl-course.yml<br/>course identity"]
+    cfg[".github/dsl-course.yml<br/>course identity + people<br/>(instructors/TAs/admins)"]
     mat["course-materials-f202x<br/>lectures/ + readings/"]
     tmpl["assignment-N-f202x<br/>template repos"]
     console[".github<br/>console + buttons"]
   end
 
   subgraph COHORT["COHORT org (per year, private)"]
-    ccfg[".github/dsl-course.yml<br/>people + schedule (this year)"]
+    ccfg[".github/dsl-course.yml<br/>schedule (this year)"]
     repos["&lt;assignment&gt;-&lt;handle&gt;<br/>per-student repos"]
     site["live auto-generated site<br/>&lt;cohort&gt;.github.io"]
   end
@@ -64,8 +64,8 @@ Every part of a course has **one canonical place**. Put your inputs there, run t
 buttons, and the pipeline reads them and generates a full, delivery-ready course +
 website. 
 
-1. `.github/dsl-course.yml` is the **config contract** - the course org's carries identity; each cohort org's carries that year's people + schedule;
-2. `course-materials-fYYYY` repo is the **content contract** (lectures/readings/syllabus by week);
+1. `.github/dsl-course.yml` is the **config contract** - the course org's carries identity + people (instructors/TAs/course-admins - the SSOT, mirrored into every cohort); each cohort org's carries that year's schedule;
+2. `course-materials-fYYYY` repo is the **content contract** (lectures/readings/syllabus by session);
 3. `assignment-*-fYYYY` template repos are the **assignment contract**; 
 4. the cohort `students.csv` is the **roster contract**.
   
@@ -76,10 +76,10 @@ running course. _Anything you don't supply is synthesised or skipped, never bloc
 |-------|-----------------|------------------------------|
 | **Course identity** (name, code) | **course** `.github/dsl-course.yml` → `org_name`, `course_name`, `course_code` |  site title + header |
 | **Semester** | derived from the cohort org's `fYYYY`/`sYYYY` tag |  "Fall 2026" + schedule anchor |
-| **People** (instructors, TAs) | **cohort** `.github/dsl-course.yml` → `people:` block (`name`, `photo`, `url`, `title`) |  instructor/TA cards (institutional headshots + bio links) |
+| **People** (instructors, TAs, course-admins) | **course** `.github/dsl-course.yml` → `people:` block (`github_handle` required; optional `start`/`end`, `name`, `photo`, `url`, `title`) - the SSOT, mirrored into every cohort |  `instructors`/`course-admin` team access (course org + every cohort) + instructor/TA cards (institutional headshots + bio links) |
 | **Schedule** (semester start, due dates, exams) | **cohort** `.github/dsl-course.yml` → `schedule:` block |  the schedule table (lectures, due dates, exams) |
-| **Lectures** | `course-materials-fYYYY/lectures/week-N/` (any files) |  weekly lecture entries linking the released files |
-| **Readings** | `course-materials-fYYYY/readings/week-N/` (any files) |  weekly reading links |
+| **Lectures** | `course-materials-fYYYY/lectures/<NN>_.../` (any files; any dir with ordinal-prefixed subdirs is a section) |  per-session lecture entries linking the released files |
+| **Readings** | `course-materials-fYYYY/readings/<NN>_.../` (any files) |  per-session reading links |
 | **Syllabus** | `course-materials-fYYYY/` root file matching `*syllabus*` |  cohort root + syllabus link |
 | **Assignments** | `assignment-N-fYYYY` template repo: `README.md` (brief), `starter.*` on `main`; `solution` branch with the model solution, `grading.yml`, and hidden tests | assignment briefs on the site + one private `<slug>-<handle>` repo per student |
 | **Roster** | cohort `classroom-config/students.csv` (`student_id, hertie_email, name, section`) | enrolment + per-student provisioning |
@@ -102,12 +102,15 @@ Everything below is a button or a file edit.
 | # | Input | Supplied via | Mandatory | Stored as |
 |---|-------|--------------|-----------|-----------|
 | B1 | Course identity: `org`, `org_name`, `course_code` | **Bootstrap Course Org** button inputs | org + org_name + course_code | `.github/dsl-course.yml` |
-| B2 | **Materials**: a `course-materials-fYYYY` repo with `lectures/week-N/` and `readings/week-N/` folders | **New materials repo** button scaffolds it; you add files | yes | course org repo |
+| B2 | **Materials**: a `course-materials-fYYYY` repo with `lectures/00_.../` and `readings/00_.../` folders (any top-level dir with ordinal-prefixed subdirs is a section - no config to declare it) | **New materials repo** button scaffolds it; you add files | yes | course org repo |
 | B3 | Syllabus / root README (optional) | Files at the materials-repo root | optional | copied to the cohort on release if toggled on |
 | B4 | **Assignments**: one `assignment-N-fYYYY` **template** repo each (starter on `main`; the `solution` branch carries the model solution, `grading.yml`, and hidden tests) | **New assignment** button scaffolds it; you add the brief + starter (+ hidden tests on `solution` to autograde) | yes | course org template repos (`is_template`) |
-| B5 | **Release manifest** (optional, for scheduled auto-release): `weeks:` → what opens each week (`materials` / `code` paths / `assignment`). **One file per cohort** (source repos are year-tagged) | Edit `.github/manifests/<cohort-org>.yml` | no (manual buttons work without it) | course org `.github` repo |
+| B5 | **Release manifest** (optional, for scheduled auto-release): `sessions:` → what opens each session (`materials` / `code` paths / `assignment`). **One file per cohort** (source repos are year-tagged) | Edit `.github/manifests/<cohort-org>.yml` | no (manual buttons work without it) | course org `.github` repo |
+| B6 | **People** (instructors, TAs, course-admins) - the SSOT for both GitHub access and website display, mirrored into every cohort | Edit the `people:` block in the course org's `.github/dsl-course.yml` (`github_handle` required per entry; optional `start`/`end` for auto-rotation, plus display fields) | no (falls back to the course org's GitHub teams for display; no entries means no faculty access to sync) |
 
-*(People + schedule were previously listed here; they're **per-cohort** now - see C6/C7.)*
+*(Schedule is listed per-cohort - see C6. People used to be per-cohort too; it's now
+declared once on the course org and mirrored down, since instructors/TAs need the same
+access whether they're touching the persistent course org or a specific cohort.)*
 
 ### C. Per-cohort (each year)
 
@@ -117,15 +120,14 @@ Everything below is a button or a file edit.
 | C2 | **Roster**: registrar columns of `students.csv` (`student_id, hertie_email, name, section`) | Edit `classroom-config/students.csv` (private) | yes |
 | C3 | **Grades** (optional, when returning marks): one CSV per assignment, `classroom-config/grades/<assignment>.csv` (`github_handle, team, auto, manual, team_grade, adjustment, final, comments, team_comments`) | **Grade assignment** can pre-fill `auto`/`team_grade` from hidden tests; faculty fill the rest, then **Sync gradebooks** → **Render grades** → **Distribute grades** | no |
 | C4 | **Teams** (optional, for group assignments): `classroom-config/teams.csv` (`assignment, team, github_handle`) | Students self-select via the welcome **Join team** issue, or faculty edit the CSV directly | no |
-| C5 | **Calendar** (optional, pairs with the release manifest): `classroom-config/schedule.csv` (`week, date`) | Edit the CSV; the daily **Scheduled release** cron opens each week's manifest items on its date | no |
-| C6 | **People** (instructors + TAs: name, photo, bio link, title) - vary by year | Edit the `people:` block in the cohort's `.github/dsl-course.yml` | optional (else the course org's GitHub teams → avatars) |
-| C7 | **Schedule dates** (semester start, assignment due dates, exam dates) | Edit the `schedule:` block in the cohort's `.github/dsl-course.yml` | optional (synthesised if blank) |
+| C5 | **Calendar** (optional, pairs with the release manifest): `classroom-config/schedule.csv` (`session, date`) | Edit the CSV; the daily **Scheduled release** cron opens each session's manifest items on its date | no |
+| C6 | **Schedule dates** (semester start, assignment due dates, exam dates) | Edit the `schedule:` block in the cohort's `.github/dsl-course.yml` | optional (synthesised if blank) |
 
 `github_handle` and `github_id` are **left blank** - students fill them by onboarding (below).
 
-**Group teams materialise from `teams.csv`.** The **Sync teams** button (and a group
-**Release assignment**) reconciles a GitHub Team `<assignment>-<team>` from the CSV - one-way,
-so the CSV stays authoritative and the Team can't drift. See
+**Group teams materialise from `teams.csv`.** A push to it triggers **Sync membership**
+(and a group **Release assignment**), reconciling a GitHub Team `<assignment>-<team>`
+from the CSV - one-way, so the CSV stays authoritative and the Team can't drift. See
 [ARCHITECTURE → Project teams](../admin/architecture.md#project-teams-group-assignments).
 
 **Grades are private and previewable.** Each student gets one private `grades-<handle>`
@@ -171,8 +173,9 @@ Student lifecycle is **two separate stages** - *enrol once, provision per assign
      released materials unlock);
    - comments confirmation, labels `enrolled`, closes the issue.
 
-   The faculty true-up is the **Sync enrolment** button: `sync_roster` reads `students.csv`
-   and reconciles the whole `students` team from it (idempotent).
+   A push to `students.csv` triggers **Sync membership** automatically: `sync_roster`
+   reads it and reconciles the whole `students` team from it (idempotent). The daily
+   cron and `workflow_dispatch` also re-run it as a manual escape hatch.
 
 2. **Provisioning (per-assignment repos).** **Release assignment** for
    each students the `release assignment` workflow generates a private
@@ -181,8 +184,8 @@ Student lifecycle is **two separate stages** - *enrol once, provision per assign
    
 **Submission** is a plain `git push` to `main` in the student's repo.
 
-**Removal / rollover:** drop the row from `students.csv` and re-run **Sync enrolment** with
-`prune` to off-board the member from the `students` team.
+**Removal / rollover:** drop the row from `students.csv` and push - **Sync membership**
+off-boards that member from the `students` team on the same push, no separate step.
 
 Roster columns:
 
@@ -197,22 +200,33 @@ Roster columns:
 
 ## People
 
-Instructor/TA cards are a **declared input**: the `people:` block in the **cohort's**
-`.github/dsl-course.yml` (declared per cohort, because the teaching team changes year to
-year). This lets cards carry institutional headshots + bio links rather than GitHub
-avatars. The first instructor is the "featured" one. Edit it and run **Sync site**:
+Instructors/TAs/course-admins are a **declared input** on the **course org's**
+`.github/dsl-course.yml` - the single source of truth for both GitHub access
+(`instructors`/`course-admin` teams, applied here and mirrored into every cohort by
+**Sync membership**) and website display. `github_handle` is the only required field;
+`start`/`end` (optional ISO dates) auto-rotate access - a TA's access lapses on their
+`end` date with no manual removal. This lets cards carry institutional headshots + bio
+links rather than GitHub avatars. The first instructor is the "featured" one:
 
 ```yaml
 people:
   instructors:
-    - name: "Prof. Jane Doe"
-      title: "Professor of ..."        # optional
-      photo: "https://.../jane.jpg"    # image URL (shown on the card)
-      url: "https://.../profile/jane"  # bio / profile link
+    - github_handle: "janedoe"           # required - grants the `instructors` team
+      start: "2026-09-01"                # optional - no start = active immediately
+      end: "2027-06-30"                  # optional - no end = indefinite
+      name: "Prof. Jane Doe"             # optional, display only
+      title: "Professor of ..."          # optional
+      photo: "https://.../jane.jpg"      # image URL (shown on the card)
+      url: "https://.../profile/jane"    # bio / profile link
   teaching_assistants:
-    - name: "A. N. Other"
+    - github_handle: "anOther"
+      start: "2026-09-01"
+      end: "2027-01-31"
+      name: "A. N. Other"
       photo: "https://.../other.jpg"
       url: "https://.../profile/other"
+  course_admins:
+    - github_handle: "adminhandle"       # access only - never shown on the site
 ```
 
 If there is no `people:` block, the site falls back to the course org's GitHub

@@ -1,31 +1,33 @@
 """dsl-course scheduler -- date-driven auto-release (manifest x calendar).
 
 The same idempotent release functions as the manual buttons, fired automatically. A
-**per-cohort release manifest** (what opens each week) lives course-side in the `.github`
-repo as `manifests/<cohort-org>.yml` (one per cohort - source repos are year-tagged); each
-cohort's **calendar** (week -> date) lives in its `classroom-config`. A daily cron joins
-them: every week whose date has arrived is (re-)released. Because every release is
-idempotent, re-runs are no-ops and there is no "already released" state to track.
+**per-cohort release manifest** (what opens each session) lives course-side in the
+`.github` repo as `manifests/<cohort-org>.yml` (one per cohort - source repos are
+year-tagged); each cohort's **calendar** (session -> date) lives in its
+`classroom-config`. A daily cron joins them: every session whose date has arrived is
+(re-)released. Because every release is idempotent, re-runs are no-ops and there is no
+"already released" state to track.
 
-Manifest (`manifests/<cohort-org>.yml` in `<course>/.github`):
-    weeks:
-      week-1:
+Manifest (`manifests/<cohort-org>.yml` in `<course>/.github`) - keys are the ordinal
+session number (matching each section's `<NN>_<slug>/` directories, see release.py):
+    sessions:
+      "1":
         materials: {source_repo: course-materials-f2026, cohort_repo: materials}
-      week-3:
-        materials: {source_repo: course-materials-f2026, cohort_repo: materials}
+      "3":
+        materials: {source_repo: course-materials-f2026, cohort_repo: materials, exclude: [readings]}
         code:
           - {source_repo: lecture-code, path: mlpkg/simulation, cohort_repo: materials}
-      week-5:
+      "5":
         assignment: assignment-2-f2026
-      week-7:
+      "7":
         grade:
           template: assignment-2-f2026
           deadline: 2026-10-15   # grade the last commit on/before this date
 
 Calendar (`schedule.csv` in `<cohort>/classroom-config`):
-    week,date
-    week-1,2026-09-01
-    week-3,2026-09-15
+    session,date
+    1,2026-09-01
+    3,2026-09-15
 
 Usage (the cron passes the cohort; --today is for testing):
     python3 -m dsl_course.scheduler --course-org COURSE --cohort-org COHORT
@@ -54,49 +56,46 @@ CALENDAR_PATH = "schedule.csv"
 
 
 def parse_calendar(text: str) -> dict[str, date]:
-    """Parse schedule.csv (`week,date` with ISO dates) into {week: date}. Bad rows skipped."""
+    """Parse schedule.csv (`session,date` with ISO dates) into {session: date}. Bad
+    rows skipped."""
     out: dict[str, date] = {}
     for row in csv.DictReader(io.StringIO(text)):
-        week = (row.get("week") or "").strip()
+        session = (row.get("session") or "").strip()
         raw = (row.get("date") or "").strip()
-        if not (week and raw):
+        if not (session and raw):
             continue
         try:
-            out[week] = date.fromisoformat(raw)
+            out[session] = date.fromisoformat(raw)
         except ValueError:
             continue
     return out
 
 
-def due_weeks(calendar: dict[str, date], today: date) -> list[str]:
-    """Weeks whose scheduled date has arrived (<= today), in calendar order."""
-    return [w for w, d in sorted(calendar.items(), key=lambda kv: kv[1]) if d <= today]
+def due_sessions(calendar: dict[str, date], today: date) -> list[str]:
+    """Sessions whose scheduled date has arrived (<= today), in calendar order."""
+    return [s for s, d in sorted(calendar.items(), key=lambda kv: kv[1]) if d <= today]
 
 
-def _week_number(week_key: str) -> str:
-    """'week-3' -> '3' (release/_week_dir tolerates padding); else the key unchanged."""
-    return week_key.split("-", 1)[1] if week_key.startswith("week-") else week_key
-
-
-def plan(manifest: dict, weeks: list[str]) -> list[dict]:
-    """Flatten the manifest's due weeks into an ordered list of release actions.
+def plan(manifest: dict, sessions: list[str]) -> list[dict]:
+    """Flatten the manifest's due sessions into an ordered list of release actions.
 
     Pure: no I/O. Each action is a dict with a `kind` the executor dispatches on. Unknown
-    keys under a week are ignored so the manifest can carry comments/extras."""
-    weeks_map = (manifest or {}).get("weeks") or {}
+    keys under a session are ignored so the manifest can carry comments/extras."""
+    sessions_map = {
+        str(k): v for k, v in ((manifest or {}).get("sessions") or {}).items()
+    }
     actions: list[dict] = []
-    for week in weeks:
-        entry = weeks_map.get(week) or {}
+    for session in sessions:
+        entry = sessions_map.get(session) or {}
         if "materials" in entry:
             m = entry["materials"] or {}
             actions.append(
                 {
                     "kind": "materials",
-                    "week": _week_number(week),
+                    "session": session,
                     "source_repo": m.get("source_repo"),
                     "cohort_repo": m.get("cohort_repo", "materials"),
-                    "include_lectures": m.get("include_lectures", True),
-                    "include_readings": m.get("include_readings", True),
+                    "exclude": set(m.get("exclude") or []),
                 }
             )
         for c in entry.get("code") or []:
@@ -132,7 +131,7 @@ def describe(action: dict) -> str:
     """One-line human description of an action (for dry-run / 'what opens when')."""
     k = action["kind"]
     if k == "materials":
-        return f"materials week {action['week']} from {action['source_repo']} -> {action['cohort_repo']}"
+        return f"materials session {action['session']} from {action['source_repo']} -> {action['cohort_repo']}"
     if k == "code":
         return f"code {action['path']} from {action['source_repo']} -> {action['cohort_repo']}"
     if k == "grade":
@@ -175,9 +174,8 @@ def _execute(course_org: str, cohort_org: str, action: dict) -> int:
             action["source_repo"],
             cohort_org,
             action["cohort_repo"],
-            action["week"],
-            include_lectures=action["include_lectures"],
-            include_readings=action["include_readings"],
+            action["session"],
+            exclude=action["exclude"],
         )
     if kind == "code":
         from .release_code import release_code
@@ -215,11 +213,11 @@ def run(course_org: str, cohort_org: str, today: date, dry_run: bool = False) ->
     calendar = _load_calendar(cohort_org)
     if not calendar:
         return 1  # has a manifest but no dates - a misconfiguration (already logged)
-    weeks = due_weeks(calendar, today)
-    actions = plan(manifest, weeks)
+    sessions = due_sessions(calendar, today)
+    actions = plan(manifest, sessions)
     log_step(
         f"Scheduler {course_org} -> {cohort_org} as of {today}: "
-        f"{len(weeks)} due week(s), {len(actions)} release action(s)"
+        f"{len(sessions)} due session(s), {len(actions)} release action(s)"
     )
     if not actions:
         log_ok("nothing due.")

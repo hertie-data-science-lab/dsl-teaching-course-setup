@@ -24,7 +24,7 @@ sequenceDiagram
   W->>W: onboard matches code → records handle + GitHub id
   W->>O: add student to org + students team
   S->>O: accept org invite (required to see anything)
-  F->>O: Sync enrolment (true-up / prune)
+  F->>W: edit students.csv (push) → Sync membership auto-reconciles (true-up / off-board)
 ```
 
 ## Steps
@@ -39,16 +39,18 @@ sequenceDiagram
    (unspoofable, issue-author) GitHub handle + immutable id, and adds them to the org +
    `students` team. **They must accept the org invite** before they can see anything.
 
-3. **Sync enrolment.** Course org → `.github` →
-   [Sync enrolment](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/sync-enrolment.yml):
-   reconciles the `students` team from the roster (a true-up after self-onboarding). Tick
-   `prune` to off-board anyone no longer on the roster.
+3. **Sync membership runs automatically.** Any push to `classroom-config/students.csv`
+   triggers [Sync membership](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/sync-membership.yml),
+   reconciling the `students` team from the roster (a true-up after self-onboarding) - a
+   deleted row off-boards that student on the same push, no separate prune step. A daily
+   cron also re-runs it as a safety net; `workflow_dispatch` is a manual escape hatch.
 
 ## Group assignments (optional)
 
 Students open a **Join team** issue in `welcome` (or faculty edit
-`classroom-config/teams.csv`: `assignment, team, github_handle`); **Sync teams** materialises a
-GitHub team per group; a group **Release assignment** then grants each team its shared repo.
+`classroom-config/teams.csv`: `assignment, team, github_handle`) - either way, the push
+triggers **Sync membership**, which materialises a GitHub team per group; a group
+**Release assignment** then grants each team its shared repo.
 
 ## Next
 

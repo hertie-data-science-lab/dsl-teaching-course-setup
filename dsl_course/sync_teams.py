@@ -10,7 +10,10 @@ a re-sync overwrites them to match. Provisioning a group assignment grants the m
 on the group's repo (so post-sync membership edits propagate to access automatically).
 
 With --prune, members no longer in the CSV are removed from their team (off-boarding); off by
-default so a stale CSV never silently revokes access. Emptied teams are left in place.
+default here so a standalone/manual run never silently revokes access. Emptied teams are left
+in place. The seeded **Sync membership** button (dsl_course.sync_membership) always calls this
+with prune=True - config is meant to be the live truth there; this module's own off-by-default
+is only for ad-hoc/CLI use outside that button.
 
 Usage:
     python3 -m dsl_course.sync_teams --cohort-org Deep-Learning-EXAMPLE-f2026
@@ -23,8 +26,16 @@ import argparse
 import sys
 
 from . import teams
-from .sync_roster import get_team_members, remove_team_member
-from .utils import add_team_member, create_team, log, log_err, log_ok, log_step
+from .utils import (
+    add_team_member,
+    create_team,
+    get_team_members,
+    log,
+    log_err,
+    log_ok,
+    log_step,
+    remove_team_member,
+)
 
 
 def team_slug(assignment: str, team: str) -> str:

@@ -1,7 +1,7 @@
 # Add materials to the course org
 
 Create the year's materials repo and fill it with lectures + readings. **Release materials**
-later copies week folders from here into a cohort. One repo per year: `course-materials-{f/s}YYYY`.
+later copies session folders from here into a cohort. One repo per year: `course-materials-{f/s}YYYY`.
 
 ## Prerequisites
 
@@ -14,30 +14,38 @@ later copies week folders from here into a cohort. One repo per year: `course-ma
    [New materials repo](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/new-materials.yml),
    input `tag` = `f2026` → creates **`course-materials-f2026`** (private) with the schema the
    downstream actions expect:
-   - empty `lectures/week-1/` + `readings/week-1/` 
-   - a `README.md`, 
+   - empty `lectures/00_session-1/` + `readings/00_session-1/`
+   - a `README.md`,
    - a placeholder `syllabus.md`,
    - and the three run-from-repo Release buttons (`release-materials`, `release-assignment`, `release-code`)
 
    Your `instructors` team is granted **write** on the new repo automatically, so you can
    push straight away.
 
-2. **Push your content** to `main` (git push or the web uploader), following the schema:
+2. **Push your content** to `main` (git push or the web uploader), following the schema. Any
+   top-level directory containing at least one ordinal-prefixed subdirectory is a releasable
+   section - no config to declare it, so you can add more freely (e.g. `labs/`):
 
    ```
-   lectures/week-N/   any files - slides, demo code, notebooks …
-   readings/week-N/   any files
-   syllabus.md        optional
+   lectures/00_session-1/   any files - slides, demo code, notebooks …
+   readings/00_session-1/   any files
+   syllabus.md              optional
    ```
 
-   *NB: You can add the full course content here as a 'staging' repo - it remains private and non-viewable by students; while only the weeks you you choose to 'release to cohort' get dispatched to the student-facing cohort org.*
+   Only the leading ordinal (`00_`, `01_`, `02_`, ...) is meaningful - name the rest of the
+   directory whatever's clearest to you (`00_intro`, `01_regression`, ...).
 
-3. **Refresh actions** (course `.github`) so the `week` dropdowns pick up the new weeks you just added.
+   *NB: You can add the full course content here as a 'staging' repo - it remains private and
+   non-viewable by students; while only the sessions you choose to 'release to cohort' get
+   dispatched to the student-facing cohort org.*
+
+3. **Refresh actions** (course `.github`) so the `session` dropdown and each section's include
+   checkbox pick up what you just added.
 
 ## Next
 
 - [Add an assignment](03-add-assignment-to-course.md).
-- [Release to a cohort](06-release-materials-to-cohort.md) - open weeks up to students.
+- [Release to a cohort](06-release-materials-to-cohort.md) - open sessions up to students.
 
 ---
 **Demo:** [`DSL-Demo-Course-E1234`](https://github.com/DSL-Demo-Course-E1234) → New materials repo.

@@ -1,16 +1,18 @@
-"""dsl-course release -- publish one week's content from a course repo to a cohort repo.
+"""dsl-course release -- publish one session's content from a course repo to a cohort
+repo.
 
 Run from inside a course content repo (materials-f2026): that repo is the SOURCE.
-Copies one week's lecture and/or reading folders into a chosen repo in a cohort org
-(private repo + `students` team read). Only the released weeks appear, so "each week
-opens up". Git-clone based so binary PDFs copy intact.
+Copies one session's content, from every discovered section, into a chosen repo in a
+cohort org (private repo + `students` team read). Only the released sessions appear,
+so "each session opens up". Git-clone based so binary PDFs copy intact.
 
-Source layout (lectures and readings twinned in one repo):
-    lectures/week-<N>/...
-    readings/week-<N>/...
+Source layout: any top-level directory containing at least one ordinal-prefixed
+subdirectory is a releasable "section" - no config to declare it, the directory
+structure is the only contract:
+    <section>/<NN>_<free text>/...      e.g. lectures/00_intro/, labs/03_regression/
 
     course/<source-repo>   (private)
-            |  copy week N (lectures and/or readings)
+            |  copy session N from every discovered section (minus --exclude)
             v
     cohort/<cohort-repo>   (private + students read)
 
@@ -18,8 +20,8 @@ Usage:
     python3 -m dsl_course.release \\
         --source-org TEST-HERTIE-COURSE --source-repo materials-f2026 \\
         --cohort-org TEST-HERTIE-COHORT-f2026 --cohort-repo materials \\
-        --week 1
-    # add --no-lectures or --no-readings to release only one kind (default: both)
+        --session 1
+    # add --exclude readings (space/comma separated) to skip one or more sections
 """
 
 from __future__ import annotations
@@ -30,9 +32,19 @@ import sys
 import tempfile
 from pathlib import Path
 
-from .utils import GIT_ENV, create_repo, gh, git, log, log_err, log_ok, log_step
+from .utils import (
+    GIT_ENV,
+    create_repo,
+    discover_sections,
+    find_session_dir,
+    gh,
+    git,
+    log,
+    log_err,
+    log_ok,
+    log_step,
+)
 
-SECTIONS = ("lectures", "readings")
 _GIT_ENV = GIT_ENV
 
 
@@ -51,19 +63,6 @@ def grant_students_read(cohort_org: str, repo: str) -> None:
         log("  (students team not found - create it first)")
 
 
-def _week_dir(section_dir: Path, week: str) -> Path | None:
-    """Find the week subfolder under a section, tolerating padding variants."""
-    if not section_dir.is_dir():
-        return None
-    names = [f"week-{week}", f"week{week}"]
-    if week.isdigit():
-        names += [f"week-{int(week):02d}", f"week{int(week):02d}"]
-    for name in names:
-        if (section_dir / name).is_dir():
-            return section_dir / name
-    return None
-
-
 def _syllabus_files(root: Path) -> list[Path]:
     """Root-level syllabus file(s), matched case-insensitively so SYLLABUS.md,
     Syllabus.md, syllabus.txt, course-syllabus.pdf, ... all release. Sorted so the
@@ -80,19 +79,13 @@ def release(
     source_repo: str,
     cohort_org: str,
     cohort_repo: str,
-    week: str,
-    include_lectures: bool = True,
-    include_readings: bool = True,
+    session: str,
+    exclude: set[str] | None = None,
     include_syllabus: bool = False,
     include_readme: bool = False,
 ) -> int:
-    wanted = [s for s, on in zip(SECTIONS, (include_lectures, include_readings)) if on]
-    if not (wanted or include_syllabus or include_readme):
-        log_err("nothing to release - everything was switched off.")
-        return 1
-
     log_step(
-        f"Releasing week {week} from {source_org}/{source_repo} "
+        f"Releasing session {session} from {source_org}/{source_repo} "
         f"-> {cohort_org}/{cohort_repo} (cohort-private)"
     )
     create_repo(
@@ -118,14 +111,19 @@ def release(
             log_err(f"could not clone {cohort_org}/{cohort_repo}")
             return 1
 
+        wanted = [s for s in discover_sections(src) if s not in (exclude or set())]
+        if not (wanted or include_syllabus or include_readme):
+            log_err("nothing to release - no sections found, and everything else was switched off.")
+            return 1
+
         copied = 0
         for section in wanted:
-            wdir = _week_dir(src / section, week)
-            if wdir is None:
-                log(f"  (no {section}/week-{week} in source - skipped)")
+            sdir = find_session_dir(src / section, session)
+            if sdir is None:
+                log(f"  (no {section}/{session}_* in source - skipped)")
                 continue
-            shutil.copytree(wdir, out / section / wdir.name, dirs_exist_ok=True)
-            log_ok(f"+ {section}/{wdir.name}")
+            shutil.copytree(sdir, out / section / sdir.name, dirs_exist_ok=True)
+            log_ok(f"+ {section}/{sdir.name}")
             copied += 1
 
         # Optional root files (default off): syllabus + README, deployed to the cohort
@@ -144,8 +142,8 @@ def release(
 
         if copied == 0:
             log_err(
-                f"nothing matched for week {week} in {source_org}/{source_repo} "
-                f"(expected e.g. lectures/week-{week}/). Nothing released."
+                f"nothing matched for session {session} in {source_org}/{source_repo} "
+                f"(expected e.g. lectures/{session}_.../). Nothing released."
             )
             return 1
 
@@ -153,7 +151,7 @@ def release(
             (out / "README.md").write_text(
                 f"# {cohort_repo}\n\n"
                 f"Released from `{source_org}/{source_repo}` - **enrolled students only**.\n\n"
-                f"Weeks open up as the course progresses.\n"
+                f"Sessions open up as the course progresses.\n"
             )
 
         git("-C", str(out), *_GIT_ENV, "add", "-A")
@@ -165,10 +163,10 @@ def release(
             "-q",
             "--no-verify",
             "-m",
-            f"release: week {week}",
+            f"release: session {session}",
         )
         if code != 0:
-            log_ok("nothing new to release (week already published)")
+            log_ok("nothing new to release (session already published)")
             return 0
         if git("-C", str(out), *_GIT_ENV, "push", "-q", "origin", "HEAD")[0] != 0:
             log_err("push failed")
@@ -187,9 +185,12 @@ def main() -> int:
     parser.add_argument(
         "--cohort-repo", required=True, help="Target repo in the cohort org"
     )
-    parser.add_argument("--week", required=True, help="Week number, e.g. 1")
-    parser.add_argument("--no-lectures", action="store_true", help="Skip lectures")
-    parser.add_argument("--no-readings", action="store_true", help="Skip readings")
+    parser.add_argument("--session", required=True, help="Session number, e.g. 1")
+    parser.add_argument(
+        "--exclude",
+        default="",
+        help="Space/comma-separated section names to skip (e.g. 'readings')",
+    )
     parser.add_argument(
         "--syllabus", action="store_true", help="Also copy root *syllabus* file(s)"
     )
@@ -201,14 +202,14 @@ def main() -> int:
     if (args.source_org, args.source_repo) == (args.cohort_org, args.cohort_repo):
         log_err("source and target must differ.")
         return 1
+    exclude = {s for s in args.exclude.replace(",", " ").split() if s}
     rc = release(
         args.source_org,
         args.source_repo,
         args.cohort_org,
         args.cohort_repo,
-        args.week,
-        include_lectures=not args.no_lectures,
-        include_readings=not args.no_readings,
+        args.session,
+        exclude=exclude,
         include_syllabus=args.syllabus,
         include_readme=args.readme,
     )

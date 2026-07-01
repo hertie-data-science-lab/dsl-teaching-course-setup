@@ -1,33 +1,35 @@
-# Release manifest for the DSL-Demo-f2026 cohort - what opens each week. One file per
-# cohort (source repos are year-tagged), kept course-side in the .github repo under
-# manifests/<cohort-org>.yml. The daily Scheduled release cron joins this with the
-# cohort's classroom-config/schedule.csv (week -> date) and releases everything due.
-# Manual buttons still work for early/ad-hoc release. Every release is idempotent.
-weeks:
-  week-1:
+# Release manifest for the DSL-Demo-f2026 cohort - what opens each session. One file
+# per cohort (source repos are year-tagged), kept course-side in the .github repo under
+# manifests/<cohort-org>.yml. Keys are the ordinal session number, matching each
+# section's <NN>_<slug>/ directories (e.g. lectures/00_week-1/ -> session "0"). The
+# daily Scheduled release cron joins this with the cohort's
+# classroom-config/schedule.csv (session -> date) and releases everything due. Manual
+# buttons still work for early/ad-hoc release. Every release is idempotent.
+sessions:
+  "0":
     materials: {source_repo: course-materials-f2026, cohort_repo: materials}
     code:
       # Release the package base early so partial releases still import.
       - {source_repo: lecture-code-f2026, path: mlpkg/core, cohort_repo: materials}
-  week-2:
+  "1":
     materials: {source_repo: course-materials-f2026, cohort_repo: materials}
-  week-3:
+  "2":
     materials: {source_repo: course-materials-f2026, cohort_repo: materials}
     code:
       # Phased disclosure: reveal a topic-subpackage when you teach it.
       - {source_repo: lecture-code-f2026, path: mlpkg/simulation, cohort_repo: materials}
     assignment: assignment-1-f2026
-  week-4:
+  "3":
     materials: {source_repo: course-materials-f2026, cohort_repo: materials}
-  week-5:
+  "4":
     materials: {source_repo: course-materials-f2026, cohort_repo: materials}
     code:
       - {source_repo: lecture-code-f2026, path: mlpkg/training, cohort_repo: materials}
     assignment: assignment-2-f2026
   # Grade actions fire AFTER each deadline (faculty-side autograde).
-  week-7:
+  "6":
     grade: {template: assignment-1-f2026, deadline: '2026-10-13'}
-  week-9:
+  "8":
     grade: {template: assignment-2-f2026, deadline: '2026-10-27'}
-  week-11:
+  "10":
     grade: {template: assignment-4-project-f2026, deadline: '2026-11-15', group: true}

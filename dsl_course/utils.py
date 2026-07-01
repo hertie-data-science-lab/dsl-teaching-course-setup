@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import subprocess
 import sys
+from pathlib import Path
 from typing import Any
 
 
@@ -191,6 +193,102 @@ def add_team_member(org: str, team_slug: str, login: str, role: str = "member") 
     return False
 
 
+def get_team_members(org: str, team_slug: str) -> set[str]:
+    code, out = gh(
+        "api", f"orgs/{org}/teams/{team_slug}/members?per_page=100", "--paginate"
+    )
+    if code != 0:
+        return set()
+    try:
+        return {m["login"] for m in json.loads(out)}
+    except (json.JSONDecodeError, KeyError, TypeError):
+        return set()
+
+
+def remove_team_member(org: str, team_slug: str, login: str) -> bool:
+    code, _ = gh(
+        "api", "--method", "DELETE", f"orgs/{org}/teams/{team_slug}/memberships/{login}"
+    )
+    return code == 0
+
+
+def reconcile_team_members(
+    org: str, team: str, wanted: set[str], prune: bool = True, dry_run: bool = False
+) -> int:
+    """Full add(+remove) reconcile of one team's membership to exactly `wanted`."""
+    current = get_team_members(org, team)
+    errors = 0
+    for handle in sorted(wanted - current):
+        if dry_run:
+            log(f"    DRY-RUN add {handle} -> {org}/{team}")
+        elif add_team_member(org, team, handle):
+            log_ok(f"{handle} -> {org}/{team}")
+        else:
+            errors += 1
+    if prune:
+        for handle in sorted(current - wanted):
+            if dry_run:
+                log(f"    DRY-RUN remove {handle} <- {org}/{team}")
+            elif remove_team_member(org, team, handle):
+                log_ok(f"removed {handle} from {org}/{team}")
+            else:
+                errors += 1
+    return errors
+
+
+def active_today(start: str | None, end: str | None, today: str) -> bool:
+    """Whether `today` (ISO date string) falls within [start, end], either bound optional
+    (open-ended if omitted)."""
+    if start and today < start:
+        return False
+    if end and today > end:
+        return False
+    return True
+
+
+# Session directories are named "<ordinal>_<free text>" (e.g. "00_intro",
+# "07_finals-review") - only the leading, zero-padding-tolerant ordinal is meaningful;
+# the rest is whatever the course calls it. No "week"/"session" literal is required.
+_SESSION_PREFIX_RE = re.compile(r"^0*(\d+)_")
+
+
+def session_number(name: str) -> int | None:
+    """Extract the ordinal prefix from a directory name ('00_intro' -> 0, '07_x' -> 7),
+    or None if it doesn't start with digits followed by an underscore."""
+    m = _SESSION_PREFIX_RE.match(name)
+    return int(m.group(1)) if m else None
+
+
+def find_session_dir(section_dir: Path, session: str) -> Path | None:
+    """Find the child of `section_dir` whose ordinal prefix matches `session` exactly
+    (session='3' matches '3_x'/'03_x'/'003_x', but not '13_x' or '30_x')."""
+    if not section_dir.is_dir() or not session.isdigit():
+        return None
+    target = int(session)
+    for child in sorted(section_dir.iterdir()):
+        if child.is_dir() and session_number(child.name) == target:
+            return child
+    return None
+
+
+def discover_sections(repo_root: Path) -> list[str]:
+    """Any top-level directory containing at least one ordinal-prefixed subdirectory is
+    a releasable section - no declared config, the directory structure is the only
+    source of truth. Sorted for a deterministic order."""
+    if not repo_root.is_dir():
+        return []
+    sections = []
+    for child in sorted(repo_root.iterdir()):
+        if not child.is_dir():
+            continue
+        if any(
+            grandchild.is_dir() and session_number(grandchild.name) is not None
+            for grandchild in child.iterdir()
+        ):
+            sections.append(child.name)
+    return sections
+
+
 def grant_team_repo_access(org: str, team: str, repo: str, permission: str) -> bool:
     """Grant a team a permission level on one repo (idempotent)."""
     code, out = gh(
@@ -296,6 +394,29 @@ def get_file_content(org: str, repo: str, path: str) -> str | None:
     if code != 0:
         return None
     return out
+
+
+def delete_file(org: str, repo: str, path: str, message: str) -> bool:
+    """Delete a file via the Contents API (needs its current SHA). A no-op (returns
+    True) if the file doesn't exist - safe to call unconditionally when retiring a
+    since-renamed/removed generated file."""
+    code, sha = gh("api", f"repos/{org}/{repo}/contents/{path}", "--jq", ".sha")
+    if code != 0:
+        return True
+    code, out = gh(
+        "api",
+        "--method",
+        "DELETE",
+        f"repos/{org}/{repo}/contents/{path}",
+        "--field",
+        f"message={message}",
+        "--field",
+        f"sha={sha}",
+    )
+    if code == 0:
+        return True
+    log_err(f"failed to delete {path}: {out[:200]}")
+    return False
 
 
 def semester_label(semester: str) -> str:
