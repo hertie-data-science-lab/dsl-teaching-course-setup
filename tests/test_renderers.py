@@ -23,10 +23,9 @@ ALL_RENDERED = {
         ["Cohort-f2026"], ["assignment-1-f2026"]
     ),
     "release_code": seed.render_release_code(["Cohort-f2026"], ["materials"]),
-    "sync_enrolment": seed.render_sync_enrolment(["Cohort-f2026"]),
+    "sync_membership": seed.render_sync_membership(["Cohort-f2026"]),
     "send_codes": seed.render_send_codes(["Cohort-f2026"]),
     "sync_gradebooks": seed.render_sync_gradebooks(["Cohort-f2026"]),
-    "sync_teams": seed.render_sync_teams(["Cohort-f2026"]),
     "render_grades": seed.render_render_grades(["Cohort-f2026"]),
     "distribute_grades": seed.render_distribute_grades(["Cohort-f2026"]),
     "bootstrap_cohort": seed.render_bootstrap_cohort(),
@@ -91,25 +90,20 @@ def test_grade_assignment_calls_collect_with_no_deadline_input():
     assert "--group" in rendered and "--deadline" not in rendered
 
 
-def test_sync_enrolment_is_a_single_reconcile():
-    # One idempotent reconcile: cohort + optional off-board, no single-handle override.
-    rendered = seed.render_sync_enrolment(["Cohort-f2026"])
+def test_sync_membership_is_a_consolidated_reconcile():
+    # One consolidated, fully-automatic reconcile (roster + teams + faculty) - no
+    # --prune toggle at this level, config is always the live truth.
+    rendered = seed.render_sync_membership(["Cohort-f2026"])
     inp = workflow_inputs(rendered)
-    assert set(inp) == {"cohort_org", "prune"}
-    assert inp["prune"]["type"] == "boolean"
-    assert inp["prune"]["default"] is False
-    assert "dsl_course.sync_roster" in rendered
-    assert "--handle" not in rendered
-
-
-def test_sync_teams_is_a_reconcile():
-    # One idempotent reconcile of project teams from teams.csv: cohort + optional off-board.
-    rendered = seed.render_sync_teams(["Cohort-f2026"])
-    inp = workflow_inputs(rendered)
-    assert set(inp) == {"cohort_org", "prune"}
-    assert inp["prune"]["type"] == "boolean"
-    assert inp["prune"]["default"] is False
-    assert "dsl_course.sync_teams" in rendered
+    assert set(inp) == {"cohort_org"}
+    assert inp["cohort_org"]["default"] == seed._FACULTY_ONLY
+    assert inp["cohort_org"]["options"] == [seed._FACULTY_ONLY, "Cohort-f2026"]
+    assert "dsl_course.sync_membership" in rendered
+    assert "--prune" not in rendered
+    jobs = workflow_jobs(rendered)
+    assert {"check-team", "sync-dispatch", "sync-auto"} <= set(jobs)
+    trigger = yaml.safe_load(rendered).get("on", yaml.safe_load(rendered).get(True))
+    assert set(trigger) == {"push", "repository_dispatch", "schedule", "workflow_dispatch"}
 
 
 def test_dotgithub_readme_orients_faculty():

@@ -65,9 +65,9 @@ def test_schedule_empty_is_safe():
 
 
 def test_reading_list_md_inlines_text_lists_binaries_by_name(tmp_path):
-    wk = tmp_path / "week-1"
+    wk = tmp_path / "session-1"
     wk.mkdir()
-    (wk / "reading.md").write_text("# Week 1\n- Smith 2020, ch.1")
+    (wk / "reading.md").write_text("# Session 1\n- Smith 2020, ch.1")
     (wk / "paper.pdf").write_bytes(b"%PDF-1.4 copyrighted bytes")
     md = site._reading_list_md(wk)
     assert "Smith 2020" in md  # citation text is published
@@ -80,7 +80,7 @@ def test_public_links_are_site_relative(tmp_path):
     wk.mkdir()
     (wk / "01 intro.pdf").write_bytes(b"x")
     links = site._public_links(
-        wk, "/public-materials/course-materials-f2026/week-1/lectures"
+        wk, "/public-materials/course-materials-f2026/session-1/lectures"
     )
     assert len(links) == 1
     name, url = links[0]
@@ -98,8 +98,8 @@ def test_public_lecture_entry_reading_list_mode_has_no_links():
 
 
 def test_public_lecture_entry_actual_readings_mode_links_are_local():
-    lec = [("s.pdf", "/public-materials/m/week-1/lectures/s.pdf")]
-    rds = [("r.pdf", "/public-materials/m/week-1/readings/r.pdf")]
+    lec = [("s.pdf", "/public-materials/m/session-1/lectures/s.pdf")]
+    rds = [("r.pdf", "/public-materials/m/session-1/readings/r.pdf")]
     e = site._public_lecture_entry("1", date(2025, 1, 1), lec, rds, "")
     assert "lecture - s.pdf" in e and "reading - r.pdf" in e
     assert "github.com" not in e and "raw." not in e

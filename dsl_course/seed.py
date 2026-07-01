@@ -13,7 +13,7 @@ course repo. No cron, no app.
 
 CLI:
   refresh --course-org X   re-render the content actions into every course repo with
-                           fresh cohort/week/assignment dropdowns, and rebuild the
+                           fresh cohort/session/assignment dropdowns, and rebuild the
                            org profile README. (Run by the Refresh-actions and
                            Bootstrap-cohort workflows.)
 """
@@ -23,12 +23,20 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import sys
 
 import yaml
 
-from .utils import get_file_content, gh, log_ok, log_step, put_file
+from .utils import (
+    delete_file,
+    get_default_branch,
+    get_file_content,
+    gh,
+    log_ok,
+    log_step,
+    put_file,
+    session_number,
+)
 
 COHORTS_PATH = (
     "cohort-courses-pages.yml"  # standalone registry in the course org's .github repo
@@ -50,6 +58,7 @@ WORKFLOWS = (
 )
 
 _CHECK_TEAM = """  check-team:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: Verify the user may run actions for THIS repo
@@ -100,19 +109,20 @@ def _choice(options: list[str]) -> str:
     return "\n".join(f"          - {o}" for o in opts)
 
 
-def _week_input(weeks: list[str]) -> str:
-    """Week as a dropdown of discovered weeks, or a free-text box if none found yet."""
-    if weeks:
+def _session_input(sessions: list[str]) -> str:
+    """Session as a dropdown of discovered sessions, or a free-text box if none found
+    yet."""
+    if sessions:
         return (
-            '      week:\n        description: "Week to release"\n'
+            '      session:\n        description: "Session to release"\n'
             "        required: true\n        type: choice\n        options:\n"
-            + _choice(weeks)
+            + _choice(sessions)
         )
-    return '      week:\n        description: "Week number (e.g. 1)"\n        required: true'
+    return '      session:\n        description: "Session number (e.g. 1)"\n        required: true'
 
 
 # Shared cohort_org + cohort_repo dropdowns and the include_* toggles - identical in
-# both release renderers; only the source/week inputs and the SRC_REPO expr differ.
+# both release renderers; only the source/session inputs and the SRC_REPO expr differ.
 _COHORT_INPUTS = """\
       cohort_org:
         description: "Target cohort org"
@@ -126,15 +136,7 @@ _COHORT_INPUTS = """\
         type: choice
         options:
 {cohort_repos}"""
-_RELEASE_INCLUDES = """\
-      include_lectures:
-        description: "Include lectures"
-        type: boolean
-        default: true
-      include_readings:
-        description: "Include readings"
-        type: boolean
-        default: true
+_ROOT_INCLUDES = """\
       include_syllabus:
         description: "Also release the syllabus (root *syllabus* files) - overwrites"
         type: boolean
@@ -145,14 +147,62 @@ _RELEASE_INCLUDES = """\
         default: false"""
 
 
-def _render_release(header: str, inputs_block: str, src_repo_expr: str) -> str:
+def _section_env_name(section: str) -> str:
+    return f"INC_{section.upper().replace('-', '_')}"
+
+
+def _section_includes(sections: list[str]) -> str:
+    """One include_<section> boolean toggle per section DISCOVERED AT RENDER TIME -
+    there's no fixed/declared set of sections, the repo's own directory structure is
+    the only source of truth (see utils.discover_sections). Only usable when the
+    source repo is known at render time (run-from-repo); the central button can target
+    any repo at RUN time, so it gets a free-text --exclude field instead (see
+    render_central_release)."""
+    if not sections:
+        return ""
+    lines = "\n".join(
+        f'      include_{s}:\n        description: "Include {s}"\n        type: boolean\n        default: true'
+        for s in sections
+    )
+    return "\n" + lines
+
+
+def _render_release(
+    header: str,
+    inputs_block: str,
+    src_repo_expr: str,
+    mode: str,
+    sections: list[str] = (),
+) -> str:
+    """`mode="repo"` (run-from-repo, sections known at render time): one include_<section>
+    checkbox per discovered section. `mode="central"`: the source repo (and so its
+    sections) isn't known until the button runs, so `sections` is ignored and a
+    free-text --exclude input is rendered instead."""
+    if mode == "repo":
+        section_inputs = _section_includes(sections)
+        section_env = "\n".join(
+            f"          {_section_env_name(s)}: ${{{{ inputs.include_{s} }}}}"
+            for s in sections
+        )
+        exclude_build = "\n".join(
+            f'          [ "${_section_env_name(s)}" = "false" ] && exclude="$exclude {s}"'
+            for s in sections
+        )
+    else:
+        section_inputs = (
+            '\n      exclude:\n        description: "Space/comma-separated sections'
+            ' to skip (e.g. readings) - the source repo is only known once you run'
+            ' this, so there are no per-section toggles here"\n        required: false'
+        )
+        section_env = "          EXCLUDE_INPUT: ${{ inputs.exclude }}"
+        exclude_build = '          exclude="$EXCLUDE_INPUT"'
     return f"""name: Release materials
 {header}
 on:
   workflow_dispatch:
     inputs:
-{inputs_block}
-{_RELEASE_INCLUDES}
+{inputs_block}{section_inputs}
+{_ROOT_INCLUDES}
 
 jobs:
 {_CHECK_TEAM}
@@ -164,17 +214,17 @@ jobs:
           SRC_REPO: {src_repo_expr}
           COHORT_ORG: ${{{{ inputs.cohort_org }}}}
           COHORT_REPO: ${{{{ inputs.cohort_repo }}}}
-          WEEK: ${{{{ inputs.week }}}}
-          INC_LEC: ${{{{ inputs.include_lectures }}}}
-          INC_READ: ${{{{ inputs.include_readings }}}}
+          SESSION: ${{{{ inputs.session }}}}
           INC_SYL: ${{{{ inputs.include_syllabus }}}}
           INC_RM: ${{{{ inputs.include_readme }}}}
+{section_env}
         run: |
           gh auth setup-git
+          exclude=""
+{exclude_build}
           args=(--source-org "$SRC_ORG" --source-repo "$SRC_REPO"
-                --cohort-org "$COHORT_ORG" --cohort-repo "$COHORT_REPO" --week "$WEEK")
-          [ "$INC_LEC" = "false" ] && args+=(--no-lectures)
-          [ "$INC_READ" = "false" ] && args+=(--no-readings)
+                --cohort-org "$COHORT_ORG" --cohort-repo "$COHORT_REPO"
+                --session "$SESSION" --exclude "$exclude")
           [ "$INC_SYL" = "true" ] && args+=(--syllabus)
           [ "$INC_RM" = "true" ] && args+=(--readme)
           python3 -m dsl_course.release "${{args[@]}}"
@@ -182,20 +232,26 @@ jobs:
 
 
 def render_release(
-    cohort_orgs: list[str], cohort_repos: list[str], weeks: list[str] | None = None
+    cohort_orgs: list[str],
+    cohort_repos: list[str],
+    sessions: list[str] | None = None,
+    sections: list[str] | None = None,
 ) -> str:
-    """Run-from-repo copy: the SOURCE is the repo it lives in, week is a per-repo dropdown."""
+    """Run-from-repo copy: the SOURCE is the repo it lives in, session is a per-repo
+    dropdown, and sections (known for this one repo) get real checkboxes."""
     cohort = _COHORT_INPUTS.format(
         cohort_orgs=_choice(cohort_orgs), cohort_repos=_choice(cohort_repos)
     )
     return _render_release(
         header=(
             "\n# Run from a course content repo (this repo is the SOURCE). Publishes one"
-            " week's\n# lecture/reading files into the chosen cohort repo. Dropdowns are"
+            " session's\n# content into the chosen cohort repo. Dropdowns are"
             " refreshed by the\n# 'Refresh actions' workflow.\n"
         ),
-        inputs_block=f"{cohort}\n{_week_input(weeks or [])}",
+        inputs_block=f"{cohort}\n{_session_input(sessions or [])}",
         src_repo_expr="${{ github.event.repository.name }}",
+        mode="repo",
+        sections=sections or [],
     )
 
 
@@ -243,8 +299,9 @@ def render_central_release(
     source_repos: list[str], cohort_orgs: list[str], cohort_repos: list[str]
 ) -> str:
     """Central copy that lives in .github: pick the source materials repo + type the
-    week (a central dropdown can't depend on the chosen source, so week is free-text;
-    the run-from-repo copy inside each materials repo has a per-repo week dropdown)."""
+    session (a central dropdown can't depend on the chosen source, so session is
+    free-text, and so are the sections to exclude - the run-from-repo copy inside each
+    materials repo has a per-repo session dropdown + real section checkboxes)."""
     source = (
         '      source_repo:\n        description: "Source materials repo (in this course'
         ' org)"\n        required: true\n        type: choice\n        options:\n'
@@ -253,11 +310,12 @@ def render_central_release(
     cohort = _COHORT_INPUTS.format(
         cohort_orgs=_choice(cohort_orgs), cohort_repos=_choice(cohort_repos)
     )
-    week = '      week:\n        description: "Week number (e.g. 1)"\n        required: true'
+    session = '      session:\n        description: "Session number (e.g. 1)"\n        required: true'
     return _render_release(
         header="",
-        inputs_block=f"{source}\n{cohort}\n{week}",
+        inputs_block=f"{source}\n{cohort}\n{session}",
         src_repo_expr="${{ inputs.source_repo }}",
+        mode="central",
     )
 
 
@@ -381,67 +439,90 @@ jobs:
 """
 
 
-def render_sync_enrolment(cohort_orgs: list[str]) -> str:
-    """Reconcile org + students-team access from students.csv (faculty true-up)."""
-    return f"""name: Sync enrolment
+_FACULTY_ONLY = "(faculty only)"
+
+
+def render_sync_membership(cohort_orgs: list[str]) -> str:
+    """Consolidated roster + project-teams + faculty sync (replaces the old separate
+    Sync enrolment / Sync teams buttons).
+
+    Faculty (instructors/course-admin, from THIS org's declared `people:` block)
+    always reconciles - here AND into every cohort. Roster (students.csv) + project
+    teams (teams.csv) additionally reconcile for whichever cohort is in scope. Fully
+    automatic, including removals (no --prune flag - config is the live truth):
+
+    - push to this file's own dsl-course.yml -> faculty only (no single cohort implied)
+    - repository_dispatch (from a cohort's classroom-config dispatcher on push to its
+      students.csv/teams.csv) -> faculty + that one cohort
+    - daily cron -> faculty + EVERY registered cohort (catches start/end date
+      rotation with no edit that day, and any drift generally)
+    - workflow_dispatch -> manual escape hatch, gated by check-team (the other three
+      trigger types skip that gate, same as the existing scheduler workflow already
+      does for cron)
+    """
+    return f"""name: Sync membership
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - dsl-course.yml
+  repository_dispatch:
+    types: [sync-membership]
+  schedule:
+    - cron: "0 6 * * *"
   workflow_dispatch:
     inputs:
-{_cohort_dropdown(cohort_orgs)}
-      prune:
-        description: "Off-board: remove team members no longer on the roster"
-        type: boolean
-        default: false
+{_cohort_dropdown(cohort_orgs, optional=True)}
 
 jobs:
 {_CHECK_TEAM}
-  sync:
-{_RUN_PREAMBLE}      - name: Sync enrolment
+  sync-dispatch:
+{_RUN_PREAMBLE}      - name: Sync membership
         env:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
+          COURSE: ${{{{ github.repository_owner }}}}
           COHORT_ORG: ${{{{ inputs.cohort_org }}}}
-          PRUNE: ${{{{ inputs.prune }}}}
         run: |
-          args=(--cohort-org "$COHORT_ORG")
-          [ "$PRUNE" = "true" ] && args+=(--prune)
-          python3 -m dsl_course.sync_roster "${{args[@]}}"
+          args=(--course-org "$COURSE")
+          [ "$COHORT_ORG" != "{_FACULTY_ONLY}" ] && args+=(--cohort-org "$COHORT_ORG")
+          python3 -m dsl_course.sync_membership "${{args[@]}}"
+
+  sync-auto:
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: {CENTRAL}
+          ref: {CENTRAL_REF}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Sync membership
+        env:
+          GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
+          COURSE: ${{{{ github.repository_owner }}}}
+          EVENT: ${{{{ github.event_name }}}}
+          DISPATCH_COHORT: ${{{{ github.event.client_payload.cohort_org }}}}
+        run: |
+          args=(--course-org "$COURSE")
+          case "$EVENT" in
+            schedule) args+=(--all-cohorts) ;;
+            repository_dispatch) [ -n "$DISPATCH_COHORT" ] && args+=(--cohort-org "$DISPATCH_COHORT") ;;
+          esac
+          python3 -m dsl_course.sync_membership "${{args[@]}}"
 """
 
 
-def render_sync_teams(cohort_orgs: list[str]) -> str:
-    """Materialise a GitHub Team per project group from the cohort's teams.csv."""
-    return f"""name: Sync teams
-
-on:
-  workflow_dispatch:
-    inputs:
-{_cohort_dropdown(cohort_orgs)}
-      prune:
-        description: "Off-board: remove team members no longer in teams.csv"
-        type: boolean
-        default: false
-
-jobs:
-{_CHECK_TEAM}
-  sync:
-{_RUN_PREAMBLE}      - name: Sync teams
-        env:
-          GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
-          COHORT_ORG: ${{{{ inputs.cohort_org }}}}
-          PRUNE: ${{{{ inputs.prune }}}}
-        run: |
-          args=(--cohort-org "$COHORT_ORG")
-          [ "$PRUNE" = "true" ] && args+=(--prune)
-          python3 -m dsl_course.sync_teams "${{args[@]}}"
-"""
-
-
-def _cohort_dropdown(cohort_orgs: list[str]) -> str:
+def _cohort_dropdown(cohort_orgs: list[str], optional: bool = False) -> str:
+    options = ([_FACULTY_ONLY] + cohort_orgs) if optional else cohort_orgs
+    default = f'\n        default: "{_FACULTY_ONLY}"' if optional else ""
     return (
         '      cohort_org:\n        description: "Cohort org"\n'
-        "        required: true\n        type: choice\n        options:\n"
-        + _choice(cohort_orgs)
+        f"        required: true\n        type: choice{default}\n        options:\n"
+        + _choice(options)
     )
 
 
@@ -614,7 +695,7 @@ def render_scheduler() -> str:
 
 # Joins each cohort's manifests/<cohort>.yml (in this .github repo) with its classroom-config
 # schedule.csv and releases everything now due. Idempotent, so a daily run re-releasing
-# past weeks is a no-op. On the cron it releases for real; manual runs default to dry-run.
+# past sessions is a no-op. On the cron it releases for real; manual runs default to dry-run.
 
 on:
   schedule:
@@ -726,7 +807,7 @@ jobs:
 
 
 def render_sync_site(cohort_orgs: list[str]) -> str:
-    """Regenerate a cohort's website from the live org structure (released weeks +
+    """Regenerate a cohort's website from the live org structure (released sessions +
     assignment catalog). Releases also trigger this automatically."""
     return f"""name: Sync site
 
@@ -865,23 +946,57 @@ def discover_cohort_repos(cohort_orgs: list[str]) -> list[str]:
     return sorted(repos)
 
 
-def discover_weeks(org: str, repo: str) -> list[str]:
-    """Weeks present in a content repo, from lectures/week-<N>/ (and readings/week-<N>/)
-    folders. Used to populate the week dropdown."""
-    weeks = set()
-    for section in ("lectures", "readings"):
-        code, out = gh(
-            "api",
-            f"repos/{org}/{repo}/contents/{section}",
-            "--jq",
-            '.[] | select(.type=="dir") | .name',
-        )
-        if code == 0:
-            for name in out.splitlines():
-                m = re.match(r"week-0*(\d+)", name)
-                if m:
-                    weeks.add(int(m.group(1)))
-    return [str(w) for w in sorted(weeks)]
+def list_dirs(org: str, repo: str, path: str = "") -> list[str]:
+    """Directory names directly under `path` (the repo root if omitted)."""
+    endpoint = f"repos/{org}/{repo}/contents/{path}" if path else f"repos/{org}/{repo}/contents"
+    code, out = gh("api", endpoint, "--jq", '.[] | select(.type=="dir") | .name')
+    return out.splitlines() if code == 0 else []
+
+
+def _section_session_pairs(org: str, repo: str) -> list[tuple[str, int]]:
+    """(section, session_number) for every immediate child - across every top-level
+    directory - whose name has an ordinal prefix. One recursive tree fetch, rather
+    than listing each top-level directory individually (N+1 API calls)."""
+    branch = get_default_branch(org, repo) or "main"
+    code, out = gh(
+        "api",
+        f"repos/{org}/{repo}/git/trees/{branch}?recursive=1",
+        "--jq",
+        '.tree[] | select(.type=="tree") | .path',
+    )
+    if code != 0:
+        return []
+    pairs = []
+    for path in out.splitlines():
+        parts = path.split("/")
+        if len(parts) == 2:
+            n = session_number(parts[1])
+            if n is not None:
+                pairs.append((parts[0], n))
+    return pairs
+
+
+def discover_sections_and_sessions(org: str, repo: str) -> tuple[list[str], list[str]]:
+    """(sections, sessions) from one shared tree fetch - use this over calling
+    discover_sections/discover_sessions separately when you need both, to avoid
+    fetching the same tree twice."""
+    pairs = _section_session_pairs(org, repo)
+    sections = sorted({section for section, _ in pairs})
+    sessions = [str(n) for n in sorted({n for _, n in pairs})]
+    return sections, sessions
+
+
+def discover_sections(org: str, repo: str) -> list[str]:
+    """Top-level directories in a content repo containing at least one
+    ordinal-prefixed subdirectory - the releasable sections. No declared config; the
+    repo's own structure is the only source of truth."""
+    return sorted({section for section, _ in _section_session_pairs(org, repo)})
+
+
+def discover_sessions(org: str, repo: str) -> list[str]:
+    """Session numbers present in a content repo, across every discovered section.
+    Used to populate the session dropdown."""
+    return [str(n) for n in sorted({n for _, n in _section_session_pairs(org, repo)})]
 
 
 def discover_assignments(course_org: str) -> list[str]:
@@ -916,12 +1031,12 @@ def _push_workflows(
     cohort_repos: list[str],
     assignments: list[str],
 ) -> None:
-    weeks = discover_weeks(org, repo)
+    sections, sessions = discover_sections_and_sessions(org, repo)
     put_file(
         org,
         repo,
         WORKFLOWS[0],
-        render_release(cohort_orgs, cohort_repos, weeks).encode(),
+        render_release(cohort_orgs, cohort_repos, sessions, sections).encode(),
         "ci: release-materials wrapper",
     )
     put_file(
@@ -979,8 +1094,9 @@ and the auto-generated student-facing org page - **faculty / FAs delivering the 
 
 - The **faculty action buttons** (Release, Grade, Sync ...) live in the **parent course org's**
   `.github` **Actions** tab, not here.
-- `{COURSE_CONFIG}` - this cohort's people / schedule overrides for the site (edit in the web UI,
-  then run **Sync site**). Course identity (name/code) is inherited from the parent course org.
+- `{COURSE_CONFIG}` - this cohort's schedule overrides for the site (edit in the web UI,
+  then run **Sync site**). Course identity (name/code) and people (instructors/TAs/
+  course-admins) are inherited from the parent course org, kept in sync by **Sync membership**.
 - `profile/README.md` - the student-facing org landing page (auto-generated; don't hand-edit).
 - Students join via the **welcome** repo's "Join" issue; the roster lives in **classroom-config**.
 
@@ -1002,14 +1118,15 @@ or `course-admin` team). The full, annotated list of actions is on the
 
 1. **New materials repo** / **New assignment** - scaffold your content repos, then fill them in.
 2. Create an empty **cohort org** for the year, add the bot as an Owner, then run **Bootstrap cohort**.
-3. Each week: **Release materials** / **Release assignment**. Students self-onboard via the cohort's
+3. Each session: **Release materials** / **Release assignment**. Students self-onboard via the cohort's
    **welcome** "Join" issue.
 4. Grading: **Grade assignment** -> **Sync gradebooks** -> **Render grades** -> **Distribute grades**.
 
 ## What's in here
 
 - `.github/workflows/` - the action buttons (seeded from the central toolkit; refreshed by **Refresh actions**).
-- `{COURSE_CONFIG}` - this course's identity (name/code). People + schedule are declared per cohort.
+- `{COURSE_CONFIG}` - this course's identity (name/code) and people (instructors/TAs/
+  course-admins - the SSOT, kept in sync into every cohort by **Sync membership**). Schedule is declared per cohort.
 - `profile/README.md` - the public org landing page (auto-generated repo index).
 
 Built and kept in sync by the [DSL teaching toolkit](https://github.com/{CENTRAL}).
@@ -1046,7 +1163,7 @@ org; updates on every release.
 1. Open a **Join** issue in
    [`welcome`](https://github.com/{org}/welcome/issues/new/choose) to enrol - your
    GitHub handle is captured automatically.
-2. Once you're enrolled, course **materials** open up here week by week, and your
+2. Once you're enrolled, course **materials** open up here session by session, and your
    own assignment repositories appear in this org.
 
 ## Where things are
@@ -1089,23 +1206,23 @@ _(automatically bootstrapped from the central
 ### One-time setup actions:
 - [**Bootstrap cohort**](https://github.com/{org}/.github/actions/workflows/bootstrap-cohort.yml) - configure a freshly-created cohort org (sets up scaffold repos), register it with the course org, refresh dropdowns.
 - [**Send enrolment codes**](https://github.com/{org}/.github/actions/workflows/send-codes.yml) - generate a random non-PII enrolment code per student and email each their code (to their university inbox). Students paste the code into the welcome Join issue - no personal data in the public repo. `dry_run` previews codes + emails. Needs the `GRAPH_*` (or `SMTP_*`) secrets.
-- [**Sync enrolment**](https://github.com/{org}/.github/actions/workflows/sync-enrolment.yml) - reconcile org + `students`-team access from `students.csv`. Students self-onboard via the welcome Join issue; run this to true-up the whole roster. `prune` off-boards members no longer on it.
-- [**New materials repo**](https://github.com/{org}/.github/actions/workflows/new-materials.yml) - scaffold a correctly-structured `course-materials-<year>` repo (week folders + the Release buttons).
+- [**Sync membership**](https://github.com/{org}/.github/actions/workflows/sync-membership.yml) - one consolidated, fully-automatic reconcile of org + `students`-team access (from `students.csv`), project teams (from `teams.csv`), and instructors/course-admin access (from this org's declared `people:` block, mirrored into every cohort). Triggers on push (editing any of those files takes effect immediately, including removals - there's no prune toggle, the file is the live truth) and on a daily cron (catches a faculty entry's `start`/`end` rotation with no edit that day); `workflow_dispatch` is a manual escape hatch.
+- [**New materials repo**](https://github.com/{org}/.github/actions/workflows/new-materials.yml) - scaffold a correctly-structured `course-materials-<year>` repo (session folders + the Release buttons).
 - [**New assignment**](https://github.com/{org}/.github/actions/workflows/new-assignment.yml) - scaffold an `assignment-N-<year>` template repo (starter on `main`; the `solution` branch carries the model solution, `grading.yml`, and the hidden tests).
-- [**Refresh actions**](https://github.com/{org}/.github/actions/workflows/refresh-actions.yml) - repopulate the cohort/week/assignment dropdowns, re-equip content repos, and rebuild this index.
+- [**Refresh actions**](https://github.com/{org}/.github/actions/workflows/refresh-actions.yml) - repopulate the cohort/session/assignment dropdowns, re-equip content repos, and rebuild this index.
 
 ### Optional: public course website (open courseware)
 - [**Publish course website**](https://github.com/{org}/.github/actions/workflows/publish-site.yml) - build/refresh a PUBLIC site `{org}.github.io` that shares this course's lecture materials and readings with the world. Opt-in + manual (the first run scaffolds the site). Pick a materials repo and choose for readings: `reading-list` (citations only) or `actual-readings` (also host the files). Because the materials repos are private, the site **hosts** the shared files itself. This is separate from each cohort's student-facing site.
 
-### Weekly cadence actions:
-- [**Release materials**](https://github.com/{org}/.github/actions/workflows/release-materials.yml) - publish a given week's `lectures/`+`readings/` into a cohort repo.
+### Session cadence actions:
+- [**Release materials**](https://github.com/{org}/.github/actions/workflows/release-materials.yml) - publish a given session's content, from every discovered section, into a cohort repo.
 - [**Release assignment**](https://github.com/{org}/.github/actions/workflows/release-assignment.yml) - generate one private repo per student from a chosen `assignment-*` template repo.
-- [**Sync teams**](https://github.com/{org}/.github/actions/workflows/sync-teams.yml) - materialise a GitHub Team per project group from `classroom-config/teams.csv` (students self-select via the welcome Join-team issue). A group `Release assignment` grants each team its shared repo; `prune` off-boards members no longer listed.
 
 - [**Release code**](https://github.com/{org}/.github/actions/workflows/release-code.yml) - run from the repo holding your package; copy a chosen path (a subpackage folder, or a single module file) into a cohort repo's tree, additively. Phased disclosure of a growing importable package - release a topic when you teach it.
 
 NB: alternatively each materials repo *also* carries its own **Release** buttons (run from inside the
-repo; there the `week` is a dropdown of that repo's weeks).
+repo; there the `session` is a dropdown of that repo's sessions, and each discovered section gets its
+own include checkbox).
 
 ### Grades (private, previewable):
 - [**Grade assignment**](https://github.com/{org}/.github/actions/workflows/grade-assignment.yml) - faculty-side autograder: after the deadline, run the HIDDEN tests (from the template's `solution` branch) against each submission and record the machine score into `classroom-config/grades/<assignment>.csv`. Nothing is written to student repos; faculty then add manual marks. Optional per assignment (skipped if `grading.yml` sets `autograde: false`).
@@ -1119,11 +1236,13 @@ repo; there the `week` is a dropdown of that repo's weeks).
 
 ## How the actions behave
 
-**Release materials** - run it from the materials repo (per-repo `week` dropdown) or from
-the course org's central `.github` repo (pick the source repo, type the week). It copies the *whole*
-`lectures/week-N/` and `readings/week-N/` folders - **every file** (any number of lectures
-or readings per week) - into the cohort's `materials` repo (private + `students` read),
-nested under `week-N/`. Only the weeks you release appear. `include_syllabus` /
+**Release materials** - run it from the materials repo (per-repo `session` dropdown, real
+checkboxes per discovered section) or from the course org's central `.github` repo (pick the
+source repo, type the session, and optionally list sections to exclude - the source repo is
+only known once you run it, so there are no per-section toggles there). It copies the *whole*
+`<section>/<NN>_.../` folders - **every file** (any number of sections, and any number of
+files per session) - into the cohort's `materials` repo (private + `students` read), nested
+under that same folder name. Only the sessions you release appear. `include_syllabus` /
 `include_readme` (default off) also copy those root files to the cohort root, overwriting.
 
 **Release assignment** - two stages: (1) it freezes a cohort-level template repo
@@ -1148,7 +1267,7 @@ public site only exists, and only updates, when you run the action.
 ```
 {org}/                            <- this COURSE org (persistent)
 |-- .github/                      profile + faculty action buttons + cohort registry
-|-- course-materials-<year>/      lectures/week-N/   readings/week-N/   (+ syllabus, README)
+|-- course-materials-<year>/      lectures/00_.../   readings/00_.../   (+ syllabus, README)
 `-- assignment-<n>-<year>/        is_template repo:
                                     main      -> starter + autograder   (students get this)
                                     solution  -> solution/   (pushed to students on demand)
@@ -1167,9 +1286,12 @@ repo (via its **Bootstrap Course Org** action), and the actions above run that s
 
 The course-level actions assume this layout - use **New materials repo** / **New assignment** above to scaffold correctly.
 
-**Materials repo** (`course-materials-<year>`) - the source for Release materials:
-- `lectures/week-N/` - one folder per week's lecture files;
-- `readings/week-N/` - one folder per week's readings;
+**Materials repo** (`course-materials-<year>`) - the source for Release materials. Any
+top-level directory containing at least one ordinal-prefixed (`00_`, `01_`, ...)
+subdirectory is a releasable section - no config to declare it:
+- `lectures/00_.../` - one folder per session's lecture files;
+- `readings/00_.../` - one folder per session's readings;
+- add more sections freely (e.g. `labs/00_.../`) - **Refresh actions** picks up new ones;
 - `*syllabus*`, `README.md` at the **root** (optional) - released via the syllabus / README toggles.
 
 **Assignment repo** (`assignment-N-<year>`, an `is_template` repo) - the source for Release assignment:
@@ -1238,10 +1360,9 @@ def seed_github_workflows(course_org: str) -> None:
         ".github/workflows/new-assignment.yml": render_new_assignment(),
         ".github/workflows/sync-site.yml": render_sync_site(cohorts),
         ".github/workflows/publish-site.yml": render_publish_site(source_repos),
-        ".github/workflows/sync-enrolment.yml": render_sync_enrolment(cohorts),
+        ".github/workflows/sync-membership.yml": render_sync_membership(cohorts),
         ".github/workflows/send-codes.yml": render_send_codes(cohorts),
         ".github/workflows/sync-gradebooks.yml": render_sync_gradebooks(cohorts),
-        ".github/workflows/sync-teams.yml": render_sync_teams(cohorts),
         ".github/workflows/render-grades.yml": render_render_grades(cohorts),
         ".github/workflows/distribute-grades.yml": render_distribute_grades(cohorts),
         ".github/workflows/bootstrap-cohort.yml": render_bootstrap_cohort(),
@@ -1254,6 +1375,14 @@ def seed_github_workflows(course_org: str) -> None:
             course_org, ".github", path, content.encode(), f"ci: {path.split('/')[-1]}"
         ):
             log_ok(f".github <- {path.split('/')[-1]}")
+
+    # Retired in favour of sync-membership.yml (one consolidated button) - remove any
+    # copies already seeded into orgs bootstrapped before this change.
+    for retired in (
+        ".github/workflows/sync-enrolment.yml",
+        ".github/workflows/sync-teams.yml",
+    ):
+        delete_file(course_org, ".github", retired, f"ci: retire {retired.split('/')[-1]} (superseded by sync-membership.yml)")
 
 
 def _propagate_repo_secret(course_org: str, repos: list[str]) -> None:

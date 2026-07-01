@@ -37,7 +37,7 @@ flowchart TD
 
   subgraph COHORT["Cohort org (once / year)"]
     E["<b>New cohort org</b><br/>create + bootstrap"]
-    F["<b>Enrol students</b><br/>Join issue + Sync enrolment"]
+    F["<b>Enrol students</b><br/>Join issue + Sync membership"]
     E --> F
   end
 
@@ -76,7 +76,7 @@ All **course-level** workflows (1-3) come before the **cohort-level** ones (4-7)
 | 3 | [Add assignment to course](03-add-assignment-to-course.md) | course | per assignment |
 | 4 | [New cohort org](04-new-cohort-org.md) | cohort | once per year |
 | 5 | [Enrol students to cohort](05-enrol-students-to-cohort.md) | cohort | start of each cohort |
-| 6 | [Release materials to cohort](06-release-materials-to-cohort.md) | cohort | weekly cadence |
+| 6 | [Release materials to cohort](06-release-materials-to-cohort.md) | cohort | per-session cadence |
 | 7 | [Release assignment to cohort](07-release-assignment-to-cohort.md) | cohort | per assignment, once students have onboarded |
 
 For a one-page summary of **every button** (not the step-by-step flow), see

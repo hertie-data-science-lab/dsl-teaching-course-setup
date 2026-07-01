@@ -5,9 +5,9 @@ Sets up org-level infrastructure that persists across semesters:
 - Faculty teams (instructors, course-admin); cohort bootstrap adds students + auditors
 - Org settings (2FA enforcement, Pages default branch)
 - Profile README (.github repo with description)
-- Org-level workflows in .github (sync-enrolment, bootstrap-cohort, refresh-actions)
+- Org-level workflows in .github (sync-membership, bootstrap-cohort, refresh-actions)
 - Central faculty workflows seeded into .github (Release materials/assignment +
-  Sync enrolment/Bootstrap-cohort/Refresh); the run-from-repo copies are equipped by Refresh
+  Sync membership/Bootstrap-cohort/Refresh); the run-from-repo copies are equipped by Refresh
 
 With --cohort, instead tightens the org and seeds the student-facing welcome (onboard)
 and classroom-config (roster) repos.
@@ -24,7 +24,7 @@ import os
 import sys
 from pathlib import Path
 
-from . import scaffold, seed, site
+from . import scaffold, seed, site, sync_faculty
 from .utils import (
     COURSE_TEAM_ACCESS,
     create_repo,
@@ -44,16 +44,20 @@ COURSE_HUB_TOPIC = "dsl-course-hub"
 
 
 def set_org_secret(org: str, secret_name: str, secret_value: str) -> bool:
-    """Create or update an org secret, scoped to the public infra repos that need it.
+    """Create or update an org secret, scoped to the infra repos that need it.
 
-    The token must reach the **public** `.github` (faculty buttons) and, on cohort
-    orgs, `welcome` (onboarding) repos. gh defaults org-secret visibility to
+    The token must reach the **public** `.github` (faculty buttons), `welcome`
+    (onboarding), and `classroom-config` (its dispatch-sync workflow cross-repo
+    triggers Sync membership in `.github`). gh defaults org-secret visibility to
     `private`, which excludes public repos - so the seeded workflows there run with
     an empty `secrets.DSL_BOT_TOKEN` and fail with "set the GH_TOKEN environment
     variable". Scope it explicitly to the infra repos that exist, which also keeps
-    this org-admin credential out of the student / content repos (`visibility=all`
-    would expose it to every workflow in the org)."""
-    infra = [r for r in (".github", "welcome") if repo_exists(org, r)] or [".github"]
+    this org-admin credential out of student-facing/content repos (`visibility=all`
+    would expose it to every workflow in the org) - classroom-config is already
+    private/faculty-only, the same trust tier as `.github`."""
+    infra = [
+        r for r in (".github", "welcome", "classroom-config") if repo_exists(org, r)
+    ] or [".github"]
     code, out = gh(
         "secret",
         "set",
@@ -155,25 +159,47 @@ def add_course_admins(org: str, handles: str) -> None:
             log_err(f"  ! could not add {login}: {out[:120]}")
 
 
-# People + schedule change year to year, so they are templated into each COHORT's
-# dsl-course.yml (read by that cohort's website), never the persistent course org's.
-_PEOPLE_BLOCK = (
-    "# People shown on THIS cohort's website. Declared per cohort because the teaching\n"
-    "# team changes year to year. Cards carry institutional headshots + bio links (not\n"
-    "# GitHub avatars); the first instructor is featured. photo = image URL, url =\n"
-    "# bio/profile link, title = optional role. Uncomment:\n"
+# Instructors/TAs/course-admins are declared ONCE on the persistent COURSE org (this
+# block), not per cohort - `sync_faculty` reconciles the same desired state into this
+# org's `instructors`/`course-admin` GitHub teams AND into every cohort org registered
+# under it. `github_handle` is the only required field (it's what actually grants
+# access); `start`/`end` are optional ISO dates - omit either for open-ended, or set
+# both to bound a TA's access to one semester (auto-rotates, no manual removal needed).
+# name/title/photo/url are optional, display-only (shown on cohort/course websites).
+_FACULTY_BLOCK = (
+    "# Instructors, TAs, and course-admins for this course - the single source of truth\n"
+    "# for both GitHub access (instructors/course-admin teams, applied here AND mirrored\n"
+    "# into every cohort org) and website display. Uncomment:\n"
     "#\n"
     "# people:\n"
     "#   instructors:\n"
-    '#     - name: "Prof. Jane Doe"\n'
+    '#     - github_handle: "janedoe"      # required - grants the `instructors` team\n'
+    '#       start: "2026-09-01"           # optional - no start = active immediately\n'
+    '#       end: "2027-06-30"             # optional - no end = indefinite\n'
+    '#       name: "Prof. Jane Doe"        # optional, display only\n'
     '#       title: "Professor of ..."\n'
     '#       photo: "https://.../jane.jpg"\n'
     '#       url: "https://.../profile/jane"\n'
     "#   teaching_assistants:\n"
-    '#     - name: "A. N. Other"\n'
-    '#       photo: "https://.../other.jpg"\n'
-    '#       url: "https://.../profile/other"\n'
+    '#     - github_handle: "anOther"\n'
+    '#       start: "2026-09-01"\n'
+    '#       end: "2027-01-31"\n'
+    "#   course_admins:\n"
+    '#     - github_handle: "adminhandle"\n'
 )
+
+# Instructors/TAs/course-admins are managed at the COURSE org level (_FACULTY_BLOCK) -
+# this cohort file carries no `people:` block of its own to hand-edit. The cohort's
+# website/access are kept current by `sync_faculty`/`sync_membership`, not by editing
+# here.
+_PEOPLE_NOTE = (
+    "# People (instructors/TAs) are managed at the COURSE org level, not here - see\n"
+    "# that org's `.github/dsl-course.yml`. This cohort's website + team access are kept\n"
+    "# current automatically; there is nothing to hand-edit in this file for people.\n"
+)
+
+# The cohort's own schedule changes year to year, so it is templated into each COHORT's
+# dsl-course.yml (read by that cohort's website).
 _SCHEDULE_BLOCK = (
     "# Schedule overrides for THIS cohort's website. Edit here (GitHub web UI is fine -\n"
     "# no CLI) then run Sync site. Anything you leave out is synthesised (semester start\n"
@@ -218,7 +244,9 @@ One row per student. Leave `github_handle`/`github_id` blank - students fill the
 | github_id | onboarding | numeric id captured on join - **immutable; never hand-edit** |
 | section | registrar | optional grouping (e.g. A/B) |
 
-**Sync enrolment** reconciles the `students` team from this file (`prune` off-boards leavers).
+A push to this file triggers **Sync membership** automatically, reconciling the
+`students` team to match (a deleted row revokes access on that same push - there is no
+separate off-boarding step).
 
 ## grades/<assignment>.csv - marks (optional, when returning grades)
 
@@ -232,12 +260,13 @@ plus optional `grace_days`) - there is no separate deadline input.
 ## teams.csv - group membership (optional, for group assignments)
 
 `assignment, team, github_handle`. Students self-select via the welcome "Join team" issue,
-or edit directly. See `teams.csv.sample` - **the engine only acts on a real `teams.csv`.**
+or edit directly - a push here also triggers **Sync membership**. See `teams.csv.sample` -
+**the engine only acts on a real `teams.csv`.**
 
 ## schedule.csv - release calendar (optional, pairs with the manifest)
 
-`week, date` - the daily **Scheduled release** cron opens each week's manifest items on its
-date. See `schedule.csv.sample`.
+`session, date` - the daily **Scheduled release** cron opens each session's manifest items on
+its date. See `schedule.csv.sample`.
 """
 
 _TEAMS_CSV_SAMPLE = """# Sample. Rename to teams.csv to activate. Students normally self-select via
@@ -248,9 +277,9 @@ assignment-4-project,team-1,bob
 assignment-4-project,team-2,carol
 """
 
-_SCHEDULE_CSV_SAMPLE = """# Sample. Rename to schedule.csv to activate. Maps each teaching week to the
-# calendar date the Scheduled release cron opens that week's manifest items.
-week,date
+_SCHEDULE_CSV_SAMPLE = """# Sample. Rename to schedule.csv to activate. Maps each teaching session to the
+# calendar date the Scheduled release cron opens that session's manifest items.
+session,date
 1,2026-09-07
 2,2026-09-14
 3,2026-09-21
@@ -260,26 +289,31 @@ week,date
 def _course_metadata(
     org: str, org_name: str, course_name: str, course_code: str
 ) -> str:
-    """dsl-course.yml for the persistent COURSE org: identity only. The course org
-    spans many cohorts, so cohort-specific people + schedule live per cohort."""
+    """dsl-course.yml for the persistent COURSE org: identity + the faculty roster
+    (instructors/TAs/course-admins - the single source of truth for access, mirrored
+    into every cohort org by sync_faculty). The schedule stays per-cohort (it changes
+    year to year); the faculty roster does not need to (rotation is handled by each
+    entry's optional start/end dates)."""
     return (
         f"org: {org}\n"
         f"org_name: {org_name}\n"
         f"course_name: {course_name}\n"
         f"course_code: {course_code or ''}\n"
         "\n"
-        "# This is the persistent COURSE org - it spans many cohorts (years). People\n"
-        "# (instructors/TAs) and the schedule change year to year, so they are declared\n"
-        "# PER COHORT in <cohort-org>/.github/dsl-course.yml, not here. Cohorts are\n"
-        "# registered separately in .github/cohort-courses-pages.yml.\n"
+        "# This is the persistent COURSE org - it spans many cohorts (years). Cohorts are\n"
+        "# registered separately in .github/cohort-courses-pages.yml. The schedule changes\n"
+        "# year to year, so it's declared PER COHORT in <cohort-org>/.github/dsl-course.yml,\n"
+        "# not here.\n"
+        f"\n{_FACULTY_BLOCK}"
     )
 
 
 def _cohort_metadata(org: str, course_org: str) -> str:
-    """dsl-course.yml for a per-year COHORT org: the cohort-specific people + schedule
-    its website reads. Course identity (name/code) comes from the parent course org."""
+    """dsl-course.yml for a per-year COHORT org: the cohort-specific schedule its
+    website reads. Course identity (name/code) and people (instructors/TAs) come from
+    the parent course org - see _PEOPLE_NOTE."""
     course_line = f"course: {course_org}\n" if course_org else ""
-    return f"org: {org}\n{course_line}\n{_PEOPLE_BLOCK}\n{_SCHEDULE_BLOCK}"
+    return f"org: {org}\n{course_line}\n{_PEOPLE_NOTE}\n{_SCHEDULE_BLOCK}"
 
 
 def create_profile_repo(
@@ -372,6 +406,13 @@ def _welcome_template(rel: str) -> bytes:
     """Read a seeded-welcome template from the repo's templates/welcome/ dir."""
     return (
         Path(__file__).resolve().parents[1] / "templates" / "welcome" / rel
+    ).read_bytes()
+
+
+def _classroom_config_template(rel: str) -> bytes:
+    """Read a seeded classroom-config template from templates/classroom-config/."""
+    return (
+        Path(__file__).resolve().parents[1] / "templates" / "classroom-config" / rel
     ).read_bytes()
 
 
@@ -486,6 +527,13 @@ def setup_cohort_extras(org: str) -> None:
             _SCHEDULE_CSV_SAMPLE.encode(),
             "docs: sample schedule.csv (scheduled release)",
         )
+        put_file(
+            org,
+            "classroom-config",
+            ".github/workflows/dispatch-sync.yml",
+            _classroom_config_template("dispatch-sync.yml"),
+            "ci: seed dispatch-sync workflow",
+        )
         log_ok("classroom-config seeded (roster + README + grades/ + samples)")
 
     # Public, auto-deployed cohort website (from course-website-template).
@@ -494,8 +542,8 @@ def setup_cohort_extras(org: str) -> None:
 
 def seed_workflows(org: str) -> None:
     """Seed the org-level workflows into the course org's .github repo. The full set
-    (central Release materials/assignment + Sync enrolment/Bootstrap-cohort/Refresh) is rendered
-    by dsl_course.seed (single source of truth)."""
+    (central Release materials/assignment + Sync membership/Bootstrap-cohort/Refresh) is
+    rendered by dsl_course.seed (single source of truth)."""
     seed.seed_github_workflows(org)
 
 
@@ -629,6 +677,11 @@ def main() -> int:
         setup_cohort_extras(args.org)
         if args.course:
             seed.register_cohort(args.course, args.org)
+            # Give this cohort the course's current, currently-active faculty roster
+            # from day one (instructors/course-admin), rather than waiting for the
+            # next push/cron sync. Scoped to just this cohort (cohorts=[args.org]) so
+            # bootstrapping one more cohort doesn't re-touch every already-registered one.
+            sync_faculty.sync(args.course, cohorts=[args.org])
             # Populate + prune + wire the freshly-scaffolded site from the org structure.
             site.sync_site(args.course, args.org)
         else:
@@ -687,7 +740,7 @@ DONE (automated):
 - Faculty teams: instructors, course-admin (students + auditors are created per cohort)
 - Org settings: 2FA enforcement enabled
 - .github profile repo with README
-- Workflows in .github: Release materials, Release assignment, Sync enrolment,
+- Workflows in .github: Release materials, Release assignment, Sync membership,
   Bootstrap cohort, Refresh actions
 - DSL_BOT_TOKEN secret validated (or set)
 - Button access: instructors (write) + course-admin (admin) granted on .github; any
@@ -699,10 +752,13 @@ NEXT STEPS (manual):
 
 1. Review org settings: https://github.com/{args.org}/settings
 
-2. Add THIS course's instructors/TAs to the `instructors` team (write) - only the people
-   who run this course: https://github.com/orgs/{args.org}/teams
+2. Declare THIS course's instructors/TAs/course-admins in the `people:` block of
+   {args.org}/.github/dsl-course.yml, then push - "Sync membership" reconciles the
+   `instructors`/`course-admin` teams automatically (here and into every cohort; no
+   manual Teams-page edit needed).
 
-3. Put content in the materials repo (lectures/week-N/, readings/week-N/) and create
+3. Put content in the materials repo (any top-level dir with ordinal-prefixed
+   subdirectories, e.g. lectures/00_.../, readings/00_.../) and create
    assignment-N-f2026 template repos, then run "Refresh actions" so they appear in the
    dropdowns. Run Release materials/assignment from inside the materials repo's Actions tab.
 

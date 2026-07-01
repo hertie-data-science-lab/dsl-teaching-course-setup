@@ -40,6 +40,8 @@ import yaml
 from . import seed
 from .utils import (
     GIT_ENV,
+    active_today,
+    find_session_dir,
     gh,
     get_file_content,
     git,
@@ -48,6 +50,7 @@ from .utils import (
     log_ok,
     log_step,
     repo_exists,
+    session_number,
 )
 
 MATERIALS_REPO = "materials"
@@ -162,37 +165,42 @@ def _team_people(course_org: str, team: str) -> list[tuple[str, str, str]]:
 
 
 def _people_from_meta(meta: dict) -> tuple[list[tuple], list[tuple]] | None:
-    """Declared people from a `.github/dsl-course.yml` `people:` block (the cohort's,
-    for a cohort site; the course org's for the public course site).
+    """Declared people from the COURSE org's `.github/dsl-course.yml` `people:` block -
+    the single source of truth for instructors/TAs, both for GitHub access
+    (sync_faculty) and for website display (used for the cohort site AND the public
+    course site).
 
-    The block is the canonical input for who appears on the site (name + photo + bio
-    link + optional title), so cards carry institutional headshots/profiles rather than
-    GitHub avatars. Returns `(instructors, teaching_assistants)` as lists of
-    `(name, photo, url, title)`, or None when there is no `people:` block (then fall
-    back to the GitHub teams). Schema:
+    Returns `(instructors, teaching_assistants)` as lists of `(name, photo, url,
+    title)` for entries active today (per optional start/end dates) that also declare
+    a display `name`, or None when there is no `people:` block at all (then fall back
+    to the GitHub teams). Schema (bootstrap_course._FACULTY_BLOCK):
 
         people:
           instructors:
-            - {name: ..., photo: <img-url>, url: <bio-link>, title: ...}
+            - {github_handle: ..., start: ..., end: ..., name: ..., photo: <img-url>, url: <bio-link>, title: ...}
           teaching_assistants:
-            - {name: ..., photo: ..., url: ..., title: ...}
+            - {github_handle: ..., name: ..., photo: ..., url: ..., title: ...}
     """
     people = meta.get("people") if isinstance(meta, dict) else None
     if not isinstance(people, dict):
         return None
+    today = date.today().isoformat()
 
     def rows(key: str) -> list[tuple]:
         out = []
         for p in people.get(key) or []:
-            if isinstance(p, dict) and p.get("name"):
-                out.append(
-                    (
-                        str(p["name"]),
-                        str(p.get("photo", "")),
-                        str(p.get("url", "")),
-                        str(p.get("title", "")),
-                    )
+            if not isinstance(p, dict) or not p.get("name"):
+                continue
+            if not active_today(p.get("start"), p.get("end"), today):
+                continue
+            out.append(
+                (
+                    str(p["name"]),
+                    str(p.get("photo", "")),
+                    str(p.get("url", "")),
+                    str(p.get("title", "")),
                 )
+            )
         return out
 
     return rows("instructors"), rows("teaching_assistants")
@@ -200,16 +208,21 @@ def _people_from_meta(meta: dict) -> tuple[list[tuple], list[tuple]] | None:
 
 def _people_yaml(course_org: str, meta: dict | None = None) -> str:
     """Build _data/people.yml. Prefer the declared `people:` block in the supplied
-    dsl-course.yml meta; else fall back to the GitHub instructors / teaching-assistants
-    teams of `course_org` (GitHub display name + avatar + profile link)."""
+    dsl-course.yml meta; else fall back to the GitHub `instructors` team of
+    `course_org` (GitHub display name + avatar + profile link).
+
+    Instructors and TAs share that one GitHub team (there's no separate
+    `teaching-assistants` team - see bootstrap_course.FACULTY_TEAMS), so the fallback
+    can't distinguish TAs from instructors; declare a `people:` block to get separate
+    TA cards."""
     override = _people_from_meta(meta or {})
     if override is not None:
         instructors, tas = override
         note = "declared in the .github/dsl-course.yml `people:` block"
     else:
         instructors = [(*t, "") for t in _team_people(course_org, "instructors")]
-        tas = [(*t, "") for t in _team_people(course_org, "teaching-assistants")]
-        note = "auto-generated from the course org's instructors / teaching-assistants teams"
+        tas = []
+        note = "auto-generated from the course org's instructors team"
 
     def block(items: list[tuple]) -> str:
         if not items:
@@ -232,39 +245,44 @@ def _people_yaml(course_org: str, meta: dict | None = None) -> str:
     )
 
 
-def _week_files(org: str, repo: str, section: str, week: str) -> list[tuple[str, str]]:
-    """(name, blob-url) for each file under <section>/week-<week>/ in a repo.
+def _session_files(
+    org: str, repo: str, section: str, session: str
+) -> list[tuple[str, str]]:
+    """(name, blob-url) for each file under <section>/<NN>_.../ (matching `session`'s
+    ordinal prefix) in a repo."""
+    if not session.isdigit():
+        return []
+    target = int(session)
+    folder = next(
+        (
+            name
+            for name in seed.list_dirs(org, repo, section)
+            if session_number(name) == target
+        ),
+        None,
+    )
+    if folder is None:
+        return []
+    code, out = gh(
+        "api",
+        f"repos/{org}/{repo}/contents/{section}/{folder}",
+        "--jq",
+        '.[] | select(.type=="file") | .name + "\\t" + .html_url',
+    )
+    if code != 0:
+        return []
+    pairs = []
+    for line in out.splitlines():
+        if "\t" in line:
+            name, url = line.split("\t", 1)
+            pairs.append((name, url))
+    return pairs
 
-    discover_weeks reports the UNPADDED number (its regex tolerates `week-0*N`), so a
-    zero-padded folder (`week-01`) would otherwise be queried here as `week-1` and 404 -
-    the week appears on the schedule but its links come back empty. Try the padded name
-    too, matching release._week_dir's tolerance, so the three readers stay in step.
-    """
-    folders = [f"week-{week}"]
-    if week.isdigit():
-        folders.append(f"week-{int(week):02d}")
-    for folder in folders:
-        code, out = gh(
-            "api",
-            f"repos/{org}/{repo}/contents/{section}/{folder}",
-            "--jq",
-            '.[] | select(.type=="file") | .name + "\\t" + .html_url',
-        )
-        if code != 0:
-            continue
-        pairs = []
-        for line in out.splitlines():
-            if "\t" in line:
-                name, url = line.split("\t", 1)
-                pairs.append((name, url))
-        return pairs
-    return []
 
-
-def _lecture_entry(cohort_org: str, week: str, when: date) -> str:
+def _lecture_entry(cohort_org: str, session: str, when: date, sections: list[str]) -> str:
     links = []
-    for section in ("lectures", "readings"):
-        for name, url in _week_files(cohort_org, MATERIALS_REPO, section, week):
+    for section in sections:
+        for name, url in _session_files(cohort_org, MATERIALS_REPO, section, session):
             safe = name.replace('"', "'")
             links.append(f'    - url: {url}\n      name: "{section[:-1]} - {safe}"')
     links_block = ("links:\n" + "\n".join(links)) if links else "links: []"
@@ -272,11 +290,11 @@ def _lecture_entry(cohort_org: str, week: str, when: date) -> str:
         f"---\n"
         f"type: lecture\n"
         f"date: {when.isoformat()}T09:00:00\n"
-        f'title: "Week {week}"\n'
-        f'tldr: "Released materials for week {week} (enrolled students only)."\n'
+        f'title: "Session {session}"\n'
+        f'tldr: "Released materials for session {session} (enrolled students only)."\n'
         f"{links_block}\n"
         f"---\n"
-        f"Lectures and readings for week {week}. Open the links above (you must be an "
+        f"Materials for session {session}. Open the links above (you must be an "
         f"enrolled member of `{cohort_org}`).\n"
     )
 
@@ -327,7 +345,9 @@ def sync_site(course_org: str, cohort_org: str) -> int:
     if not repo_exists(cohort_org, site):
         log(f"  (no site repo {cohort_org}/{site} - skipping site sync)")
         return 0
-    weeks = seed.discover_weeks(cohort_org, MATERIALS_REPO)
+    sessions, materials_sections = seed.discover_sections_and_sessions(
+        cohort_org, MATERIALS_REPO
+    )
     assignments = seed.discover_assignments(course_org)
     # A persistent course org holds per-year templates (assignment-*-fYYYY); a cohort site
     # should list only its own year's, matched on the cohort's fYYYY/sYYYY tag.
@@ -335,7 +355,7 @@ def sync_site(course_org: str, cohort_org: str) -> int:
     if tag:
         assignments = [a for a in assignments if a.lower().endswith(tag)]
     log_step(
-        f"Syncing {cohort_org}/{site}: {len(weeks)} released week(s), "
+        f"Syncing {cohort_org}/{site}: {len(sessions)} released session(s), "
         f"{len(assignments)} assignment(s)"
     )
     start = _semester_start(cohort_org)
@@ -351,8 +371,9 @@ def sync_site(course_org: str, cohort_org: str) -> int:
         meta_raw = get_file_content(course_org, ".github", "dsl-course.yml") or ""
         meta = yaml.safe_load(meta_raw) if meta_raw else {}
         meta = meta if isinstance(meta, dict) else {}
-        # People + schedule are cohort-specific (they vary by year), so they come from the
-        # cohort's own .github/dsl-course.yml, not the persistent course org's.
+        # Schedule is cohort-specific (it varies by year), so it comes from the cohort's
+        # own .github/dsl-course.yml. People (instructors/TAs) no longer live here - see
+        # the COURSE org's `meta` above, read by _people_yaml below.
         cohort_raw = get_file_content(cohort_org, ".github", "dsl-course.yml") or ""
         cohort_meta = yaml.safe_load(cohort_raw) if cohort_raw else {}
         cohort_meta = cohort_meta if isinstance(cohort_meta, dict) else {}
@@ -371,11 +392,12 @@ def sync_site(course_org: str, cohort_org: str) -> int:
                 cfg = _set_config(cfg, "course_code", str(meta["course_code"]))
             cfg_path.write_text(cfg)
 
-        # People: regenerate _data/people.yml from the cohort's declared `people:` block
-        # (else fall back to the course org's instructors / teaching-assistants teams).
+        # People: regenerate _data/people.yml from the COURSE org's declared `people:`
+        # block (instructors/TAs are the course org's SSOT, not per-cohort - see
+        # bootstrap_course._FACULTY_BLOCK), else fall back to its instructors team.
         data_dir = wd / "_data"
         data_dir.mkdir(exist_ok=True)
-        (data_dir / "people.yml").write_text(_people_yaml(course_org, cohort_meta))
+        (data_dir / "people.yml").write_text(_people_yaml(course_org, meta))
 
         # Exam rows render red via the template's schedule_row_exam.html. Use faculty
         # dates from the schedule block; else stub mid/end dates of a ~15-week semester.
@@ -398,11 +420,14 @@ def sync_site(course_org: str, cohort_org: str) -> int:
             (
                 "_lectures",
                 {
-                    f"week-{int(w):02d}.md": _lecture_entry(
-                        cohort_org, w, start + timedelta(days=(int(w) - 1) * 7)
+                    f"session-{int(s):02d}.md": _lecture_entry(
+                        cohort_org,
+                        s,
+                        start + timedelta(days=int(s) * 7),
+                        materials_sections,
                     )
-                    for w in weeks
-                    if w.isdigit()
+                    for s in sessions
+                    if s.isdigit()
                 },
             ),
             (
@@ -451,7 +476,7 @@ def sync_site(course_org: str, cohort_org: str) -> int:
 
 
 def _public_links(local_dir: Path, url_prefix: str) -> list[tuple[str, str]]:
-    """(display-name, site-relative URL) for every file under a copied week folder.
+    """(display-name, site-relative URL) for every file under a copied session folder.
 
     URLs are relative to the public site root (`/PUBLIC_MATERIALS_DIR/...`), so they
     resolve for the public - never blob/raw URLs into the private source repo. Names are
@@ -464,14 +489,14 @@ def _public_links(local_dir: Path, url_prefix: str) -> list[tuple[str, str]]:
     return out
 
 
-def _reading_list_md(readings_week_dir: Path) -> str:
+def _reading_list_md(readings_session_dir: Path) -> str:
     """The readings rendered as TEXT for `reading-list` mode (no files hosted, no links).
 
     Text/citation files (`.md/.txt/.bib/.markdown`) are inlined verbatim - that is the
     faculty-written reading list. Any other file (a PDF, say) is listed by name only, so
     the public sees WHAT to read without the copyrighted bytes being published."""
     parts = []
-    for p in sorted(readings_week_dir.rglob("*")):
+    for p in sorted(readings_session_dir.rglob("*")):
         if not p.is_file():
             continue
         if p.suffix.lower() in READING_LIST_EXTS:
@@ -484,30 +509,30 @@ def _reading_list_md(readings_week_dir: Path) -> str:
 
 
 def _public_lecture_entry(
-    week: str,
+    session: str,
     when: date,
     lecture_links: list[tuple[str, str]],
     reading_links: list[tuple[str, str]],
     reading_list_md: str,
 ) -> str:
-    """A public week entry: hosted lecture (and, in actual-readings mode, reading) links,
-    plus the reading list as inline text when in reading-list mode. Public-facing body -
-    no 'enrolled students only' gate."""
+    """A public session entry: hosted lecture (and, in actual-readings mode, reading)
+    links, plus the reading list as inline text when in reading-list mode. Public-facing
+    body - no 'enrolled students only' gate."""
     links = []
     for label, pairs in (("lecture", lecture_links), ("reading", reading_links)):
         for name, url in pairs:
             safe = name.replace('"', "'")
             links.append(f'    - url: {url}\n      name: "{label} - {safe}"')
     links_block = ("links:\n" + "\n".join(links)) if links else "links: []"
-    body = f"Lecture materials and readings for week {week}."
+    body = f"Lecture materials and readings for session {session}."
     if reading_list_md:
         body += "\n\n### Reading list\n\n" + reading_list_md
     return (
         f"---\n"
         f"type: lecture\n"
         f"date: {when.isoformat()}T09:00:00\n"
-        f'title: "Week {week}"\n'
-        f'tldr: "Materials for week {week}."\n'
+        f'title: "Session {session}"\n'
+        f'tldr: "Materials for session {session}."\n'
         f"{links_block}\n"
         f"---\n"
         f"{body}\n"
@@ -540,12 +565,9 @@ def sync_public_site(
         if scaffold.scaffold_site(course_org) != 0:
             return 1
 
-    # Local import: _week_dir padding tolerance, without a module-load import cycle.
-    from . import release
-
-    weeks = seed.discover_weeks(course_org, source_repo)
+    sessions = seed.discover_sessions(course_org, source_repo)
     log_step(
-        f"Publishing {course_org}/{site} from {source_repo}: {len(weeks)} week(s), "
+        f"Publishing {course_org}/{site} from {source_repo}: {len(sessions)} session(s), "
         f"readings={readings_mode}, lectures={'on' if include_lectures else 'off'}"
     )
 
@@ -555,7 +577,7 @@ def sync_public_site(
         meta = {}
     # Only the semester_start matters here (a course site has no per-cohort schedule);
     # reuse _schedule's parsing rather than re-deriving it. Neutral fallback - the site
-    # spans years, so the date only orders the week entries.
+    # spans years, so the date only orders the session entries.
     start = _schedule(meta)[0] or date(2025, 1, 1)
 
     with tempfile.TemporaryDirectory() as work:
@@ -584,32 +606,32 @@ def sync_public_site(
             shutil.rmtree(served_root)
 
         lecture_entries = {}
-        for w in weeks:
-            if not w.isdigit():
+        for s in sessions:
+            if not s.isdigit():
                 continue
-            site_week = served_root / f"week-{w}"
-            url_base = f"/{PUBLIC_MATERIALS_DIR}/{source_repo}/week-{w}"
+            site_session = served_root / f"session-{s}"
+            url_base = f"/{PUBLIC_MATERIALS_DIR}/{source_repo}/session-{s}"
             lecture_links, reading_links, reading_list_md = [], [], ""
 
             if include_lectures:
-                lec_src = release._week_dir(src / "lectures", w)
+                lec_src = find_session_dir(src / "lectures", s)
                 if lec_src is not None:
-                    dest = site_week / "lectures"
+                    dest = site_session / "lectures"
                     shutil.copytree(lec_src, dest, dirs_exist_ok=True)
                     lecture_links = _public_links(dest, f"{url_base}/lectures")
 
-            read_src = release._week_dir(src / "readings", w)
+            read_src = find_session_dir(src / "readings", s)
             if read_src is not None:
                 if readings_mode == "actual-readings":
-                    dest = site_week / "readings"
+                    dest = site_session / "readings"
                     shutil.copytree(read_src, dest, dirs_exist_ok=True)
                     reading_links = _public_links(dest, f"{url_base}/readings")
                 elif readings_mode == "reading-list":
                     reading_list_md = _reading_list_md(read_src)
 
-            when = start + timedelta(days=(int(w) - 1) * 7)
-            lecture_entries[f"week-{int(w):02d}.md"] = _public_lecture_entry(
-                w, when, lecture_links, reading_links, reading_list_md
+            when = start + timedelta(days=int(s) * 7)
+            lecture_entries[f"session-{int(s):02d}.md"] = _public_lecture_entry(
+                s, when, lecture_links, reading_links, reading_list_md
             )
 
         # Course identity into _config.yml; semester is neutral (the site is multi-year).
