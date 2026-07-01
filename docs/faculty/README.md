@@ -25,7 +25,9 @@ model: [`../admin/architecture.md`](../admin/architecture.md).
 
 ```mermaid
 flowchart TD
-  A["<b>Admin</b>: add faculty to<br/>hertie-data-science-lab / faculty team"] --> B
+  subgraph CENTRAL["Central DSL org · hertie-data-science-lab"]
+    A["<b>Admin</b>: add faculty<br/>to the faculty team"]
+  end
 
   subgraph COURSE["Course org (one-time)"]
     B["<b>New course org</b><br/>create + bootstrap"]
@@ -38,17 +40,45 @@ flowchart TD
   subgraph COHORT["Cohort org (once / year)"]
     E["<b>New cohort org</b><br/>create + bootstrap"]
     F["<b>Enrol students</b><br/>Join issue + Sync enrolment"]
+    G["<b>Release materials</b><br/>per week"]
+    H["<b>Release assignment</b><br/>per-student repos"]
+    I["Sync site (automatic)"]
+    J["<b>Grade + return</b><br/>autograde → manual → preview → distribute"]
     E --> F
   end
 
+  A --> B
   B --> E
-  C --> G["<b>Release materials</b> → cohort"]
-  D --> H["<b>Release assignment</b> → cohort"]
+  C --> G
+  D --> H
   E --> G
-  E --> H
-  G --> I["Sync site (automatic)"]
+  F --> H
+  G --> I
   H --> I
+  H --> J
+
+  style CENTRAL fill:#fff3c4,stroke:#d4a017,color:#5c4500
 ```
+
+## The workflows
+
+Numbered in reading order. All **course-level** workflows (1-3) come before the
+**cohort-level** ones (4-8):
+
+| # | Workflow | Tier | When |
+|---|----------|------|------|
+| 1 | [New course org](01-new-course-org.md) | course | once, when a course first goes on the platform |
+| 2 | [Add materials to course](02-add-materials-to-course.md) | course | once/year a new year-tagged materials repo |
+| 3 | [Add assignment to course](03-add-assignment-to-course.md) | course | once/year a new year-tagged assignment-{n} repo |
+|---|----------|------|------|
+| 4 | [New cohort org](04-new-cohort-org.md) | cohort | once per year |
+| 5 | [Enrol students to cohort](05-enrol-students-to-cohort.md) | cohort | start of each cohort |
+| 6 | [Release materials to cohort](06-release-materials-to-cohort.md) | cohort | weekly cadence |
+| 7 | [Release assignment to cohort](07-release-assignment-to-cohort.md) | cohort | per assignment, once students have onboarded |
+| 8 | [Grade and return assignments](08-grade-and-return-assignments.md) | cohort | per assignment, after the deadline |
+
+For a one-page summary of **every button** (not the step-by-step flow), see
+[`actions-reference.md`](actions-reference.md).
 
 ## Who can run what (access)
 
@@ -62,25 +92,6 @@ Two separate populations - neither ever holds the bot token:
 Team membership is **not** automatic - an org owner/admin adds you (see each workflow's
 prerequisites). The bot account (`hertie-dsl-bot`) must be an **Owner** of every org; that is
 the one irreducible manual prerequisite (no org-creation API).
-
-## The workflows
-
-Numbered in reading order:
-
-All **course-level** workflows (1-3) come before the **cohort-level** ones (4-7):
-
-| # | Workflow | Tier | When |
-|---|----------|------|------|
-| 1 | [New course org](01-new-course-org.md) | course | once, when a course first goes on the platform |
-| 2 | [Add materials to course](02-add-materials-to-course.md) | course | per materials repo (usually once/year) |
-| 3 | [Add assignment to course](03-add-assignment-to-course.md) | course | per assignment |
-| 4 | [New cohort org](04-new-cohort-org.md) | cohort | once per year |
-| 5 | [Enrol students to cohort](05-enrol-students-to-cohort.md) | cohort | start of each cohort |
-| 6 | [Release materials to cohort](06-release-materials-to-cohort.md) | cohort | weekly cadence |
-| 7 | [Release assignment to cohort](07-release-assignment-to-cohort.md) | cohort | per assignment, once students have onboarded |
-
-For a one-page summary of **every button** (not the step-by-step flow), see
-[`actions-reference.md`](actions-reference.md).
 
 ## Demo orgs (live reference)
 

@@ -25,8 +25,18 @@ For the **step-by-step flows** (which button, which inputs, in what order), see 
 | --- | --- | --- |
 | **Release materials** | `.github` (pick source repo, type week) **or** the materials repo (week dropdown) | Copies the *whole* `lectures/week-N/` + `readings/week-N/` folders - every file - into the cohort `materials` repo (private + `students` read), nested under `week-N/`. Only released weeks appear. Optional `syllabus` / `README` toggles (default off). |
 | **Release assignment** | `.github` or the materials repo | Two stages: freeze a cohort-level template repo `<slug>` from the chosen `assignment-*` template, then generate one private `<slug>-<handle>` repo per onboarded student *from that cohort template* (+ collaborator). `include_solution` pushes the template's `solution` branch into each student repo. |
-| **Grade assignment** | `.github` | Faculty-side autograder: pins each submission to the assignment's scheduled due date (cohort `schedule` + `grace_days`), runs the hidden tests, records the machine score. |
 | **Sync site** | `.github` | Regenerate a cohort's website from the org structure - releases do this automatically; the standard workflow has no need for manual sync. |
+
+## Grades (private, previewable)
+
+| Action | Where | Effect |
+| --- | --- | --- |
+| **Grade assignment** | `.github` | Faculty-side autograder: pins each submission to the assignment's scheduled due date (cohort `schedule` + `grace_days`), runs the hidden tests, records the machine score. Skipped if `grading.yml` sets `autograde: false`. |
+| **Sync gradebooks** | `.github` | Ensure every onboarded student has a private `grades-<handle>` repo. Idempotent. |
+| **Render grades (preview)** | `.github` | Pivot every `grades/<assignment>.csv` into per-student `gradebook/<handle>.yml` and open ONE pull request in `classroom-config` - that diff is the all-students preview. |
+| **Distribute grades** | `.github` | After the preview PR merges, copy each gradebook into the student's private `grades-<handle>` repo and email them (unless run silently). |
+
+See [Grade and return assignments](08-grade-and-return-assignments.md) for the step-by-step flow.
 
 ## Optional: public course website
 
