@@ -446,16 +446,22 @@ def render_sync_membership(cohort_orgs: list[str]) -> str:
     """Consolidated roster + project-teams + faculty sync (replaces the old separate
     Sync enrolment / Sync teams buttons).
 
-    Faculty (instructors/course-admin, from THIS org's declared `people:` block)
-    always reconciles - here AND into every cohort. Roster (students.csv) + project
-    teams (teams.csv) additionally reconcile for whichever cohort is in scope. Fully
+    Faculty always reconciles - split by role: course_admins (from THIS org's
+    declared `people:` block) into the course org + every cohort's own course-admin
+    team; and, for whichever cohort is in scope, that cohort's own instructors/TAs
+    (from its classroom-config/people.yml) into its own instructors team + a
+    course-org instructors-<tag> team. Roster (students.csv) + project teams
+    (teams.csv) additionally reconcile for whichever cohort is in scope. Fully
     automatic, including removals (no --prune flag - config is the live truth):
 
-    - push to this file's own dsl-course.yml -> faculty only (no single cohort implied)
+    - push to this file's own dsl-course.yml -> course_admins only (no single cohort
+      implied - but still applied to every cohort's own course-admin team)
     - repository_dispatch (from a cohort's classroom-config dispatcher on push to its
-      students.csv/teams.csv) -> faculty + that one cohort
-    - daily cron -> faculty + EVERY registered cohort (catches start/end date
-      rotation with no edit that day, and any drift generally)
+      students.csv/teams.csv/people.yml) -> course_admins + that one cohort's
+      instructors/TAs
+    - daily cron -> course_admins + EVERY registered cohort (roster/teams/instructors,
+      catching any start/end date rotation with no edit that day, and any drift
+      generally)
     - workflow_dispatch -> manual escape hatch, gated by check-team (the other three
       trigger types skip that gate, same as the existing scheduler workflow already
       does for cron)
@@ -1120,10 +1126,12 @@ This is the **`.github` repo** for the `{org}` cohort org. It holds this cohort'
 and the auto-generated student-facing org page - **faculty / FAs delivering the course rarely need to touch it directly.**
 
 - The **faculty action buttons** (Release, Grade, Sync ...) live in the **parent course org's**
-  `.github` **Actions** tab, not here.
-- `{COURSE_CONFIG}` - this cohort's schedule overrides for the site (edit in the web UI,
-  then run **Sync site**). Course identity (name/code) and people (instructors/TAs/
-  course-admins) are inherited from the parent course org, kept in sync by **Sync membership**.
+  `.github` **Actions** tab, not here. This repo has no `dsl-course.yml` of its own - all of
+  this cohort's config lives in **classroom-config** instead:
+  `schedule.yml` (release calendar + due dates), `people.yml` (this cohort's own
+  instructors/TAs), `students.csv`, `teams.csv`, `grades/`.
+- Course identity (name/code) and `course_admins` are inherited from the parent course org,
+  kept in sync by **Sync membership**.
 - `profile/README.md` - the student-facing org landing page (auto-generated; don't hand-edit).
 - Students join via the **welcome** repo's "Join" issue; the roster lives in **classroom-config**.
 
@@ -1137,9 +1145,10 @@ the course. **You never need a CLI or to write code: every action is a clickable
 ## Run an action
 
 Open the **[Actions tab](https://github.com/{org}/.github/actions)**, pick a workflow, and click
-**Run workflow**. Buttons only show if you have write access (you're in this org's `instructors`
-or `course-admin` team). The full, annotated list of actions is on the
-**[org home page](https://github.com/{org})**.
+**Run workflow**. Buttons only show if you have write access - you're in this org's
+`course-admin` team (declared here, course-wide), or a cohort's `instructors-<tag>` team
+(declared in that cohort's own `classroom-config/people.yml`). The full, annotated list of
+actions is on the **[org home page](https://github.com/{org})**.
 
 ## Typical flow
 
@@ -1152,8 +1161,10 @@ or `course-admin` team). The full, annotated list of actions is on the
 ## What's in here
 
 - `.github/workflows/` - the action buttons (seeded from the central toolkit; refreshed by **Refresh actions**).
-- `{COURSE_CONFIG}` - this course's identity (name/code) and people (instructors/TAs/
-  course-admins - the SSOT, kept in sync into every cohort by **Sync membership**). Schedule is declared per cohort.
+- `{COURSE_CONFIG}` - this course's identity (name/code) and `course_admins` (the
+  course-wide admin SSOT, kept in sync into every cohort by **Sync membership**).
+  Instructors/TAs and the schedule are both declared per cohort instead, in that
+  cohort's own `classroom-config`.
 - `profile/README.md` - the public org landing page (auto-generated repo index).
 
 Built and kept in sync by the [DSL teaching toolkit](https://github.com/{CENTRAL}).
@@ -1233,7 +1244,7 @@ _(automatically bootstrapped from the central
 ### One-time setup actions:
 - [**Bootstrap cohort**](https://github.com/{org}/.github/actions/workflows/bootstrap-cohort.yml) - configure a freshly-created cohort org (sets up scaffold repos), register it with the course org, refresh dropdowns.
 - [**Send enrolment codes**](https://github.com/{org}/.github/actions/workflows/send-codes.yml) - generate a random non-PII enrolment code per student and email each their code (to their university inbox). Students paste the code into the welcome Join issue - no personal data in the public repo. `dry_run` previews codes + emails. Needs the `GRAPH_*` (or `SMTP_*`) secrets.
-- [**Sync membership**](https://github.com/{org}/.github/actions/workflows/sync-membership.yml) - one consolidated, fully-automatic reconcile of org + `students`-team access (from `students.csv`), project teams (from `teams.csv`), and instructors/course-admin access (from this org's declared `people:` block, mirrored into every cohort). Triggers on push (editing any of those files takes effect immediately, including removals - there's no prune toggle, the file is the live truth) and on a daily cron (catches a faculty entry's `start`/`end` rotation with no edit that day); `workflow_dispatch` is a manual escape hatch.
+- [**Sync membership**](https://github.com/{org}/.github/actions/workflows/sync-membership.yml) - one consolidated, fully-automatic reconcile of org + `students`-team access (from `students.csv`), project teams (from `teams.csv`), `course_admins` (from this org's declared `people:` block, mirrored into every cohort's own `course-admin` team), and each cohort's own `instructors`/`teaching_assistants` (from its `classroom-config/people.yml`, reconciled into that cohort's `instructors` team AND a course-org `instructors-<tag>` team). Triggers on push (editing any of those files takes effect immediately, including removals - there's no prune toggle, the file is the live truth) and on a daily cron (catches a faculty entry's `start`/`end` rotation with no edit that day); `workflow_dispatch` is a manual escape hatch.
 - [**New materials repo**](https://github.com/{org}/.github/actions/workflows/new-materials.yml) - scaffold a correctly-structured `course-materials-<year>` repo (session folders + the Release buttons).
 - [**New assignment**](https://github.com/{org}/.github/actions/workflows/new-assignment.yml) - scaffold an `assignment-N-<year>` template repo (starter on `main`; the `solution` branch carries the model solution, `grading.yml`, and the hidden tests).
 - [**Refresh actions**](https://github.com/{org}/.github/actions/workflows/refresh-actions.yml) - repopulate the cohort/session/assignment dropdowns, re-equip content repos, and rebuild this index.

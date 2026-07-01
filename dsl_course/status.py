@@ -1,11 +1,11 @@
 """dsl-course status -- a per-cohort checklist of every faculty input location.
 
 Faculty currently touch several distinct files across 2 orgs to run a cohort: course
-identity, the faculty roster, the release manifest, and classroom-config's roster/
-teams/grades/schedule.yml. This module answers one glance-able question - what's
-configured, what's still missing, and where do I go to fix it - by reusing each
-source's existing loader rather than re-deriving anything. Read-only; it changes no
-state.
+identity, course admins, the release manifest, and classroom-config's roster/teams/
+grades/schedule.yml/people.yml. This module answers one glance-able question -
+what's configured, what's still missing, and where do I go to fix it - by reusing
+each source's existing loader rather than re-deriving anything. Read-only; it
+changes no state.
 
 Row IDs mirror docs/faculty/required-input-schema.md's B/C numbering, so the status view
 and that doc's table stay in lockstep.
@@ -22,15 +22,14 @@ import contextlib
 import io
 import json
 import sys
+from datetime import date
 
 import yaml
-
-from datetime import date
 
 from . import grades, roster, schedule, scheduler, sync_faculty, teams
 from .utils import get_default_branch, get_file_content
 
-ITEMS = ("B1", "B5", "B6", "C2", "C3", "C4", "C5", "C6")
+ITEMS = ("B1", "B5", "B6", "C2", "C3", "C4", "C5", "C6", "C7")
 # Mandatory per docs/faculty/required-input-schema.md; everything else is optional
 # (synthesised/skipped when absent), so an absent optional item is "optional", not
 # "missing" - the status view shouldn't cry wolf over things that never block the pipeline.
@@ -112,14 +111,20 @@ def collect(course_org: str, cohort_org: str) -> dict[str, dict]:
 
     # Access is granted by github_handle alone (sync_faculty's actual criterion) -
     # site._people_from_meta requires a display `name` too (it's for website cards),
-    # so it undercounts here. Reuse the already-fetched course_raw.
+    # so it undercounts here. Reuse the already-fetched course_raw. course-admin only
+    # - a course-level `instructors`/`teaching_assistants` entry is a legitimate,
+    # display-only website card (see the People section in
+    # docs/faculty/required-input-schema.md), not access, so it must not inflate
+    # this count.
     has_people_block = isinstance(course_meta.get("people"), dict)
-    faculty = sync_faculty.parse_faculty(course_raw or "")
-    desired = sync_faculty.desired_team_members(faculty, date.today().isoformat())
-    n_people = sum(len(handles) for handles in desired.values())
+    course_faculty = sync_faculty.parse_faculty(course_raw or "")
+    course_desired = sync_faculty.desired_team_members(
+        course_faculty, date.today().isoformat()
+    )
+    n_admins = len(course_desired.get("course-admin", set()))
     data["B6"] = _row(
-        "B6", "People (faculty)", course_org, ".github", "dsl-course.yml", course_branch,
-        has_people_block, f"{n_people} active" if has_people_block else "falls back to GitHub teams",
+        "B6", "Course admins", course_org, ".github", "dsl-course.yml", course_branch,
+        has_people_block, f"{n_admins} active" if has_people_block else "falls back to GitHub teams",
     )
 
     students = roster.load(cohort_org)
@@ -160,6 +165,18 @@ def collect(course_org: str, cohort_org: str) -> dict[str, dict]:
         has_due_dates,
         f"start={sched.semester_start}, {len(sched.assignments)} due date(s), "
         f"{len(sched.exams)} exam(s)" if has_due_dates else "",
+    )
+
+    cohort_faculty = sync_faculty.load_cohort_faculty(cohort_org)
+    cohort_desired = sync_faculty.desired_team_members(
+        cohort_faculty, date.today().isoformat()
+    )
+    n_instructors = len(cohort_desired.get("instructors", set()))
+    data["C7"] = _row(
+        "C7", f"Instructors/TAs ({sync_faculty.COHORT_PEOPLE_PATH})",
+        cohort_org, sync_faculty.COHORT_CONFIG_REPO, sync_faculty.COHORT_PEOPLE_PATH,
+        cohort_branch,
+        bool(n_instructors), f"{n_instructors} active" if n_instructors else "",
     )
 
     return data

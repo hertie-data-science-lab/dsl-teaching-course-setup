@@ -93,20 +93,28 @@ flowchart TD
     ct["hertie-data-science-lab<br/>faculty / admin teams"] -->|"write/admin on"| cr["central repo"] --> ba["run Bootstrap Course Org"]
   end
   subgraph run["2 · Run a course's buttons (per-course)"]
-    it["course org's own<br/>instructors (write) / course-admin (admin)"] -->|"granted on"| gh["that org's .github"] --> rb["run Release / Refresh / Sync membership / ..."]
+    ca["course org people: → course-admin<br/>(course-wide, admin)"] -->|"mirrored to"| gh["course org .github<br/>+ every cohort org"]
+    it["cohort people.yml → instructors-&lt;tag&gt;<br/>(per-cohort, push)"] -->|"granted on"| ghtag["course org .github<br/>+ that tag's own content repos"]
+    gh --> rb["run Release / Refresh / Sync membership / ..."]
+    ghtag --> rb
   end
   prov ~~~ run
 ```
 
 - **Provisioning** is a DSL-wide authority: the central `faculty`/`admin` teams, granted
   write/admin on the central repo, may run **Bootstrap Course Org**. Nothing else.
-- **Running a course's buttons** is **per-course**: only that course org's own
-  `instructors`/`course-admin` teams, which bootstrap grants on `.github`.
+- **Running a course's buttons** is **per-course**, split by role: `course_admins`
+  (course-wide, admin rights, declared once on the course org and mirrored into every
+  cohort's own `course-admin` team) and `instructors`/`teaching_assistants`
+  (per-cohort, push rights - most cohorts have different lecturers/TAs, so each cohort
+  declares its own in `classroom-config/people.yml`).
 - GitHub shows "Run workflow" only to **write+** users; the seeded `check-team` re-checks repo
-  permission at run time. GitHub Teams are org-scoped (no cross-org grant exists), so a course
-  org's `instructors`/`course-admin` team can't itself unlock a cohort org's buttons - instead,
-  `sync_faculty` reconciles the SAME desired membership (declared once, on the course org's
-  `people:` block) into the course org AND every cohort org independently. Full detail + how to
+  permission at run time. GitHub Teams are org-scoped (no cross-org grant exists), so
+  `sync_faculty` reconciles two independent flows: `course_admins` mirrors the SAME desired
+  membership into the course org AND every cohort org; a cohort's own `instructors`/
+  `teaching_assistants` reconcile into that cohort's own `instructors` team AND a **parallel**,
+  tag-scoped `instructors-<tag>` team on the course org (push access on just that tag's content
+  repos + `.github`) - no merge across cohorts, each tag gets its own team. Full detail + how to
   declare people: [ADMIN-SETUP "Who can run which action"](admin-setup.md#who-can-run-which-action).
 
 ## Core workflows
@@ -133,8 +141,12 @@ sequenceDiagram
 
 A **cohort** is bootstrapped from the course org's own **Bootstrap cohort** button (not the
 central action) - you give it the empty cohort org's name. It runs the same `bootstrap_course`
-with `--cohort`, additionally seeding `welcome` + `classroom-config`, tightening permissions,
-scaffolding the website, and registering the cohort in the course's `cohort-courses-pages.yml`.
+with `--cohort`, additionally seeding `welcome` + `classroom-config` (roster, teams, grades,
+`schedule.yml`, and `people.yml` for this cohort's own instructors/TAs), tightening
+permissions, scaffolding the website, applying the course's current `course_admins`, and
+registering the cohort in the course's `cohort-courses-pages.yml`. Note the cohort org gets
+**no `dsl-course.yml` of its own** - its `.github` repo holds only the student-facing profile
+README; all of this cohort's config lives in `classroom-config`.
 
 ### Release materials
 
@@ -233,10 +245,14 @@ Every cohort gets an **auto-deployed website** at `<cohort-org>.github.io`, gene
 `course-website-template` by `scaffold_site` during Bootstrap cohort. `site.py` then
 **regenerates its content from the live org structure** on every release (and via manual
 **Sync site**): the schedule lists released sessions + assignment due dates + MidTerm/Final
-exams; lecture entries link the actual released files; assignment briefs come from each
-template's README; instructor/TA cards come from the COURSE org's declared `people:` block
-(falling back to its `instructors` / `teaching-assistants` teams if absent); the course
-name/semester come from the org metadata.
+exams (from `classroom-config/schedule.yml`); lecture entries link the actual released files;
+assignment briefs come from each template's README; instructor/TA **cards** come from the
+COURSE org's declared `people:` block only (falling back to its `instructors` /
+`teaching-assistants` teams if absent); the course name/semester come from the org metadata.
+Note this is display-only and separate from GitHub **access**: a cohort's own
+`classroom-config/people.yml` grants that cohort's instructors/TAs push access (see
+[Access model](#access-model--two-populations)) but does not put them on the website - only a
+course-org `people:` entry with a display `name` does that.
 
 ## Course website (open courseware)
 
@@ -307,8 +323,11 @@ Self-contained - workflows + their Python implementation live in this repo.
   - `site` - regenerate the cohort website (`sync_site`) and the public course website (`sync_public_site`) from the live org structure.
   - `sync_roster` / `sync_teams` - reconcile the `students` team / per-project teams from
     `students.csv` / `teams.csv` (one-way: the CSV is truth, the GitHub Teams are the projection).
-  - `sync_faculty` - reconcile `instructors`/`course-admin` team membership from the course
-    org's declared `people:` block (the SSOT) into the course org + every registered cohort.
+  - `sync_faculty` - reconcile `course-admin` team membership (course org's declared
+    `people:` block - the SSOT) into the course org + every cohort's own team; and,
+    per cohort, `instructors`/`teaching_assistants` (that cohort's own declared
+    `classroom-config/people.yml`) into its own `instructors` team + a parallel,
+    tag-scoped `instructors-<tag>` team on the course org.
   - `sync_membership` - the one consolidated entrypoint (roster + teams + faculty) that the
     seeded **Sync membership** button/cron/dispatch all call.
   - `roster` / `teams` - read the per-cohort `students.csv` / `teams.csv`.

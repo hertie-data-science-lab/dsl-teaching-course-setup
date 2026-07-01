@@ -2,13 +2,16 @@
 
 One entrypoint replacing three separate buttons' worth of orchestration:
 
-- Faculty (instructors/course-admin, from the course org's declared `people:` block)
-  ALWAYS reconciles - the course org itself + every cohort registered under it
-  (sync_faculty.sync).
-- Roster (students.csv) and project teams (teams.csv) additionally reconcile for
-  whichever cohort(s) are in scope: one named cohort (--cohort-org, e.g. a push to
-  that cohort's classroom-config), or every registered cohort (--all-cohorts, e.g.
-  the daily cron - a full resync with no single cohort in context).
+- course_admins (from the course org's declared `people:` block) ALWAYS reconciles
+  everywhere - the course org itself + every cohort registered under it
+  (sync_faculty.sync_course_admins) - regardless of which cohort (if any) triggered
+  this sync, since admin access is course-wide by design.
+- Roster (students.csv), project teams (teams.csv), and each cohort's own
+  instructors/TAs (classroom-config/people.yml, via
+  sync_faculty.sync_cohort_instructors) additionally reconcile for whichever
+  cohort(s) are in scope: one named cohort (--cohort-org, e.g. a push to that
+  cohort's classroom-config), or every registered cohort (--all-cohorts, e.g. the
+  daily cron - a full resync with no single cohort in context).
 
 Every reconcile here is FULL (add + remove) - there is no --prune flag at this level;
 config is the live truth, so a deleted roster row or a lapsed faculty `end` date
@@ -35,17 +38,22 @@ def sync(
     all_cohorts: bool = False,
     dry_run: bool = False,
 ) -> int:
-    # Fetch the registry once and pass it through when we already need every cohort,
-    # rather than letting sync_faculty.sync() (which also defaults to "every cohort")
-    # discover it again independently.
-    cohorts = seed.discover_cohorts(course_org) if all_cohorts else None
-    errors = sync_faculty.sync(course_org, cohorts=cohorts, dry_run=dry_run)
-    targets = list(cohorts) if cohorts is not None else []
-    if cohort_org and cohort_org not in targets:
-        targets.append(cohort_org)
+    # course_admins always reconciles everywhere, independent of which cohort (if
+    # any) triggered this sync.
+    all_registered = seed.discover_cohorts(course_org)
+    errors = sync_faculty.sync_course_admins(course_org, all_registered, dry_run=dry_run)
+
+    # Roster/teams/instructors reconcile only for whichever cohort(s) are in scope -
+    # not fanned out to every other, unrelated cohort.
+    targets = list(all_registered) if all_cohorts else ([cohort_org] if cohort_org else [])
+    content_repos = seed.discover_content_repos(course_org) if targets else []
+    assignments = seed.discover_assignments(course_org) if targets else []
     for org in targets:
         errors += sync_roster.sync(org, prune=True, dry_run=dry_run)
         errors += sync_teams.sync(org, prune=True, dry_run=dry_run)
+        errors += sync_faculty.sync_cohort_instructors(
+            course_org, org, content_repos, assignments, dry_run=dry_run
+        )
     return errors
 
 

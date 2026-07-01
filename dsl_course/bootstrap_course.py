@@ -159,33 +159,28 @@ def add_course_admins(org: str, handles: str) -> None:
             log_err(f"  ! could not add {login}: {out[:120]}")
 
 
-# Instructors/TAs/course-admins are declared ONCE on the persistent COURSE org (this
-# block), not per cohort - `sync_faculty` reconciles the same desired state into this
-# org's `instructors`/`course-admin` GitHub teams AND into every cohort org registered
-# under it. `github_handle` is the only required field (it's what actually grants
+# course_admins are declared ONCE on the persistent COURSE org (this block) - the
+# single source of truth for admin access, reconciled into this org's own
+# `course-admin` GitHub team AND mirrored into every cohort org's own `course-admin`
+# team. `github_handle` is the only required field (it's what actually grants
 # access); `start`/`end` are optional ISO dates - omit either for open-ended, or set
-# both to bound a TA's access to one semester (auto-rotates, no manual removal needed).
-# name/title/photo/url are optional, display-only (shown on cohort/course websites).
+# both to bound access to one window (auto-rotates, no manual removal needed).
+#
+# Instructors/TAs are NOT declared here - most cohorts have different lecturers/TAs,
+# so they're declared per cohort instead, in that cohort's own
+# classroom-config/people.yml (seeded alongside schedule.yml at Bootstrap cohort).
 _FACULTY_BLOCK = (
-    "# Instructors, TAs, and course-admins for this course - the single source of truth\n"
-    "# for both GitHub access (instructors/course-admin teams, applied here AND mirrored\n"
-    "# into every cohort org) and website display. Uncomment:\n"
+    "# Course admins for this course - the single source of truth for admin access\n"
+    "# (applied here AND mirrored into every cohort org). Uncomment:\n"
     "#\n"
     "# people:\n"
-    "#   instructors:\n"
-    '#     - github_handle: "janedoe"      # required - grants the `instructors` team\n'
-    '#       start: "2026-09-01"           # optional - no start = active immediately\n'
-    '#       end: "2027-06-30"             # optional - no end = indefinite\n'
-    '#       name: "Prof. Jane Doe"        # optional, display only\n'
-    '#       title: "Professor of ..."\n'
-    '#       photo: "https://.../jane.jpg"\n'
-    '#       url: "https://.../profile/jane"\n'
-    "#   teaching_assistants:\n"
-    '#     - github_handle: "anOther"\n'
-    '#       start: "2026-09-01"\n'
-    '#       end: "2027-01-31"\n'
     "#   course_admins:\n"
-    '#     - github_handle: "adminhandle"\n'
+    '#     - github_handle: "adminhandle"    # required - grants the `course-admin` team\n'
+    '#       start: "2026-09-01"             # optional - no start = active immediately\n'
+    '#       end: "2027-06-30"               # optional - no end = indefinite\n'
+    "#\n"
+    "# Instructors/TAs are declared per cohort instead (most cohorts have different\n"
+    "# lecturers/TAs) - see that cohort's classroom-config/people.yml.\n"
 )
 
 
@@ -194,12 +189,12 @@ _FACULTY_BLOCK = (
 # (sync_teams, scheduled-release, grade sync) never ingests them - only the real names.
 _CLASSROOM_README = """# classroom-config - this cohort's private config
 
-**PRIVATE.** This is the entire per-cohort data hub - roster, teams, grades, and
-schedule. No PII (emails, ids, names) leaves this repo. People (instructors/TAs) are
-managed at the **course org** level, not here - see that org's `.github/dsl-course.yml`;
-this cohort's team access is kept current automatically. Faculty/FAs edit these files;
-the buttons in the **course org's** Actions tab read them. Canonical, engine-wide
-schema:
+**PRIVATE.** This is the entire per-cohort data hub - roster, teams, grades,
+schedule, and this cohort's own instructors/TAs. No PII (emails, ids, names) leaves
+this repo. Course admins are managed at the **course org** level instead - see that
+org's `.github/dsl-course.yml`; that access is kept current automatically. Faculty/FAs
+edit these files; the buttons in the **course org's** Actions tab read them.
+Canonical, engine-wide schema:
 <https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/blob/main/docs/faculty/required-input-schema.md>.
 
 ## students.csv - the roster (required)
@@ -245,6 +240,16 @@ date), `semester_start`/`semester_end`, `assignments` (due dates, keyed by slug,
 with an optional `grace_days` for grading only), and `exams`. Seeded mostly-commented -
 uncomment and fill what you want to pin; anything left out is synthesised or simply not
 scheduled.
+
+## people.yml - this cohort's instructors/TAs (optional)
+
+Most cohorts have different lecturers/TAs, so - unlike course admins (course-org level,
+see above) - instructors/TAs are declared here, per cohort. **Sync membership**
+reconciles them into this cohort's own `instructors` team AND a course-org
+`instructors-<tag>` team (push access scoped to just this year's content repos, plus
+the central `.github` repo so they can use the central dispatch buttons too), so they
+can push materials without a course-level declaration. Seeded mostly-commented -
+uncomment and fill what you want to pin.
 """
 
 _TEAMS_CSV_SAMPLE = """# Sample. Rename to teams.csv to activate. Students normally self-select via
@@ -290,15 +295,40 @@ _SCHEDULE_YML = """# This cohort's schedule - release calendar (sessions/labs), 
 #     date: 2026-12-15
 """
 
+# This cohort's own instructors/TAs (unlike course_admins, declared once at course
+# level - see _FACULTY_BLOCK) - most cohorts have different lecturers/TAs, so they're
+# declared here instead. Seeded live (not a .sample) and mostly commented, matching
+# schedule.yml's uncomment-what-you-want UX.
+_PEOPLE_YML = """# This cohort's instructors/TAs - the single source of truth for GitHub push
+# access to this cohort's own team AND a course-org instructors-<tag> team (scoped
+# to this year's content repos, plus the central .github repo for the central
+# dispatch buttons). Course admins are declared at the course-org level instead (see
+# that org's .github/dsl-course.yml). Uncomment and fill what you want:
+#
+# people:
+#   instructors:
+#     - github_handle: "janedoe"      # required - grants the `instructors` team
+#       start: "2026-09-01"           # optional - no start = active immediately
+#       end: "2027-01-31"             # optional - no end = indefinite
+#       name: "Prof. Jane Doe"        # optional, display only
+#       title: "Professor of ..."
+#       photo: "https://.../jane.jpg"
+#       url: "https://.../profile/jane"
+#   teaching_assistants:
+#     - github_handle: "anOther"
+#       start: "2026-09-01"
+#       end: "2027-01-31"
+"""
+
 
 def _course_metadata(
     org: str, org_name: str, course_name: str, course_code: str
 ) -> str:
-    """dsl-course.yml for the persistent COURSE org: identity + the faculty roster
-    (instructors/TAs/course-admins - the single source of truth for access, mirrored
-    into every cohort org by sync_faculty). The schedule stays per-cohort (it changes
-    year to year); the faculty roster does not need to (rotation is handled by each
-    entry's optional start/end dates)."""
+    """dsl-course.yml for the persistent COURSE org: identity + course_admins (the
+    single source of truth for course-wide admin access, mirrored into every cohort
+    org's own course-admin team by sync_faculty). Instructors/TAs and the schedule
+    both stay per-cohort instead (they change year to year and, for instructors/TAs,
+    usually the people too)."""
     return (
         f"org: {org}\n"
         f"org_name: {org_name}\n"
@@ -526,6 +556,13 @@ def setup_cohort_extras(org: str) -> None:
         put_file(
             org,
             "classroom-config",
+            "people.yml",
+            _PEOPLE_YML.encode(),
+            "docs: seed people.yml (this cohort's instructors/TAs)",
+        )
+        put_file(
+            org,
+            "classroom-config",
             ".github/workflows/dispatch-sync.yml",
             _classroom_config_template("dispatch-sync.yml"),
             "ci: seed dispatch-sync workflow",
@@ -748,10 +785,11 @@ NEXT STEPS (manual):
 
 1. Review org settings: https://github.com/{args.org}/settings
 
-2. Declare THIS course's instructors/TAs/course-admins in the `people:` block of
+2. Declare THIS course's course_admins in the `people:` block of
    {args.org}/.github/dsl-course.yml, then push - "Sync membership" reconciles the
-   `instructors`/`course-admin` teams automatically (here and into every cohort; no
-   manual Teams-page edit needed).
+   `course-admin` team automatically (here and into every cohort's own course-admin
+   team; no manual Teams-page edit needed). Instructors/TAs are declared per cohort
+   instead, in that cohort's own classroom-config/people.yml (see step 4).
 
 3. Put content in the materials repo (any top-level dir with ordinal-prefixed
    subdirectories, e.g. lectures/00_.../, readings/00_.../) and create
@@ -772,7 +810,9 @@ then run bootstrap with --cohort (seeds welcome + roster + tightens perms).
             f"- org tightened (default_repository_permission=none)\n"
             f"- welcome repo (public): Join issue form + onboard workflow\n"
             f"- classroom-config repo (private): starter students.csv "
-            f"(edit https://github.com/{args.org}/classroom-config/blob/HEAD/students.csv with registrar data)\n"
+            f"(edit https://github.com/{args.org}/classroom-config/blob/HEAD/students.csv with registrar data), "
+            f"plus schedule.yml and people.yml (this cohort's calendar/due-dates and "
+            f"instructors/TAs - both seeded mostly-commented, uncomment what you want)\n"
         )
 
     return 0

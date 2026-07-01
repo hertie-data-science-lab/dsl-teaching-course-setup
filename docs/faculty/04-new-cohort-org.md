@@ -4,7 +4,10 @@ Stand up the per-year, student-facing org: onboarding, the roster, released mate
 
 ## Prerequisites
 
-- **You're in the course org's `instructors` / `course-admin` team** - *the *Bootstrap cohort* button lives in the **course** org's console and runs with the bot token, so you do **not**  need any membership in the cohort org itself.*
+- **You're in the course org's `course-admin` team** (or a prior cohort's `instructors-<tag>`
+  team, if this course already has one) - *the *Bootstrap cohort* button lives in the
+  **course** org's console and runs with the bot token, so you do **not** need any membership
+  in the cohort org itself.*
 
 ## Steps
 
@@ -23,17 +26,33 @@ Stand up the per-year, student-facing org: onboarding, the roster, released mate
       - `students.csv`,
       - `teams.csv`,
       - `schedule.yml`,
+      - `people.yml`,
       - `grades/`,
-   - applies the course org's current people (instructors/TAs/course-admins) to this
-     cohort's own teams,
+   - applies the course org's current `course_admins` to this cohort's own `course-admin`
+     team,
    - scaffolds + deploys the site `dsl-demo-f2026.github.io`,
    - registers the cohort in the course org and propagates the token, then runs **Sync site**.
 
-   The cohort org gets **no `dsl-course.yml`** of its own - people are declared once on
-   the [course org](01-new-course-org.md), mirrored down automatically; there's nothing
-   to hand-edit here for them.
+   The cohort org gets **no `dsl-course.yml`** of its own. Course admins are declared once on
+   the [course org](01-new-course-org.md), mirrored down automatically - nothing to hand-edit
+   here for them. Instructors/TAs are the opposite: declared **here**, per cohort (step 4a),
+   since most cohorts have different lecturers/TAs.
 
-4. **Fill the cohort's schedule.** `classroom-config/schedule.yml` holds this cohort's
+4a. **Declare this cohort's instructors/TAs.** `classroom-config/people.yml` grants push
+   access to this cohort's own team AND a course-org `instructors-<tag>` team (scoped to
+   this year's content repos), reconciled by **Sync membership**:
+
+   ```yaml
+   people:
+     instructors:
+       - github_handle: "janedoe"
+     teaching_assistants:
+       - github_handle: "anOther"
+         start: "2026-09-01"
+         end: "2027-01-31"
+   ```
+
+4b. **Fill the cohort's schedule.** `classroom-config/schedule.yml` holds this cohort's
    release calendar and due dates (these vary by year). Edit locally or in the web UI →
    commit to `main` → run **Sync site**:
 
