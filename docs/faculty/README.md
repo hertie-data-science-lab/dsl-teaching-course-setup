@@ -43,6 +43,7 @@ flowchart TD
     G["<b>Release materials</b><br/>per week"]
     H["<b>Release assignment</b><br/>per-student repos"]
     I["Sync site (automatic)"]
+    J["<b>Grade + return</b><br/>autograde → manual → preview → distribute"]
     E --> F
   end
 
@@ -54,6 +55,7 @@ flowchart TD
   F --> H
   G --> I
   H --> I
+  H --> J
 
   style CENTRAL fill:#fff3c4,stroke:#d4a017,color:#5c4500
 ```
@@ -61,17 +63,19 @@ flowchart TD
 ## The workflows
 
 Numbered in reading order. All **course-level** workflows (1-3) come before the
-**cohort-level** ones (4-7):
+**cohort-level** ones (4-8):
 
 | # | Workflow | Tier | When |
 |---|----------|------|------|
 | 1 | [New course org](01-new-course-org.md) | course | once, when a course first goes on the platform |
-| 2 | [Add materials to course](02-add-materials-to-course.md) | course | per materials repo (usually once/year) |
-| 3 | [Add assignment to course](03-add-assignment-to-course.md) | course | per assignment |
+| 2 | [Add materials to course](02-add-materials-to-course.md) | course | once/year a new year-tagged materials repo |
+| 3 | [Add assignment to course](03-add-assignment-to-course.md) | course | once/year a new year-tagged assignment-{n} repo |
+|---|----------|------|------|
 | 4 | [New cohort org](04-new-cohort-org.md) | cohort | once per year |
 | 5 | [Enrol students to cohort](05-enrol-students-to-cohort.md) | cohort | start of each cohort |
 | 6 | [Release materials to cohort](06-release-materials-to-cohort.md) | cohort | weekly cadence |
 | 7 | [Release assignment to cohort](07-release-assignment-to-cohort.md) | cohort | per assignment, once students have onboarded |
+| 8 | [Grade and return assignments](08-grade-and-return-assignments.md) | cohort | per assignment, after the deadline |
 
 For a one-page summary of **every button** (not the step-by-step flow), see
 [`actions-reference.md`](actions-reference.md).
