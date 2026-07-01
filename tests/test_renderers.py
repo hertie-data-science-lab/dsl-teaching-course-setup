@@ -34,6 +34,7 @@ ALL_RENDERED = {
     "new_assignment": seed.render_new_assignment(),
     "sync_site": seed.render_sync_site(["Cohort-f2026"]),
     "publish_site": seed.render_publish_site(["course-materials-f2026"]),
+    "status": seed.render_status(["Cohort-f2026"]),
 }
 
 

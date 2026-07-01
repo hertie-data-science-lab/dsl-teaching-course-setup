@@ -32,18 +32,6 @@ people:
       photo: "https://www.hertie-school.org/fileadmin/_processed_/f/8/csm_Henry_final_deda644991.jpg"
       url: "https://www.hertie-school.org/en/who-we-are/profile/person/baker"
 
-# NOTE: schedule below is cohort-specific in the real bootstrap output (it lives in the
-# COHORT org's dsl-course.yml, not the course org's) - shown here in one file for a
-# compact worked example. Edit it in the cohort's file (GitHub web UI is fine - no CLI)
-# then run Sync site. Anything left out is synthesised (semester start from the cohort's
-# fYYYY tag; assignments every 2 weeks; exams at weeks 8 and 15).
-schedule:
-  semester_start: 2026-09-07
-  assignments:
-    assignment-1: 2026-10-13
-    assignment-2: 2026-11-17
-  exams:
-    - name: MidTerm Exam
-      date: 2026-11-03
-    - name: Final Exam
-      date: 2026-12-15
+# The schedule (release calendar, due dates, exams) is cohort-specific - it lives in
+# the COHORT org's classroom-config/schedule.yml instead, not here. See
+# ../cohort-org/schedule.yml.

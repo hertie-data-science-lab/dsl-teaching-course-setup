@@ -5,6 +5,9 @@ deliberately not mocked, per the testing strategy. No network here.
 
 from __future__ import annotations
 
+import csv
+import io
+
 import yaml
 
 from dsl_course import grades
@@ -132,3 +135,30 @@ def test_merge_auto_group_sets_team_grade_per_member():
     rows = {r.github_handle: r for r in grades.parse_grades(out)}
     assert rows["anna"].team == "team-x" and rows["anna"].team_grade == "85"
     assert rows["ben"].team_grade == "85"
+
+
+def test_render_cohort_csv_pivots_to_one_row_per_handle():
+    per = {
+        "assignment-2": [grades.GradeRow(github_handle="anna", final="90")],
+        "assignment-1": [
+            grades.GradeRow(github_handle="anna", final="88", comments="Nice"),
+            grades.GradeRow(
+                github_handle="ben", team="team-x", team_grade="85", final="89"
+            ),
+        ],
+    }
+    csv_text = grades.render_cohort_csv(per)
+    rows = list(csv.DictReader(io.StringIO(csv_text)))
+    assert [r["github_handle"] for r in rows] == ["anna", "ben"]
+    # assignment column groups are sorted, so assignment-1 comes before assignment-2
+    header = csv_text.splitlines()[0].split(",")
+    assert header.index("assignment-1_final") < header.index("assignment-2_final")
+    anna = rows[0]
+    assert anna["assignment-1_final"] == "88" and anna["assignment-1_comments"] == "Nice"
+    assert anna["assignment-2_final"] == "90"
+    # anna has no row in assignment-1's team columns
+    assert anna["assignment-1_team"] == ""
+    ben = rows[1]
+    assert ben["assignment-1_team"] == "team-x" and ben["assignment-1_team_grade"] == "85"
+    # ben has no assignment-2 row at all - blank, not missing
+    assert ben["assignment-2_final"] == ""

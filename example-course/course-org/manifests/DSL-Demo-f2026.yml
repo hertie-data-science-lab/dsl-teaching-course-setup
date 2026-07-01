@@ -3,7 +3,7 @@
 # manifests/<cohort-org>.yml. Keys are the ordinal session number, matching each
 # section's <NN>_<slug>/ directories (e.g. lectures/00_week-1/ -> session "0"). The
 # daily Scheduled release cron joins this with the cohort's
-# classroom-config/schedule.csv (session -> date) and releases everything due. Manual
+# classroom-config/schedule.yml (sessions -> date) and releases everything due. Manual
 # buttons still work for early/ad-hoc release. Every release is idempotent.
 sessions:
   "0":

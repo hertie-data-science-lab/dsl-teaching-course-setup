@@ -31,13 +31,13 @@ import shutil
 import sys
 import tempfile
 import time
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from pathlib import Path
 from urllib.parse import quote
 
 import yaml
 
-from . import seed
+from . import schedule, seed
 from .utils import (
     GIT_ENV,
     active_today,
@@ -75,48 +75,8 @@ def _semester_start(cohort_org: str) -> date:
     return date(2026, 1, 1)
 
 
-def _coerce_date(value: object) -> date | None:
-    """A YAML date/datetime or an ISO `YYYY-MM-DD` string -> date (None if unparseable)."""
-    if isinstance(value, datetime):
-        return value.date()
-    if isinstance(value, date):
-        return value
-    if isinstance(value, str):
-        try:
-            return date.fromisoformat(value.strip()[:10])
-        except ValueError:
-            return None
-    return None
-
-
 def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-") or "exam"
-
-
-def _schedule(
-    meta: dict,
-) -> tuple[date | None, dict[str, date], list[tuple[str, date]]]:
-    """Faculty schedule overrides from a `.github/dsl-course.yml` `schedule:` block
-    (the cohort's, for a cohort site).
-
-    Returns `(semester_start, {assignment_slug: due_date}, [(exam_name, date), ...])`.
-    Any missing/blank field falls back to the synthesised date at the call site, so the
-    block is fully optional - a course with no `schedule:` behaves exactly as before.
-    """
-    sched = meta.get("schedule") if isinstance(meta, dict) else None
-    sched = sched if isinstance(sched, dict) else {}
-    start = _coerce_date(sched.get("semester_start"))
-    due = {
-        str(slug): d
-        for slug, raw in (sched.get("assignments") or {}).items()
-        if (d := _coerce_date(raw))
-    }
-    exams = [
-        (str(e.get("name", "Exam")), d)
-        for e in (sched.get("exams") or [])
-        if isinstance(e, dict) and (d := _coerce_date(e.get("date")))
-    ]
-    return start, due, exams
 
 
 def _semester_label(cohort_org: str) -> str:
@@ -340,6 +300,13 @@ def _exam_entry(title: str, when: date) -> str:
     )
 
 
+def _due_date(sched: schedule.Schedule, repo: str, fallback: date) -> date:
+    """This assignment's due date from schedule.yml (keyed on the slug, repo minus its
+    -fYYYY/-sYYYY tag), or `fallback` if unscheduled."""
+    entry = sched.assignments.get(re.sub(r"-[fs]\d{4}$", "", repo))
+    return entry.due if entry else fallback
+
+
 def sync_site(course_org: str, cohort_org: str) -> int:
     site = f"{cohort_org.lower()}.github.io"
     if not repo_exists(cohort_org, site):
@@ -372,15 +339,11 @@ def sync_site(course_org: str, cohort_org: str) -> int:
         meta = yaml.safe_load(meta_raw) if meta_raw else {}
         meta = meta if isinstance(meta, dict) else {}
         # Schedule is cohort-specific (it varies by year), so it comes from the cohort's
-        # own .github/dsl-course.yml. People (instructors/TAs) no longer live here - see
-        # the COURSE org's `meta` above, read by _people_yaml below.
-        cohort_raw = get_file_content(cohort_org, ".github", "dsl-course.yml") or ""
-        cohort_meta = yaml.safe_load(cohort_raw) if cohort_raw else {}
-        cohort_meta = cohort_meta if isinstance(cohort_meta, dict) else {}
-        # Faculty schedule overrides (all optional; blanks keep the synthesised dates).
-        sched_start, due_overrides, exam_overrides = _schedule(cohort_meta)
-        if sched_start:
-            start = sched_start
+        # own classroom-config/schedule.yml. People (instructors/TAs) no longer live
+        # here - see the COURSE org's `meta` above, read by _people_yaml below.
+        sched = schedule.load(cohort_org)
+        if sched.semester_start:
+            start = sched.semester_start
         cfg_path = wd / "_config.yml"
         if cfg_path.is_file() and isinstance(meta, dict):
             cfg = cfg_path.read_text()
@@ -400,22 +363,23 @@ def sync_site(course_org: str, cohort_org: str) -> int:
         (data_dir / "people.yml").write_text(_people_yaml(course_org, meta))
 
         # Exam rows render red via the template's schedule_row_exam.html. Use faculty
-        # dates from the schedule block; else stub mid/end dates of a ~15-week semester.
-        if exam_overrides:
+        # dates from schedule.yml; else stub mid/end dates of a ~15-week semester
+        # (bounded by semester_end when set).
+        end = sched.semester_end or start + timedelta(weeks=15)
+        if sched.exams:
             exam_entries = {
-                f"{i + 1:02d}-{_slug(name)}.md": _exam_entry(name, when)
-                for i, (name, when) in enumerate(exam_overrides)
+                f"{i + 1:02d}-{_slug(exam.name)}.md": _exam_entry(exam.name, exam.date)
+                for i, exam in enumerate(sched.exams)
             }
         else:
             exam_entries = {
                 "midterm.md": _exam_entry("MidTerm Exam", start + timedelta(weeks=8)),
-                "final.md": _exam_entry("Final Exam", start + timedelta(weeks=15)),
+                "final.md": _exam_entry("Final Exam", end),
             }
 
         # Regenerate the generated collections; leave everything else (layouts, _data,
-        # pages) as the template provides. Assignment due dates come from the schedule
-        # block when set (keyed on the assignment slug), else a synthesised fortnightly
-        # cadence.
+        # pages) as the template provides. Assignment due dates come from schedule.yml
+        # when set (keyed on the assignment slug), else a synthesised fortnightly cadence.
         for coll, gen in (
             (
                 "_lectures",
@@ -436,10 +400,7 @@ def sync_site(course_org: str, cohort_org: str) -> int:
                     f"{i + 1:02d}-{a}.md": _assignment_entry(
                         course_org,
                         a,
-                        due_overrides.get(
-                            re.sub(r"-[fs]\d{4}$", "", a),
-                            start + timedelta(days=(i + 1) * 14),
-                        ),
+                        _due_date(sched, a, start + timedelta(days=(i + 1) * 14)),
                     )
                     for i, a in enumerate(assignments)
                 },
@@ -575,10 +536,10 @@ def sync_public_site(
     meta = yaml.safe_load(meta_raw) if meta_raw else {}
     if not isinstance(meta, dict):
         meta = {}
-    # Only the semester_start matters here (a course site has no per-cohort schedule);
-    # reuse _schedule's parsing rather than re-deriving it. Neutral fallback - the site
-    # spans years, so the date only orders the session entries.
-    start = _schedule(meta)[0] or date(2025, 1, 1)
+    # A course site spans years and has no per-cohort schedule.yml to read (that's
+    # cohort-scoped), so the date is a neutral fallback that only orders the session
+    # entries.
+    start = date(2025, 1, 1)
 
     with tempfile.TemporaryDirectory() as work:
         src, site_wd = Path(work) / "src", Path(work) / "site"

@@ -4,9 +4,9 @@ The same idempotent release functions as the manual buttons, fired automatically
 **per-cohort release manifest** (what opens each session) lives course-side in the
 `.github` repo as `manifests/<cohort-org>.yml` (one per cohort - source repos are
 year-tagged); each cohort's **calendar** (session -> date) lives in its
-`classroom-config`. A daily cron joins them: every session whose date has arrived is
-(re-)released. Because every release is idempotent, re-runs are no-ops and there is no
-"already released" state to track.
+`classroom-config/schedule.yml` (see `dsl_course.schedule`). A daily cron joins them:
+every session whose date has arrived is (re-)released. Because every release is
+idempotent, re-runs are no-ops and there is no "already released" state to track.
 
 Manifest (`manifests/<cohort-org>.yml` in `<course>/.github`) - keys are the ordinal
 session number (matching each section's `<NN>_<slug>/` directories, see release.py):
@@ -24,10 +24,10 @@ session number (matching each section's `<NN>_<slug>/` directories, see release.
           template: assignment-2-f2026
           deadline: 2026-10-15   # grade the last commit on/before this date
 
-Calendar (`schedule.csv` in `<cohort>/classroom-config`):
-    session,date
-    1,2026-09-01
-    3,2026-09-15
+Calendar - the `sessions:` map in `<cohort>/classroom-config/schedule.yml`:
+    sessions:
+      "1": 2026-09-01
+      "3": 2026-09-15
 
 Usage (the cron passes the cohort; --today is for testing):
     python3 -m dsl_course.scheduler --course-org COURSE --cohort-org COHORT
@@ -37,38 +37,19 @@ Usage (the cron passes the cohort; --today is for testing):
 from __future__ import annotations
 
 import argparse
-import csv
-import io
 import sys
 from datetime import date
 
 import yaml
 
+from . import schedule
 from .utils import get_file_content, log, log_err, log_ok, log_step
 
 MANIFEST_REPO = ".github"  # the course org's .github repo
 MANIFEST_DIR = "manifests"  # one manifest per cohort: manifests/<cohort-org>.yml
-CALENDAR_REPO = "classroom-config"
-CALENDAR_PATH = "schedule.csv"
 
 
 # --------------------------------------------------------------------------- pure core
-
-
-def parse_calendar(text: str) -> dict[str, date]:
-    """Parse schedule.csv (`session,date` with ISO dates) into {session: date}. Bad
-    rows skipped."""
-    out: dict[str, date] = {}
-    for row in csv.DictReader(io.StringIO(text)):
-        session = (row.get("session") or "").strip()
-        raw = (row.get("date") or "").strip()
-        if not (session and raw):
-            continue
-        try:
-            out[session] = date.fromisoformat(raw)
-        except ValueError:
-            continue
-    return out
 
 
 def due_sessions(calendar: dict[str, date], today: date) -> list[str]:
@@ -139,13 +120,18 @@ def describe(action: dict) -> str:
     return f"assignment {action['template']}"
 
 
+def manifest_path(cohort_org: str) -> str:
+    """This cohort's manifest path within the course org's MANIFEST_REPO."""
+    return f"{MANIFEST_DIR}/{cohort_org}.yml"
+
+
 # ---------------------------------------------------------------------- gh/git wiring
 
 
 def _load_manifest(course_org: str, cohort_org: str) -> dict:
     """Load this cohort's manifest from the course org's .github repo. Each cohort has its
     own file (source repos are year-tagged), so a missing one just means 'not scheduled'."""
-    path = f"{MANIFEST_DIR}/{cohort_org}.yml"
+    path = manifest_path(cohort_org)
     content = get_file_content(course_org, MANIFEST_REPO, path)
     if content is None:
         log(
@@ -153,14 +139,6 @@ def _load_manifest(course_org: str, cohort_org: str) -> dict:
         )
         return {}
     return yaml.safe_load(content) or {}
-
-
-def _load_calendar(cohort_org: str) -> dict[str, date]:
-    content = get_file_content(cohort_org, CALENDAR_REPO, CALENDAR_PATH)
-    if content is None:
-        log_err(f"no {CALENDAR_PATH} in {cohort_org}/{CALENDAR_REPO} - no dates set.")
-        return {}
-    return parse_calendar(content)
 
 
 def _execute(course_org: str, cohort_org: str, action: dict) -> int:
@@ -210,10 +188,14 @@ def run(course_org: str, cohort_org: str, today: date, dry_run: bool = False) ->
     manifest = _load_manifest(course_org, cohort_org)
     if not manifest:
         return 0  # cohort not using scheduled release - nothing to do
-    calendar = _load_calendar(cohort_org)
-    if not calendar:
+    sched = schedule.load(cohort_org)
+    if not sched.sessions:
+        log_err(
+            f"no sessions in {cohort_org}/{schedule.CONFIG_REPO}/{schedule.SCHEDULE_PATH} "
+            "- no dates set."
+        )
         return 1  # has a manifest but no dates - a misconfiguration (already logged)
-    sessions = due_sessions(calendar, today)
+    sessions = due_sessions(sched.sessions, today)
     actions = plan(manifest, sessions)
     log_step(
         f"Scheduler {course_org} -> {cohort_org} as of {today}: "
