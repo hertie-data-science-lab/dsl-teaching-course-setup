@@ -220,15 +220,32 @@ def _acting_login() -> str | None:
     return out.strip() if code == 0 and out.strip() else None
 
 
+@lru_cache(maxsize=None)
+def get_org_owners(org: str) -> frozenset[str]:
+    """Active Owners of `org` - see reconcile_team_members for why these are never
+    pruned from any team."""
+    code, out = gh("api", f"orgs/{org}/members?role=admin&per_page=100", "--paginate")
+    if code != 0:
+        return frozenset()
+    try:
+        return frozenset(m["login"] for m in json.loads(out))
+    except (json.JSONDecodeError, KeyError, TypeError):
+        return frozenset()
+
+
 def reconcile_team_members(
     org: str, team: str, wanted: set[str], prune: bool = True, dry_run: bool = False
 ) -> int:
     """Full add(+remove) reconcile of one team's membership to exactly `wanted`.
 
-    Never prunes the acting token's own login: GitHub auto-adds whoever creates a
-    team as a member, so the bot ends up in `current` without ever being a
-    deliberate grant. Pruning it doesn't change its actual access (it stays an org
-    Owner) - it just churns team membership on every reconcile.
+    Never prunes an org Owner, or the acting token's own login. Owners already have
+    full access regardless of team membership (GitHub auto-adds whoever creates a
+    team as a member, so e.g. the bot ends up in `current` without ever being a
+    deliberate grant), so pruning either doesn't change actual access - it just
+    churns team membership on every reconcile. Excluding ALL owners (not just
+    whoever happens to be running this particular sync) means the same protection
+    holds no matter who triggers it - a human running this locally under their own
+    account no longer evicts the bot, and vice versa.
     """
     current = get_team_members(org, team)
     errors = 0
@@ -241,8 +258,9 @@ def reconcile_team_members(
             errors += 1
     if prune:
         acting = _acting_login()
+        owners = get_org_owners(org)
         for handle in sorted(current - wanted):
-            if handle == acting:
+            if handle == acting or handle in owners:
                 continue
             if dry_run:
                 log(f"    DRY-RUN remove {handle} <- {org}/{team}")
