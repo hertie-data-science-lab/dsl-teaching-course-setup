@@ -19,6 +19,25 @@ def test_course_metadata_carries_faculty_block():
     assert "schedule:" not in md
 
 
+def test_course_metadata_seeds_admins_live_when_given():
+    # --admins at bootstrap must land in the SSOT itself (uncommented), not just get a
+    # one-time direct team invite (add_course_admins) - otherwise the next sync_faculty
+    # run sees them as undeclared and prunes them right back out.
+    md = bc._course_metadata(
+        "My-Course-E1", "My Course", "Deep Learning", "E1", admins=["alice", "bob"]
+    )
+    assert "# people:" not in md  # live, not commented out
+    assert "people:" in md
+    assert '- github_handle: "alice"' in md
+    assert '- github_handle: "bob"' in md
+
+
+def test_parse_handles_splits_comma_and_space():
+    assert bc._parse_handles("alice, bob   carol") == ["alice", "bob", "carol"]
+    assert bc._parse_handles("") == []
+    assert bc._parse_handles("   ") == []
+
+
 def test_schedule_yml_seed_is_commented_and_covers_every_field():
     # Mostly-commented, like the old cohort dsl-course.yml schedule block - faculty
     # uncomment what they want to pin.
