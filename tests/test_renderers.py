@@ -14,9 +14,11 @@ from dsl_course import seed
 
 # Renderers that take no args (or only simple lists) -> a quick "it parses" sweep.
 ALL_RENDERED = {
-    "release": seed.render_release(["Cohort-f2026"], ["materials"], ["1", "2"]),
+    "release": seed.render_release(
+        ["Cohort-f2026"], ["1", "2"], ["lectures", "labs"]
+    ),
     "central_release": seed.render_central_release(
-        ["course-materials-f2026"], ["Cohort-f2026"], ["materials"]
+        ["course-materials-f2026"], ["Cohort-f2026"]
     ),
     "provision": seed.render_provision(["Cohort-f2026"], ["assignment-1-f2026"]),
     "grade_assignment": seed.render_grade_assignment(
@@ -117,6 +119,52 @@ def test_dotgithub_readme_orients_faculty():
         "My-Course-f2026", "My Course", is_cohort=True
     )
     assert "parent course org" in cohort
+
+
+def test_release_has_one_destination_field_per_section():
+    rendered = seed.render_release(["Cohort-f2026"], ["1", "2"], ["lectures", "labs"])
+    inp = workflow_inputs(rendered)
+    assert set(inp) == {
+        "cohort_org",
+        "dest_lectures",
+        "dest_labs",
+        "sessions",
+        "include_syllabus",
+        "include_readme",
+    }
+    # Defaults to the section's own name - each section gets its own repo out of the box.
+    assert inp["dest_lectures"]["default"] == "lectures"
+    assert inp["dest_labs"]["default"] == "labs"
+    # Sessions is free text (no multi-select widget in workflow_dispatch), with the
+    # discovered sessions surfaced in the description for reference.
+    assert "type" not in inp["sessions"]
+    assert "1, 2" in inp["sessions"]["description"]
+    # No standalone cohort_repo dropdown - destination routing replaces it.
+    assert "cohort_repo" not in inp
+
+
+def test_release_builds_destinations_from_dest_fields():
+    rendered = seed.render_release(["Cohort-f2026"], ["1"], ["lectures", "labs"])
+    assert "DEST_LECTURES: ${{ inputs.dest_lectures }}" in rendered
+    assert '[ -n "$DEST_LECTURES" ] && destinations="$destinations lectures=$DEST_LECTURES"' in rendered
+    assert '--destinations "$destinations"' in rendered
+    assert "--sessions \"$SESSIONS\"" in rendered
+
+
+def test_release_rejects_sections_that_collide_on_env_var_name():
+    # Shell env var names can't hold hyphens, so section names are folded ('-' -> '_')
+    # to build them - two sections differing only by hyphen vs underscore would
+    # otherwise silently share one env var and drop a destination.
+    with pytest.raises(ValueError, match="case-studies.*case_studies|case_studies.*case-studies"):
+        seed.render_release(["Cohort-f2026"], ["1"], ["case-studies", "case_studies"])
+
+
+def test_central_release_has_single_cohort_repo_and_exclude():
+    rendered = seed.render_central_release(["course-materials-f2026"], ["Cohort-f2026"])
+    inp = workflow_inputs(rendered)
+    assert {"source_repo", "cohort_org", "cohort_repo", "exclude", "sessions"} <= set(inp)
+    assert inp["cohort_repo"]["required"] is True
+    assert "--default-repo \"$COHORT_REPO\"" in rendered
 
 
 def test_choice_falls_back_when_empty():

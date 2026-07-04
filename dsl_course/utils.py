@@ -276,6 +276,36 @@ def session_number(name: str) -> int | None:
     return int(m.group(1)) if m else None
 
 
+def expand_int_spec(spec: str) -> list[int]:
+    """Parse a comma/whitespace-separated spec of ordinals and inclusive ranges (e.g.
+    "1,3,5-7" -> [1, 3, 5, 6, 7]) into a sorted, de-duplicated list.
+
+    GitHub's workflow_dispatch has no multi-select widget, so releasing several
+    sessions in one run takes a free-text field instead of checkboxes - this is the
+    parser for it. Raises ValueError naming the exact bad token for anything
+    malformed (non-numeric, backwards range), so the workflow can fail loudly on a
+    typo rather than silently release the wrong thing.
+    """
+    values: set[int] = set()
+    tokens = [t for t in spec.replace(",", " ").split() if t]
+    if not tokens:
+        raise ValueError("session spec is empty")
+    for token in tokens:
+        if "-" in token:
+            start, _, end = token.partition("-")
+            if not (start.isdigit() and end.isdigit()):
+                raise ValueError(f"'{token}' is not a valid session number or range")
+            start_n, end_n = int(start), int(end)
+            if start_n > end_n:
+                raise ValueError(f"'{token}' is a backwards range (start > end)")
+            values.update(range(start_n, end_n + 1))
+        elif token.isdigit():
+            values.add(int(token))
+        else:
+            raise ValueError(f"'{token}' is not a valid session number or range")
+    return sorted(values)
+
+
 def find_session_dir(section_dir: Path, session: str) -> Path | None:
     """Find the child of `section_dir` whose ordinal prefix matches `session` exactly
     (session='3' matches '3_x'/'03_x'/'003_x', but not '13_x' or '30_x')."""
