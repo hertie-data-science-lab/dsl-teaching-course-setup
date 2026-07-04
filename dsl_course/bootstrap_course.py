@@ -133,12 +133,24 @@ def grant_button_access(org: str) -> None:
             log_ok(f"  {team} -> {perm} on {org}/.github")
 
 
+def _parse_handles(handles: str) -> list[str]:
+    return [h.strip() for h in handles.replace(",", " ").split() if h.strip()]
+
+
 def add_course_admins(org: str, handles: str) -> None:
     """Add this course's admin(s) to its `course-admin` team (per-course, so nobody is
     added to a course they don't run). `handles` is a comma/space-separated list of GitHub
     logins; each gets an org invite they accept once (membership shows `pending` until
-    then). Instructors/TAs are added later to the `instructors` team via the Teams page."""
-    logins = [h.strip() for h in handles.replace(",", " ").split() if h.strip()]
+    then). Instructors/TAs are added later to the `instructors` team via the Teams page.
+
+    This is a direct, immediate team invite ONLY - it does not persist anywhere. On the
+    course org, `_course_metadata` also seeds these same handles into
+    `dsl-course.yml`'s `people.course_admins` (the SSOT `sync_faculty` reconciles
+    against), so the next sync doesn't undo this invite by pruning them right back out
+    for not being declared. On a cohort org there's no SSOT to write to (course_admins
+    stays exclusively course-level) - this invite is real but only until the next sync
+    mirrors the course org's actual roster over it."""
+    logins = _parse_handles(handles)
     if not logins:
         return
     log_step(f"Adding {len(logins)} admin(s) to {org}/course-admin")
@@ -321,8 +333,34 @@ _PEOPLE_YML = """# This cohort's instructors/TAs - the single source of truth fo
 """
 
 
+def _course_admins_block(admins: list[str] | None) -> str:
+    """The `people.course_admins` block for a freshly-seeded dsl-course.yml. With no
+    admins given, ships fully commented out (today's default, uncomment-what-you-want
+    UX). Given admins (from bootstrap's --admins), seeds them LIVE (uncommented) - so
+    they're declared in the SSOT from day one, not just given a one-time direct team
+    invite (add_course_admins) that the next sync would otherwise revert for not
+    being declared here."""
+    if not admins:
+        return _FACULTY_BLOCK
+    entries = "\n".join(f'    - github_handle: "{a}"' for a in admins)
+    return (
+        "# Course admins for this course - the single source of truth for admin access\n"
+        "# (applied here AND mirrored into every cohort org).\n"
+        "people:\n"
+        "  course_admins:\n"
+        f"{entries}\n"
+        "\n"
+        "# Instructors/TAs are declared per cohort instead (most cohorts have different\n"
+        "# lecturers/TAs) - see that cohort's classroom-config/people.yml.\n"
+    )
+
+
 def _course_metadata(
-    org: str, org_name: str, course_name: str, course_code: str
+    org: str,
+    org_name: str,
+    course_name: str,
+    course_code: str,
+    admins: list[str] | None = None,
 ) -> str:
     """dsl-course.yml for the persistent COURSE org: identity + course_admins (the
     single source of truth for course-wide admin access, mirrored into every cohort
@@ -339,7 +377,7 @@ def _course_metadata(
         "# registered separately in .github/cohort-courses-pages.yml. The schedule changes\n"
         "# year to year, so it's declared PER COHORT in that cohort's own\n"
         "# classroom-config/schedule.yml, not here.\n"
-        f"\n{_FACULTY_BLOCK}"
+        f"\n{_course_admins_block(admins)}"
     )
 
 
@@ -350,6 +388,7 @@ def create_profile_repo(
     course_code: str = "",
     *,
     is_cohort: bool = False,
+    admins: list[str] | None = None,
 ) -> None:
     """Create the .github profile repo with README, and (course orgs only) course
     metadata.
@@ -359,7 +398,9 @@ def create_profile_repo(
     The course org's dsl-course.yml carries identity + the faculty roster. A cohort
     org gets no dsl-course.yml at all - its schedule (classroom-config/schedule.yml)
     varies by year and lives there instead; nothing at runtime reads a cohort's own
-    org/course pointer fields, so there's nothing to seed here for it.
+    org/course pointer fields, so there's nothing to seed here for it. `admins`
+    (course org only) seeds dsl-course.yml's people.course_admins live from the start
+    - see _course_admins_block.
     """
     log_step("Setting up .github profile repo")
     if not create_repo(
@@ -374,7 +415,7 @@ def create_profile_repo(
         # Course metadata - canonical machine-readable source for discovery tooling.
         # (The org-overview profile/README.md is generated at the end of bootstrap,
         # once all repos exist, by seed.update_profile_readme - see main.)
-        metadata = _course_metadata(org, org_name, course_name, course_code)
+        metadata = _course_metadata(org, org_name, course_name, course_code, admins)
         put_file(
             org,
             ".github",
@@ -672,13 +713,16 @@ def main() -> int:
         "--admins",
         default="",
         help="GitHub handle(s) of this course's admin(s), comma/space-separated. Added to "
-        "the course-admin team (admin on .github) so they can run the buttons. Each accepts "
-        "an org invite once. Add instructors/TAs later via the org's Teams page.",
+        "the course-admin team (admin on .github) so they can run the buttons - and, on "
+        "a course-org bootstrap, declared in dsl-course.yml's SSOT so a later sync doesn't "
+        "revert it. Each accepts an org invite once. Add instructors/TAs later via the "
+        "org's Teams page.",
     )
     args = parser.parse_args()
 
     org_name = args.org_name or args.org
     course_name = args.course_name or org_name
+    admin_logins = _parse_handles(args.admins)
 
     log(f"Bootstrapping org: {args.org}")
     log(f"  Org name: {org_name}")
@@ -695,13 +739,17 @@ def main() -> int:
     create_default_teams(args.org)
 
     # 3. Profile repo (course org only - identity + faculty roster; a cohort org
-    # gets no dsl-course.yml, its config all lives in classroom-config)
+    # gets no dsl-course.yml, its config all lives in classroom-config). --admins is
+    # seeded into the SSOT here (course org only - see _course_admins_block) as well
+    # as given a one-time direct team invite below (add_course_admins), so the next
+    # sync doesn't undo that invite.
     create_profile_repo(
         args.org,
         org_name,
         course_name,
         args.course_code,
         is_cohort=args.cohort,
+        admins=admin_logins if not args.cohort else None,
     )
 
     # 3b. Course vs cohort wiring.
@@ -764,6 +812,25 @@ def main() -> int:
     # 5. Generate the org-overview README now that all repos exist (clickable index).
     seed.update_profile_readme(args.org, org_name, course_name)
 
+    if admin_logins and not args.cohort:
+        admins_step = (
+            f"2. Course admins ({', '.join(admin_logins)}) are already declared in the "
+            f"`people:` block of {args.org}/.github/dsl-course.yml - nothing to do here. "
+            "Add more later by editing that file directly (not the Teams page - "
+            "\"Sync membership\" reconciles the `course-admin` team FROM that file, so an "
+            "undeclared manual addition gets reverted on the next sync). Instructors/TAs "
+            "are declared per cohort instead, in that cohort's own "
+            "classroom-config/people.yml (see step 4)."
+        )
+    else:
+        admins_step = (
+            f"2. Declare THIS course's course_admins in the `people:` block of "
+            f"{args.org}/.github/dsl-course.yml, then push - \"Sync membership\" reconciles "
+            "the `course-admin` team automatically (here and into every cohort's own "
+            "course-admin team; no manual Teams-page edit needed). Instructors/TAs are "
+            "declared per cohort instead, in that cohort's own classroom-config/people.yml "
+            "(see step 4)."
+        )
     log(f"""
 ============================================================
 Course org bootstrap complete: {args.org}
@@ -778,18 +845,14 @@ DONE (automated):
 - DSL_BOT_TOKEN secret validated (or set)
 - Button access: instructors (write) + course-admin (admin) granted on .github; any
   --admins handles added to course-admin (they accept the org invite once, then the
-  buttons appear in their Actions tab)
+  buttons appear in their Actions tab) and declared in dsl-course.yml's SSOT
 
 NEXT STEPS (manual):
 ============================================================
 
 1. Review org settings: https://github.com/{args.org}/settings
 
-2. Declare THIS course's course_admins in the `people:` block of
-   {args.org}/.github/dsl-course.yml, then push - "Sync membership" reconciles the
-   `course-admin` team automatically (here and into every cohort's own course-admin
-   team; no manual Teams-page edit needed). Instructors/TAs are declared per cohort
-   instead, in that cohort's own classroom-config/people.yml (see step 4).
+{admins_step}
 
 3. Put content in the materials repo (any top-level dir with ordinal-prefixed
    subdirectories, e.g. lectures/00_.../, readings/00_.../) and create

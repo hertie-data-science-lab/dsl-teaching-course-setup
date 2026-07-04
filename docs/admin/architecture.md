@@ -132,12 +132,20 @@ sequenceDiagram
   A->>A: check-team — faculty/admin in central org
   A->>Bot: bootstrap_course --propagate-secret
   Bot->>Org: org settings (2FA) + role teams
-  Bot->>Org: .github profile + seed faculty buttons
+  Bot->>Org: .github profile + seed faculty buttons + course_admins in dsl-course.yml
   Bot->>Org: grant instructors/course-admin on .github
-  Bot->>Org: add --admins handles to course-admin
+  Bot->>Org: add --admins handles to course-admin (immediate) + SSOT (durable)
   Bot->>Org: set DSL_BOT_TOKEN org secret (selected → .github)
   Bot->>Org: build profile README
 ```
+
+`--admins` both invites those handles to `course-admin` directly (so they have access
+before any sync runs) AND seeds them into `dsl-course.yml`'s `people.course_admins` -
+the SSOT `sync_faculty` reconciles against. Skip the SSOT half and the very next sync
+(a scheduled one, or bootstrapping the next cohort) sees them as undeclared and prunes
+them right back out - if you add an admin some other way (the GitHub Teams UI, a
+one-off `gh api` call), declare them in `dsl-course.yml` too, or the next sync reverts
+it.
 
 A **cohort** is bootstrapped from the course org's own **Bootstrap cohort** button (not the
 central action) - you give it the empty cohort org's name. It runs the same `bootstrap_course`
