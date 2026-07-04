@@ -121,20 +121,25 @@ def test_dotgithub_readme_orients_faculty():
     assert "parent course org" in cohort
 
 
-def test_release_has_one_destination_field_per_section():
+def test_release_has_a_checkbox_and_path_field_per_section():
     rendered = seed.render_release(["Cohort-f2026"], ["1", "2"], ["lectures", "labs"])
     inp = workflow_inputs(rendered)
     assert set(inp) == {
         "cohort_org",
-        "dest_lectures",
-        "dest_labs",
+        "release_lectures",
+        "lectures_path",
+        "release_labs",
+        "labs_path",
         "sessions",
-        "include_syllabus",
-        "include_readme",
+        "include_root_files",
     }
-    # Defaults to the section's own name - each section gets its own repo out of the box.
-    assert inp["dest_lectures"]["default"] == "lectures"
-    assert inp["dest_labs"]["default"] == "labs"
+    # Checkbox defaults on; path has no default (blank means "use the section's own name").
+    assert inp["release_lectures"]["type"] == "boolean"
+    assert inp["release_lectures"]["default"] is True
+    assert "default" not in inp["lectures_path"]
+    # Syllabus + README are one merged toggle (each section already costs 2 inputs,
+    # so this saves a slot rather than keeping them separate).
+    assert inp["include_root_files"]["type"] == "boolean"
     # Sessions is free text (no multi-select widget in workflow_dispatch), with the
     # discovered sessions surfaced in the description for reference.
     assert "type" not in inp["sessions"]
@@ -143,10 +148,16 @@ def test_release_has_one_destination_field_per_section():
     assert "cohort_repo" not in inp
 
 
-def test_release_builds_destinations_from_dest_fields():
+def test_release_builds_destinations_from_checkbox_and_path_fields():
     rendered = seed.render_release(["Cohort-f2026"], ["1"], ["lectures", "labs"])
-    assert "DEST_LECTURES: ${{ inputs.dest_lectures }}" in rendered
-    assert '[ -n "$DEST_LECTURES" ] && destinations="$destinations lectures=$DEST_LECTURES"' in rendered
+    assert "RELEASE_LECTURES: ${{ inputs.release_lectures }}" in rendered
+    assert "PATH_LECTURES: ${{ inputs.lectures_path }}" in rendered
+    # Unchecked -> not released regardless of path; checked with a blank path ->
+    # falls back to the section's own name via bash parameter expansion.
+    assert (
+        '[ "$RELEASE_LECTURES" = "true" ] && destinations="$destinations lectures=${PATH_LECTURES:-lectures}"'
+        in rendered
+    )
     assert '--destinations "$destinations"' in rendered
     assert "--sessions \"$SESSIONS\"" in rendered
 
@@ -159,12 +170,41 @@ def test_release_rejects_sections_that_collide_on_env_var_name():
         seed.render_release(["Cohort-f2026"], ["1"], ["case-studies", "case_studies"])
 
 
-def test_central_release_has_single_cohort_repo_and_exclude():
-    rendered = seed.render_central_release(["course-materials-f2026"], ["Cohort-f2026"])
+def test_central_release_shares_checkbox_and_path_fields_with_the_repo_button():
+    # sections here represent the union discovered across every content repo in the
+    # org (computed by the caller, seed_github_workflows) - the central button no
+    # longer has a separate cohort_repo/exclude fallback.
+    rendered = seed.render_central_release(
+        ["course-materials-f2026"], ["Cohort-f2026"], ["lectures", "labs"]
+    )
     inp = workflow_inputs(rendered)
-    assert {"source_repo", "cohort_org", "cohort_repo", "exclude", "sessions"} <= set(inp)
-    assert inp["cohort_repo"]["required"] is True
-    assert "--default-repo \"$COHORT_REPO\"" in rendered
+    assert {"source_repo", "cohort_org", "release_lectures", "lectures_path", "sessions"} <= set(inp)
+    assert "cohort_repo" not in inp
+    assert "exclude" not in inp
+
+
+def test_max_release_sections_caps_at_ten_input_budget():
+    # 4 fixed inputs (cohort_org, sessions, include_root_files, source_repo) + 2 per
+    # section must not exceed GitHub's 10-input cap on the tighter (central) button.
+    assert 4 + 2 * seed.MAX_RELEASE_SECTIONS <= 10
+
+
+def test_cap_sections_logs_and_truncates_past_the_limit(capsys):
+    capped = seed._cap_sections(
+        ["lectures", "labs", "readings", "handouts"], "org/repo"
+    )
+    assert capped == ["handouts", "labs", "lectures"]  # sorted, first 3
+    err = capsys.readouterr().err
+    assert "readings" in err and "org/repo" in err
+
+
+def test_discover_sections_union_combines_across_content_repos(monkeypatch):
+    monkeypatch.setattr(
+        seed,
+        "discover_sections",
+        lambda org, repo: {"a": ["lectures"], "b": ["labs", "readings"]}[repo],
+    )
+    assert seed.discover_sections_union("org", ["a", "b"]) == ["labs", "lectures", "readings"]
 
 
 def test_choice_falls_back_when_empty():
