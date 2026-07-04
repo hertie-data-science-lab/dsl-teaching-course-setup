@@ -3,7 +3,8 @@
 Two sites, two audiences, one Jekyll template (course-website-template):
 
 - **cohort site** (`<cohort>.github.io`, `sync_site`) - student-facing. Its lecture links
-  point at the cohort's PRIVATE `materials` repo, so they 404 for non-members (the gate is
+  point at the cohort's PRIVATE content repos (wherever a release actually landed each
+  section - see `seed.discover_release_sources`), so they 404 for non-members (the gate is
   deliberate). Regenerates `_lectures/`, `_assignments/`, `_events/` from the release state.
   Releases call it; the Sync site action runs it on demand.
 
@@ -50,10 +51,8 @@ from .utils import (
     log_ok,
     log_step,
     repo_exists,
-    session_number,
 )
 
-MATERIALS_REPO = "materials"
 # Public course site: served folder for hosted lecture/reading files, and the text-file
 # extensions treated as the (publishable) reading list rather than copyrighted material.
 PUBLIC_MATERIALS_DIR = "public-materials"
@@ -205,27 +204,15 @@ def _people_yaml(course_org: str, meta: dict | None = None) -> str:
     )
 
 
-def _session_files(
-    org: str, repo: str, section: str, session: str
-) -> list[tuple[str, str]]:
-    """(name, blob-url) for each file under <section>/<NN>_.../ (matching `session`'s
-    ordinal prefix) in a repo."""
-    if not session.isdigit():
-        return []
-    target = int(session)
-    folder = next(
-        (
-            name
-            for name in seed.list_dirs(org, repo, section)
-            if session_number(name) == target
-        ),
-        None,
-    )
-    if folder is None:
-        return []
+def _session_files(org: str, repo: str, subpath: str, folder: str) -> list[tuple[str, str]]:
+    """(name, blob-url) for each file directly under `folder` (already confirmed by
+    seed.discover_release_sources to match a session's ordinal prefix), at `subpath`
+    in a repo (or the repo root when `subpath` is empty - a release destination left
+    at its default)."""
+    listing_path = f"{subpath}/{folder}" if subpath else folder
     code, out = gh(
         "api",
-        f"repos/{org}/{repo}/contents/{section}/{folder}",
+        f"repos/{org}/{repo}/contents/{listing_path}",
         "--jq",
         '.[] | select(.type=="file") | .name + "\\t" + .html_url',
     )
@@ -239,12 +226,18 @@ def _session_files(
     return pairs
 
 
-def _lecture_entry(cohort_org: str, session: str, when: date, sections: list[str]) -> str:
+def _lecture_entry(
+    cohort_org: str, session: str, when: date, sources: list[tuple[str, str, str]]
+) -> str:
+    """`sources` is (repo, subpath, folder) triples already confirmed (by
+    seed.discover_release_sources) to hold this exact session - callers pass only the
+    sources known to match, so every call here is a real hit, not a probe."""
     links = []
-    for section in sections:
-        for name, url in _session_files(cohort_org, MATERIALS_REPO, section, session):
+    for repo, subpath, folder in sources:
+        label = subpath or repo
+        for name, url in _session_files(cohort_org, repo, subpath, folder):
             safe = name.replace('"', "'")
-            links.append(f'    - url: {url}\n      name: "{section[:-1]} - {safe}"')
+            links.append(f'    - url: {url}\n      name: "{label[:-1]} - {safe}"')
     links_block = ("links:\n" + "\n".join(links)) if links else "links: []"
     return (
         f"---\n"
@@ -312,9 +305,12 @@ def sync_site(course_org: str, cohort_org: str) -> int:
     if not repo_exists(cohort_org, site):
         log(f"  (no site repo {cohort_org}/{site} - skipping site sync)")
         return 0
-    sessions, materials_sections = seed.discover_sections_and_sessions(
-        cohort_org, MATERIALS_REPO
-    )
+    content_repos = seed.discover_cohort_repos([cohort_org])
+    release_sources = seed.discover_release_sources(cohort_org, content_repos)
+    sources_by_session: dict[str, list[tuple[str, str, str]]] = {}
+    for repo, subpath, folder, n in release_sources:
+        sources_by_session.setdefault(str(n), []).append((repo, subpath, folder))
+    sessions = sorted(sources_by_session, key=int)
     assignments = seed.discover_assignments(course_org)
     # A persistent course org holds per-year templates (assignment-*-fYYYY); a cohort site
     # should list only its own year's, matched on the cohort's fYYYY/sYYYY tag.
@@ -388,7 +384,7 @@ def sync_site(course_org: str, cohort_org: str) -> int:
                         cohort_org,
                         s,
                         start + timedelta(days=int(s) * 7),
-                        materials_sections,
+                        sources_by_session[s],
                     )
                     for s in sessions
                     if s.isdigit()

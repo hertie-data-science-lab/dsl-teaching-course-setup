@@ -1047,10 +1047,10 @@ def list_dirs(org: str, repo: str, path: str = "") -> list[str]:
     return out.splitlines() if code == 0 else []
 
 
-def _section_session_pairs(org: str, repo: str) -> list[tuple[str, int]]:
-    """(section, session_number) for every immediate child - across every top-level
-    directory - whose name has an ordinal prefix. One recursive tree fetch, rather
-    than listing each top-level directory individually (N+1 API calls)."""
+def _repo_tree_dirs(org: str, repo: str) -> list[str]:
+    """Every directory path in a repo's default-branch tree - one recursive fetch,
+    shared by every discovery helper that needs a repo's directory structure (rather
+    than listing each top-level directory individually - N+1 API calls)."""
     branch = get_default_branch(org, repo) or "main"
     code, out = gh(
         "api",
@@ -1058,10 +1058,14 @@ def _section_session_pairs(org: str, repo: str) -> list[tuple[str, int]]:
         "--jq",
         '.tree[] | select(.type=="tree") | .path',
     )
-    if code != 0:
-        return []
+    return out.splitlines() if code == 0 else []
+
+
+def _section_session_pairs(org: str, repo: str) -> list[tuple[str, int]]:
+    """(section, session_number) for every immediate child - across every top-level
+    directory - whose name has an ordinal prefix."""
     pairs = []
-    for path in out.splitlines():
+    for path in _repo_tree_dirs(org, repo):
         parts = path.split("/")
         if len(parts) == 2:
             n = session_number(parts[1])
@@ -1102,6 +1106,30 @@ def discover_sections_union(org: str, content_repos: list[str]) -> list[str]:
     for repo in content_repos:
         all_sections |= set(discover_sections(org, repo))
     return sorted(all_sections)
+
+
+def discover_release_sources(
+    org: str, content_repos: list[str]
+) -> list[tuple[str, str, str, int]]:
+    """(repo, subpath, folder_name, session_number) for every session folder found
+    across a cohort's `content_repos` (see discover_cohort_repos), covering both shapes
+    a release can produce (see release.route_sections): nested - a section subfolder
+    inside a shared repo, `section/NN_.../` - or root - the repo itself IS one section,
+    `NN_.../` directly at its root (the default when a release's per-section path is
+    left blank). One recursive tree fetch per repo; the exact folder name is captured
+    too, so callers can list its files directly with no further discovery call."""
+    out = []
+    for repo in content_repos:
+        for path in _repo_tree_dirs(org, repo):
+            parts = path.split("/")
+            if len(parts) > 2:
+                continue
+            n = session_number(parts[-1])
+            if n is None:
+                continue
+            subpath = parts[0] if len(parts) == 2 else ""
+            out.append((repo, subpath, parts[-1], n))
+    return out
 
 
 def discover_assignments(course_org: str) -> list[str]:
