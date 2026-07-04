@@ -146,9 +146,17 @@ def test_release_has_one_destination_field_per_section():
 def test_release_builds_destinations_from_dest_fields():
     rendered = seed.render_release(["Cohort-f2026"], ["1"], ["lectures", "labs"])
     assert "DEST_LECTURES: ${{ inputs.dest_lectures }}" in rendered
-    assert '[ -n "$DEST_LECTURES" ] && destinations="$destinations,lectures=$DEST_LECTURES"' in rendered
+    assert '[ -n "$DEST_LECTURES" ] && destinations="$destinations lectures=$DEST_LECTURES"' in rendered
     assert '--destinations "$destinations"' in rendered
     assert "--sessions \"$SESSIONS\"" in rendered
+
+
+def test_release_rejects_sections_that_collide_on_env_var_name():
+    # Shell env var names can't hold hyphens, so section names are folded ('-' -> '_')
+    # to build them - two sections differing only by hyphen vs underscore would
+    # otherwise silently share one env var and drop a destination.
+    with pytest.raises(ValueError, match="case-studies.*case_studies|case_studies.*case-studies"):
+        seed.render_release(["Cohort-f2026"], ["1"], ["case-studies", "case_studies"])
 
 
 def test_central_release_has_single_cohort_repo_and_exclude():

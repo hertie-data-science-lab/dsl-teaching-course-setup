@@ -169,6 +169,21 @@ def _dest_env_name(section: str) -> str:
     return f"DEST_{section.upper().replace('-', '_')}"
 
 
+def _check_no_env_name_collisions(sections: list[str]) -> None:
+    """Shell env var names can't contain hyphens, so section names are folded to
+    match ('case-studies' and 'case_studies' both become DEST_CASE_STUDIES) - raise
+    loudly at render time rather than silently dropping one section's destination."""
+    seen: dict[str, str] = {}
+    for s in sections:
+        env_name = _dest_env_name(s)
+        if env_name in seen and seen[env_name] != s:
+            raise ValueError(
+                f"sections {seen[env_name]!r} and {s!r} both map to the env var "
+                f"{env_name} - rename one (they differ only by '-' vs '_')"
+            )
+        seen[env_name] = s
+
+
 def _section_destinations(sections: list[str]) -> str:
     """One free-text dest_<section> field per section DISCOVERED AT RENDER TIME,
     defaulting to the section's own name. This single field both selects the section
@@ -206,21 +221,17 @@ def _render_release(
     (every released section nests under its own subfolder there) plus a --exclude
     list. Sessions are always free text (_sessions_input) in both modes."""
     if mode == "repo":
+        _check_no_env_name_collisions(sections)
         target_inputs = _section_destinations(sections)
-        dest_env = "\n".join(
+        target_env = "\n".join(
             f"          {_dest_env_name(s)}: ${{{{ inputs.dest_{s} }}}}" for s in sections
         )
-        target_env = dest_env
         target_build = "\n".join(
-            ['          destinations=""']
-            + [
-                f'          [ -n "${_dest_env_name(s)}" ] && destinations="$destinations,{s}=${_dest_env_name(s)}"'
+            [
+                f'          [ -n "${_dest_env_name(s)}" ] && destinations="$destinations {s}=${_dest_env_name(s)}"'
                 for s in sections
             ]
-            + [
-                '          destinations="${destinations#,}"',
-                '          [ -n "$destinations" ] && args+=(--destinations "$destinations")',
-            ]
+            + ['          [ -n "$destinations" ] && args+=(--destinations "$destinations")']
         )
     else:
         target_inputs = (
