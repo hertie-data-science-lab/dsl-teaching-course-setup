@@ -40,3 +40,32 @@ def test_discover_sections_only_counts_dirs_with_ordinal_subdirs(tmp_path):
 
 def test_discover_sections_missing_root_returns_empty(tmp_path):
     assert utils.discover_sections(tmp_path / "nope") == []
+
+
+def test_reconcile_team_members_adds_missing_and_removes_extra(monkeypatch):
+    monkeypatch.setattr(utils, "get_team_members", lambda org, team: {"alice", "bob"})
+    monkeypatch.setattr(utils, "_acting_login", lambda: None)
+    added, removed = [], []
+    monkeypatch.setattr(
+        utils, "add_team_member", lambda org, team, h, role="member": added.append(h) or True
+    )
+    monkeypatch.setattr(
+        utils, "remove_team_member", lambda org, team, h: removed.append(h) or True
+    )
+    errors = utils.reconcile_team_members("org", "instructors", {"alice", "carol"})
+    assert errors == 0
+    assert added == ["carol"]
+    assert removed == ["bob"]
+
+
+def test_reconcile_team_members_never_prunes_the_acting_login(monkeypatch):
+    monkeypatch.setattr(utils, "get_team_members", lambda org, team: {"alice", "hertie-dsl-bot"})
+    monkeypatch.setattr(utils, "_acting_login", lambda: "hertie-dsl-bot")
+    removed = []
+    monkeypatch.setattr(utils, "add_team_member", lambda *a, **k: True)
+    monkeypatch.setattr(
+        utils, "remove_team_member", lambda org, team, h: removed.append(h) or True
+    )
+    errors = utils.reconcile_team_members("org", "course-admin", wanted=set())
+    assert errors == 0
+    assert removed == ["alice"]
