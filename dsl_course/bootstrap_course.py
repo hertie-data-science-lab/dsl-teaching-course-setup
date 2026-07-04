@@ -722,6 +722,7 @@ def main() -> int:
 
     org_name = args.org_name or args.org
     course_name = args.course_name or org_name
+    admin_logins = _parse_handles(args.admins)
 
     log(f"Bootstrapping org: {args.org}")
     log(f"  Org name: {org_name}")
@@ -748,7 +749,7 @@ def main() -> int:
         course_name,
         args.course_code,
         is_cohort=args.cohort,
-        admins=_parse_handles(args.admins) if not args.cohort else None,
+        admins=admin_logins if not args.cohort else None,
     )
 
     # 3b. Course vs cohort wiring.
@@ -811,6 +812,25 @@ def main() -> int:
     # 5. Generate the org-overview README now that all repos exist (clickable index).
     seed.update_profile_readme(args.org, org_name, course_name)
 
+    if admin_logins and not args.cohort:
+        admins_step = (
+            f"2. Course admins ({', '.join(admin_logins)}) are already declared in the "
+            f"`people:` block of {args.org}/.github/dsl-course.yml - nothing to do here. "
+            "Add more later by editing that file directly (not the Teams page - "
+            "\"Sync membership\" reconciles the `course-admin` team FROM that file, so an "
+            "undeclared manual addition gets reverted on the next sync). Instructors/TAs "
+            "are declared per cohort instead, in that cohort's own "
+            "classroom-config/people.yml (see step 4)."
+        )
+    else:
+        admins_step = (
+            f"2. Declare THIS course's course_admins in the `people:` block of "
+            f"{args.org}/.github/dsl-course.yml, then push - \"Sync membership\" reconciles "
+            "the `course-admin` team automatically (here and into every cohort's own "
+            "course-admin team; no manual Teams-page edit needed). Instructors/TAs are "
+            "declared per cohort instead, in that cohort's own classroom-config/people.yml "
+            "(see step 4)."
+        )
     log(f"""
 ============================================================
 Course org bootstrap complete: {args.org}
@@ -825,18 +845,14 @@ DONE (automated):
 - DSL_BOT_TOKEN secret validated (or set)
 - Button access: instructors (write) + course-admin (admin) granted on .github; any
   --admins handles added to course-admin (they accept the org invite once, then the
-  buttons appear in their Actions tab)
+  buttons appear in their Actions tab) and declared in dsl-course.yml's SSOT
 
 NEXT STEPS (manual):
 ============================================================
 
 1. Review org settings: https://github.com/{args.org}/settings
 
-2. Declare THIS course's course_admins in the `people:` block of
-   {args.org}/.github/dsl-course.yml, then push - "Sync membership" reconciles the
-   `course-admin` team automatically (here and into every cohort's own course-admin
-   team; no manual Teams-page edit needed). Instructors/TAs are declared per cohort
-   instead, in that cohort's own classroom-config/people.yml (see step 4).
+{admins_step}
 
 3. Put content in the materials repo (any top-level dir with ordinal-prefixed
    subdirectories, e.g. lectures/00_.../, readings/00_.../) and create
