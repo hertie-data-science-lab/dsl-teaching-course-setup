@@ -320,14 +320,17 @@ _PEOPLE_YML = """# This cohort's instructors/TAs - the single source of truth fo
 # people:
 #   instructors:
 #     - github_handle: "janedoe"      # required - grants the `instructors` team
-#       start: "2026-09-01"           # optional - no start = active immediately
-#       end: "2027-01-31"             # optional - no end = indefinite
 #       name: "Prof. Jane Doe"        # optional, display only
 #       title: "Professor of ..."
 #       photo: "https://.../jane.jpg"
 #       url: "https://.../profile/jane"
+#       start: "2026-09-01"           # optional - no start = active immediately
+#       end: "2027-01-31"             # optional - no end = indefinite
 #   teaching_assistants:
 #     - github_handle: "anOther"
+#       name: "..."                  # optional, display only
+#       photo: "https://.../ta.jpg"
+#       url: "https://.../profile/ta"
 #       start: "2026-09-01"
 #       end: "2027-01-31"
 """
