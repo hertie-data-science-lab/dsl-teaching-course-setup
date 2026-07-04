@@ -42,6 +42,26 @@ def test_discover_sections_missing_root_returns_empty(tmp_path):
     assert utils.discover_sections(tmp_path / "nope") == []
 
 
+def test_expand_int_spec_handles_lists_ranges_and_mixes():
+    assert utils.expand_int_spec("1,2,3") == [1, 2, 3]
+    assert utils.expand_int_spec("1-3") == [1, 2, 3]
+    assert utils.expand_int_spec("1,3,5-7") == [1, 3, 5, 6, 7]
+    assert utils.expand_int_spec(" 1 , 3   5-7 ") == [1, 3, 5, 6, 7]  # loose whitespace
+    assert utils.expand_int_spec("5-5") == [5]  # single-element range
+    assert utils.expand_int_spec("3,1,2") == [1, 2, 3]  # de-duplicated + sorted
+
+
+def test_expand_int_spec_rejects_malformed_input():
+    import pytest
+
+    with pytest.raises(ValueError, match="empty"):
+        utils.expand_int_spec("   ")
+    with pytest.raises(ValueError, match="abc"):
+        utils.expand_int_spec("1,abc,3")
+    with pytest.raises(ValueError, match="backwards"):
+        utils.expand_int_spec("5-2")
+
+
 def test_reconcile_team_members_adds_missing_and_removes_extra(monkeypatch):
     monkeypatch.setattr(utils, "get_team_members", lambda org, team: {"alice", "bob"})
     monkeypatch.setattr(utils, "_acting_login", lambda: None)

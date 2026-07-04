@@ -12,19 +12,31 @@ cohort website stays current automatically.
 ## Release materials
 
 Course `.github` → **Actions** →
-[Release materials](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/release-materials.yml)
-(or the materials repo's own Release button, where `session` is a dropdown and each
-discovered section gets its own include checkbox):
+[Release materials](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/release-materials.yml),
+or - better - the materials repo's own Release button, which knows the repo's actual
+sections and sessions:
 
-- `cohort_org` = `DSL-Demo-f2026`, `cohort_repo` = `materials`, `session` = N
-- toggles: one `include_<section>` per section discovered in the materials repo (default
-  **on**), plus `include_syllabus` / `include_readme` (default **off**). The central `.github`
-  button doesn't know which repo you'll pick until you run it, so it offers a free-text
-  `exclude` field instead of per-section checkboxes.
+- `cohort_org` = `DSL-Demo-f2026`
+- one `dest_<section>` free-text field per section discovered in the materials repo
+  (default: the section's own name). This single field both selects the section (leave it
+  **blank to skip** that section) and routes it: a bare repo name (e.g. `lectures`)
+  releases at that repo's root; `repo/subpath` (e.g. `materials/lectures`) nests it under a
+  folder there, so two sections can share one repo, or each can get its own. Repos are
+  created automatically if they don't exist yet.
+- `sessions` = a comma and/or range list, e.g. `1,3,5-7` (GitHub's Actions UI has no
+  multi-select widget, so this is free text rather than checkboxes - the field's
+  description lists the sessions discovered in the repo for reference)
+- `include_syllabus` / `include_readme` toggles (default **off**)
 
-Copies every `<section>/<NN>_.../` folder matching that session into the cohort's **private**
-`materials` repo (with `students`-team read), nested under that same folder name. Only
-released sessions appear; idempotent (re-running a released session is a no-op).
+The central `.github` button doesn't know the source repo's sections until you pick one, so
+it offers a single `cohort_repo` field (every released section nests under its own
+subfolder there) plus a free-text `exclude` field, instead of per-section destination
+routing.
+
+Copies every routed `<section>/<NN>_.../` folder matching each chosen session into its
+target cohort repo (**private**, with `students`-team read) - nested under its destination
+subpath, or at the repo root if none was given. Only released sessions appear; idempotent
+(re-running a released session is a no-op).
 
 ## Scheduled release (optional)
 

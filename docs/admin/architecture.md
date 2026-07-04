@@ -232,11 +232,17 @@ flowchart LR
 ```
 
 - **cohort_org** - from the `.github/cohort-courses-pages.yml` registry.
-- **cohort_repo** - the cohort's content repos, with `materials` as the default.
-- **session** - the source materials repo's `<section>/<NN>_.../` folders, across every
-  discovered section (run-from-repo copy, with real per-section checkboxes); the central
-  `.github` copy uses a free-text session + exclude field, since it can't depend on the
-  chosen source repo (and so can't know its sections) until it runs.
+- **dest_&lt;section&gt;** (run-from-repo Release materials only) - one free-text field per
+  section discovered in the source repo, defaulting to that section's own name. Doubles as
+  the include toggle (blank = skip) and the destination (a repo name, or `repo/subpath` to
+  nest under a folder there so several sections can share one repo); named target repos are
+  created automatically. The central `.github` copy can't know the source's sections until
+  it runs, so it gets a single `cohort_repo` field (every section nests under its own
+  subfolder there) + a free-text `exclude` list instead.
+- **sessions** - free text, comma and/or hyphen-range (e.g. `1,3,5-7`) - GitHub's
+  `workflow_dispatch` has no multi-select widget, and a checkbox per session would exceed
+  its 10-input cap once a course has more than a handful of sessions. The description lists
+  the sessions discovered in the source repo for reference (run-from-repo copy only).
 - **source_repo** (central only) / **assignment** - the course org's content / `assignment-*` repos.
 
 ## Cohort website
