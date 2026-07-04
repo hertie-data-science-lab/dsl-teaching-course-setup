@@ -40,6 +40,7 @@ from .utils import (
     get_default_branch,
     get_file_content,
     gh,
+    log_err,
     log_ok,
     log_step,
     put_file,
@@ -156,14 +157,16 @@ _COHORT_ORG_INPUT = """\
         options:
 {cohort_orgs}"""
 _ROOT_INCLUDES = """\
-      include_syllabus:
-        description: "Also release the syllabus (root *syllabus* files) - overwrites"
-        type: boolean
-        default: false
-      include_readme:
-        description: "Also release the source README to the cohort root - overwrites"
+      include_root_files:
+        description: "Also release the syllabus + source README (root files) - overwrites"
         type: boolean
         default: false"""
+
+# GitHub's workflow_dispatch caps at 10 inputs total, and each section costs 2 (a
+# release_<section> checkbox + a <section>_path field) - see _section_release_inputs.
+# With the 4 other fixed inputs (cohort_org, sessions, include_root_files, and - for
+# the central button only - source_repo), 3 sections is the most both buttons can fit.
+MAX_RELEASE_SECTIONS = 3
 
 
 def _section_env_stub(section: str) -> str:
@@ -183,6 +186,24 @@ def _check_no_env_name_collisions(sections: list[str]) -> None:
                 f"{stub} - rename one (they differ only by '-' vs '_')"
             )
         seen[stub] = s
+
+
+def _cap_sections(sections: list[str], context: str) -> list[str]:
+    """Sections beyond MAX_RELEASE_SECTIONS get no checkbox at all - GitHub's
+    workflow_dispatch caps at 10 total inputs. Never silent: logs exactly what got
+    dropped, so faculty know to release those directly
+    (python3 -m dsl_course.release --destinations ...) instead of via the button."""
+    sections = sorted(sections)
+    if len(sections) <= MAX_RELEASE_SECTIONS:
+        return sections
+    dropped = sections[MAX_RELEASE_SECTIONS:]
+    log_err(
+        f"{context}: {len(sections)} sections found, only rendering checkboxes for "
+        f"the first {MAX_RELEASE_SECTIONS} ({', '.join(sections[:MAX_RELEASE_SECTIONS])}) "
+        f"- release {', '.join(dropped)} directly via "
+        "`python3 -m dsl_course.release --destinations ...`."
+    )
+    return sections[:MAX_RELEASE_SECTIONS]
 
 
 def _section_release_inputs(sections: list[str]) -> str:
@@ -213,50 +234,32 @@ def _render_release(
     header: str,
     inputs_block: str,
     src_repo_expr: str,
-    mode: str,
     sections: list[str] = (),
     sessions: list[str] = (),
 ) -> str:
-    """`mode="repo"` (run-from-repo, sections known at render time): a release_<section>
-    checkbox + <section>_path free-text field per discovered section, routing it to a
-    repo (or repo/subpath) - see _section_release_inputs. `mode="central"`: the source
-    repo (and so its sections) isn't known until the button runs, so instead there's a
-    single cohort_repo field (every released section nests under its own subfolder
-    there) plus a --exclude list. Sessions are always free text (_sessions_input) in
-    both modes."""
-    if mode == "repo":
-        _check_no_env_name_collisions(sections)
-        target_inputs = _section_release_inputs(sections)
-        target_env = "\n".join(
-            f"          RELEASE_{_section_env_stub(s)}: ${{{{ inputs.release_{s} }}}}\n"
-            f"          PATH_{_section_env_stub(s)}: ${{{{ inputs.{s}_path }}}}"
+    """One release_<section> checkbox + <section>_path free-text field per section
+    (routes it to a repo, or repo/subpath - see _section_release_inputs), shared
+    identically by the run-from-repo button (sections = this repo's own, known at
+    render time) and the central .github button (sections = the union discovered
+    across every content repo in the org, capped - see
+    discover_sections_union/_cap_sections). A section checked on the central button
+    that the chosen source repo doesn't actually have simply finds nothing to release
+    for it. Sessions are always free text (_sessions_input) - GitHub's
+    workflow_dispatch has no multi-select widget."""
+    _check_no_env_name_collisions(sections)
+    target_inputs = _section_release_inputs(sections)
+    target_env = "\n".join(
+        f"          RELEASE_{_section_env_stub(s)}: ${{{{ inputs.release_{s} }}}}\n"
+        f"          PATH_{_section_env_stub(s)}: ${{{{ inputs.{s}_path }}}}"
+        for s in sections
+    )
+    target_build = "\n".join(
+        [
+            f'          [ "$RELEASE_{_section_env_stub(s)}" = "true" ] && destinations="$destinations {s}=${{PATH_{_section_env_stub(s)}:-{s}}}"'
             for s in sections
-        )
-        target_build = "\n".join(
-            [
-                f'          [ "$RELEASE_{_section_env_stub(s)}" = "true" ] && destinations="$destinations {s}=${{PATH_{_section_env_stub(s)}:-{s}}}"'
-                for s in sections
-            ]
-            + ['          [ -n "$destinations" ] && args+=(--destinations "$destinations")']
-        )
-    else:
-        target_inputs = (
-            '\n      cohort_repo:\n        description: "Target repo in the cohort org'
-            ' - every released section nests under its own subfolder there"\n'
-            '        required: true\n      exclude:\n        description:'
-            ' "Space/comma-separated sections to skip (e.g. readings)"\n'
-            "        required: false"
-        )
-        target_env = (
-            "          COHORT_REPO: ${{ inputs.cohort_repo }}\n"
-            "          EXCLUDE_INPUT: ${{ inputs.exclude }}"
-        )
-        target_build = "\n".join(
-            [
-                '          [ -n "$COHORT_REPO" ] && args+=(--default-repo "$COHORT_REPO")',
-                '          [ -n "$EXCLUDE_INPUT" ] && args+=(--exclude "$EXCLUDE_INPUT")',
-            ]
-        )
+        ]
+        + ['          [ -n "$destinations" ] && args+=(--destinations "$destinations")']
+    )
 
     return f"""name: Release materials
 {header}
@@ -277,16 +280,14 @@ jobs:
           SRC_REPO: {src_repo_expr}
           COHORT_ORG: ${{{{ inputs.cohort_org }}}}
           SESSIONS: ${{{{ inputs.sessions }}}}
-          INC_SYL: ${{{{ inputs.include_syllabus }}}}
-          INC_RM: ${{{{ inputs.include_readme }}}}
+          INC_ROOT: ${{{{ inputs.include_root_files }}}}
 {target_env}
         run: |
           gh auth setup-git
           args=(--source-org "$SRC_ORG" --source-repo "$SRC_REPO"
                 --cohort-org "$COHORT_ORG" --sessions "$SESSIONS")
 {target_build}
-          [ "$INC_SYL" = "true" ] && args+=(--syllabus)
-          [ "$INC_RM" = "true" ] && args+=(--readme)
+          [ "$INC_ROOT" = "true" ] && args+=(--syllabus --readme)
           python3 -m dsl_course.release "${{args[@]}}"
 """
 
@@ -309,7 +310,6 @@ def render_release(
         ),
         inputs_block=cohort_org_input,
         src_repo_expr="${{ github.event.repository.name }}",
-        mode="repo",
         sections=sections or [],
         sessions=sessions or [],
     )
@@ -355,12 +355,15 @@ jobs:
 """
 
 
-def render_central_release(source_repos: list[str], cohort_orgs: list[str]) -> str:
-    """Central copy that lives in .github: pick the source materials repo, then a
-    single target repo + sections to exclude (a central dropdown can't know the
-    source's sections until the button runs, so there's no per-section destination
-    routing here - the run-from-repo copy inside each materials repo has that, see
-    render_release)."""
+def render_central_release(
+    source_repos: list[str], cohort_orgs: list[str], sections: list[str] | None = None
+) -> str:
+    """Central copy that lives in .github: pick the source materials repo, then route
+    each section - the union discovered across every content repo in the org, capped
+    to fit GitHub's input limit (see discover_sections_union/_cap_sections) - via the
+    same checkbox+path fields as the run-from-repo button (see render_release,
+    _render_release). A section checked here that the chosen source repo doesn't
+    actually have simply finds nothing to release for it."""
     source = (
         '      source_repo:\n        description: "Source materials repo (in this course'
         ' org)"\n        required: true\n        type: choice\n        options:\n'
@@ -371,7 +374,7 @@ def render_central_release(source_repos: list[str], cohort_orgs: list[str]) -> s
         header="",
         inputs_block=f"{source}\n{cohort_org_input}",
         src_repo_expr="${{ inputs.source_repo }}",
-        mode="central",
+        sections=sections or [],
     )
 
 
@@ -1090,6 +1093,17 @@ def discover_sessions(org: str, repo: str) -> list[str]:
     return [str(n) for n in sorted({n for _, n in _section_session_pairs(org, repo)})]
 
 
+def discover_sections_union(org: str, content_repos: list[str]) -> list[str]:
+    """Union of sections discovered across every content repo - the central button's
+    source_repo isn't known until you run it, so it offers checkboxes for sections
+    seen somewhere in the org rather than any one repo's own (see
+    render_central_release; capped by the caller, see _cap_sections)."""
+    all_sections: set[str] = set()
+    for repo in content_repos:
+        all_sections |= set(discover_sections(org, repo))
+    return sorted(all_sections)
+
+
 def discover_assignments(course_org: str) -> list[str]:
     """Assignment template repos in the course org (named assignment-*) - the dropdown."""
     code, out = gh(
@@ -1123,6 +1137,7 @@ def _push_workflows(
     assignments: list[str],
 ) -> None:
     sections, sessions = discover_sections_and_sessions(org, repo)
+    sections = _cap_sections(sections, f"{org}/{repo}")
     put_file(
         org,
         repo,
@@ -1442,9 +1457,13 @@ def seed_github_workflows(course_org: str) -> None:
     cohorts = discover_cohorts(course_org)
     source_repos = discover_content_repos(course_org)
     assignments = discover_assignments(course_org)
+    central_sections = _cap_sections(
+        discover_sections_union(course_org, source_repos),
+        f"{course_org}/.github central Release materials button",
+    )
     files = {
         ".github/workflows/release-materials.yml": render_central_release(
-            source_repos, cohorts
+            source_repos, cohorts, central_sections
         ),
         ".github/workflows/release-assignment.yml": render_provision(
             cohorts, assignments

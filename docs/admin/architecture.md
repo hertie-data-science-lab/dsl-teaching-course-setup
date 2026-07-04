@@ -232,13 +232,19 @@ flowchart LR
 ```
 
 - **cohort_org** - from the `.github/cohort-courses-pages.yml` registry.
-- **dest_&lt;section&gt;** (run-from-repo Release materials only) - one free-text field per
-  section discovered in the source repo, defaulting to that section's own name. Doubles as
-  the include toggle (blank = skip) and the destination (a repo name, or `repo/subpath` to
-  nest under a folder there so several sections can share one repo); named target repos are
-  created automatically. The central `.github` copy can't know the source's sections until
-  it runs, so it gets a single `cohort_repo` field (every section nests under its own
-  subfolder there) + a free-text `exclude` list instead.
+- **release_&lt;section&gt; / &lt;section&gt;_path** - a checkbox (default on) + a free-text
+  path field per section, capped at `MAX_RELEASE_SECTIONS` (3 - GitHub's
+  `workflow_dispatch` caps at 10 inputs total, and each section costs 2, alongside
+  cohort_org/sessions/include_root_files and, for the central button, source_repo).
+  Leaving the path blank creates/uses a repo named after the section, at its root;
+  `repo/subpath` nests it under a folder there instead, so several sections can share
+  one repo. Named target repos are created automatically. Sections beyond the cap
+  aren't silently dropped - `_cap_sections` logs which ones got left out (release them
+  directly via `python3 -m dsl_course.release --destinations`). The run-from-repo copy
+  uses this repo's own discovered sections; the central `.github` copy uses the union
+  discovered across every content repo in the org (`discover_sections_union`), since
+  it can't know which repo you'll pick until you run it - a section checked there that
+  the chosen source repo doesn't actually have simply finds nothing to release.
 - **sessions** - free text, comma and/or hyphen-range (e.g. `1,3,5-7`) - GitHub's
   `workflow_dispatch` has no multi-select widget, and a checkbox per session would exceed
   its 10-input cap once a course has more than a handful of sessions. The description lists
