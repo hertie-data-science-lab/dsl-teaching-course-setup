@@ -252,7 +252,14 @@ def release(
             f"{source_org}/{source_repo} (expected e.g. <section>/{sessions[0]}_.../)."
             " Nothing released."
         )
-    return 1 if errors or not released_any else 0
+    rc = 1 if errors or not released_any else 0
+    if rc == 0:
+        # In release() itself, not just main() - so scheduler.py's direct call gets
+        # the site kept current too, not just the button's CLI wrapper.
+        from . import site
+
+        site.sync_site(source_org, cohort_org)
+    return rc
 
 
 def main() -> int:
@@ -309,7 +316,7 @@ def main() -> int:
         return 1
     exclude = {s for s in args.exclude.replace(",", " ").split() if s}
 
-    rc = release(
+    return release(
         args.source_org,
         args.source_repo,
         args.cohort_org,
@@ -320,11 +327,6 @@ def main() -> int:
         include_syllabus=args.syllabus,
         include_readme=args.readme,
     )
-    if rc == 0:
-        from . import site
-
-        site.sync_site(args.source_org, args.cohort_org)
-    return rc
 
 
 if __name__ == "__main__":

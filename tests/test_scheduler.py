@@ -1,7 +1,8 @@
-"""scheduler pure core: manifest x calendar x today -> ordered action list. This is the
-bit that decides what auto-opens, so it's unit-tested; the dispatch to release functions
-is gh/git wiring and left live. Plus a renderer guard (the cron has NO check-team gate by
-design - scheduled runs have no actor).
+"""scheduler pure core: manifest x calendar x today -> ordered action list, plus
+_execute()'s dispatch to the release functions - monkeypatched so a manifest-shape <->
+function-signature mismatch (the class of bug that silently broke scheduled materials
+releases once) is caught without any real gh/git I/O. Plus a renderer guard (the cron
+has NO check-team gate by design - scheduled runs have no actor).
 """
 
 from __future__ import annotations
@@ -100,3 +101,89 @@ def test_scheduler_workflow_valid_yaml_and_ungated():
     assert "schedule" in trigger
     # deliberately NOT gated by check-team (no actor on a scheduled run)
     assert "check-team" not in doc["jobs"]
+
+
+# _execute()'s dispatch to the release functions IS pure wiring (no gh/git calls of its
+# own), but a manifest-shape <-> function-signature mismatch there is exactly the class
+# of bug that silently broke scheduled materials releases when release()'s signature
+# changed elsewhere - monkeypatching the release functions catches that without any
+# real gh/git I/O.
+
+
+def test_execute_materials_calls_release_with_current_signature(monkeypatch):
+    calls = []
+
+    def fake_release(source_org, source_repo, cohort_org, sessions, **kwargs):
+        calls.append((source_org, source_repo, cohort_org, sessions, kwargs))
+        return 0
+
+    monkeypatch.setattr("dsl_course.release.release", fake_release)
+    action = {
+        "kind": "materials",
+        "session": "3",
+        "source_repo": "cm-f2026",
+        "cohort_repo": "materials",
+        "exclude": {"readings"},
+    }
+    assert scheduler._execute("Course-Org", "Cohort-Org", action) == 0
+    org, repo, cohort, sessions, kwargs = calls[0]
+    assert (org, repo, cohort, sessions) == ("Course-Org", "cm-f2026", "Cohort-Org", ["3"])
+    assert kwargs["default_repo"] == "materials"
+    assert kwargs["exclude"] == {"readings"}
+
+
+def test_execute_code_calls_release_code_with_current_signature(monkeypatch):
+    calls = []
+
+    def fake_release_code(source_org, source_repo, cohort_org, cohort_repo, path):
+        calls.append((source_org, source_repo, cohort_org, cohort_repo, path))
+        return 0
+
+    monkeypatch.setattr("dsl_course.release_code.release_code", fake_release_code)
+    action = {
+        "kind": "code",
+        "source_repo": "lecture-code",
+        "path": "mlpkg/simulation",
+        "cohort_repo": "materials",
+    }
+    assert scheduler._execute("Course-Org", "Cohort-Org", action) == 0
+    assert calls[0] == (
+        "Course-Org",
+        "lecture-code",
+        "Cohort-Org",
+        "materials",
+        "mlpkg/simulation",
+    )
+
+
+def test_execute_assignment_calls_provision_all_with_current_signature(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        "dsl_course.assign.provision_all",
+        lambda master_org, template, cohort_org: calls.append(
+            (master_org, template, cohort_org)
+        )
+        or 0,
+    )
+    action = {"kind": "assignment", "template": "assignment-2-f2026"}
+    assert scheduler._execute("Course-Org", "Cohort-Org", action) == 0
+    assert calls[0] == ("Course-Org", "assignment-2-f2026", "Cohort-Org")
+
+
+def test_execute_grade_calls_collect_with_current_signature(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        "dsl_course.collect.collect",
+        lambda master_org, template, cohort_org, deadline, group=False: calls.append(
+            (master_org, template, cohort_org, deadline, group)
+        )
+        or 0,
+    )
+    action = {
+        "kind": "grade",
+        "template": "assignment-2-f2026",
+        "deadline": "2026-10-15",
+        "group": True,
+    }
+    assert scheduler._execute("Course-Org", "Cohort-Org", action) == 0
+    assert calls[0] == ("Course-Org", "assignment-2-f2026", "Cohort-Org", "2026-10-15", True)
