@@ -207,6 +207,24 @@ def test_discover_sections_union_combines_across_content_repos(monkeypatch):
     assert seed.discover_sections_union("org", ["a", "b"]) == ["labs", "lectures", "readings"]
 
 
+def test_discover_release_sources_detects_root_and_nested_shapes(monkeypatch):
+    # root shape: a release left its per-section path blank, so the repo itself is one
+    # section and sessions sit directly at its root (labs/lectures in a live course).
+    # nested shape: a release routed a section under a shared repo's own subfolder.
+    trees = {
+        "labs": ["01_intro", "02_functions", "materials/01_intro", "readings"],
+        "lectures": ["01_intro"],
+    }
+    monkeypatch.setattr(seed, "_repo_tree_dirs", lambda org, repo: trees[repo])
+    sources = seed.discover_release_sources("org", ["labs", "lectures"])
+    assert set(sources) == {
+        ("labs", "", "01_intro", 1),
+        ("labs", "", "02_functions", 2),
+        ("labs", "materials", "01_intro", 1),
+        ("lectures", "", "01_intro", 1),
+    }
+
+
 def test_choice_falls_back_when_empty():
     # An empty dropdown must still be valid YAML (a placeholder option), never blank.
     assert "(none-yet)" in seed._choice([])

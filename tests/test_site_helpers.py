@@ -8,6 +8,7 @@ publish citations as text without leaking copyrighted bytes.
 from __future__ import annotations
 
 from datetime import date
+from unittest.mock import patch
 
 from dsl_course import site
 
@@ -61,6 +62,26 @@ def test_public_lecture_entry_reading_list_mode_has_no_links():
     assert "links: []" in e
     assert "### Reading list" in e and "Smith 2020" in e
     assert "enrolled" not in e  # public-facing, no student gate language
+
+
+def test_lecture_entry_labels_links_by_repo_or_subpath():
+    def fake_session_files(org, repo, subpath, folder):
+        return {
+            ("labs", ""): [("intro.pdf", "https://x/1")],  # root shape: label = repo
+            ("materials", "lectures"): [("slides.pdf", "https://x/2")],  # nested: label = subpath
+        }.get((repo, subpath), [])
+
+    with patch.object(site, "_session_files", side_effect=fake_session_files):
+        entry = site._lecture_entry(
+            "Cohort-f2026",
+            "1",
+            date(2026, 9, 7),
+            [("labs", "", "01_intro"), ("materials", "lectures", "01_intro")],
+        )
+    assert "https://x/1" in entry and "https://x/2" in entry
+    assert 'name: "lab - intro.pdf"' in entry
+    assert 'name: "lecture - slides.pdf"' in entry
+    assert 'name: "lecture - slides.pdf"' in entry
 
 
 def test_public_lecture_entry_actual_readings_mode_links_are_local():
