@@ -107,6 +107,9 @@ def release_code(
             log_err("push failed")
             return 1
     log_ok("released")
+    from . import site
+
+    site.sync_site(source_org, cohort_org)
     return 0
 
 

@@ -151,8 +151,8 @@ def _execute(course_org: str, cohort_org: str, action: dict) -> int:
             course_org,
             action["source_repo"],
             cohort_org,
-            action["cohort_repo"],
-            action["session"],
+            [action["session"]],
+            default_repo=action["cohort_repo"],
             exclude=action["exclude"],
         )
     if kind == "code":
