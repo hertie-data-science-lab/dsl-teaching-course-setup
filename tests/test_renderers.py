@@ -121,20 +121,23 @@ def test_dotgithub_readme_orients_faculty():
     assert "parent course org" in cohort
 
 
-def test_release_has_one_destination_field_per_section():
+def test_release_has_a_checkbox_and_path_field_per_section():
     rendered = seed.render_release(["Cohort-f2026"], ["1", "2"], ["lectures", "labs"])
     inp = workflow_inputs(rendered)
     assert set(inp) == {
         "cohort_org",
-        "dest_lectures",
-        "dest_labs",
+        "release_lectures",
+        "lectures_path",
+        "release_labs",
+        "labs_path",
         "sessions",
         "include_syllabus",
         "include_readme",
     }
-    # Defaults to the section's own name - each section gets its own repo out of the box.
-    assert inp["dest_lectures"]["default"] == "lectures"
-    assert inp["dest_labs"]["default"] == "labs"
+    # Checkbox defaults on; path has no default (blank means "use the section's own name").
+    assert inp["release_lectures"]["type"] == "boolean"
+    assert inp["release_lectures"]["default"] is True
+    assert "default" not in inp["lectures_path"]
     # Sessions is free text (no multi-select widget in workflow_dispatch), with the
     # discovered sessions surfaced in the description for reference.
     assert "type" not in inp["sessions"]
@@ -143,10 +146,16 @@ def test_release_has_one_destination_field_per_section():
     assert "cohort_repo" not in inp
 
 
-def test_release_builds_destinations_from_dest_fields():
+def test_release_builds_destinations_from_checkbox_and_path_fields():
     rendered = seed.render_release(["Cohort-f2026"], ["1"], ["lectures", "labs"])
-    assert "DEST_LECTURES: ${{ inputs.dest_lectures }}" in rendered
-    assert '[ -n "$DEST_LECTURES" ] && destinations="$destinations lectures=$DEST_LECTURES"' in rendered
+    assert "RELEASE_LECTURES: ${{ inputs.release_lectures }}" in rendered
+    assert "PATH_LECTURES: ${{ inputs.lectures_path }}" in rendered
+    # Unchecked -> not released regardless of path; checked with a blank path ->
+    # falls back to the section's own name via bash parameter expansion.
+    assert (
+        '[ "$RELEASE_LECTURES" = "true" ] && destinations="$destinations lectures=${PATH_LECTURES:-lectures}"'
+        in rendered
+    )
     assert '--destinations "$destinations"' in rendered
     assert "--sessions \"$SESSIONS\"" in rendered
 

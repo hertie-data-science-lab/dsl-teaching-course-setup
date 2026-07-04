@@ -12,11 +12,12 @@ their repos, and re-pushes the content actions to every course repo. No cron, no
 
 Sections/sessions in the Release materials button are discovered the same way
 (scanned from the source repo's own directory structure - see
-discover_sections_and_sessions): each section gets a free-text destination field
-(_section_destinations) routing it to a repo (created if missing) or repo/subpath,
-and sessions are a comma/range free-text field (_sessions_input) - GitHub's
-workflow_dispatch has no multi-select widget and a checkbox per session would blow
-past its 10-input cap, unlike the small, bounded set of sections.
+discover_sections_and_sessions): each section gets a release_<section> checkbox plus a
+free-text <section>_path field routing it to a repo (created if missing) or
+repo/subpath (_section_release_inputs), and sessions are a comma/range free-text field
+(_sessions_input) - GitHub's workflow_dispatch has no multi-select widget and a
+checkbox per session would blow past its 10-input cap, unlike the small, bounded set
+of sections.
 
 CLI:
   refresh --course-org X   re-render the content actions into every course repo with
@@ -119,7 +120,7 @@ def _sessions_input(sessions: list[str]) -> str:
     has no multi-select widget, and a checkbox-per-session would blow past its 10-input
     cap once a course has more than a handful of sessions (lectures alone can run to
     15) - unlike sections, which stay small and bounded and so get real checkboxes
-    (see _section_destinations)."""
+    (see _section_release_inputs)."""
     hint = f" (available: {', '.join(sessions)})" if sessions else ""
     return (
         "      sessions:\n"
@@ -146,7 +147,7 @@ _COHORT_INPUTS = """\
         options:
 {cohort_repos}"""
 # cohort_org alone - the materials-release renderers route each section to its own
-# destination repo instead of picking one repo up front (see _section_destinations).
+# destination repo instead of picking one repo up front (see _section_release_inputs).
 _COHORT_ORG_INPUT = """\
       cohort_org:
         description: "Target cohort org"
@@ -165,41 +166,43 @@ _ROOT_INCLUDES = """\
         default: false"""
 
 
-def _dest_env_name(section: str) -> str:
-    return f"DEST_{section.upper().replace('-', '_')}"
+def _section_env_stub(section: str) -> str:
+    return section.upper().replace("-", "_")
 
 
 def _check_no_env_name_collisions(sections: list[str]) -> None:
     """Shell env var names can't contain hyphens, so section names are folded to
-    match ('case-studies' and 'case_studies' both become DEST_CASE_STUDIES) - raise
-    loudly at render time rather than silently dropping one section's destination."""
+    match ('case-studies' and 'case_studies' both become CASE_STUDIES) - raise loudly
+    at render time rather than silently colliding two sections' env vars."""
     seen: dict[str, str] = {}
     for s in sections:
-        env_name = _dest_env_name(s)
-        if env_name in seen and seen[env_name] != s:
+        stub = _section_env_stub(s)
+        if stub in seen and seen[stub] != s:
             raise ValueError(
-                f"sections {seen[env_name]!r} and {s!r} both map to the env var "
-                f"{env_name} - rename one (they differ only by '-' vs '_')"
+                f"sections {seen[stub]!r} and {s!r} both map to the env var stub "
+                f"{stub} - rename one (they differ only by '-' vs '_')"
             )
-        seen[env_name] = s
+        seen[stub] = s
 
 
-def _section_destinations(sections: list[str]) -> str:
-    """One free-text dest_<section> field per section DISCOVERED AT RENDER TIME,
-    defaulting to the section's own name. This single field both selects the section
-    (blank = skip it) and routes it: a bare repo name ("lectures") releases at that
-    repo's root; "repo/subpath" (e.g. "materials/lectures") nests it under a subfolder,
-    so two sections can share one repo, or each can get its own. The repo is created
-    if it doesn't exist yet. Only usable when the source repo is known at render time
-    (run-from-repo); the central button can target any repo at RUN time, so it gets a
-    single cohort_repo field + --exclude instead (see render_central_release)."""
+def _section_release_inputs(sections: list[str]) -> str:
+    """Two fields per section DISCOVERED AT RENDER TIME: a release_<section> checkbox
+    (default on - whether to release it at all) and a free-text <section>_path
+    (optional, no default - where it lands). Leaving the path blank creates/uses a
+    repo named after the section, at its root; "repo/sub/..." routes it into "repo"
+    under a nested folder path instead - letting several sections share one repo, or
+    each get its own. The repo is created if it doesn't exist yet. Only usable when
+    the source repo is known at render time (run-from-repo); the central button can
+    target any repo at RUN time, so it gets a single cohort_repo field + --exclude
+    instead (see render_central_release)."""
     if not sections:
         return ""
     lines = "\n".join(
-        f'      dest_{s}:\n        description: "Where to release {s}: a repo name'
-        f' (released at that repo\'s root), or repo/subpath to nest under a folder'
-        f' there (e.g. materials/{s}) - shared by other sections pointed at the same'
-        f' repo. Leave blank to skip {s}."\n        default: "{s}"\n'
+        f'      release_{s}:\n        description: "Release {s} this session?"\n'
+        '        type: boolean\n        default: true\n'
+        f'      {s}_path:\n        description: "Where to put it - leave blank to'
+        f" create/use a repo named '{s}' at its root. Otherwise: first segment ="
+        f' repo name, rest = folder path inside it (e.g. \'materials/{s}\')."\n'
         "        required: false"
         for s in sections
     )
@@ -214,21 +217,24 @@ def _render_release(
     sections: list[str] = (),
     sessions: list[str] = (),
 ) -> str:
-    """`mode="repo"` (run-from-repo, sections known at render time): one dest_<section>
-    free-text field per discovered section, routing it to a repo (or repo/subpath) -
-    see _section_destinations. `mode="central"`: the source repo (and so its sections)
-    isn't known until the button runs, so instead there's a single cohort_repo field
-    (every released section nests under its own subfolder there) plus a --exclude
-    list. Sessions are always free text (_sessions_input) in both modes."""
+    """`mode="repo"` (run-from-repo, sections known at render time): a release_<section>
+    checkbox + <section>_path free-text field per discovered section, routing it to a
+    repo (or repo/subpath) - see _section_release_inputs. `mode="central"`: the source
+    repo (and so its sections) isn't known until the button runs, so instead there's a
+    single cohort_repo field (every released section nests under its own subfolder
+    there) plus a --exclude list. Sessions are always free text (_sessions_input) in
+    both modes."""
     if mode == "repo":
         _check_no_env_name_collisions(sections)
-        target_inputs = _section_destinations(sections)
+        target_inputs = _section_release_inputs(sections)
         target_env = "\n".join(
-            f"          {_dest_env_name(s)}: ${{{{ inputs.dest_{s} }}}}" for s in sections
+            f"          RELEASE_{_section_env_stub(s)}: ${{{{ inputs.release_{s} }}}}\n"
+            f"          PATH_{_section_env_stub(s)}: ${{{{ inputs.{s}_path }}}}"
+            for s in sections
         )
         target_build = "\n".join(
             [
-                f'          [ -n "${_dest_env_name(s)}" ] && destinations="$destinations {s}=${_dest_env_name(s)}"'
+                f'          [ "$RELEASE_{_section_env_stub(s)}" = "true" ] && destinations="$destinations {s}=${{PATH_{_section_env_stub(s)}:-{s}}}"'
                 for s in sections
             ]
             + ['          [ -n "$destinations" ] && args+=(--destinations "$destinations")']
