@@ -7,6 +7,7 @@ import json
 import re
 import subprocess
 import sys
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -212,10 +213,23 @@ def remove_team_member(org: str, team_slug: str, login: str) -> bool:
     return code == 0
 
 
+@lru_cache(maxsize=1)
+def _acting_login() -> str | None:
+    """Login of the token `gh` is currently authenticated as (the bot, in CI)."""
+    code, out = gh("api", "user", "--jq", ".login")
+    return out.strip() if code == 0 and out.strip() else None
+
+
 def reconcile_team_members(
     org: str, team: str, wanted: set[str], prune: bool = True, dry_run: bool = False
 ) -> int:
-    """Full add(+remove) reconcile of one team's membership to exactly `wanted`."""
+    """Full add(+remove) reconcile of one team's membership to exactly `wanted`.
+
+    Never prunes the acting token's own login: GitHub auto-adds whoever creates a
+    team as a member, so the bot ends up in `current` without ever being a
+    deliberate grant. Pruning it doesn't change its actual access (it stays an org
+    Owner) - it just churns team membership on every reconcile.
+    """
     current = get_team_members(org, team)
     errors = 0
     for handle in sorted(wanted - current):
@@ -226,7 +240,10 @@ def reconcile_team_members(
         else:
             errors += 1
     if prune:
+        acting = _acting_login()
         for handle in sorted(current - wanted):
+            if handle == acting:
+                continue
             if dry_run:
                 log(f"    DRY-RUN remove {handle} <- {org}/{team}")
             elif remove_team_member(org, team, handle):
