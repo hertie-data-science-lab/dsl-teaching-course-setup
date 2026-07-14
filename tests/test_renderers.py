@@ -230,3 +230,33 @@ def test_choice_falls_back_when_empty():
     assert "(none-yet)" in seed._choice([])
     inp = workflow_inputs(seed.render_publish_site([]))
     assert inp["source_repo"]["options"] == ["(none-yet)"]
+
+
+def test_sync_site_auto_resyncs_on_sourced_changes():
+    # Sync site must auto-fire (no manual click) on the things the site reads: a push to
+    # the course dsl-course.yml, a repository_dispatch from a cohort's schedule.yml, and a
+    # daily cron catch-all. The auto path is ungated (no check-team); manual stays gated.
+    doc = yaml.safe_load(seed.render_sync_site(["Cohort-f2026"]))
+    trigger = doc.get("on", doc.get(True))
+    assert "dsl-course.yml" in trigger["push"]["paths"]
+    assert trigger["repository_dispatch"]["types"] == ["sync-site"]
+    assert trigger["schedule"][0]["cron"] == "0 6 * * *"
+    assert "workflow_dispatch" in trigger
+    jobs = doc["jobs"]
+    # the ungated auto job runs for non-manual events; the gated one needs check-team
+    assert jobs["sync-auto"]["if"] == "github.event_name != 'workflow_dispatch'"
+    assert "check-team" not in jobs["sync-auto"].get("needs", "")
+    assert jobs["sync"]["needs"] == "check-team"
+
+
+def test_classroom_config_site_dispatcher_fires_on_schedule_change():
+    from pathlib import Path
+
+    tmpl = (
+        Path(__file__).resolve().parents[1]
+        / "templates" / "classroom-config" / "dispatch-sync-site.yml"
+    ).read_text()
+    doc = yaml.safe_load(tmpl)
+    trigger = doc.get("on", doc.get(True))
+    assert trigger["push"]["paths"] == ["schedule.yml"]
+    assert "sync-site" in tmpl  # dispatches the sync-site event

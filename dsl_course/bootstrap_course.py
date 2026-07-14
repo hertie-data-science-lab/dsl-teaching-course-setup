@@ -696,6 +696,13 @@ def setup_cohort_extras(org: str) -> None:
             _classroom_config_template("dispatch-sync.yml"),
             "ci: seed dispatch-sync workflow",
         )
+        put_file(
+            org,
+            "classroom-config",
+            ".github/workflows/dispatch-sync-site.yml",
+            _classroom_config_template("dispatch-sync-site.yml"),
+            "ci: seed dispatch-sync-site workflow",
+        )
         log_ok("classroom-config seeded (roster + README + grades/ + samples)")
 
     # Public, auto-deployed cohort website (from course-website-template).

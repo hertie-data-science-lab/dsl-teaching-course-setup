@@ -902,10 +902,32 @@ jobs:
 
 def render_sync_site(cohort_orgs: list[str]) -> str:
     """Regenerate a cohort's website from the live org structure (released sessions +
-    assignment catalog). Releases also trigger this automatically."""
+    schedule.yml dates + assignment catalog). Auto-resyncs on any change the site sources
+    from - not just on release:
+
+    - push to this .github repo's dsl-course.yml -> re-sync EVERY cohort (the course name /
+      instructor cards feed every cohort site).
+    - repository_dispatch `sync-site` (fired by the cohort's classroom-config dispatcher on
+      push to schedule.yml/people.yml) -> re-sync that one cohort (or all, if the payload
+      names none).
+    - daily cron -> re-sync every cohort (the catch-all: a direct edit to a released
+      content repo can't fire a dispatch, because DSL_BOT_TOKEN is deliberately not
+      scoped to content repos, so a daily pass reflects such edits within a day).
+    - workflow_dispatch -> manual escape hatch, gated by check-team (single cohort).
+
+    Releases also call site.sync_site directly (immediate). The push/dispatch/cron paths
+    skip the check-team gate (no actor), same as Sync membership and the scheduler."""
     return f"""name: Sync site
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - dsl-course.yml
+  repository_dispatch:
+    types: [sync-site]
+  schedule:
+    - cron: "0 6 * * *"
   workflow_dispatch:
     inputs:
       cohort_org:
@@ -924,6 +946,38 @@ jobs:
         run: |
           gh auth setup-git
           python3 -m dsl_course.site sync --course-org "${{{{ github.repository_owner }}}}" --cohort-org "${{{{ inputs.cohort_org }}}}"
+
+  sync-auto:
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: {CENTRAL}
+          ref: {CENTRAL_REF}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Sync site
+        env:
+          GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
+          COURSE: ${{{{ github.repository_owner }}}}
+          EVENT: ${{{{ github.event_name }}}}
+          DISPATCH_COHORT: ${{{{ github.event.client_payload.cohort_org }}}}
+        run: |
+          gh auth setup-git
+          args=(--course-org "$COURSE")
+          case "$EVENT" in
+            push|schedule) args+=(--all-cohorts) ;;
+            repository_dispatch)
+              if [ -n "$DISPATCH_COHORT" ]; then
+                args+=(--cohort-org "$DISPATCH_COHORT")
+              else
+                args+=(--all-cohorts)
+              fi ;;
+          esac
+          python3 -m dsl_course.site sync "${{args[@]}}"
 """
 
 
