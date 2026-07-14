@@ -80,14 +80,34 @@ def scaffold_materials(org: str, tag: str) -> int:
         return 1
     grant_course_team_access(org, repo)
     grant_tagged_team_access(org, repo, tag)
+    # README.md is student-facing: Release materials with the README toggle copies THIS
+    # file into the cohort's materials repo, where enrolled students read it. So it ships
+    # as a replace-me placeholder written for students - the faculty how-this-repo-works
+    # reference lives in MAINTAINING.md (a root file that is never released: release only
+    # copies section folders, the syllabus, and README.md).
     readme = (
-        f"# {repo}\n\nCourse materials - the source for the **Release materials** action.\n\n"
+        "<!-- FACULTY: replace the content below with a real, student-facing overview of\n"
+        "     your course materials. Release materials with the 'include README' toggle\n"
+        "     copies THIS file into the cohort's materials repo, where enrolled students\n"
+        "     read it - so write it for them, not as internal notes. How this source repo\n"
+        "     is structured (for you, not students) is in MAINTAINING.md. -->\n\n"
+        "# Course materials\n\n"
+        "> **Replace this placeholder.** This becomes the students' README for the released\n"
+        "> materials. Add a short overview of the course, how the materials are organised,\n"
+        "> and anything students should read first.\n"
+    )
+    maintaining = (
+        f"# Maintaining `{repo}` (faculty)\n\n"
+        "Faculty reference for this materials **source** repo. This file is **not** released "
+        "to students - Release materials only copies session folders, the syllabus, and "
+        "(when toggled) `README.md`, so keep student-facing wording in `README.md` and "
+        "faculty notes here.\n\n"
         "## Structure\n\n"
         "Any top-level directory containing at least one ordinal-prefixed subdirectory "
         "(`00_`, `01_`, `02_`, ...) is a releasable section - no config to declare it:\n\n"
         "- `lectures/00_session-1/` - one folder per session's lecture files\n"
         "- `readings/00_session-1/` - one folder per session's readings\n"
-        "- `*syllabus*`, this `README.md` (root) - released via the syllabus / README toggles\n\n"
+        "- `*syllabus*`, `README.md` (root) - released via the syllabus / README toggles\n\n"
         "Add more sessions by creating `lectures/01_session-2/`, `readings/01_session-2/`, ... "
         "(only the ordinal prefix matters - name the rest whatever you like), or add a whole "
         "new section (e.g. `labs/00_intro/`) - then run **Refresh actions** so the session "
@@ -101,6 +121,7 @@ def scaffold_materials(org: str, tag: str) -> int:
     )
     files = {
         "README.md": readme.encode(),
+        "MAINTAINING.md": maintaining.encode(),
         "lectures/00_session-1/.gitkeep": b"",
         "readings/00_session-1/.gitkeep": b"",
         "SYLLABUS.md": f"# {tag} syllabus\n\nReplace with the real syllabus.\n".encode(),
@@ -196,6 +217,53 @@ def scaffold_assignment(org: str, number: str, tag: str) -> int:
     return 0
 
 
+def _latest_deploy_run_id(org: str, site: str) -> str | None:
+    """Newest deploy.yml run id for the site repo, or None if there are none yet."""
+    code, out = gh(
+        "api",
+        f"repos/{org}/{site}/actions/workflows/deploy.yml/runs",
+        "--jq",
+        ".workflow_runs[0].id // empty",
+    )
+    return out.strip() if code == 0 and out.strip() else None
+
+
+def _await_run(org: str, site: str, run_id: str, timeout: int = 180) -> str | None:
+    """Poll a workflow run to completion; return its conclusion (e.g. 'success',
+    'failure') or None on timeout."""
+    waited = 0
+    while waited < timeout:
+        code, out = gh(
+            "api", f"repos/{org}/{site}/actions/runs/{run_id}", "--jq", ".status,.conclusion"
+        )
+        if code == 0:
+            parts = out.split()
+            if parts and parts[0] == "completed":
+                return parts[1] if len(parts) > 1 else ""
+        time.sleep(6)
+        waited += 6
+    return None
+
+
+def _dispatch_deploy(org: str, site: str) -> str | None:
+    """Dispatch deploy.yml and return the id of the run it triggers, or None. The
+    workflow takes a few seconds to index after template-generate, so retry the
+    dispatch; then wait for a new run (distinct from any prior one) to appear."""
+    before = _latest_deploy_run_id(org, site)
+    for _ in range(6):
+        if gh("workflow", "run", "deploy.yml", "--repo", f"{org}/{site}")[0] == 0:
+            break
+        time.sleep(5)
+    else:
+        return None
+    for _ in range(10):
+        rid = _latest_deploy_run_id(org, site)
+        if rid and rid != before:
+            return rid
+        time.sleep(3)
+    return None
+
+
 def scaffold_site(org: str) -> int:
     """Generate an org's public website (from course-website-template) and enable GitHub
     Pages with the template's deploy-on-push workflow. Used for both the per-cohort
@@ -241,9 +309,9 @@ def scaffold_site(org: str) -> int:
             "build_type=workflow",
         )
 
-    # The auto-created github-pages environment restricts which branches may deploy, and
-    # the template's default branch (master) is not on that list - clear the policy so
-    # any branch can deploy.
+    # The auto-created github-pages environment restricts which branches may deploy -
+    # clear the policy so any branch (the template's default, plus sync-site's pushes)
+    # can deploy.
     gh(
         "api",
         "--method",
@@ -253,17 +321,27 @@ def scaffold_site(org: str) -> int:
         "deployment_branch_policy=null",
     )
 
-    # template-generate doesn't fire workflows, so kick the first deploy by hand. The
-    # workflow takes a few seconds to index after generate, so retry the dispatch.
-    for _ in range(6):
-        if gh("workflow", "run", "deploy.yml", "--repo", f"{org}/{site}")[0] == 0:
-            break
-        time.sleep(5)
-    else:
-        log(
-            "  (deploy not dispatched yet - it will deploy on the next push to the site repo)"
-        )
-    log_ok(f"site deploying -> https://{org.lower()}.github.io/")
+    # template-generate doesn't fire workflows, so kick the first deploy by hand AND
+    # confirm it lands. Enabling Pages with build_type=workflow races the platform's
+    # provisioning, so the first deploy often fails transiently ("Deployment failed, try
+    # again later"); re-dispatch a couple of times, waiting for each run to finish. A
+    # miss is non-fatal - the site deploys on the first content push (your first Release)
+    # anyway - but confirming here avoids a freshly-bootstrapped org showing a dead site.
+    for attempt in range(1, 4):
+        run_id = _dispatch_deploy(org, site)
+        if run_id is None:
+            continue
+        conclusion = _await_run(org, site, run_id)
+        if conclusion == "success":
+            log_ok(f"site deployed -> https://{org.lower()}.github.io/")
+            return 0
+        log(f"  (deploy attempt {attempt} did not succeed: {conclusion or 'timed out'})")
+        time.sleep(10)
+    log(
+        "  (site not deployed yet - it will deploy on the next push to the site repo, "
+        "e.g. your first Release materials)"
+    )
+    log_ok(f"site scaffolded -> https://{org.lower()}.github.io/")
     return 0
 
 
