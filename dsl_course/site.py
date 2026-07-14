@@ -48,6 +48,7 @@ from .utils import (
     git,
     log,
     log_err,
+    session_number,
     log_ok,
     log_step,
     repo_exists,
@@ -227,11 +228,16 @@ def _session_files(org: str, repo: str, subpath: str, folder: str) -> list[tuple
 
 
 def _lecture_entry(
-    cohort_org: str, session: str, when: date, sources: list[tuple[str, str, str]]
+    cohort_org: str,
+    session: str,
+    when: date | datetime,
+    sources: list[tuple[str, str, str]],
 ) -> str:
     """`sources` is (repo, subpath, folder) triples already confirmed (by
     seed.discover_release_sources) to hold this exact session - callers pass only the
-    sources known to match, so every call here is a real hit, not a probe."""
+    sources known to match, so every call here is a real hit, not a probe. `when` is the
+    release datetime from schedule.yml (its real time is shown) or a synthesised date
+    fallback (rendered at 09:00) when the session isn't in the release plan."""
     links = []
     for repo, subpath, folder in sources:
         label = subpath or repo
@@ -239,10 +245,15 @@ def _lecture_entry(
             safe = name.replace('"', "'")
             links.append(f'    - url: {url}\n      name: "{label[:-1]} - {safe}"')
     links_block = ("links:\n" + "\n".join(links)) if links else "links: []"
+    date_str = (
+        when.strftime("%Y-%m-%dT%H:%M:%S")
+        if isinstance(when, datetime)
+        else f"{when.isoformat()}T09:00:00"
+    )
     return (
         f"---\n"
         f"type: lecture\n"
-        f"date: {when.isoformat()}T09:00:00\n"
+        f"date: {date_str}\n"
         f'title: "Session {session}"\n'
         f'tldr: "Released materials for session {session} (enrolled students only)."\n'
         f"{links_block}\n"
@@ -306,6 +317,24 @@ def _due_date(sched: schedule.Schedule, repo: str, fallback: date) -> date | dat
     return entry.due if entry else fallback
 
 
+def _session_dates(sched: schedule.Schedule) -> dict[str, datetime]:
+    """Map a session ordinal (e.g. '2') to its real release datetime from schedule.yml's
+    `materials_releases`, keyed by the ordinal of each deploy's destination folder (so the
+    site can date a released session from the plan that released it). Earliest wins when
+    several releases touch the same ordinal."""
+    out: dict[str, datetime] = {}
+    for release in sched.releases:
+        for d in release.deploy:
+            folder = (d.dest_path or d.source_path).rstrip("/").rsplit("/", 1)[-1]
+            n = session_number(folder)
+            if n is None:
+                continue
+            key = str(n)
+            if key not in out or release.when < out[key]:
+                out[key] = release.when
+    return out
+
+
 def sync_site(course_org: str, cohort_org: str) -> int:
     site = f"{cohort_org.lower()}.github.io"
     if not repo_exists(cohort_org, site):
@@ -346,6 +375,9 @@ def sync_site(course_org: str, cohort_org: str) -> int:
         sched = schedule.load(cohort_org)
         if sched.semester_start:
             start = sched.semester_start
+        # Real per-session release datetimes from schedule.yml's materials_releases; a
+        # session not in the plan falls back to a synthesised weekly date below.
+        session_when = _session_dates(sched)
         cfg_path = wd / "_config.yml"
         if cfg_path.is_file() and isinstance(meta, dict):
             cfg = cfg_path.read_text()
@@ -389,7 +421,7 @@ def sync_site(course_org: str, cohort_org: str) -> int:
                     f"session-{int(s):02d}.md": _lecture_entry(
                         cohort_org,
                         s,
-                        start + timedelta(days=int(s) * 7),
+                        session_when.get(s, start + timedelta(days=int(s) * 7)),
                         sources_by_session[s],
                     )
                     for s in sessions
