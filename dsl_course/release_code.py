@@ -41,15 +41,22 @@ def release_code(
     cohort_org: str,
     cohort_repo: str,
     path: str,
+    dest_path: str | None = None,
+    sync: bool = True,
 ) -> int:
+    """Copy `path` from the course-org source repo into the cohort-org `cohort_repo`,
+    additively + idempotently. `dest_path` places it at a different path in the dest
+    (default: mirror `path`). `sync` triggers a website sync afterwards (the scheduler
+    passes sync=False and syncs once after all its releases)."""
     path = path.strip("/")
     if not path:
         log_err("--path is empty.")
         return 1
+    dest = (dest_path or path).strip("/") or path
 
     log_step(
-        f"Releasing code `{path}` from {source_org}/{source_repo} "
-        f"-> {cohort_org}/{cohort_repo}/{path} (cohort-private)"
+        f"Releasing `{path}` from {source_org}/{source_repo} "
+        f"-> {cohort_org}/{cohort_repo}/{dest} (cohort-private)"
     )
     create_repo(
         cohort_org,
@@ -81,13 +88,13 @@ def release_code(
             )
             return 1
 
-        destp = out / path
+        destp = out / dest
         if srcp.is_dir():
             shutil.copytree(srcp, destp, dirs_exist_ok=True)
         else:
             destp.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(srcp, destp)
-        log_ok(f"+ {path}")
+        log_ok(f"+ {dest}")
 
         git("-C", str(out), *_GIT_ENV, "add", "-A")
         code, _ = git(
@@ -98,7 +105,7 @@ def release_code(
             "-q",
             "--no-verify",
             "-m",
-            f"release code: {path}",
+            f"release: {dest}",
         )
         if code != 0:
             log_ok("nothing new to release (already published at this path)")
@@ -107,9 +114,10 @@ def release_code(
             log_err("push failed")
             return 1
     log_ok("released")
-    from . import site
+    if sync:
+        from . import site
 
-    site.sync_site(source_org, cohort_org)
+        site.sync_site(source_org, cohort_org)
     return 0
 
 
@@ -126,7 +134,12 @@ def main() -> int:
     parser.add_argument(
         "--path",
         required=True,
-        help="Path to release (subpackage folder or module file)",
+        help="Source path to release (folder or file)",
+    )
+    parser.add_argument(
+        "--dest-path",
+        default=None,
+        help="Destination path in the cohort repo (default: mirror --path)",
     )
     args = parser.parse_args()
 
@@ -139,6 +152,7 @@ def main() -> int:
         args.cohort_org,
         args.cohort_repo,
         args.path,
+        dest_path=args.dest_path,
     )
 
 

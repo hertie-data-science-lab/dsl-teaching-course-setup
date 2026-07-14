@@ -36,11 +36,10 @@ example-course/
       solution/                     #   -> solution branch: solution/ + grading.yml + hidden tests/
     assignment-2-f2026/             # individual (notebook): main/ + solution/
     assignment-4-project-f2026/     # GROUP project: main/ + solution/ (grading.yml type: group)
-    manifests/DSL-Demo-f2026.yml    # what auto-releases each session (materials/code/assignment/grade)
   cohort-org/
     students.csv                    # 4 dummy students (handles blank - filled on onboard)
     teams.csv                       # team membership for the group project
-    schedule.yml                    # release calendar (Scheduled-release cron) + due dates + exams
+    schedule.yml                    # the auto-release plan (materials_releases) + due dates + exams
     people.yml                      # this cohort's own instructors/TAs (real push access)
     grades/*.csv                    # per-assignment faculty grade tables (auto/manual/final)
 ```

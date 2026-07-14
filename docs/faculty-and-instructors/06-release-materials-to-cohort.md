@@ -52,11 +52,11 @@ subpath, or at the repo root if none was given. Only released sessions appear; i
 
 ## Scheduled release (optional)
 
-A per-cohort manifest, `course-org/.github/manifests/<cohort-org>.yml` (`sessions:` → what
-opens each session), joined with the cohort's `classroom-config/schedule.yml`
-(`sessions`/`labs`), lets the daily **Scheduled release** cron open each session's items on its
-date - materials, lecture code, **and** assignments. The manual buttons still work for early /
-ad-hoc release.
+The cohort's `classroom-config/schedule.yml` `materials_releases:` plan lets the hourly
+**Scheduled release** cron fire each labelled release once its `when` datetime has arrived -
+`deploy` (copy a source path → a cohort repo), `assignment` (provision student repos), and
+`grade` (autograde). The manual buttons still work for early / ad-hoc release. See
+[the schedule](required-input-schema.md#the-schedule) for the full schema.
 
 ## The site
 

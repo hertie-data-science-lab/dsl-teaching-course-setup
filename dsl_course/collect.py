@@ -139,10 +139,12 @@ def _sanitised_env() -> dict:
 
 
 def _pin_commit(repo_dir: Path, deadline: str) -> str | None:
-    """Check out the last commit dated on or before end-of-day `deadline` (ISO date).
-    Returns the sha, or None if there is no such commit (no submission by the deadline)."""
+    """Check out the last commit dated on or before `deadline`. `deadline` is an ISO
+    date or datetime; a bare date (no time) is treated as end-of-day. Returns the sha,
+    or None if there is no such commit (no submission by the deadline)."""
+    before = deadline if ("T" in deadline or ":" in deadline) else f"{deadline} 23:59:59"
     code, out = git(
-        "-C", str(repo_dir), "rev-list", "-1", f"--before={deadline} 23:59:59", "HEAD"
+        "-C", str(repo_dir), "rev-list", "-1", f"--before={before}", "HEAD"
     )
     sha = out.strip()
     if code != 0 or not sha:

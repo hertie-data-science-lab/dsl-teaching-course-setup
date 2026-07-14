@@ -1,20 +1,65 @@
-sessions:
-  "0": 2026-09-01
-  "1": 2026-09-08
-  "2": 2026-09-15
-  "3": 2026-09-22
-  "4": 2026-09-29
-  "6": 2026-10-14
-  "8": 2026-10-28
-  "10": 2026-11-16
+# Worked example - the DSL-Demo-f2026 cohort's schedule + auto-release plan, in one file
+# (classroom-config/schedule.yml). The hourly Scheduled release cron fires each entry under
+# materials_releases once its `when` has arrived. Sources are read from the COURSE org;
+# destinations written to this COHORT org. Full schema:
+# docs/faculty-and-instructors/required-input-schema.md#the-schedule
+timezone: Europe/Berlin
+
+materials_releases:
+  week-1:
+    when: 2026-09-01T09:00
+    deploy:
+      - {source_repo: course-materials-f2026, source_path: lectures/00_week-1, dest_repo: materials}
+      - {source_repo: course-materials-f2026, source_path: readings/00_week-1, dest_repo: materials}
+      # release the package base early so later partial releases still import:
+      - {source_repo: lecture-code-f2026, source_path: mlpkg/core, dest_repo: materials}
+  week-2:
+    when: 2026-09-08T09:00
+    deploy:
+      - {source_repo: course-materials-f2026, source_path: lectures/01_week-2, dest_repo: materials}
+      - {source_repo: course-materials-f2026, source_path: readings/01_week-2, dest_repo: materials}
+  week-3:
+    when: 2026-09-15T09:00
+    deploy:
+      - {source_repo: course-materials-f2026, source_path: lectures/02_week-3, dest_repo: materials}
+      - {source_repo: course-materials-f2026, source_path: readings/02_week-3, dest_repo: materials}
+      # phased disclosure: reveal a topic-subpackage when you teach it
+      - {source_repo: lecture-code-f2026, source_path: mlpkg/simulation, dest_repo: materials}
+  assignment-1-handout:
+    when: 2026-09-15T14:00
+    assignment: assignment-1-f2026
+  week-4:
+    when: 2026-09-22T09:00
+    deploy:
+      - {source_repo: course-materials-f2026, source_path: lectures/03_week-4, dest_repo: materials}
+      - {source_repo: course-materials-f2026, source_path: readings/03_week-4, dest_repo: materials}
+  week-5:
+    when: 2026-09-29T09:00
+    deploy:
+      - {source_repo: course-materials-f2026, source_path: lectures/04_week-5, dest_repo: materials}
+      - {source_repo: course-materials-f2026, source_path: readings/04_week-5, dest_repo: materials}
+      - {source_repo: lecture-code-f2026, source_path: mlpkg/training, dest_repo: materials}
+  assignment-2-handout:
+    when: 2026-09-29T14:00
+    assignment: assignment-2-f2026
+  # grade actions fire after each deadline (faculty-side autograde):
+  assignment-1-grade:
+    when: 2026-10-14T00:00
+    grade: {template: assignment-1-f2026, deadline: 2026-10-13T23:59}
+  assignment-2-grade:
+    when: 2026-10-28T00:00
+    grade: {template: assignment-2-f2026, deadline: 2026-10-27T23:59}
+  project-grade:
+    when: 2026-11-16T00:00
+    grade: {template: assignment-4-project-f2026, deadline: 2026-11-15T23:59, group: true}
+
 semester_start: 2026-09-07
+semester_end: 2026-12-18
+
 assignments:
-  assignment-1:
-    due: 2026-10-13
-  assignment-2:
-    due: 2026-11-17
+  assignment-1: {due: 2026-10-13T23:59}
+  assignment-2: {due: 2026-11-17T23:59}
+
 exams:
-  - name: MidTerm Exam
-    date: 2026-11-03
-  - name: Final Exam
-    date: 2026-12-15
+  - {name: MidTerm Exam, date: 2026-11-03}
+  - {name: Final Exam, date: 2026-12-15}

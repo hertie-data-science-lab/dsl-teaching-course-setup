@@ -52,19 +52,27 @@ Stand up the per-year, student-facing org: onboarding, the roster, released mate
          end: "2027-01-31"
    ```
 
-4b. **Fill the cohort's schedule.** `classroom-config/schedule.yml` holds this cohort's
-   release calendar and due dates (these vary by year). Edit locally or in the web UI →
-   commit to `main` → run **Sync site**:
+4b. **Fill the cohort's schedule + release plan.** `classroom-config/schedule.yml` holds
+   this cohort's timed auto-release plan and due dates (these vary by year). Edit locally
+   or in the web UI → commit to `main`. The hourly **Scheduled release** cron fires each
+   `materials_releases` entry once its `when` arrives; the due dates feed the website +
+   grading. Full schema: [the schedule](required-input-schema.md#the-schedule).
 
    ```yaml
-   sessions:
-     "1": 2026-09-07
-     "3": 2026-09-21
+   timezone: Europe/Berlin
+   materials_releases:
+     session_1:
+       when: 2026-09-07T14:00       # bare date -> 00:00 that day
+       deploy:
+         - {source_repo: course-materials-f2026, source_path: lectures/00_intro, dest_repo: materials}
+     assignment-1-grade:
+       when: 2026-10-15T00:00
+       grade: {template: assignment-1-f2026, deadline: 2026-10-13T23:59}
    semester_start: 2026-09-07
    assignments:
      assignment-1:
-       due: 2026-10-13        # due date students see (the SSOT)
-       grace_days: 0          # optional grading-only extension (default 0)
+       due: 2026-10-13              # due date students see (the SSOT); bare date -> 23:59:59
+       grace_days: 0               # optional grading-only extension (default 0)
    exams: [{ name: MidTerm Exam, date: 2026-11-03 }]
    ```
 

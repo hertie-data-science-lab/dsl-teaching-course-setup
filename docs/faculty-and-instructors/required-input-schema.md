@@ -30,7 +30,7 @@ into a tracking issue and tick as you go.)
 - [ ] `[required]` From the **course org's** Actions tab, run **Bootstrap cohort** (give it the empty cohort org's name). Seeds `welcome` + `classroom-config`, scaffolds the site, registers the cohort, propagates the token, and applies the course org's current `course_admins`.
 - [ ] `[required]` **Roster**: edit `classroom-config/students.csv` with registrar data - `student_id, hertie_email, name, section`. Leave `github_handle, github_id` blank; students fill them by onboarding.
 - [ ] *(optional)* **Instructors/TAs**: edit `classroom-config/people.yml` → `instructors`/`teaching_assistants` (`github_handle` required per entry). Most cohorts have different lecturers/TAs, so this is declared per cohort, not at the course level.
-- [ ] *(optional)* **Schedule**: edit `classroom-config/schedule.yml` (sessions/labs release calendar, semester dates, assignment due dates, exams - real dates). If omitted, dates are synthesised and the cron simply has nothing to auto-open.
+- [ ] *(optional)* **Schedule + release plan**: edit `classroom-config/schedule.yml` (`materials_releases` for timed auto-release, plus semester dates, assignment due dates, exams). If omitted, dates are synthesised and the cron simply has nothing to auto-open.
 - [ ] `[required]` Run the per-session loop: **Release materials** (per session) and **Release assignment** (per assignment). Students onboard themselves via the **Join** issue in `welcome`; a push to `students.csv` triggers **Sync membership** automatically to reconcile the `students` team from the roster.
 - [ ] *(optional)* **Grade + return marks**: **Grade assignment** (autogrades after the deadline, if you added hidden tests) → edit `classroom-config/grades/<assignment>.csv` (add manual marks) → **Sync gradebooks** → **Render grades** (preview PR, also generates a read-only `cohort-gradebook.csv` glance view) → **Distribute grades** (emails each student).
 - [ ] *(optional)* **Show status**: run the **Show status** button any time to see, per cohort, everything above at a glance - what's configured, what's still missing, and a direct edit link for each.
@@ -89,7 +89,7 @@ running course. _Anything you don't supply is synthesised or skipped, never bloc
 | **Course admins** | **course** `.github/dsl-course.yml` → `people:` → `course_admins` (`github_handle` required; optional `start`/`end`) - the SSOT, mirrored into every cohort's `course-admin` team | course-wide admin access (course org + every cohort); optional `instructors`/`teaching_assistants` entries here are display-only (site cards), grant no access |
 | **Instructors/TAs** | **cohort** `classroom-config/people.yml` → `instructors`/`teaching_assistants` (`github_handle` required; optional `start`/`end`) | push access to that cohort's own team + a course-org `instructors-<tag>` team scoped to that year's content repos |
 | **Schedule** (semester dates, due dates, exams) | **cohort** `classroom-config/schedule.yml` → `semester_start`/`semester_end`, `assignments`, `exams` |  the schedule table (lectures, due dates, exams) |
-| **Release calendar** (sessions/labs) | **cohort** `classroom-config/schedule.yml` → `sessions`/`labs` | drives the daily **Scheduled release** cron |
+| **Release plan** (`materials_releases`) | **cohort** `classroom-config/schedule.yml` → `materials_releases` (labelled `when` + `deploy`/`assignment`/`grade`) | drives the hourly **Scheduled release** cron |
 | **Lectures** | `course-materials-fYYYY/lectures/<NN>_.../` (any files; any dir with ordinal-prefixed subdirs is a section) |  per-session lecture entries linking the released files |
 | **Readings** | `course-materials-fYYYY/readings/<NN>_.../` (any files) |  per-session reading links |
 | **Syllabus** | `course-materials-fYYYY/` root file matching `*syllabus*` |  cohort root + syllabus link |
@@ -117,7 +117,6 @@ Everything below is a button or a file edit.
 | B2 | **Materials**: a `course-materials-fYYYY` repo with `lectures/00_.../` and `readings/00_.../` folders (any top-level dir with ordinal-prefixed subdirs is a section - no config to declare it) | **New materials repo** button scaffolds it; you add files | yes | course org repo |
 | B3 | Syllabus / root README (optional) | Files at the materials-repo root | optional | copied to the cohort on release if toggled on |
 | B4 | **Assignments**: one `assignment-N-fYYYY` **template** repo each (starter on `main`; the `solution` branch carries the model solution, `grading.yml`, and hidden tests) | **New assignment** button scaffolds it; you add the brief + starter (+ hidden tests on `solution` to autograde) | yes | course org template repos (`is_template`) |
-| B5 | **Release manifest** (optional, for scheduled auto-release): `sessions:` → what opens each session (`materials` / `code` paths / `assignment`). **One file per cohort** (source repos are year-tagged) | Edit `.github/manifests/<cohort-org>.yml` | no (manual buttons work without it) | course org `.github` repo |
 | B6 | **Course admins** - the SSOT for course-wide admin access, mirrored into every cohort's own `course-admin` team | Edit the `people:` block in the course org's `.github/dsl-course.yml` → `course_admins` (`github_handle` required per entry; optional `start`/`end` for auto-rotation) | no (no entries means no admin access to sync) |
 
 *(Schedule is listed per-cohort - see C6. Instructors/TAs are also listed per-cohort - see
@@ -132,7 +131,7 @@ admin rights) is declared once on the course org and mirrored down.)*
 | C2 | **Roster**: registrar columns of `students.csv` (`student_id, hertie_email, name, section`) | Edit `classroom-config/students.csv` (private) | yes |
 | C3 | **Grades** (optional, when returning marks): one CSV per assignment, `classroom-config/grades/<assignment>.csv` (`github_handle, team, auto, manual, team_grade, adjustment, final, comments, team_comments`) | **Grade assignment** can pre-fill `auto`/`team_grade` from hidden tests; faculty fill the rest, then **Sync gradebooks** → **Render grades** → **Distribute grades** | no |
 | C4 | **Teams** (optional, for group assignments): `classroom-config/teams.csv` (`assignment, team, github_handle`) | Students self-select via the welcome **Join team** issue, or faculty edit the CSV directly | no |
-| C5 | **Release calendar** (optional, pairs with the release manifest): `classroom-config/schedule.yml` → `sessions`/`labs` (session ordinal → date) | Edit `schedule.yml`; the daily **Scheduled release** cron opens each session's manifest items on its date | no |
+| C5 | **Release plan** (optional, for scheduled auto-release): `classroom-config/schedule.yml` → `materials_releases` (labelled entries: `when` datetime + `deploy`/`assignment`/`grade` actions) | Edit `schedule.yml`; the hourly **Scheduled release** cron fires each release once its `when` has arrived | no (manual buttons work without it) |
 | C6 | **Schedule dates** (semester start/end, assignment due dates + grace-days, exam dates) | Edit `classroom-config/schedule.yml` → `semester_start`/`semester_end`, `assignments`, `exams` (same file as C5) | optional (synthesised if blank) |
 | C7 | **Instructors/TAs** - this cohort's own push access, plus a course-org `instructors-<tag>` team scoped to this year's content repos | Edit `classroom-config/people.yml` → `instructors`/`teaching_assistants` (`github_handle` required per entry; optional `start`/`end`) | no (no website card - only a course-org `people:` entry with a display `name` gets one) |
 
@@ -154,7 +153,7 @@ member's adjustment: it lives only in their own repo.
 
 **Autograding is optional, partial, and fully private.** If an assignment's `solution`
 branch carries hidden tests + a `grading.yml`, **Grade assignment** (a manual button, or a
-`grade:` entry in the release manifest) runs those tests *faculty-side after the deadline*,
+`grade:` entry in the schedule's release plan) runs those tests *faculty-side after the deadline*,
 pinning each submission to its last commit on or before the deadline. It archives the raw
 `result.json` under `classroom-config/autograde/` and writes the machine score into the
 CSV's `auto` (individual) / `team_grade` (group) column. The `auto`/`manual` split lets you
@@ -275,31 +274,66 @@ so anyone shown there got there by a direct, manual Teams-page edit.
 
 ## The schedule
 
-`classroom-config/schedule.yml` is this cohort's single home for every date faculty
-declare: the release calendar (`sessions`/`labs`, which drive the daily **Scheduled
-release** cron) and the website schedule (`semester_start`/`semester_end`,
-`assignments`, `exams`). It's a private, per-cohort file - no PII, just dates.
+`classroom-config/schedule.yml` is this cohort's single home for two things: the
+**auto-release plan** (`materials_releases`, which the hourly **Scheduled release** cron
+fires) and the **website/grading dates** (`semester_start`/`semester_end`, `assignments`,
+`exams`). It's a private, per-cohort file - no PII, just the plan and dates.
 
-The website schedule is generated, not hand-built. By default dates are
-**synthesised**: semester start = 1 Sep (fall) / 1 Feb (spring) of the cohort's `fYYYY`
-tag; lectures weekly from there; assignments every 14 days; exams at weeks 8 and 15
-(or bounded by `semester_end` if set).
+**Times are timezone-aware.** A naive time is read in `timezone` (default `Europe/Berlin`)
+or you can give an explicit offset. The cron runs hourly, so a `when:` time is honoured to
+the hour (GitHub cron is UTC and best-effort - not exact-minute). A **bare release date**
+opens at the **start** of that day (00:00); a **bare due date** closes at the **end**
+(23:59:59).
 
-To set **real** dates, edit `classroom-config/schedule.yml` and run **Sync site**:
+### `materials_releases` - the auto-release plan
+
+Each entry is a **label** you choose (`session_2`, `lab_1`, `bonus-dataset`, `a1-grade`
+- it's just an identifier), mapping to a `when:` datetime and one or more actions. Sources
+are always read from the **course org**; destinations always written to this **cohort org**
+- so entries name repos, never orgs.
+
+| Action | Does | Fields |
+|--------|------|--------|
+| `deploy` | Copy a source path → a cohort repo (materials, code, datasets, anything). A list, one entry per copy. | `source_repo`, `source_path`, `dest_repo` (default `materials`), `dest_path` (default: mirror `source_path`) |
+| `assignment` | Provision one private repo per enrolled student from a template | the `assignment-*-<tag>` template repo name |
+| `grade` | Run the faculty-side autograder after the deadline | `template`, optional `deadline` (default: the assignment's `due` below), optional `group` |
 
 ```yaml
-sessions:                             # release calendar - session ordinal -> date;
-  "1": 2026-09-07                     # the Scheduled release cron opens each
-  "3": 2026-09-21                     # session's manifest items on its date
-labs:                                 # optional - a second, parallel release calendar
-  "1": 2026-09-09                     # for a labs/<NN>_.../ section on its own cadence
+timezone: Europe/Berlin                # optional (default Europe/Berlin)
+
+materials_releases:
+  session_2:
+    when: 2026-09-15T14:00             # bare date -> 00:00 that day
+    deploy:
+      - {source_repo: course-materials-f2026, source_path: lectures/02_intro, dest_repo: materials}
+      - {source_repo: course-materials-f2026, source_path: readings/02_intro, dest_repo: materials}
+  bonus-dataset:                        # a one-off that isn't a numbered session
+    when: 2026-10-20T09:30
+    deploy:
+      - {source_repo: course-datasets-f2026, source_path: week7/housing.csv, dest_repo: materials, dest_path: datasets/housing.csv}
+  assignment-1-handout:
+    when: 2026-09-22T09:00
+    assignment: assignment-1-f2026
+  assignment-1-grade:
+    when: 2026-10-15T00:00
+    grade: {template: assignment-1-f2026, deadline: 2026-10-13T23:59}
+```
+
+### Website & grading dates
+
+These are for display (the cohort website) and grading - not the release plan above.
+Defaults are **synthesised** when absent: semester start = 1 Sep (fall) / 1 Feb (spring)
+of the cohort's `fYYYY` tag; lectures weekly; assignments every 14 days; exams at weeks 8
+and 15 (or bounded by `semester_end`). Set real dates and run **Sync site**:
+
+```yaml
 semester_start: 2026-09-07            # YYYY-MM-DD
 semester_end: 2026-12-18
-assignments:                          # keyed by assignment slug (the repo name minus -fYYYY)
+assignments:                          # keyed by assignment slug (repo name minus -fYYYY)
   assignment-1:
-    due: 2026-10-13
-    grace_days: 2                     # OPTIONAL: extra days for GRADING only (not
-                                       # shown to students). Autograder pins to due + grace_days.
+    due: 2026-10-13T23:59             # a bare date -> end of that day (23:59:59)
+    grace_days: 2                     # OPTIONAL: extra days for GRADING only (not shown
+                                       # to students). Autograder pins to due + grace_days.
   assignment-2:
     due: 2026-11-17
 exams:

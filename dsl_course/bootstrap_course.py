@@ -286,14 +286,16 @@ never hand-edit it, it's a glance view, not a source.
 or edit directly - a push here also triggers **Sync membership**. See `teams.csv.sample` -
 **the engine only acts on a real `teams.csv`.**
 
-## schedule.yml - release calendar, due dates, and exams (optional, pairs with the manifest)
+## schedule.yml - the release plan + due dates + exams (optional)
 
-The whole schedule in one file: `sessions`/`labs` (release calendar - session ordinal ->
-date; the daily **Scheduled release** cron opens each session's manifest items on its
-date), `semester_start`/`semester_end`, `assignments` (due dates, keyed by slug, each
-with an optional `grace_days` for grading only), and `exams`. Seeded mostly-commented -
-uncomment and fill what you want to pin; anything left out is synthesised or simply not
-scheduled.
+This cohort's whole schedule in one file. `materials_releases:` is the **auto-release
+plan** - labelled entries (`session_2`, `lab_1`, `bonus-dataset`, ...), each with a
+`when:` datetime and one or more actions (`deploy` a source path -> a cohort repo,
+`assignment` provision student repos, `grade` run the autograder). The hourly **Scheduled
+release** cron fires each entry once its `when` has arrived (honoured to the hour). Also
+holds `semester_start`/`semester_end`, `assignments` (due dates for the website + grading
+pin, with an optional `grace_days`), and `exams`. Seeded mostly-commented - uncomment and
+fill what you want; anything left out is synthesised or simply not scheduled.
 
 ## people.yml - this cohort's instructors/TAs (optional)
 
@@ -314,31 +316,79 @@ assignment-4-project,team-1,bob
 assignment-4-project,team-2,carol
 """
 
-# This cohort's entire schedule - release calendar (sessions/labs) + due dates/exams -
-# lives in one file (classroom-config/schedule.yml, see dsl_course.schedule). Seeded
-# live (not a .sample) and mostly commented, so faculty uncomment what they want to
-# pin rather than rename a sample to activate it.
-_SCHEDULE_YML = """# This cohort's schedule - release calendar (sessions/labs), due dates, and exams.
-# Edit here (GitHub web UI is fine - no CLI). Anything you leave out is synthesised
-# (semester start from the cohort's fYYYY tag; assignments every 2 weeks; exams at
-# weeks 8 and 15) or simply not scheduled (no sessions: -> Scheduled release has
-# nothing to auto-open). Uncomment and fill what you want to pin:
+# This cohort's entire schedule - the auto-release plan (materials_releases) + due
+# dates/exams - lives in one file (classroom-config/schedule.yml, see dsl_course.schedule).
+# Seeded live (not a .sample) and mostly commented, so faculty uncomment what they want to
+# pin rather than rename a sample to activate it. The commented block is a MAXIMAL scaffold:
+# it shows every action (deploy/assignment/grade) and every field, so faculty can copy the
+# shape they need.
+_SCHEDULE_YML = """# This cohort's schedule + auto-release plan. Edit here (GitHub web UI is fine - no CLI).
+# Everything is optional: anything you leave out is synthesised (semester start from the
+# fYYYY tag; website exams at weeks 8 & 15) or simply not scheduled. Uncomment and fill
+# what you want. Times are Europe/Berlin unless you set `timezone:` or give an explicit
+# offset; the Scheduled release cron runs hourly, so a `when:` time is honoured to the hour.
+
+# timezone: Europe/Berlin              # optional - how the naive datetimes below are read
+
+# ---------------------------------------------------------------------------
+# materials_releases: the AUTO-RELEASE plan. Each entry is a label (any name you like -
+# session_2, lab_1, bonus-dataset) mapping to a `when:` datetime and one or more actions.
+# The hourly Scheduled release cron fires each entry once its `when` has arrived
+# (idempotent - safe to re-run). Sources are always read from the COURSE org;
+# destinations always written to THIS cohort org.
+# ---------------------------------------------------------------------------
+# materials_releases:
 #
-# semester_start: 2026-09-07        # YYYY-MM-DD
+#   session_2:                          # a normal weekly release (label is just a name)
+#     when: 2026-09-15T14:00            # bare date (2026-09-15) -> 00:00 that day
+#     deploy:                           # copy one or more paths: course repo -> cohort repo
+#       - source_repo: course-materials-f2026    # repo in the COURSE org
+#         source_path: lectures/02_intro          # folder or file to copy
+#         dest_repo: materials                     # repo in THIS cohort org (default: materials)
+#         dest_path: lectures/02_intro             # where to put it (default: same as source_path)
+#       - source_repo: course-materials-f2026
+#         source_path: readings/02_intro
+#         dest_repo: materials
+#         dest_path: readings/02_intro
+#
+#   lab_1:                              # a lab is just another release - no special section
+#     when: 2026-09-17T10:00
+#     deploy:
+#       - source_repo: course-materials-f2026
+#         source_path: labs/01_setup
+#         dest_repo: materials
+#         # dest_path omitted -> mirrors source_path (labs/01_setup)
+#
+#   bonus-dataset:                      # a one-off that isn't a numbered teaching session
+#     when: 2026-10-20T09:30
+#     deploy:
+#       - source_repo: course-datasets-f2026
+#         source_path: week7/housing.csv
+#         dest_repo: materials
+#         dest_path: datasets/housing.csv
+#
+#   assignment-1-handout:               # hand an assignment out (provision one repo/student)
+#     when: 2026-09-22T09:00
+#     assignment: assignment-1-f2026    # the assignment-*-<tag> template repo
+#
+#   assignment-1-grade:                 # run the autograder after the deadline
+#     when: 2026-10-15T00:00
+#     grade:
+#       template: assignment-1-f2026
+#       deadline: 2026-10-13T23:59      # commit cutoff (default: this assignment's due date)
+#       group: false                    # true for a group assignment
+
+# ---------------------------------------------------------------------------
+# The rest is for DISPLAY (website) and GRADING - not the release plan above.
+# ---------------------------------------------------------------------------
+# semester_start: 2026-09-07           # YYYY-MM-DD
 # semester_end: 2026-12-18
 #
-# sessions:                          # release calendar - session ordinal -> date;
-#   "1": 2026-09-07                  # the daily Scheduled release cron opens each
-#   "3": 2026-09-21                  # session's manifest items on its date
-#
-# labs:                              # optional - a second, parallel release calendar
-#   "1": 2026-09-09                  # for a labs/<NN>_.../ section on its own cadence
-#
-# assignments:                       # due dates (keyed by slug, no -fYYYY) - the SSOT
+# assignments:                          # due dates (keyed by slug, no -fYYYY tag)
 #   assignment-1:
-#     due: 2026-10-13
-#     grace_days: 2                  # OPTIONAL: extra days for GRADING only (not shown
-#                                    # to students). Autograder pins to due + grace_days.
+#     due: 2026-10-13T23:59            # a bare date -> END of that day (23:59:59)
+#     grace_days: 2                     # OPTIONAL: extra days for GRADING only (not shown
+#                                       # to students). Autograder pins to due + grace_days.
 #   assignment-2:
 #     due: 2026-11-10
 #
@@ -630,7 +680,7 @@ def setup_cohort_extras(org: str) -> None:
             "classroom-config",
             "schedule.yml",
             _SCHEDULE_YML.encode(),
-            "docs: seed schedule.yml (release calendar + due dates + exams)",
+            "docs: seed schedule.yml (release plan + due dates + exams)",
         )
         put_file(
             org,

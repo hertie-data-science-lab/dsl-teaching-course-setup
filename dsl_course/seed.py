@@ -753,18 +753,20 @@ jobs:
 
 
 def render_scheduler() -> str:
-    """Daily cron that auto-releases whatever the manifest x calendar says is due, across
-    every registered cohort. No check-team gate: scheduled runs have no actor, and the
-    scheduler only calls idempotent release functions (manual dispatch still needs write)."""
+    """Hourly cron that auto-releases whatever each cohort's schedule says is now due,
+    across every registered cohort. No check-team gate: scheduled runs have no actor, and
+    the scheduler only calls idempotent release functions (manual dispatch still needs
+    write)."""
     return f"""name: Scheduled release
 
-# Joins each cohort's manifests/<cohort>.yml (in this .github repo) with its classroom-config
-# classroom-config/schedule.yml and releases everything now due. Idempotent, so a daily run re-releasing
-# past sessions is a no-op. On the cron it releases for real; manual runs default to dry-run.
+# Reads each cohort's classroom-config/schedule.yml `materials_releases:` plan and fires
+# every release whose `when` datetime has arrived. Idempotent, so re-releasing on the next
+# hour is a no-op. On the cron it releases for real; manual runs default to dry-run.
+# Hourly so a `when` time-of-day is honoured to the hour (GitHub cron is UTC and best-effort).
 
 on:
   schedule:
-    - cron: "0 6 * * *"
+    - cron: "0 * * * *"
   workflow_dispatch:
     inputs:
       dry_run:
@@ -799,8 +801,8 @@ jobs:
 
 def render_status(cohort_orgs: list[str]) -> str:
     """Per-cohort checklist of every faculty input location - identity, people,
-    manifest, schedule, roster, teams, grades, session calendar - with the current
-    value and a direct edit link for anything missing. Read-only; changes nothing."""
+    schedule + release plan, roster, teams, grades - with the current value and a
+    direct edit link for anything missing. Read-only; changes nothing."""
     return f"""name: Show status
 
 # A per-cohort glance view of everything configured (and everything still missing),
@@ -1359,7 +1361,7 @@ _(automatically bootstrapped from the central
 - [**New materials repo**](https://github.com/{org}/.github/actions/workflows/new-materials.yml) - scaffold a correctly-structured `course-materials-<year>` repo (session folders + the Release buttons).
 - [**New assignment**](https://github.com/{org}/.github/actions/workflows/new-assignment.yml) - scaffold an `assignment-N-<year>` template repo (starter on `main`; the `solution` branch carries the model solution, `grading.yml`, and the hidden tests).
 - [**Refresh actions**](https://github.com/{org}/.github/actions/workflows/refresh-actions.yml) - repopulate the cohort/session/assignment dropdowns, re-equip content repos, and rebuild this index.
-- [**Show status**](https://github.com/{org}/.github/actions/workflows/status.yml) - a per-cohort checklist of everything configured (identity, people, manifest, schedule, roster, teams, grades, session calendar) with direct edit links for anything missing. Read-only.
+- [**Show status**](https://github.com/{org}/.github/actions/workflows/status.yml) - a per-cohort checklist of everything configured (identity, people, schedule + release plan, roster, teams, grades) with direct edit links for anything missing. Read-only.
 
 ### Optional: public course website (open courseware)
 - [**Publish course website**](https://github.com/{org}/.github/actions/workflows/publish-site.yml) - build/refresh a PUBLIC site `{org}.github.io` that shares this course's lecture materials and readings with the world. Opt-in + manual (the first run scaffolds the site). Pick a materials repo and choose for readings: `reading-list` (citations only) or `actual-readings` (also host the files). Because the materials repos are private, the site **hosts** the shared files itself. This is separate from each cohort's student-facing site.
@@ -1380,7 +1382,7 @@ own include checkbox).
 - [**Render grades (preview)**](https://github.com/{org}/.github/actions/workflows/render-grades.yml) - build per-student `gradebook/<handle>.yml` from `classroom-config/grades/<assignment>.csv` and open ONE pull request. **That PR is the preview** - review every student's grades in the diff before sending.
 - [**Distribute grades**](https://github.com/{org}/.github/actions/workflows/distribute-grades.yml) - after merging the preview PR, copy each student's gradebook into their private repo and (unless silenced) email each student a notification to their university inbox (needs the `GRAPH_*` or `SMTP_*` secrets).
 
-- [**Scheduled release**](https://github.com/{org}/.github/actions/workflows/scheduled-release.yml) - daily cron that auto-releases whatever each cohort's `manifests/<cohort>.yml` (in `.github`) and its `classroom-config/schedule.yml` say is due. Manual runs default to a dry-run preview ("what opens when"). Manual buttons above still work for early/ad-hoc release.
+- [**Scheduled release**](https://github.com/{org}/.github/actions/workflows/scheduled-release.yml) - hourly cron that auto-releases whatever each cohort's `classroom-config/schedule.yml` `materials_releases:` plan says is now due (honouring each release's `when` time to the hour). Manual runs default to a dry-run preview ("what opens when"). Manual buttons above still work for early/ad-hoc release.
 
 - _[**Sync site**](https://github.com/{org}/.github/actions/workflows/sync-site.yml) - regenerate a cohort's website from the org structure (releases do this automatically; standard workflow has no need for manual sync)._
 
