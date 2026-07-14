@@ -56,9 +56,11 @@ Three phases - **set up the course** (once), **add a cohort** (per year), then *
 - **Input schema** (reference): [`docs/faculty-and-instructors/required-input-schema.md`](docs/faculty-and-instructors/required-input-schema.md) - the what-goes-where data contract.
 - **Deployment checklist** (reference): [tickable, deploy-ordered](docs/faculty-and-instructors/required-input-schema.md#deployment-checklist) - to track progress once you know the flow.
 
-The only manual steps are creating each org in the GitHub web UI (there is no org-creation
-API) and inviting **`hertie-dsl-bot`** as **Owner**
-([which account?](docs/admin/admin-setup.md#the-bot-account)); everything after that is a button.
+The only manual steps are creating each org in the GitHub web UI
+([github.com/account/organizations/new](https://github.com/account/organizations/new) - there
+is no org-creation API) and inviting **`hertie-dsl-bot`** as **Owner** (Org → People →
+Invite; the DSL team must **accept** the pending invite before you bootstrap -
+[which account?](docs/admin/admin-setup.md#the-bot-account)); everything after that is a button.
 
 ## Faculty actions
 
