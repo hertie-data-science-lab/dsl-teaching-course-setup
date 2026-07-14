@@ -49,12 +49,12 @@ world (see [Optional: public course website](#optional-public-course-website)).
 ## Deploying a course
 
 Three phases - **set up the course** (once), **add a cohort** (per year), then **run it**
-(release weekly). The step-by-step **runbooks live in [`docs/faculty/`](docs/faculty/README.md)** -
-one per workflow, each naming the exact button, inputs, and order.
+(release weekly).
 
-- **Checklist:** [the deployment checklist](docs/faculty/required-input-schema.md#deployment-checklist) - tickable, deploy-ordered.
-- **Input schema:** [`docs/faculty/required-input-schema.md`](docs/faculty/required-input-schema.md) - the what-goes-where contract.
-- **Worked example:** [`example-course/`](example-course/README.md) - a dummy course you can stand up end to end.
+- **▶ Workflow runbooks — [`docs/faculty-and-instructors/`](docs/faculty-and-instructors/README.md) — start here.** The step-by-step guide, one per workflow, each naming the exact button, inputs, and order.
+- **Worked example:** [`example-course/`](example-course/README.md) - a dummy course you can stand up end to end alongside the runbooks.
+- **Input schema** (reference): [`docs/faculty-and-instructors/required-input-schema.md`](docs/faculty-and-instructors/required-input-schema.md) - the what-goes-where data contract.
+- **Deployment checklist** (reference): [tickable, deploy-ordered](docs/faculty-and-instructors/required-input-schema.md#deployment-checklist) - to track progress once you know the flow.
 
 The only manual steps are creating each org in the GitHub web UI (there is no org-creation
 API) and inviting **`hertie-dsl-bot`** as **Owner**
@@ -63,8 +63,8 @@ API) and inviting **`hertie-dsl-bot`** as **Owner**
 ## Faculty actions
 
 Every faculty action is a GitHub Actions button in the course org's bootstrapped `.github`
-Actions tab. See the **[workflow runbooks](docs/faculty/README.md)** for the flows, or the
-**[actions reference](docs/faculty/actions-reference.md)** for a one-page summary of every button.
+Actions tab. See the **[workflow runbooks](docs/faculty-and-instructors/README.md)** for the flows, or the
+**[actions reference](docs/faculty-and-instructors/actions-reference.md)** for a one-page summary of every button.
 
 ---
 

@@ -207,7 +207,7 @@ this repo. Course admins are managed at the **course org** level instead - see t
 org's `.github/dsl-course.yml`; that access is kept current automatically. Faculty/FAs
 edit these files; the buttons in the **course org's** Actions tab read them.
 Canonical, engine-wide schema:
-<https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/blob/main/docs/faculty/required-input-schema.md>.
+<https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/blob/main/docs/faculty-and-instructors/required-input-schema.md>.
 
 ## students.csv - the roster (required)
 

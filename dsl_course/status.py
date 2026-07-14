@@ -7,7 +7,7 @@ what's configured, what's still missing, and where do I go to fix it - by reusin
 each source's existing loader rather than re-deriving anything. Read-only; it
 changes no state.
 
-Row IDs mirror docs/faculty/required-input-schema.md's B/C numbering, so the status view
+Row IDs mirror docs/faculty-and-instructors/required-input-schema.md's B/C numbering, so the status view
 and that doc's table stay in lockstep.
 
 Usage:
@@ -30,7 +30,7 @@ from . import grades, roster, schedule, scheduler, sync_faculty, teams
 from .utils import get_default_branch, get_file_content
 
 ITEMS = ("B1", "B5", "B6", "C2", "C3", "C4", "C5", "C6", "C7")
-# Mandatory per docs/faculty/required-input-schema.md; everything else is optional
+# Mandatory per docs/faculty-and-instructors/required-input-schema.md; everything else is optional
 # (synthesised/skipped when absent), so an absent optional item is "optional", not
 # "missing" - the status view shouldn't cry wolf over things that never block the pipeline.
 REQUIRED = {"B1", "C2"}
@@ -62,7 +62,7 @@ def _row(
 
 
 def render_markdown(course_org: str, cohort_org: str, data: dict[str, dict]) -> str:
-    """One markdown table, in `docs/faculty/required-input-schema.md`'s B/C order, each
+    """One markdown table, in `docs/faculty-and-instructors/required-input-schema.md`'s B/C order, each
     row linking straight to the file to fix if something's missing."""
     icon = {"ok": "OK", "missing": "MISSING", "optional": "not set (optional)"}
     lines = [
@@ -114,7 +114,7 @@ def collect(course_org: str, cohort_org: str) -> dict[str, dict]:
     # so it undercounts here. Reuse the already-fetched course_raw. course-admin only
     # - a course-level `instructors`/`teaching_assistants` entry is a legitimate,
     # display-only website card (see the People section in
-    # docs/faculty/required-input-schema.md), not access, so it must not inflate
+    # docs/faculty-and-instructors/required-input-schema.md), not access, so it must not inflate
     # this count.
     has_people_block = isinstance(course_meta.get("people"), dict)
     course_faculty = sync_faculty.parse_faculty(course_raw or "")
