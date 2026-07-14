@@ -64,30 +64,11 @@ def describe(release: Release) -> list[str]:
 # ---------------------------------------------------------------------- gh/git wiring
 
 
-def _execute_deploy(course_org: str, cohort_org: str, d: Deploy) -> int:
-    from .release_code import release_code
-
-    return release_code(
-        course_org,
-        d.source_repo,
-        cohort_org,
-        d.dest_repo,
-        d.source_path,
-        dest_path=d.dest_path,
-        sync=False,  # scheduler syncs the site once, after all releases (see run)
-    )
-
-
-def _execute(course_org: str, cohort_org: str, release: Release) -> tuple[int, bool]:
-    """Run one release's actions. Returns (error_count, did_deploy) - did_deploy tells the
-    caller whether a site sync is warranted."""
+def _execute_nondeploy(course_org: str, cohort_org: str, release: Release) -> int:
+    """Run one release's non-deploy actions (assignment / grade). Deploys are batched
+    across the whole run (see `run`) so their source/dest repos clone once. Returns the
+    error count."""
     errors = 0
-    did_deploy = False
-    for d in release.deploy:
-        if _execute_deploy(course_org, cohort_org, d) == 0:
-            did_deploy = True
-        else:
-            errors += 1
     if release.assignment:
         from .assign import provision_all
 
@@ -111,7 +92,7 @@ def _execute(course_org: str, cohort_org: str, release: Release) -> tuple[int, b
             != 0
         ):
             errors += 1
-    return errors, did_deploy
+    return errors
 
 
 def run(course_org: str, cohort_org: str, now: datetime, dry_run: bool = False) -> int:
@@ -131,21 +112,35 @@ def run(course_org: str, cohort_org: str, now: datetime, dry_run: bool = False) 
         log_ok("nothing due.")
         return 0
 
-    errors = 0
-    did_deploy = False
-    for release in due:
-        if dry_run:
+    if dry_run:
+        for release in due:
             for line in describe(release):
                 log(f"    DRY-RUN  [{release.label}] {line}")
-            continue
-        log_step(f"  releasing [{release.label}] ({release.when.isoformat()})")
-        rc, deployed = _execute(course_org, cohort_org, release)
-        errors += rc
-        did_deploy = did_deploy or deployed
-    if dry_run:
         return 0
 
-    if did_deploy:
+    errors = 0
+    # Batch EVERY due release's deploys through one deploy_many: each unique source and
+    # dest repo is cloned once for the whole run, not once per copy.
+    all_deploys = [d for release in due for d in release.deploy]
+    deploy_errors, changed = 0, False
+    if all_deploys:
+        from .release_code import deploy_many
+
+        deploy_errors, changed = deploy_many(
+            course_org, cohort_org, all_deploys, sync=False
+        )
+        errors += deploy_errors
+
+    # Assignment / grade actions run per release (they aren't file copies).
+    did_assign = False
+    for release in due:
+        if release.assignment or release.grade:
+            log_step(f"  [{release.label}] assignment/grade")
+            errors += _execute_nondeploy(course_org, cohort_org, release)
+            did_assign = did_assign or bool(release.assignment)
+
+    # One website sync at the end, only if something actually changed.
+    if changed or did_assign:
         from . import site
 
         site.sync_site(course_org, cohort_org)
