@@ -1,8 +1,8 @@
 """dsl-course status -- a per-cohort checklist of every faculty input location.
 
 Faculty currently touch several distinct files across 2 orgs to run a cohort: course
-identity, course admins, the release manifest, and classroom-config's roster/teams/
-grades/schedule.yml/people.yml. This module answers one glance-able question -
+identity, course admins, and classroom-config's roster/teams/grades/schedule.yml (which
+now carries the release plan too)/people.yml. This module answers one glance-able question -
 what's configured, what's still missing, and where do I go to fix it - by reusing
 each source's existing loader rather than re-deriving anything. Read-only; it
 changes no state.
@@ -26,10 +26,10 @@ from datetime import date
 
 import yaml
 
-from . import grades, roster, schedule, scheduler, sync_faculty, teams
+from . import grades, roster, schedule, sync_faculty, teams
 from .utils import get_default_branch, get_file_content
 
-ITEMS = ("B1", "B5", "B6", "C2", "C3", "C4", "C5", "C6", "C7")
+ITEMS = ("B1", "B6", "C2", "C3", "C4", "C5", "C6", "C7")
 # Mandatory per docs/faculty-and-instructors/required-input-schema.md; everything else is optional
 # (synthesised/skipped when absent), so an absent optional item is "optional", not
 # "missing" - the status view shouldn't cry wolf over things that never block the pipeline.
@@ -102,13 +102,6 @@ def collect(course_org: str, cohort_org: str) -> dict[str, dict]:
         bool(course_name), course_name,
     )
 
-    manifest = scheduler._load_manifest(course_org, cohort_org)
-    data["B5"] = _row(
-        "B5", "Release manifest", course_org, scheduler.MANIFEST_REPO,
-        scheduler.manifest_path(cohort_org), course_branch,
-        bool(manifest), f"{len(manifest.get('sessions') or {})} session(s)" if manifest else "",
-    )
-
     # Access is granted by github_handle alone (sync_faculty's actual criterion) -
     # site._people_from_meta requires a display `name` too (it's for website cards),
     # so it undercounts here. Reuse the already-fetched course_raw. course-admin only
@@ -150,12 +143,15 @@ def collect(course_org: str, cohort_org: str) -> dict[str, dict]:
 
     sched = schedule.load(cohort_org)
 
+    n_actions = sum(
+        len(r.deploy) + bool(r.assignment) + bool(r.grade) for r in sched.releases
+    )
     data["C5"] = _row(
-        "C5", f"Session calendar ({schedule.SCHEDULE_PATH} -> sessions/labs)",
+        "C5", f"Release plan ({schedule.SCHEDULE_PATH} -> materials_releases)",
         cohort_org, schedule.CONFIG_REPO, schedule.SCHEDULE_PATH, cohort_branch,
-        bool(sched.sessions or sched.labs),
-        f"{len(sched.sessions)} session date(s), {len(sched.labs)} lab date(s)"
-        if (sched.sessions or sched.labs) else "",
+        bool(sched.releases),
+        f"{len(sched.releases)} scheduled release(s), {n_actions} action(s)"
+        if sched.releases else "",
     )
 
     has_due_dates = bool(sched.semester_start or sched.assignments or sched.exams)
@@ -189,7 +185,7 @@ def main() -> int:
     parser.add_argument("--format", choices=["md", "json"], default="md")
     args = parser.parse_args()
     if args.format == "json":
-        # collect()'s dependencies (_load_manifest, roster.load, ...) log informational
+        # collect()'s dependencies (schedule.load, roster.load, ...) log informational
         # lines to stdout - fine for the human-facing markdown mode, but --format json
         # promises clean, parseable output, so keep those off stdout here.
         with contextlib.redirect_stdout(io.StringIO()):

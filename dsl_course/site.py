@@ -32,7 +32,7 @@ import shutil
 import sys
 import tempfile
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote
 
@@ -252,7 +252,7 @@ def _lecture_entry(
     )
 
 
-def _assignment_entry(course_org: str, repo: str, when: date) -> str:
+def _assignment_entry(course_org: str, repo: str, when: date | datetime) -> str:
     slug = re.sub(r"-[fs]\d{4}$", "", repo)
     readme = get_file_content(course_org, repo, "README.md") or ""
     title = slug.replace("-", " ").title()
@@ -264,7 +264,13 @@ def _assignment_entry(course_org: str, repo: str, when: date) -> str:
     body = "\n".join(
         ln for ln in readme.splitlines() if not ln.startswith("# ")
     ).strip()
-    due = f"{when.isoformat()}T23:59:00"
+    # `when` is a datetime (real due time from schedule.yml) or a bare date (synthesised
+    # fallback) - render a stable, local (offset-free) ISO the site template can display.
+    due = (
+        when.strftime("%Y-%m-%dT%H:%M:%S")
+        if isinstance(when, datetime)
+        else f"{when.isoformat()}T23:59:00"
+    )
     return (
         f"---\n"
         f"type: assignment\n"
@@ -293,7 +299,7 @@ def _exam_entry(title: str, when: date) -> str:
     )
 
 
-def _due_date(sched: schedule.Schedule, repo: str, fallback: date) -> date:
+def _due_date(sched: schedule.Schedule, repo: str, fallback: date) -> date | datetime:
     """This assignment's due date from schedule.yml (keyed on the slug, repo minus its
     -fYYYY/-sYYYY tag), or `fallback` if unscheduled."""
     entry = sched.assignments.get(re.sub(r"-[fs]\d{4}$", "", repo))

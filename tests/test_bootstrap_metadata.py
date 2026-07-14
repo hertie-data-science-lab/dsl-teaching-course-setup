@@ -45,7 +45,12 @@ def test_schedule_yml_seed_is_commented_and_covers_every_field():
         line.startswith("#") or not line.strip()
         for line in bc._SCHEDULE_YML.splitlines()
     )
-    for key in ("semester_start", "semester_end", "sessions", "labs", "assignments", "grace_days", "exams"):
+    for key in (
+        "timezone", "materials_releases", "when", "deploy",
+        "source_repo", "source_path", "dest_repo", "dest_path",
+        "assignment", "grade", "semester_start", "semester_end",
+        "assignments", "grace_days", "exams",
+    ):
         assert key in bc._SCHEDULE_YML
 
 

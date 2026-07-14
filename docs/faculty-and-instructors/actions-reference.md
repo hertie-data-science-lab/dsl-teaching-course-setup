@@ -18,7 +18,7 @@ For the **step-by-step flows** (which button, which inputs, in what order), see 
 | **New materials repo** | `.github` | Scaffold a structured `course-materials-<tag>` repo (session folders + Release buttons). |
 | **New assignment** | `.github` | Scaffold an `assignment-N-<tag>` template (starter + autograder on `main`, an empty `solution` branch). |
 | **Refresh actions** | `.github` | Re-seed the run-from-repo buttons into every content repo, propagate the repo secret, repopulate all dropdowns, rebuild the profile READMEs. _(Across all DSL-managed repos at once: [`Refresh Course Org Inventory`](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions/workflows/refresh-inventory.yml) in the central repo.)_ |
-| **Show status** | `.github` | Per-cohort checklist of everything configured (identity, people, manifest, schedule, roster, teams, grades) with a direct edit link for anything missing. Read-only. |
+| **Show status** | `.github` | Per-cohort checklist of everything configured (identity, people, schedule + release plan, roster, teams, grades) with a direct edit link for anything missing. Read-only. |
 
 ## Session cadence
 
