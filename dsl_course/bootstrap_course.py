@@ -469,6 +469,21 @@ def _course_metadata(
     )
 
 
+def _cohort_metadata(org: str, course: str) -> str:
+    """dsl-course.yml for a COHORT org's .github repo: a pointer back to its persistent
+    course org. This is the single source the cohort's classroom-config dispatchers
+    (dispatch-sync / dispatch-sync-site) read to find where to fire Sync membership /
+    Sync site - so without it those auto-triggers can't resolve the course org."""
+    return (
+        "# This cohort org points back to its persistent course org. Read by the\n"
+        "# classroom-config dispatchers (dispatch-sync / dispatch-sync-site) to find where\n"
+        "# to fire Sync membership / Sync site. Identity + schedule live elsewhere (the\n"
+        "# course org's dsl-course.yml and this cohort's classroom-config/schedule.yml).\n"
+        f"course: {course}\n"
+        f"org: {org}\n"
+    )
+
+
 def create_profile_repo(
     org: str,
     org_name: str,
@@ -483,12 +498,12 @@ def create_profile_repo(
 
     Also tags the repo with `dsl-course-hub` so `list_orgs.py` can discover it.
 
-    The course org's dsl-course.yml carries identity + the faculty roster. A cohort
-    org gets no dsl-course.yml at all - its schedule (classroom-config/schedule.yml)
-    varies by year and lives there instead; nothing at runtime reads a cohort's own
-    org/course pointer fields, so there's nothing to seed here for it. `admins`
-    (course org only) seeds dsl-course.yml's people.course_admins live from the start
-    - see _course_admins_block.
+    The course org's dsl-course.yml carries identity + the faculty roster. A cohort org
+    instead gets a tiny `.github/dsl-course.yml` pointer back to its course org (written
+    in main()'s cohort wiring via _cohort_metadata, once --course is known) - the
+    classroom-config dispatchers read its `course:` line. Its schedule lives in
+    classroom-config/schedule.yml. `admins` (course org only) seeds dsl-course.yml's
+    people.course_admins live from the start - see _course_admins_block.
     """
     log_step("Setting up .github profile repo")
     if not create_repo(
@@ -852,6 +867,16 @@ def main() -> int:
         # Cohort: student-facing welcome + roster + tightened perms.
         setup_cohort_extras(args.org)
         if args.course:
+            # Pointer back to the course org, in this cohort's .github/dsl-course.yml -
+            # the classroom-config dispatchers read its `course:` line to know where to
+            # fire Sync membership / Sync site. Without it those auto-triggers fail.
+            put_file(
+                args.org,
+                ".github",
+                "dsl-course.yml",
+                _cohort_metadata(args.org, args.course).encode(),
+                "ci: seed cohort -> course pointer (dispatchers read this)",
+            )
             seed.register_cohort(args.course, args.org)
             # Give this cohort the course's current, currently-active faculty roster
             # from day one (instructors/course-admin), rather than waiting for the

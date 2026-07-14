@@ -60,3 +60,18 @@ def test_classroom_readme_points_to_course_org_for_people():
     assert "course org" in bc._CLASSROOM_README
     assert "schedule.yml" in bc._CLASSROOM_README
     assert "schedule.csv" not in bc._CLASSROOM_README
+
+
+def test_cohort_metadata_carries_course_pointer():
+    # The cohort .github/dsl-course.yml must carry a `course:` line - the classroom-config
+    # dispatchers grep it to find where to fire Sync membership / Sync site.
+    md = bc._cohort_metadata("My-Cohort-f2026", "My-Course-E1")
+    assert "course: My-Course-E1" in md
+    assert "org: My-Cohort-f2026" in md
+    # the dispatchers do: grep '^course:' | cut -d: -f2- | xargs
+    course = next(
+        ln.split(":", 1)[1].strip()
+        for ln in md.splitlines()
+        if ln.startswith("course:")
+    )
+    assert course == "My-Course-E1"
