@@ -1316,7 +1316,17 @@ _Hertie Data Science Lab. This page is auto-generated._
 """
     return f"""# {org_name}
 
-**{course_name}** - managed by the Hertie Data Science Lab.
+**{course_name}** - the persistent **course org** for this course, managed by the Hertie Data
+Science Lab. It is the control panel: version-controlled materials + assignment templates, plus
+every faculty action button. Each year's students live in a separate **cohort org** that
+receives releases from here.
+
+> **Faculty - start here:** run everything from the
+> **[`.github` Actions tab](https://github.com/{org}/.github/actions)**. New to the platform?
+> Follow the step-by-step
+> **[workflow runbooks](https://github.com/{CENTRAL}/blob/{CENTRAL_REF}/docs/faculty-and-instructors/README.md)**.
+> The sections below are a live index of this org's cohorts, repositories, and actions.
+
 _This page is auto-generated; edits will be overwritten on the next refresh._
 
 ## Cohorts

@@ -181,18 +181,60 @@ def add_course_admins(org: str, handles: str) -> None:
 # Instructors/TAs are NOT declared here - most cohorts have different lecturers/TAs,
 # so they're declared per cohort instead, in that cohort's own
 # classroom-config/people.yml (seeded alongside schedule.yml at Bootstrap cohort).
-_FACULTY_BLOCK = (
-    "# Course admins for this course - the single source of truth for admin access\n"
-    "# (applied here AND mirrored into every cohort org). Uncomment:\n"
+# Shared preamble + website-card scaffold for the course org's people: block, used by
+# both the fully-commented default (_FACULTY_BLOCK) and the --admins-seeded variant
+# (_course_admins_block). Kept in one place so the two variants can't drift.
+_PEOPLE_HEADER = (
+    "# ---------------------------------------------------------------------------\n"
+    "# People. Two DIFFERENT things live under the `people:` key below - don't\n"
+    "# confuse them:\n"
     "#\n"
+    "#   course_admins        GRANTS ACCESS. The single source of truth for course-wide\n"
+    "#                        admin rights - the `course-admin` team here, mirrored into\n"
+    "#                        every cohort org. \"Sync membership\" reconciles that team\n"
+    "#                        FROM this list: a handle added any other way (Teams UI, a\n"
+    "#                        gh call) is reverted on the next sync unless it's declared\n"
+    "#                        here, and removing a handle here revokes their access.\n"
+    "#\n"
+    "#   instructors /        DISPLAY ONLY - website cards (name/photo/title/link) for\n"
+    "#   teaching_assistants  the course + cohort sites. They grant NO GitHub access.\n"
+    "#                        Access for a cohort's teaching team is declared separately,\n"
+    "#                        in that cohort's classroom-config/people.yml.\n"
+    "# ---------------------------------------------------------------------------\n"
+)
+
+# The instructors/teaching_assistants website-card scaffold (display only). Shipped
+# commented in both variants so faculty can see the cards exist and how to fill them -
+# this is the schema site._people_from_meta reads for the course + cohort site headshots.
+_CARD_SCAFFOLD = (
+    "\n"
+    "  # Website cards (optional, DISPLAY ONLY - no GitHub access). Uncomment and fill\n"
+    "  # to show the teaching team on the course + cohort websites:\n"
+    "  # instructors:\n"
+    '  #   - github_handle: "janedoe"\n'
+    '  #     name:  "Prof. Dr. Jane Doe"\n'
+    '  #     title: "Professor of Data Science"\n'
+    '  #     photo: "https://.../headshot.jpg"        # square image URL\n'
+    '  #     url:   "https://.../profile/jane-doe"     # bio / profile link\n'
+    "  # teaching_assistants:\n"
+    '  #   - github_handle: "alexsmith"\n'
+    '  #     name:  "Alex Smith"\n'
+    '  #     title: "Teaching Assistant"\n'
+    '  #     photo: "https://avatars.githubusercontent.com/u/000000?v=4"\n'
+    '  #     url:   "https://github.com/alexsmith"\n'
+)
+
+_FACULTY_BLOCK = (
+    _PEOPLE_HEADER
+    + "\n"
+    "# Uncomment and fill in at least one course admin (if you passed --admins at\n"
+    "# bootstrap, this is already filled in for you):\n"
     "# people:\n"
     "#   course_admins:\n"
     '#     - github_handle: "adminhandle"    # required - grants the `course-admin` team\n'
     '#       start: "2026-09-01"             # optional - no start = active immediately\n'
     '#       end: "2027-06-30"               # optional - no end = indefinite\n'
-    "#\n"
-    "# Instructors/TAs are declared per cohort instead (most cohorts have different\n"
-    "# lecturers/TAs) - see that cohort's classroom-config/people.yml.\n"
+    + _CARD_SCAFFOLD
 )
 
 
@@ -345,17 +387,10 @@ def _course_admins_block(admins: list[str] | None) -> str:
     being declared here."""
     if not admins:
         return _FACULTY_BLOCK
-    entries = "\n".join(f'    - github_handle: "{a}"' for a in admins)
-    return (
-        "# Course admins for this course - the single source of truth for admin access\n"
-        "# (applied here AND mirrored into every cohort org).\n"
-        "people:\n"
-        "  course_admins:\n"
-        f"{entries}\n"
-        "\n"
-        "# Instructors/TAs are declared per cohort instead (most cohorts have different\n"
-        "# lecturers/TAs) - see that cohort's classroom-config/people.yml.\n"
+    entries = "\n".join(
+        f'    - github_handle: "{a}"    # grants the `course-admin` team' for a in admins
     )
+    return _PEOPLE_HEADER + ("people:\n" "  course_admins:\n" f"{entries}\n") + _CARD_SCAFFOLD
 
 
 def _course_metadata(
