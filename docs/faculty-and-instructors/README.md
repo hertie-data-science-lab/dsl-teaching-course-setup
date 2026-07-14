@@ -1,7 +1,12 @@
-# Faculty workflows
+# Faculty & instructor workflows
 
-Step-by-step runbooks for the faculty-facing processes, end to end. Each is a button
-(GitHub Actions) plus, where noted, a `git push` of your own content.
+Step-by-step runbooks for the faculty- and instructor-facing processes, end to end. Each is a
+button (GitHub Actions) plus, where noted, a `git push` of your own content.
+
+> **Read these workflows first.** They are the primary guide. The
+> [deployment checklist](required-input-schema.md#deployment-checklist) and
+> [input schema](required-input-schema.md) are *references* to reach for once you know the
+> flow - not the starting point.
 
 > The process is **self-documenting at the time of use** - each step generates READMEs or
 > placeholder files that tell you what to do next. These docs are the **full E2E overview**
