@@ -686,7 +686,12 @@ def main() -> int:
     sub = parser.add_subparsers(dest="cmd", required=True)
     ps = sub.add_parser("sync")
     ps.add_argument("--course-org", required=True)
-    ps.add_argument("--cohort-org", required=True)
+    ps.add_argument("--cohort-org", default=None, help="One cohort; omit with --all-cohorts")
+    ps.add_argument(
+        "--all-cohorts",
+        action="store_true",
+        help="Sync every registered cohort (a course-level change, e.g. dsl-course.yml)",
+    )
     pp = sub.add_parser("public-sync")
     pp.add_argument("--course-org", required=True)
     pp.add_argument(
@@ -708,6 +713,16 @@ def main() -> int:
             args.readings_mode,
             include_lectures=not args.no_include_lectures,
         )
+    if args.all_cohorts:
+        from .seed import discover_cohorts
+
+        rc = 0
+        for cohort in discover_cohorts(args.course_org):
+            rc |= sync_site(args.course_org, cohort)
+        return rc
+    if not args.cohort_org:
+        log_err("pass --cohort-org or --all-cohorts.")
+        return 1
     return sync_site(args.course_org, args.cohort_org)
 
 
