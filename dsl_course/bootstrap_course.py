@@ -37,6 +37,7 @@ from .utils import (
     log_step,
     put_file,
     repo_exists,
+    repo_is_private,
     set_repo_topics,
 )
 
@@ -71,11 +72,26 @@ def set_org_secret(org: str, secret_name: str, secret_value: str) -> bool:
         "--body",
         secret_value,
     )
-    if code == 0:
-        log_ok(f"org secret set: {secret_name} (selected: {', '.join(infra)})")
-        return True
-    log_err(f"failed to set org secret {secret_name}: {out[:200]}")
-    return False
+    if code != 0:
+        log_err(f"failed to set org secret {secret_name}: {out[:200]}")
+        return False
+    log_ok(f"org secret set: {secret_name} (selected: {', '.join(infra)})")
+
+    # Free-plan delivery gap: an org secret with `selected` visibility is never
+    # delivered to a PRIVATE repo (only public ones receive it). classroom-config is
+    # private, so its dispatch workflows would read an empty `secrets.DSL_BOT_TOKEN`.
+    # Mirror the value as a repo-level secret on each private infra repo so it lands.
+    for r in infra:
+        if not repo_is_private(org, r):
+            continue
+        rc, rout = gh(
+            "secret", "set", secret_name, "--repo", f"{org}/{r}", "--body", secret_value
+        )
+        if rc == 0:
+            log_ok(f"repo secret set (private infra): {org}/{r}")
+        else:
+            log_err(f"failed to set repo secret on {org}/{r}: {rout[:200]}")
+    return True
 
 
 # Faculty role teams - created in EVERY org (course + cohort): instructors run the buttons
