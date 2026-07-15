@@ -1,4 +1,4 @@
-# Faculty & instructor workflows
+# Faculty & instructors workflows
 
 Step-by-step runbooks for the faculty- and instructor-facing processes, end to end. Each is a
 button (GitHub Actions) plus, where noted, a `git push` of your own content.
@@ -20,7 +20,7 @@ button (GitHub Actions) plus, where noted, a `git push` of your own content.
 
 | Tier | Lives in | Lifetime | Holds |
 |------|----------|----------|-------|
-| **Course org** | e.g. `<course-name>-<CODE>` | persistent (all years) | materials, assignment templates, the faculty console (`.github`) |
+| **Course org** | e.g. `<course-name>-<CODE>` | persistent (all years) | materials, assignment templates, the faculty & instructors console (`.github`) |
 | **Cohort org** | e.g. `<course-name>-f/sYYYY` | one per year | released materials, student repos, roster, the cohort website |
 
 The course org is the source of truth; each cohort org receives **releases** of it. Full
@@ -30,7 +30,7 @@ model: [`../admin/architecture.md`](../admin/architecture.md).
 
 ```mermaid
 flowchart TD
-  A["<b>Admin</b>: add faculty to<br/>hertie-data-science-lab / faculty team"] --> B
+  A["<b>Admin</b>: add faculty & instructors to<br/>hertie-data-science-lab / faculty team"] --> B
 
   subgraph COURSE["Course org (one-time)"]
     B["<b>New course org</b><br/>create + bootstrap"]

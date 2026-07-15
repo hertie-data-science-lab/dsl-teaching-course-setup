@@ -1,6 +1,6 @@
 # New course org (one-time setup)
 
-Stand up the **persistent** control plane for a course: its teams, the faculty console
+Stand up the **persistent** control plane for a course: its teams, the faculty & instructors console
 (`.github` with all the buttons), and its identity card. Do this **once** per course - it
 serves every future cohort (year). Per-year setup is [New cohort org](04-new-cohort-org.md).
 
@@ -65,7 +65,7 @@ serves every future cohort (year). Per-year setup is [New cohort org](04-new-coh
 
 In the org's **`.github`** repo (public):
 
-- **All faculty buttons** in the Actions tab (New materials/assignment, Refresh, Bootstrap
+- **All faculty & instructors buttons** in the Actions tab (New materials/assignment, Refresh, Bootstrap
   cohort, Release, Sync, Grade, …) - seeded from the [central toolkit](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup).
 - **`dsl-course.yml`** - the identity card (editable).
 - **`README.md`** - an orientation page (editable/deletable - you're reading the long-form version of it here).

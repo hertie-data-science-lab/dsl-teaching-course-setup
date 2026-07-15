@@ -9,7 +9,7 @@ truth for who is in which team for which assignment:
     assignment-4-project,team-y,carla-cohen
 
 Students self-select by opening a "Join team" issue in `welcome` (the workflow appends a
-row - authenticated author, size-capped); faculty override by editing the CSV directly. This
+row - authenticated author, size-capped); faculty & instructors override by editing the CSV directly. This
 CSV is the only writer surface for membership. `sync_teams` then materialises a GitHub Team
 `<assignment>-<team>` from it (one-way, idempotent), and group-assignment provisioning grants
 that team its shared repo. Because the Team is a downstream projection of the CSV - never

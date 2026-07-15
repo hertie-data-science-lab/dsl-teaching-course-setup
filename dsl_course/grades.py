@@ -6,11 +6,11 @@ open-courseware), so grades NEVER touch them: a group result is split into the s
 team grade (duplicated into each member's gradebook) and that member's private
 adjustment + final mark, all delivered individually.
 
-Three idempotent stages, each a faculty button:
+Three idempotent stages, each a faculty & instructors button:
 
     sync       cohort/grades-<handle>            (private; student = read) per onboarded student
                      ^
-    render     classroom-config/grades/<assignment>.csv   (faculty's table, was Excel)
+    render     classroom-config/grades/<assignment>.csv   (faculty & instructors' table, was Excel)
                      |  build per-student YAML
                      v
                classroom-config/gradebook/<handle>.yml  -- opened as ONE PR (the preview)
@@ -66,10 +66,10 @@ GRADEBOOK_PREFIX = "grades-"  # per-student repo: grades-<handle>
 RENDER_BRANCH = "grades-update"
 COHORT_CSV_NAME = "cohort-gradebook.csv"  # generated wide faculty-only glance view
 
-# One assignment CSV row. Individual rows use `auto` (machine score) + `manual` (faculty's
+# One assignment CSV row. Individual rows use `auto` (machine score) + `manual` (faculty & instructors'
 # hand-marked part); group rows carry the shared `team_grade`, that member's private
 # `adjustment`, and the shared `team_comments`. `final` is authoritative (stored explicitly so
-# faculty own any rounding/combination). `auto`/`manual` are faculty-internal working columns -
+# faculty & instructors own any rounding/combination). `auto`/`manual` are faculty-internal working columns -
 # they never appear in the student's gradebook. Values stay strings - a grade may be a letter,
 # a percentage, or "+4" - we never coerce.
 GRADE_FIELDS = (
@@ -202,7 +202,7 @@ def merge_auto(text: str, updates: list[tuple[str, dict[str, str]]]) -> str:
     """Upsert machine-graded fields into a grades CSV, returning new CSV text.
 
     Each update is (github_handle, {field: value}); the handle's row is updated in place
-    (preserving every other column a faculty member has already filled) or created and
+    (preserving every other column a faculty & instructors member has already filled) or created and
     appended if absent. Used by the collector to record `auto` (individual) or
     `team`/`team_grade` (group) without disturbing manual marks, comments, or final."""
     rows = parse_grades(text) if text.strip() else []

@@ -1,17 +1,17 @@
 # Admin & technical reference
 
-Operational detail behind the faculty buttons: the bot credential, its exact permissions,
+Operational detail behind the faculty & instructors buttons: the bot credential, its exact permissions,
 the token / secret model, and who-can-run access. For **how the system is built and how the
 pieces move** - diagrams, the workflow sequences, the token-propagation flow, the bot
-lifecycle, and the code map - see **[architecture.md](architecture.md)**. **Faculty
+lifecycle, and the code map - see **[architecture.md](architecture.md)**. **Faculty & instructors
 delivering a course don't need either** - see the [root README](../../README.md) for the
 button workflow.
 
 ## The bot account
 
-Every button runs under **one** credential, `DSL_BOT_TOKEN` - "the bot". **Faculty never
+Every button runs under **one** credential, `DSL_BOT_TOKEN` - "the bot". **Faculty & instructors never
 hold or see it**: they trigger the Actions buttons, which run server-side under the org
-secret. So a single bot serves the whole DSL - faculty use it *indirectly*.
+secret. So a single bot serves the whole DSL - faculty & instructors use it *indirectly*.
 
 The bot is the shared service account **`hertie-dsl-bot`**: one GitHub account with its own
 email + 2FA, added as **Owner** of every course/cohort org; its classic PAT is
@@ -58,7 +58,7 @@ Two **separate** populations - keep them distinct:
   these grants only the org owner can run anything.
 
 **Access is split by role, not per-course-generically.** Central `hertie-data-science-lab`
-faculty are *not* mirrored into course orgs (no one is added to a course they don't teach;
+faculty & instructors are *not* mirrored into course orgs (no one is added to a course they don't teach;
 teams are org-scoped, so cross-org grants aren't possible anyway). To give someone a course's
 buttons:
 

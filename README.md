@@ -8,7 +8,7 @@ single implementation behind every button.
 
 Two org tiers:
 1. the **course** org is the faculty-facing control plane - the historical registry of
-   course materials, persistent across years, where faculty push version-controlled materials
+   course materials, persistent across years, where faculty & instructors push version-controlled materials
    from;
 2. the **cohort** org is the per-year student-facing delivery target - materials are released
    here, student assignments are submitted and assessed here, and student-facing features
@@ -17,9 +17,9 @@ Two org tiers:
 ```mermaid
 flowchart TB
   subgraph COURSE["COURSE org — e.g. Hertie-School-Deep-Learning-E1394 (persistent)"]
-    mat["course-materials-f2026 · PRIVATE<br/>lectures/00_.../ + readings/00_.../ (+ syllabus, README)"]
+    mat["course-materials-f2026 · PRIVATE<br/>lectures/01_.../ + readings/01_.../ (+ syllabus, README)"]
     tmpl["assignment-1-f2026 ... · PRIVATE<br/>template repos (is_template) + autograder"]
-    gh[".github · PUBLIC<br/>profile (auto) + ALL faculty buttons + cohort registry"]
+    gh[".github · PUBLIC<br/>profile (auto) + ALL faculty & instructors buttons + cohort registry"]
   end
 
   subgraph COHORT["COHORT org — e.g. Deep-Learning-f2026 (per-year)"]
@@ -64,13 +64,13 @@ Invite; the DSL team must **accept** the pending invite before you bootstrap -
 
 ## Faculty actions
 
-Every faculty action is a GitHub Actions button in the course org's bootstrapped `.github`
+Every faculty & instructors action is a GitHub Actions button in the course org's bootstrapped `.github`
 Actions tab. See the **[workflow runbooks](docs/faculty-and-instructors/README.md)** for the flows, or the
 **[actions reference](docs/faculty-and-instructors/actions-reference.md)** for a one-page summary of every button.
 
 ---
 
-**Admin & developer reference** (faculty delivering a course don't need this):
+**Admin & developer reference** (faculty & instructors delivering a course don't need this):
 [`docs/admin/`](docs/admin/) - the [architecture](docs/admin/architecture.md) (system design,
 token propagation, who-can-run access, the code map) and [operational setup](docs/admin/admin-setup.md)
 (the bot credential, exact PAT scopes, the token/secret model).

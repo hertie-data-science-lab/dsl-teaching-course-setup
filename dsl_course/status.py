@@ -1,6 +1,6 @@
-"""dsl-course status -- a per-cohort checklist of every faculty input location.
+"""dsl-course status -- a per-cohort checklist of every faculty & instructors input location.
 
-Faculty currently touch several distinct files across 2 orgs to run a cohort: course
+Faculty & instructors currently touch several distinct files across 2 orgs to run a cohort: course
 identity, course admins, and classroom-config's roster/teams/grades/schedule.yml (which
 now carries the release plan too)/people.yml. This module answers one glance-able question -
 what's configured, what's still missing, and where do I go to fix it - by reusing
@@ -85,7 +85,7 @@ def render_markdown(course_org: str, cohort_org: str, data: dict[str, dict]) -> 
 
 
 def collect(course_org: str, cohort_org: str) -> dict[str, dict]:
-    """One status row per faculty input location for `cohort_org`. Read-only."""
+    """One status row per faculty & instructors input location for `cohort_org`. Read-only."""
     course_raw = get_file_content(course_org, ".github", "dsl-course.yml")
     course_meta = (yaml.safe_load(course_raw) or {}) if course_raw else {}
 

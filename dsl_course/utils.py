@@ -378,7 +378,7 @@ def grant_team_repo_access(org: str, team: str, repo: str, permission: str) -> b
 
 # The course-org faculty teams that get standing access to course repos: instructors run
 # releases day-to-day (write), course-admin manage (admin). Applied to `.github` at bootstrap
-# and to every scaffolded materials/assignment repo, so faculty can push content without an
+# and to every scaffolded materials/assignment repo, so faculty & instructors can push content without an
 # owner hand-granting each new repo.
 COURSE_TEAM_ACCESS = {"instructors": "push", "course-admin": "admin"}
 
