@@ -10,7 +10,7 @@ copy intact.
 Source layout: any top-level directory containing at least one ordinal-prefixed
 subdirectory is a releasable "section" - no config to declare it, the directory
 structure is the only contract:
-    <section>/<NN>_<free text>/...      e.g. lectures/00_intro/, labs/03_regression/
+    <section>/<NN>_<free text>/...      e.g. lectures/01_intro/, labs/04_regression/
 
 Each section is routed with --destinations "section=repo" or "section=repo/subpath"
 (repo/subpath nests the section under a folder there, so several sections can share

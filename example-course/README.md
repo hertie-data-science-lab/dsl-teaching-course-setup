@@ -5,9 +5,9 @@ materials, two assignments, a roster, instructor/TA cards, and an auto-generated
 website with a **real schedule**. Use it two ways:
 
 - **Artifact A - the live reference demo.** Deploy this dataset to the demo org pair below,
-  then send faculty the links (the site + the Actions tab). They click a finished thing - no
+  then send faculty & instructors the links (the site + the Actions tab). They click a finished thing - no
   setup on their end. This is also the script for a live walkthrough.
-- **Artifact B - self-serve.** A faculty member follows the same steps to stand up *their
+- **Artifact B - self-serve.** A faculty & instructors member follows the same steps to stand up *their
   own* course and feel the workflow. Same dataset, same runbook.
 
 The canonical, engine-wide input reference is [`docs/required-input-schema.md`](../docs/faculty-and-instructors/required-input-schema.md).
@@ -27,8 +27,8 @@ example-course/
   course-org/
     dsl-course.yml                  # course identity + course_admins (the SSOT) + display-only instructor/TA cards
     course-materials-f2026/
-      lectures/00_week-1../04_week-5/  # 5 sessions (ordinal-prefixed dirs; slides.md + a code demo each)
-      readings/00_week-1../04_week-5/  # 5 sessions of placeholder readings
+      lectures/01_week-1../05_week-5/  # 5 sessions (ordinal-prefixed dirs; slides.md + a code demo each)
+      readings/01_week-1../05_week-5/  # 5 sessions of placeholder readings
       syllabus.md
     lecture-code-f2026/mlpkg/       # a growing package, disclosed module-by-module (release_code)
     assignment-1-f2026/             # individual (.py)
@@ -41,7 +41,7 @@ example-course/
     teams.csv                       # team membership for the group project
     schedule.yml                    # the auto-release plan (materials_releases) + due dates + exams
     people.yml                      # this cohort's own instructors/TAs (real push access)
-    grades/*.csv                    # per-assignment faculty grade tables (auto/manual/final)
+    grades/*.csv                    # per-assignment faculty & instructors grade tables (auto/manual/final)
 ```
 
 > **Assignment layout:** each `assignment-*/` splits into `main/` (-> the repo's `main` branch,
@@ -77,15 +77,15 @@ Prereqs: the bot account is an **owner** of both demo orgs, and `DSL_BOT_TOKEN`
    synthesised ones. Also copy [`cohort-org/people.yml`](cohort-org/people.yml) into
    `DSL-Demo-f2026/classroom-config/people.yml` - this cohort's real instructor/TA push
    access (a `instructors-f2026` team on the course org, scoped to this year's repos).
-9. **Release materials** for sessions 0-4 (the `00_week-1` ... `04_week-5` directories). **Release assignment** for `assignment-1`.
+9. **Release materials** for sessions 1-5 (the `01_week-1` ... `05_week-5` directories). **Release assignment** for `assignment-1`.
 10. **Sync site** (releases also trigger it).
 
 ## What this stands up
 
 - **The site:** `https://dsl-demo-f2026.github.io` - course name, semester, instructor/TA
-  cards, sessions 0-2 lectures linking the released files, two assignment briefs, and a schedule
+  cards, sessions 1-3 lectures linking the released files, two assignment briefs, and a schedule
   with the **real dates** from step 8 (Assignment 1 due 13 Oct, MidTerm 3 Nov, Final 15 Dec).
-- **The console:** `Hertie-DSL-Demo/.github` Actions tab - every faculty button.
+- **The console:** `Hertie-DSL-Demo/.github` Actions tab - every faculty & instructors button.
 - **Onboarding:** open a **Join** issue in `DSL-Demo-f2026/welcome`, type a student ID from
   the roster (e.g. `220001`), and watch the onboard action enrol you. *(Only IDs whose row
   you can claim with a real GitHub account run fully end-to-end - the dummy rows have blank

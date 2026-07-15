@@ -6,7 +6,7 @@ code, so a new repo is always laid out the way the Release actions expect.
     scaffold materials   --org X --tag f2026                 -> course-materials-f2026
     scaffold assignment  --org X --number 1 --tag f2026      -> assignment-1-f2026
 
-Materials repos get `lectures/00_session-1/` + `readings/00_session-1/` skeletons (any
+Materials repos get `lectures/01_session-1/` + `readings/01_session-1/` skeletons (any
 top-level directory with an ordinal-prefixed subdirectory is a releasable section - add
 more, e.g. `labs/`, freely) and the run-from-repo Release buttons. Assignment repos get
 a starter on `main` (no tests - grading is faculty-side) and a `solution` branch
@@ -80,38 +80,81 @@ def scaffold_materials(org: str, tag: str) -> int:
         return 1
     grant_course_team_access(org, repo)
     grant_tagged_team_access(org, repo, tag)
+    actions_url = f"https://github.com/{org}/.github/actions"
+    # The course org's `.github` Actions tab hosts the buttons that operate this course.
+    # Both README (faculty & instructors orientation, pre-release) and MAINTAINING link it.
+    actions_table = (
+        f"The course org's [`.github` Actions tab]({actions_url}) hosts the buttons that "
+        "operate this course:\n\n"
+        "| Action | What it does |\n"
+        "| --- | --- |\n"
+        "| **Release materials** | Copy session folders (+ optional syllabus/README) into a "
+        "cohort's `materials` repo. |\n"
+        "| **Release assignment** | Freeze an assignment template, then generate one private "
+        "repo per student. |\n"
+        "| **New materials repo** | Scaffold another structured materials repo. |\n"
+        "| **New assignment** | Scaffold an assignment template (starter + hidden autograder). |\n"
+        "| **Refresh actions** | Re-seed the run-from-repo buttons and repopulate dropdowns "
+        "after you add sessions/sections. |\n"
+        "| **Show status** | Read-only per-cohort checklist of what's configured. |\n\n"
+        "(**Release materials** and **Release assignment** also appear in this repo's own "
+        "Actions tab.)\n"
+    )
     # README.md is student-facing: Release materials with the README toggle copies THIS
     # file into the cohort's materials repo, where enrolled students read it. So it ships
-    # as a replace-me placeholder written for students - the faculty how-this-repo-works
-    # reference lives in MAINTAINING.md (a root file that is never released: release only
-    # copies section folders, the syllabus, and README.md).
+    # as a replace-me placeholder written for students - the how-this-repo-works reference
+    # for faculty & instructors lives in MAINTAINING.md (a root file that is never released:
+    # release only copies section folders, the syllabus, and README.md).
     readme = (
-        "<!-- FACULTY: replace the content below with a real, student-facing overview of\n"
-        "     your course materials. Release materials with the 'include README' toggle\n"
-        "     copies THIS file into the cohort's materials repo, where enrolled students\n"
-        "     read it - so write it for them, not as internal notes. How this source repo\n"
-        "     is structured (for you, not students) is in MAINTAINING.md. -->\n\n"
+        "<!-- FACULTY & INSTRUCTORS: replace the content below with a real, student-facing\n"
+        "     overview of your course materials. Release materials with the 'include README'\n"
+        "     toggle copies THIS file into the cohort's materials repo, where enrolled\n"
+        "     students read it - so write it for them, not as internal notes. How this source\n"
+        "     repo is structured, and how to operate it, is in MAINTAINING.md (for faculty &\n"
+        "     instructors only - never released to students). -->\n\n"
         "# Course materials\n\n"
-        "> **Replace this placeholder.** This becomes the students' README for the released\n"
-        "> materials. Add a short overview of the course, how the materials are organised,\n"
-        "> and anything students should read first.\n"
+        "> **Replace this placeholder.** This file becomes the students' README for the\n"
+        "> released materials. Add a short overview of the course, how the materials are\n"
+        "> organised, and anything students should read first.\n\n"
+        "---\n\n"
+        "## For faculty & instructors (delete this section before releasing the README)\n\n"
+        "- **How to populate & operate this repo:** see [`MAINTAINING.md`](MAINTAINING.md) - "
+        "it explains what to edit, what gets released to students, and what to leave alone. "
+        "`MAINTAINING.md` is **not** deployed to the cohort org; leave it here as a persistent "
+        "reference.\n"
+        "- **Available actions:** " + actions_table
     )
     maintaining = (
-        f"# Maintaining `{repo}` (faculty)\n\n"
-        "Faculty reference for this materials **source** repo. This file is **not** released "
-        "to students - Release materials only copies session folders, the syllabus, and "
-        "(when toggled) `README.md`, so keep student-facing wording in `README.md` and "
-        "faculty notes here.\n\n"
+        f"# Maintaining `{repo}` (faculty & instructors)\n\n"
+        "Reference for faculty & instructors on how to populate and operate this materials "
+        "**source** repo. This file is **not** released to students - Release materials only "
+        "copies session folders, the syllabus, and (when toggled) `README.md`. Keep "
+        "student-facing wording in `README.md` and operational notes here.\n\n"
+        "## What to edit vs leave alone\n\n"
+        "| You edit / add | Visible to students? | Notes |\n"
+        "| --- | --- | --- |\n"
+        "| `lectures/`, `readings/` (and any section folders) session content | Yes, when you "
+        "Release that session | The released files are copied into the cohort `materials` repo. |\n"
+        "| `SYLLABUS.md`, `README.md` (root) | Only if you toggle them on at release | Write "
+        "`README.md` for students; it replaces the placeholder. |\n"
+        "| `MAINTAINING.md` (this file) | No | Your reference; never released. Leave it in the "
+        "repo. |\n"
+        "| `.github/workflows/` (the Release buttons) | No | **Infrastructure - do not edit or "
+        "delete.** These run-from-repo buttons are what make releasing work; **Refresh actions** "
+        "re-seeds them. |\n\n"
+        "Rule of thumb: edit the content folders and the two root files; leave `MAINTAINING.md` "
+        "and `.github/workflows/` alone.\n\n"
         "## Structure\n\n"
         "Any top-level directory containing at least one ordinal-prefixed subdirectory "
-        "(`00_`, `01_`, `02_`, ...) is a releasable section - no config to declare it:\n\n"
-        "- `lectures/00_session-1/` - one folder per session's lecture files\n"
-        "- `readings/00_session-1/` - one folder per session's readings\n"
+        "(`01_`, `02_`, `03_`, ...) is a releasable section - no config to declare it:\n\n"
+        "- `lectures/01_session-1/` - one folder per session's lecture files\n"
+        "- `readings/01_session-1/` - one folder per session's readings\n"
         "- `*syllabus*`, `README.md` (root) - released via the syllabus / README toggles\n\n"
-        "Add more sessions by creating `lectures/01_session-2/`, `readings/01_session-2/`, ... "
+        "Add more sessions by creating `lectures/02_session-2/`, `readings/02_session-2/`, ... "
         "(only the ordinal prefix matters - name the rest whatever you like), or add a whole "
-        "new section (e.g. `labs/00_intro/`) - then run **Refresh actions** so the session "
+        "new section (e.g. `labs/01_intro/`) - then run **Refresh actions** so the session "
         "dropdown and Release button's section toggles pick it up.\n\n"
+        "## Available actions\n\n" + actions_table + "\n"
         "## Public course website (optional)\n\n"
         "The **Publish course website** action can share this repo's materials on a public "
         "open-courseware site. Lecture files are always hosted; for readings you choose "
@@ -122,8 +165,8 @@ def scaffold_materials(org: str, tag: str) -> int:
     files = {
         "README.md": readme.encode(),
         "MAINTAINING.md": maintaining.encode(),
-        "lectures/00_session-1/.gitkeep": b"",
-        "readings/00_session-1/.gitkeep": b"",
+        "lectures/01_session-1/.gitkeep": b"",
+        "readings/01_session-1/.gitkeep": b"",
         "SYLLABUS.md": f"# {tag} syllabus\n\nReplace with the real syllabus.\n".encode(),
     }
     for path, content in files.items():

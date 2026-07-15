@@ -6,7 +6,7 @@ Sets up org-level infrastructure that persists across semesters:
 - Org settings (2FA enforcement, Pages default branch)
 - Profile README (.github repo with description)
 - Org-level workflows in .github (sync-membership, bootstrap-cohort, refresh-actions)
-- Central faculty workflows seeded into .github (Release materials/assignment +
+- Central faculty & instructors workflows seeded into .github (Release materials/assignment +
   Sync membership/Bootstrap-cohort/Refresh); the run-from-repo copies are equipped by Refresh
 
 With --cohort, instead tightens the org and seeds the student-facing welcome (onboard)
@@ -47,7 +47,7 @@ COURSE_HUB_TOPIC = "dsl-course-hub"
 def set_org_secret(org: str, secret_name: str, secret_value: str) -> bool:
     """Create or update an org secret, scoped to the infra repos that need it.
 
-    The token must reach the **public** `.github` (faculty buttons), `welcome`
+    The token must reach the **public** `.github` (faculty & instructors buttons), `welcome`
     (onboarding), and `classroom-config` (its dispatch-sync workflow cross-repo
     triggers Sync membership in `.github`). gh defaults org-secret visibility to
     `private`, which excludes public repos - so the seeded workflows there run with
@@ -139,7 +139,7 @@ BUTTON_TEAMS = COURSE_TEAM_ACCESS
 
 
 def grant_button_access(org: str) -> None:
-    """Give the course-org teams write/admin on `.github`, so faculty in them can see +
+    """Give the course-org teams write/admin on `.github`, so faculty & instructors in them can see +
     run the seeded workflow_dispatch buttons. GitHub only shows the 'Run workflow' button
     to write+ users, so without this only the org owner can run the buttons - the seeded
     check-team gate (repo permission) then enforces it at run time too."""
@@ -220,7 +220,7 @@ _PEOPLE_HEADER = (
 )
 
 # The instructors/teaching_assistants website-card scaffold (display only). Shipped
-# commented in both variants so faculty can see the cards exist and how to fill them -
+# commented in both variants so faculty & instructors can see the cards exist and how to fill them -
 # this is the schema site._people_from_meta reads for the course + cohort site headshots.
 _CARD_SCAFFOLD = (
     "\n"
@@ -255,14 +255,14 @@ _FACULTY_BLOCK = (
 
 
 # classroom-config (cohort, private) contract: the roster/grades/teams/schedule schema,
-# documented next to the files faculty edit. Samples use a `.sample` suffix so the engine
+# documented next to the files faculty & instructors edit. Samples use a `.sample` suffix so the engine
 # (sync_teams, scheduled-release, grade sync) never ingests them - only the real names.
 _CLASSROOM_README = """# classroom-config - this cohort's private config
 
 **PRIVATE.** This is the entire per-cohort data hub - roster, teams, grades,
 schedule, and this cohort's own instructors/TAs. No PII (emails, ids, names) leaves
 this repo. Course admins are managed at the **course org** level instead - see that
-org's `.github/dsl-course.yml`; that access is kept current automatically. Faculty/FAs
+org's `.github/dsl-course.yml`; that access is kept current automatically. Faculty & instructors/FAs
 edit these files; the buttons in the **course org's** Actions tab read them.
 Canonical, engine-wide schema:
 <https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/blob/main/docs/faculty-and-instructors/required-input-schema.md>.
@@ -288,7 +288,7 @@ separate off-boarding step).
 
 One file per assignment, e.g. `grades/assignment-1.csv`:
 `github_handle, team, auto, manual, team_grade, adjustment, final, comments, team_comments`.
-**Grade assignment** can pre-fill `auto`/`team_grade` from hidden tests; faculty fill the
+**Grade assignment** can pre-fill `auto`/`team_grade` from hidden tests; faculty & instructors fill the
 rest, then **Sync gradebooks** -> **Render grades** -> **Distribute grades**. The autograder
 pins to each assignment's **due date** from `schedule.yml` (`assignments.<slug>.due`,
 plus optional `grace_days`) - there is no separate deadline input. A generated,
@@ -334,9 +334,9 @@ assignment-4-project,team-2,carol
 
 # This cohort's entire schedule - the auto-release plan (materials_releases) + due
 # dates/exams - lives in one file (classroom-config/schedule.yml, see dsl_course.schedule).
-# Seeded live (not a .sample) and mostly commented, so faculty uncomment what they want to
+# Seeded live (not a .sample) and mostly commented, so faculty & instructors uncomment what they want to
 # pin rather than rename a sample to activate it. The commented block is a MAXIMAL scaffold:
-# it shows every action (deploy/assignment/grade) and every field, so faculty can copy the
+# it shows every action (deploy/assignment/grade) and every field, so faculty & instructors can copy the
 # shape they need.
 _SCHEDULE_YML = """# This cohort's schedule + auto-release plan. Edit here (GitHub web UI is fine - no CLI).
 # Everything is optional: anything you leave out is synthesised (semester start from the
@@ -827,7 +827,7 @@ def main() -> int:
         "--course",
         default=None,
         help="With --cohort: the parent course org. Registers this cohort in that "
-        "course's .github/dsl-course.yml so it appears in the faculty dropdowns.",
+        "course's .github/dsl-course.yml so it appears in the faculty & instructors dropdowns.",
     )
     parser.add_argument(
         "--propagate-secret",
@@ -904,7 +904,7 @@ def main() -> int:
         else:
             log(
                 f"  (no --course given - add {args.org} to its course org's "
-                f".github/{seed.COHORTS_PATH} to show it in the faculty dropdowns)"
+                f".github/{seed.COHORTS_PATH} to show it in the faculty & instructors dropdowns)"
             )
     else:
         # Course: seed the org-level buttons (incl. the central Release actions) into .github.
@@ -991,7 +991,7 @@ NEXT STEPS (manual):
 {admins_step}
 
 3. Put content in the materials repo (any top-level dir with ordinal-prefixed
-   subdirectories, e.g. lectures/00_.../, readings/00_.../) and create
+   subdirectories, e.g. lectures/01_.../, readings/01_.../) and create
    assignment-N-f2026 template repos, then run "Refresh actions" so they appear in the
    dropdowns. Run Release materials/assignment from inside the materials repo's Actions tab.
 

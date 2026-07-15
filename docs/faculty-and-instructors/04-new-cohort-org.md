@@ -64,7 +64,7 @@ Stand up the per-year, student-facing org: onboarding, the roster, released mate
      session_1:
        when: 2026-09-07T14:00       # bare date -> 00:00 that day
        deploy:
-         - {source_repo: course-materials-f2026, source_path: lectures/00_intro, dest_repo: materials}
+         - {source_repo: course-materials-f2026, source_path: lectures/01_intro, dest_repo: materials}
      assignment-1-grade:
        when: 2026-10-15T00:00
        grade: {template: assignment-1-f2026, deadline: 2026-10-13T23:59}

@@ -15,7 +15,7 @@ the model solution + autograder. One per assignment: `assignment-N-{f/s}YYYY`.
    | Branch | Holds | Who sees it |
    |--------|-------|-------------|
    | `main` | `README.md` (brief) + `starter.*` | **what students get** |
-   | `solution` | `solution/` (model answer) + `grading.yml` + hidden `tests/` | **faculty only** |
+   | `solution` | `solution/` (model answer) + `grading.yml` + hidden `tests/` | **faculty & instructors only** |
 
    Your `instructors` team is granted **write** on it automatically, so you can push straight away.
 

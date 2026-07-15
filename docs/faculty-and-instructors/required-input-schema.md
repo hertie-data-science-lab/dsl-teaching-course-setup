@@ -18,7 +18,7 @@ into a tracking issue and tick as you go.)
 
 - [ ] `[required]` Create the **course org** in the GitHub web UI, then add **`hertie-dsl-bot`** as **Owner** (the one manual step - no org-creation API).
 - [ ] `[required]` Run [**Bootstrap Course Org**](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions/workflows/bootstrap-org.yml) from this repo's Actions tab (`org`, `org_name`, `course_code`; optional `admin`). This also sets `DSL_BOT_TOKEN` on the org - you don't set the secret by hand. See [Token](#token).
-- [ ] `[required]` **Materials**: scaffold with **New materials repo**, then fill `course-materials-fYYYY/lectures/00_.../` and `readings/00_.../` with any files (any top-level dir with ordinal-prefixed subdirs is a releasable section - add more freely). *(optional: a `*syllabus*` file + `README` at the repo root.)*
+- [ ] `[required]` **Materials**: scaffold with **New materials repo**, then fill `course-materials-fYYYY/lectures/01_.../` and `readings/01_.../` with any files (any top-level dir with ordinal-prefixed subdirs is a releasable section - add more freely). *(optional: a `*syllabus*` file + `README` at the repo root.)*
 - [ ] `[required]` **Assignments** (≥1): scaffold with **New assignment**, then on `main` add the brief (`README.md`) + starter. *(optional: on the `solution` branch, the model solution in `solution/`, and - to autograde - hidden tests in `tests/` plus a `grading.yml`. Student repos get `main` only.)*
 - [ ] *(optional)* **Course admins**: edit the `people:` block in the **course org's** `.github/dsl-course.yml` → `course_admins` (`github_handle` required per entry, grants course-wide admin access; optional `start`/`end` dates for auto-rotation). A push here (or the daily cron) reconciles access in the course org AND every cohort. Instructors/TAs are declared per cohort instead - see Cohort setup below.
 - [ ] *(optional)* **Email**: to actually send enrolment-code + grade emails, add the `GRAPH_*` (Microsoft Graph, preferred) or `SMTP_*` Actions secrets. See [Email](#email-optional). *(Without them, every email step still runs as a `dry_run` preview.)*
@@ -114,7 +114,7 @@ Everything below is a button or a file edit.
 | # | Input | Supplied via | Mandatory | Stored as |
 |---|-------|--------------|-----------|-----------|
 | B1 | Course identity: `org`, `org_name`, `course_code` | **Bootstrap Course Org** button inputs | org + org_name + course_code | `.github/dsl-course.yml` |
-| B2 | **Materials**: a `course-materials-fYYYY` repo with `lectures/00_.../` and `readings/00_.../` folders (any top-level dir with ordinal-prefixed subdirs is a section - no config to declare it) | **New materials repo** button scaffolds it; you add files | yes | course org repo |
+| B2 | **Materials**: a `course-materials-fYYYY` repo with `lectures/01_.../` and `readings/01_.../` folders (any top-level dir with ordinal-prefixed subdirs is a section - no config to declare it) | **New materials repo** button scaffolds it; you add files | yes | course org repo |
 | B3 | Syllabus / root README (optional) | Files at the materials-repo root | optional | copied to the cohort on release if toggled on |
 | B4 | **Assignments**: one `assignment-N-fYYYY` **template** repo each (starter on `main`; the `solution` branch carries the model solution, `grading.yml`, and hidden tests) | **New assignment** button scaffolds it; you add the brief + starter (+ hidden tests on `solution` to autograde) | yes | course org template repos (`is_template`) |
 | B6 | **Course admins** - the SSOT for course-wide admin access, mirrored into every cohort's own `course-admin` team | Edit the `people:` block in the course org's `.github/dsl-course.yml` → `course_admins` (`github_handle` required per entry; optional `start`/`end` for auto-rotation) | no (no entries means no admin access to sync) |
@@ -129,8 +129,8 @@ admin rights) is declared once on the course org and mirrored down.)*
 |---|-------|--------------|-----------|
 | C1 | The empty cohort org name | **Bootstrap cohort** button | yes |
 | C2 | **Roster**: registrar columns of `students.csv` (`student_id, hertie_email, name, section`) | Edit `classroom-config/students.csv` (private) | yes |
-| C3 | **Grades** (optional, when returning marks): one CSV per assignment, `classroom-config/grades/<assignment>.csv` (`github_handle, team, auto, manual, team_grade, adjustment, final, comments, team_comments`) | **Grade assignment** can pre-fill `auto`/`team_grade` from hidden tests; faculty fill the rest, then **Sync gradebooks** → **Render grades** → **Distribute grades** | no |
-| C4 | **Teams** (optional, for group assignments): `classroom-config/teams.csv` (`assignment, team, github_handle`) | Students self-select via the welcome **Join team** issue, or faculty edit the CSV directly | no |
+| C3 | **Grades** (optional, when returning marks): one CSV per assignment, `classroom-config/grades/<assignment>.csv` (`github_handle, team, auto, manual, team_grade, adjustment, final, comments, team_comments`) | **Grade assignment** can pre-fill `auto`/`team_grade` from hidden tests; faculty & instructors fill the rest, then **Sync gradebooks** → **Render grades** → **Distribute grades** | no |
+| C4 | **Teams** (optional, for group assignments): `classroom-config/teams.csv` (`assignment, team, github_handle`) | Students self-select via the welcome **Join team** issue, or faculty & instructors edit the CSV directly | no |
 | C5 | **Release plan** (optional, for scheduled auto-release): `classroom-config/schedule.yml` → `materials_releases` (labelled entries: `when` datetime + `deploy`/`assignment`/`grade` actions) | Edit `schedule.yml`; the hourly **Scheduled release** cron fires each release once its `when` has arrived | no (manual buttons work without it) |
 | C6 | **Schedule dates** (semester start/end, assignment due dates + grace-days, exam dates) | Edit `classroom-config/schedule.yml` → `semester_start`/`semester_end`, `assignments`, `exams` (same file as C5) | optional (synthesised if blank) |
 | C7 | **Instructors/TAs** - this cohort's own push access, plus a course-org `instructors-<tag>` team scoped to this year's content repos | Edit `classroom-config/people.yml` → `instructors`/`teaching_assistants` (`github_handle` required per entry; optional `start`/`end`) | no (no website card - only a course-org `people:` entry with a display `name` gets one) |
@@ -160,7 +160,7 @@ CSV's `auto` (individual) / `team_grade` (group) column. The `auto`/`manual` spl
 autograde part and hand-mark the rest; neither column is ever shown to the student - their
 repo gets no tests, no workflow, and no score, and they learn their mark only by email.
 
-### D. Per-student (self-service, no faculty input)
+### D. Per-student (self-service, no faculty & instructors input)
 
 A student opens a **Join** issue in `welcome` and types their **university email**. The
 onboard workflow does the rest. See [How students are managed](#how-students-are-managed).

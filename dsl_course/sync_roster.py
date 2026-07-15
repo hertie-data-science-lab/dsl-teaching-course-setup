@@ -5,7 +5,7 @@ student in the cohort's students.csv is (a) a member of the cohort org and (b) i
 single `students` team (which carries cohort-private read on released materials/solutions).
 
 Students normally grant themselves on Join (templates/welcome/onboard.yml); this is the
-faculty true-up - edit students.csv, then re-run to reconcile the whole team to the roster.
+faculty & instructors true-up - edit students.csv, then re-run to reconcile the whole team to the roster.
 
 With --prune, students no longer on the roster are removed from the team (off-boarding);
 off by default here so a standalone/manual run never silently revokes access. The

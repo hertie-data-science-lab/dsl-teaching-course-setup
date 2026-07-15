@@ -14,7 +14,7 @@ later copies session folders from here into a cohort. One repo per year: `course
    [New materials repo](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/new-materials.yml),
    input `tag` = `f2026` → creates **`course-materials-f2026`** (private) with the schema the
    downstream actions expect:
-   - empty `lectures/00_session-1/` + `readings/00_session-1/`
+   - empty `lectures/01_session-1/` + `readings/01_session-1/`
    - a `README.md`,
    - a placeholder `syllabus.md`,
    - and the three run-from-repo Release buttons (`release-materials`, `release-assignment`, `release-code`)
@@ -27,13 +27,13 @@ later copies session folders from here into a cohort. One repo per year: `course
    section - no config to declare it, so you can add more freely (e.g. `labs/`):
 
    ```
-   lectures/00_session-1/   any files - slides, demo code, notebooks …
-   readings/00_session-1/   any files
+   lectures/01_session-1/   any files - slides, demo code, notebooks …
+   readings/01_session-1/   any files
    syllabus.md              optional
    ```
 
-   Only the leading ordinal (`00_`, `01_`, `02_`, ...) is meaningful - name the rest of the
-   directory whatever's clearest to you (`00_intro`, `01_regression`, ...).
+   Only the leading ordinal (`01_`, `02_`, `03_`, ...) is meaningful - name the rest of the
+   directory whatever's clearest to you (`01_intro`, `02_regression`, ...).
 
    *NB: You can add the full course content here as a 'staging' repo - it remains private and
    non-viewable by students; while only the sessions you choose to 'release to cohort' get

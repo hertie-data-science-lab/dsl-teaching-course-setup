@@ -4,7 +4,7 @@ Runs entirely in a faculty-controlled job (course-org Actions, bot token). For e
 submission repo it checks out the last commit dated on or before the deadline, overlays
 the assignment's HIDDEN tests (kept on the course template's `solution` branch, never
 shipped to students), runs them, and records a machine score into the PRIVATE grades CSV.
-Faculty then add manual marks and the existing grades pipeline emails the result - so a
+Faculty & instructors then add manual marks and the existing grades pipeline emails the result - so a
 student never sees a score in their own repo.
 
   course/<template> @ solution branch  ->  grading.yml + hidden tests
@@ -348,7 +348,7 @@ def collect(
             log_err(f"could not write {path}")
             return 1
     log_ok(
-        f"recorded {len(updates)} auto score(s) -> {path} (faculty add manual marks, then render)"
+        f"recorded {len(updates)} auto score(s) -> {path} (faculty & instructors add manual marks, then render)"
     )
     return 0
 

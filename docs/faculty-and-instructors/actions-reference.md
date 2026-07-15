@@ -1,6 +1,6 @@
-# Faculty actions reference
+# Faculty & instructors actions reference
 
-What each faculty button does, at a glance. They live in the **course org's `.github` Actions
+What each faculty & instructors button does, at a glance. They live in the **course org's `.github` Actions
 tab** (seeded at bootstrap); **Release materials** and **Release assignment** *also* live inside
 each content / assignment-template repo ("run-from-repo"), where `session` is a dropdown of
 that repo's own sessions and each discovered section gets its own include checkbox.
@@ -14,7 +14,7 @@ For the **step-by-step flows** (which button, which inputs, in what order), see 
 | Action | Where | Effect |
 | --- | --- | --- |
 | **Bootstrap cohort** | `.github` | Configure a pre-created cohort org (welcome + roster + tighten + website), register it, refresh. |
-| **Sync membership** | `.github` | Consolidated, fully-automatic reconcile of `students`-team access (`students.csv`), project teams (`teams.csv`), and instructors/course-admin access (this org's declared `people:` block, mirrored into every cohort). Triggers on push to any of those files (removals take effect immediately - no prune toggle) and a daily cron (catches a faculty `start`/`end` date lapsing with no edit); `workflow_dispatch` is a manual escape hatch. |
+| **Sync membership** | `.github` | Consolidated, fully-automatic reconcile of `students`-team access (`students.csv`), project teams (`teams.csv`), and instructors/course-admin access (this org's declared `people:` block, mirrored into every cohort). Triggers on push to any of those files (removals take effect immediately - no prune toggle) and a daily cron (catches a faculty & instructors `start`/`end` date lapsing with no edit); `workflow_dispatch` is a manual escape hatch. |
 | **New materials repo** | `.github` | Scaffold a structured `course-materials-<tag>` repo (session folders + Release buttons). |
 | **New assignment** | `.github` | Scaffold an `assignment-N-<tag>` template (starter + autograder on `main`, an empty `solution` branch). |
 | **Refresh actions** | `.github` | Re-seed the run-from-repo buttons into every content repo, propagate the repo secret, repopulate all dropdowns, rebuild the profile READMEs. _(Across all DSL-managed repos at once: [`Refresh Course Org Inventory`](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions/workflows/refresh-inventory.yml) in the central repo.)_ |

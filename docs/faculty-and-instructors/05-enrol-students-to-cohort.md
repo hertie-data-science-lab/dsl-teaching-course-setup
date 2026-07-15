@@ -15,7 +15,7 @@ GitHub handle is captured unspoofably.
 
 ```mermaid
 sequenceDiagram
-  participant F as Faculty
+  participant F as Faculty & instructors
   participant W as welcome repo
   participant S as Student
   participant O as Cohort org
@@ -47,7 +47,7 @@ sequenceDiagram
 
 ## Group assignments (optional)
 
-Students open a **Join team** issue in `welcome` (or faculty edit
+Students open a **Join team** issue in `welcome` (or faculty & instructors edit
 `classroom-config/teams.csv`: `assignment, team, github_handle`) - either way, the push
 triggers **Sync membership**, which materialises a GitHub team per group; a group
 **Release assignment** then grants each team its shared repo.

@@ -1,7 +1,7 @@
-"""dsl-course seed -- render + place the run-from-repo faculty workflows.
+"""dsl-course seed -- render + place the run-from-repo faculty & instructors workflows.
 
 The Release / Provision actions live INSIDE course content (and assignment-template)
-repos, so faculty trigger them from the repo they're working in. The repo the workflow
+repos, so faculty & instructors trigger them from the repo they're working in. The repo the workflow
 runs in is the SOURCE; the action pushes into a chosen cohort org/repo.
 
 The cohort org input is a GitHub `choice` dropdown. GitHub can't populate a dropdown
@@ -73,7 +73,7 @@ _CHECK_TEAM = """  check-team:
           ACTOR: ${{ github.actor }}
           REPO: ${{ github.repository }}
         run: |
-          # Faculty have write+ on the course repos; students never do (and triggering a
+          # Faculty & instructors have write+ on the course repos; students never do (and triggering a
           # workflow_dispatch already requires write), so repo permission is the gate.
           perm=$(gh api "repos/$REPO/collaborators/$ACTOR/permission" --jq '.permission' 2>/tmp/gherr || true)
           case "$perm" in admin|write|maintain) exit 0 ;; esac
@@ -191,7 +191,7 @@ def _check_no_env_name_collisions(sections: list[str]) -> None:
 def _cap_sections(sections: list[str], context: str) -> list[str]:
     """Sections beyond MAX_RELEASE_SECTIONS get no checkbox at all - GitHub's
     workflow_dispatch caps at 10 total inputs. Never silent: logs exactly what got
-    dropped, so faculty know to release those directly
+    dropped, so faculty & instructors know to release those directly
     (python3 -m dsl_course.release --destinations ...) instead of via the button."""
     sections = sorted(sections)
     if len(sections) <= MAX_RELEASE_SECTIONS:
@@ -455,7 +455,7 @@ def render_grade_assignment(
 # Faculty-side autograder. Clones each submission as of its scheduled due date (the cohort
 # schedule's date + grace_days - SSOT, no input here), runs the HIDDEN tests
 # from the template's solution branch, archives result.json, and records the machine score
-# into the private grades CSV (faculty then add manual marks; Render + Distribute send them).
+# into the private grades CSV (faculty & instructors then add manual marks; Render + Distribute send them).
 # Nothing is written to student repos. dry_run lists what would be graded.
 
 on:
@@ -800,7 +800,7 @@ jobs:
 
 
 def render_status(cohort_orgs: list[str]) -> str:
-    """Per-cohort checklist of every faculty input location - identity, people,
+    """Per-cohort checklist of every faculty & instructors input location - identity, people,
     schedule + release plan, roster, teams, grades - with the current value and a
     direct edit link for anything missing. Read-only; changes nothing."""
     return f"""name: Show status
@@ -1049,7 +1049,7 @@ def _read_cohorts(course_org: str) -> list[str]:
 
 def discover_cohorts(course_org: str) -> list[str]:
     """Cohort orgs are listed explicitly in the course's .github/cohort-courses-pages.yml
-    (naming-independent). `bootstrap --cohort --course X` appends; faculty can edit it."""
+    (naming-independent). `bootstrap --cohort --course X` appends; faculty & instructors can edit it."""
     return sorted(_read_cohorts(course_org))
 
 
@@ -1205,7 +1205,7 @@ def discover_assignments(course_org: str) -> list[str]:
 def discover_content_repos(course_org: str) -> list[str]:
     """Repos that should HOST the release buttons: the materials repo(s), not the
     `.github` profile repo and not the assignment-* template repos (those are generate
-    sources - equipping them would copy the faculty workflows into every student repo)."""
+    sources - equipping them would copy the faculty & instructors workflows into every student repo)."""
     return [
         r["name"]
         for r in list_org_repos(course_org)
@@ -1273,16 +1273,16 @@ def _repo_table(repos: list[dict]) -> str:
 
 
 def render_dotgithub_readme(org: str, course_name: str, is_cohort: bool) -> str:
-    """The `.github` repo's OWN README - the orientation a faculty member sees on landing
+    """The `.github` repo's OWN README - the orientation a faculty & instructors member sees on landing
     in this repo just after bootstrap. Distinct from profile/README.md (the org landing
     page); this shows on the repo itself, next to the Actions tab where the buttons live."""
     if is_cohort:
         return f"""# {course_name} - cohort control repo
 
 This is the **`.github` repo** for the `{org}` cohort org. It holds this cohort's configuration
-and the auto-generated student-facing org page - **faculty / FAs delivering the course rarely need to touch it directly.**
+and the auto-generated student-facing org page - **faculty & instructors / FAs delivering the course rarely need to touch it directly.**
 
-- The **faculty action buttons** (Release, Grade, Sync ...) live in the **parent course org's**
+- The **faculty & instructors action buttons** (Release, Grade, Sync ...) live in the **parent course org's**
   `.github` **Actions** tab, not here. This repo has no `dsl-course.yml` of its own - all of
   this cohort's config lives in **classroom-config** instead:
   `schedule.yml` (release calendar + due dates), `people.yml` (this cohort's own
@@ -1296,7 +1296,7 @@ Built and kept in sync by the [DSL teaching toolkit](https://github.com/{CENTRAL
 """
     return f"""# {course_name} - course control panel
 
-This is the **`.github` repo** for the `{org}` course org - the control panel faculty use to run
+This is the **`.github` repo** for the `{org}` course org - the control panel faculty & instructors use to run
 the course. **You never need a CLI or to write code: every action is a clickable UI button.**
 
 ## Run an action
@@ -1336,7 +1336,7 @@ def render_profile_readme(
     is_cohort: bool,
     cohorts: list[str] | None = None,
 ) -> str:
-    """Org overview. Cohort orgs get a student-facing page; course orgs a faculty one."""
+    """Org overview. Cohort orgs get a student-facing page; course orgs a faculty & instructors one."""
     table = _repo_table(repos)
     cohort_lines = (
         "\n".join(f"- [{c}](https://github.com/{c})" for c in (cohorts or []))
@@ -1374,10 +1374,10 @@ _Hertie Data Science Lab. This page is auto-generated._
 
 **{course_name}** - the persistent **course org** for this course, managed by the Hertie Data
 Science Lab. It is the control panel: version-controlled materials + assignment templates, plus
-every faculty action button. Each year's students live in a separate **cohort org** that
+every faculty & instructors action button. Each year's students live in a separate **cohort org** that
 receives releases from here.
 
-> **Faculty - start here:** run everything from the
+> **Faculty & instructors - start here:** run everything from the
 > **[`.github` Actions tab](https://github.com/{org}/.github/actions)**. New to the platform?
 > Follow the step-by-step
 > **[workflow runbooks](https://github.com/{CENTRAL}/blob/{CENTRAL_REF}/docs/faculty-and-instructors/README.md)**.
@@ -1402,7 +1402,7 @@ cohort org using the GitHub Actions below_.
 | --- | --- | --- |
 {table}
 
-## Available actions for faculty & admin
+## Available actions for faculty, instructors & admin
 
 All actions live in the [`.github` repo's Actions tab](https://github.com/{org}/.github/actions)
 _(automatically bootstrapped from the central
@@ -1431,7 +1431,7 @@ repo; there the `session` is a dropdown of that repo's sessions, and each discov
 own include checkbox).
 
 ### Grades (private, previewable):
-- [**Grade assignment**](https://github.com/{org}/.github/actions/workflows/grade-assignment.yml) - faculty-side autograder: after the deadline, run the HIDDEN tests (from the template's `solution` branch) against each submission and record the machine score into `classroom-config/grades/<assignment>.csv`. Nothing is written to student repos; faculty then add manual marks. Optional per assignment (skipped if `grading.yml` sets `autograde: false`).
+- [**Grade assignment**](https://github.com/{org}/.github/actions/workflows/grade-assignment.yml) - faculty-side autograder: after the deadline, run the HIDDEN tests (from the template's `solution` branch) against each submission and record the machine score into `classroom-config/grades/<assignment>.csv`. Nothing is written to student repos; faculty & instructors then add manual marks. Optional per assignment (skipped if `grading.yml` sets `autograde: false`).
 - [**Sync gradebooks**](https://github.com/{org}/.github/actions/workflows/sync-gradebooks.yml) - ensure every onboarded student has a PRIVATE `grades-<handle>` repo (the single home for all their grades). Idempotent.
 - [**Render grades (preview)**](https://github.com/{org}/.github/actions/workflows/render-grades.yml) - build per-student `gradebook/<handle>.yml` from `classroom-config/grades/<assignment>.csv` and open ONE pull request. **That PR is the preview** - review every student's grades in the diff before sending.
 - [**Distribute grades**](https://github.com/{org}/.github/actions/workflows/distribute-grades.yml) - after merging the preview PR, copy each student's gradebook into their private repo and (unless silenced) email each student a notification to their university inbox (needs the `GRAPH_*` or `SMTP_*` secrets).
@@ -1472,8 +1472,8 @@ public site only exists, and only updates, when you run the action.
 
 ```
 {org}/                            <- this COURSE org (persistent)
-|-- .github/                      profile + faculty action buttons + cohort registry
-|-- course-materials-<year>/      lectures/00_.../   readings/00_.../   (+ syllabus, README)
+|-- .github/                      profile + faculty & instructors action buttons + cohort registry
+|-- course-materials-<year>/      lectures/01_.../   readings/01_.../   (+ syllabus, README)
 `-- assignment-<n>-<year>/        is_template repo:
                                     main      -> starter + autograder   (students get this)
                                     solution  -> solution/   (pushed to students on demand)
@@ -1493,11 +1493,11 @@ repo (via its **Bootstrap Course Org** action), and the actions above run that s
 The course-level actions assume this layout - use **New materials repo** / **New assignment** above to scaffold correctly.
 
 **Materials repo** (`course-materials-<year>`) - the source for Release materials. Any
-top-level directory containing at least one ordinal-prefixed (`00_`, `01_`, ...)
+top-level directory containing at least one ordinal-prefixed (`01_`, `02_`, `03_`, ...)
 subdirectory is a releasable section - no config to declare it:
-- `lectures/00_.../` - one folder per session's lecture files;
-- `readings/00_.../` - one folder per session's readings;
-- add more sections freely (e.g. `labs/00_.../`) - **Refresh actions** picks up new ones;
+- `lectures/01_.../` - one folder per session's lecture files;
+- `readings/01_.../` - one folder per session's readings;
+- add more sections freely (e.g. `labs/01_.../`) - **Refresh actions** picks up new ones;
 - `*syllabus*`, `README.md` at the **root** (optional) - released via the syllabus / README toggles.
 
 **Assignment repo** (`assignment-N-<year>`, an `is_template` repo) - the source for Release assignment:

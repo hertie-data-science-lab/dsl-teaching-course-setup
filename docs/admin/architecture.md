@@ -29,7 +29,7 @@ flowchart TB
   end
   bot(["hertie-dsl-bot<br/>service account · Owner of every org"])
   subgraph course["COURSE org — persistent"]
-    cg[".github<br/>profile + faculty buttons + cohort registry"]
+    cg[".github<br/>profile + faculty & instructors buttons + cohort registry"]
     mat["course-materials-fYYYY<br/>lectures/ + readings/"]
     asg["assignment-N-fYYYY<br/>is_template: main + solution branch"]
   end
@@ -50,7 +50,7 @@ flowchart TB
 ## The bot identity
 
 Every button runs server-side under **one** credential, `DSL_BOT_TOKEN` - "the bot".
-**Faculty never hold or see it**; they trigger the Actions buttons, which run as the bot.
+**Faculty & instructors never hold or see it**; they trigger the Actions buttons, which run as the bot.
 
 The bot is the shared service account **`hertie-dsl-bot`** - its own email + 2FA, **Owner of
 every course and cohort org**, and its classic PAT is `DSL_BOT_TOKEN`. One account, one token,
@@ -132,7 +132,7 @@ sequenceDiagram
   A->>A: check-team — faculty/admin in central org
   A->>Bot: bootstrap_course --propagate-secret
   Bot->>Org: org settings (2FA) + role teams
-  Bot->>Org: .github profile + seed faculty buttons + course_admins in dsl-course.yml
+  Bot->>Org: .github profile + seed faculty & instructors buttons + course_admins in dsl-course.yml
   Bot->>Org: grant instructors/course-admin on .github
   Bot->>Org: add --admins handles to course-admin (immediate) + SSOT (durable)
   Bot->>Org: set DSL_BOT_TOKEN org secret (selected → .github)
@@ -175,7 +175,7 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-  actor F as Faculty
+  actor F as Faculty & instructors
   participant A as Release assignment
   participant T as assignment template, main
   participant CT as cohort template
@@ -208,12 +208,12 @@ sequenceDiagram
 Group membership follows the same CSV-is-truth pattern as enrolment. `teams.csv` (in
 `classroom-config`, columns `assignment,team,github_handle`) is the **only writer surface**:
 students self-select by opening a "Join team" issue (`team-formation.yml` appends a row -
-authenticated author, one team per assignment, size-capped), and faculty can edit it directly.
+authenticated author, one team per assignment, size-capped), and faculty & instructors can edit it directly.
 
 ```mermaid
 flowchart LR
   St["Student: Join team issue"] -->|"append row"| CSV["teams.csv (SSOT)"]
-  Fac["Faculty edit"] -->|"append / edit row"| CSV
+  Fac["Faculty & instructors edit"] -->|"append / edit row"| CSV
   CSV -->|"Sync membership (sync_teams)"| GT["GitHub Team per assignment-team"]
   CSV -->|"Release assignment --group"| RP["one shared repo per team, granted to that team"]
 ```
@@ -291,7 +291,7 @@ serves any path not starting with `_`) and links to those site-relative URLs.
 - **Opt-in + manual**: the first run scaffolds the site, later runs re-sync the chosen
   materials repo; served files are namespaced per source repo so several years coexist.
   Releases and refresh **never** touch it, so a public site only exists, and only updates,
-  when faculty run the action.
+  when faculty & instructors run the action.
 
 ## Bot lifecycle — setup & rotation
 
@@ -332,7 +332,7 @@ PAT expiry so rotation is forced.
 
 Self-contained - workflows + their Python implementation live in this repo.
 
-- `.github/workflows/` - `bootstrap-org` (+ the legacy create-tier); the faculty workflows are
+- `.github/workflows/` - `bootstrap-org` (+ the legacy create-tier); the faculty & instructors workflows are
   rendered + seeded into the course/cohort orgs, not kept here.
 - `dsl_course/` - the package:
   - `bootstrap_course` - configure a course or (`--cohort`) cohort org; grant button access; propagate the secret.

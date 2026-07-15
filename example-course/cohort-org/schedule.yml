@@ -9,20 +9,20 @@ materials_releases:
   week-1:
     when: 2026-09-01T09:00
     deploy:
-      - {source_repo: course-materials-f2026, source_path: lectures/00_week-1, dest_repo: materials}
-      - {source_repo: course-materials-f2026, source_path: readings/00_week-1, dest_repo: materials}
+      - {source_repo: course-materials-f2026, source_path: lectures/01_week-1, dest_repo: materials}
+      - {source_repo: course-materials-f2026, source_path: readings/01_week-1, dest_repo: materials}
       # release the package base early so later partial releases still import:
       - {source_repo: lecture-code-f2026, source_path: mlpkg/core, dest_repo: materials}
   week-2:
     when: 2026-09-08T09:00
     deploy:
-      - {source_repo: course-materials-f2026, source_path: lectures/01_week-2, dest_repo: materials}
-      - {source_repo: course-materials-f2026, source_path: readings/01_week-2, dest_repo: materials}
+      - {source_repo: course-materials-f2026, source_path: lectures/02_week-2, dest_repo: materials}
+      - {source_repo: course-materials-f2026, source_path: readings/02_week-2, dest_repo: materials}
   week-3:
     when: 2026-09-15T09:00
     deploy:
-      - {source_repo: course-materials-f2026, source_path: lectures/02_week-3, dest_repo: materials}
-      - {source_repo: course-materials-f2026, source_path: readings/02_week-3, dest_repo: materials}
+      - {source_repo: course-materials-f2026, source_path: lectures/03_week-3, dest_repo: materials}
+      - {source_repo: course-materials-f2026, source_path: readings/03_week-3, dest_repo: materials}
       # phased disclosure: reveal a topic-subpackage when you teach it
       - {source_repo: lecture-code-f2026, source_path: mlpkg/simulation, dest_repo: materials}
   assignment-1-handout:
@@ -31,13 +31,13 @@ materials_releases:
   week-4:
     when: 2026-09-22T09:00
     deploy:
-      - {source_repo: course-materials-f2026, source_path: lectures/03_week-4, dest_repo: materials}
-      - {source_repo: course-materials-f2026, source_path: readings/03_week-4, dest_repo: materials}
+      - {source_repo: course-materials-f2026, source_path: lectures/04_week-4, dest_repo: materials}
+      - {source_repo: course-materials-f2026, source_path: readings/04_week-4, dest_repo: materials}
   week-5:
     when: 2026-09-29T09:00
     deploy:
-      - {source_repo: course-materials-f2026, source_path: lectures/04_week-5, dest_repo: materials}
-      - {source_repo: course-materials-f2026, source_path: readings/04_week-5, dest_repo: materials}
+      - {source_repo: course-materials-f2026, source_path: lectures/05_week-5, dest_repo: materials}
+      - {source_repo: course-materials-f2026, source_path: readings/05_week-5, dest_repo: materials}
       - {source_repo: lecture-code-f2026, source_path: mlpkg/training, dest_repo: materials}
   assignment-2-handout:
     when: 2026-09-29T14:00
