@@ -10,7 +10,7 @@ serves every future cohort (year). Per-year setup is [New cohort org](04-new-coh
 
 ## Steps
 
-1. **Create the org** in the GitHub web UI: **[github.com/account/organizations/new (Free plan)]([https://github.com/account/organizations/new](https://github.com/account/organizations/new?plan=free&ref_cta=Create%2520a%2520free%2520organization&ref_loc=cards&ref_page=%2Forganizations%2Fplan))**
+1. **Create the org** in the GitHub web UI: **[github.com/account/organizations/new (Free plan)](https://github.com/account/organizations/new?plan=free&ref_cta=Create%2520a%2520free%2520organization&ref_loc=cards&ref_page=%2Forganizations%2Fplan)**
    → *Create a new organization*. Naming convention: **`<course-name>-<CODE>`**
    (e.g. `DSL-Demo-Course-E1234`). The org is persistent, so the name carries **no year**.
 
