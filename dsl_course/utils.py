@@ -110,6 +110,12 @@ def repo_exists(org: str, name: str) -> bool:
     return code == 0
 
 
+def repo_is_private(org: str, name: str) -> bool:
+    """Return True if the repo is private (assume private if the check fails)."""
+    code, out = gh("api", f"repos/{org}/{name}", "--jq", ".private")
+    return out.strip() != "false" if code == 0 else True
+
+
 def get_default_branch(org: str, name: str) -> str:
     """Return the default branch of a repo. Falls back to 'main'."""
     code, out = gh("api", f"repos/{org}/{name}", "--jq", ".default_branch")
