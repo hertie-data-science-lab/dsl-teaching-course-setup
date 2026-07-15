@@ -212,10 +212,13 @@ _PEOPLE_HEADER = (
     "#                        gh call) is reverted on the next sync unless it's declared\n"
     "#                        here, and removing a handle here revokes their access.\n"
     "#\n"
-    "#   instructors /        DISPLAY ONLY - website cards (name/photo/title/link) for\n"
-    "#   teaching_assistants  the course + cohort sites. They grant NO GitHub access.\n"
-    "#                        Access for a cohort's teaching team is declared separately,\n"
-    "#                        in that cohort's classroom-config/people.yml.\n"
+    "#   instructors /        DISPLAY ONLY - website cards (name/photo/title/link), and\n"
+    "#   teaching_assistants  ONLY for the OPTIONAL public open-courseware course website\n"
+    "#                        (the \"Publish course website\" action). They grant NO GitHub\n"
+    "#                        access. A cohort's actual teaching team - the instructors &\n"
+    "#                        TAs who run that year, their GitHub access AND their\n"
+    "#                        cohort-site cards - is declared PER COHORT in that cohort's\n"
+    "#                        classroom-config/people.yml, not here at the course level.\n"
     "# ---------------------------------------------------------------------------\n"
 )
 
@@ -224,8 +227,9 @@ _PEOPLE_HEADER = (
 # this is the schema site._people_from_meta reads for the course + cohort site headshots.
 _CARD_SCAFFOLD = (
     "\n"
-    "  # Website cards (optional, DISPLAY ONLY - no GitHub access). Uncomment and fill\n"
-    "  # to show the teaching team on the course + cohort websites:\n"
+    "  # Website cards (optional, DISPLAY ONLY - no GitHub access) for the OPTIONAL public\n"
+    "  # open-courseware course website. A cohort's own teaching team goes in that cohort's\n"
+    "  # classroom-config/people.yml instead. Uncomment and fill:\n"
     "  # instructors:\n"
     '  #   - github_handle: "janedoe"\n'
     '  #     name:  "Prof. Dr. Jane Doe"\n'
@@ -478,9 +482,7 @@ def _course_metadata(
         f"course_code: {course_code or ''}\n"
         "\n"
         "# This is the persistent COURSE org - it spans many cohorts (years). Cohorts are\n"
-        "# registered separately in .github/cohort-courses-pages.yml. The schedule changes\n"
-        "# year to year, so it's declared PER COHORT in that cohort's own\n"
-        "# classroom-config/schedule.yml, not here.\n"
+        "# registered separately in .github/cohort-courses-pages.yml.\n"
         f"\n{_course_admins_block(admins)}"
     )
 
