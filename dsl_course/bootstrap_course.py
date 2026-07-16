@@ -194,8 +194,9 @@ def add_course_admins(org: str, handles: str) -> None:
 # access); `start`/`end` are optional ISO dates - omit either for open-ended, or set
 # both to bound access to one window (auto-rotates, no manual removal needed).
 #
-# Instructors/TAs are NOT declared here - most cohorts have different lecturers/TAs,
-# so they're declared per cohort instead, in that cohort's own
+# TAs are never declared here (they change every cohort); instructors appear here only
+# as OPTIONAL open-courseware display cards. A cohort's real teaching team - GitHub
+# access AND cohort-site cards - is declared per cohort in that cohort's own
 # classroom-config/people.yml (seeded alongside schedule.yml at Bootstrap cohort).
 # Shared preamble + website-card scaffold for the course org's people: block, used by
 # both the fully-commented default (_FACULTY_BLOCK) and the --admins-seeded variant
@@ -212,23 +213,25 @@ _PEOPLE_HEADER = (
     "#                        gh call) is reverted on the next sync unless it's declared\n"
     "#                        here, and removing a handle here revokes their access.\n"
     "#\n"
-    "#   instructors /        DISPLAY ONLY - website cards (name/photo/title/link), and\n"
-    "#   teaching_assistants  ONLY for the OPTIONAL public open-courseware course website\n"
-    "#                        (the \"Publish course website\" action). They grant NO GitHub\n"
-    "#                        access. A cohort's actual teaching team - the instructors &\n"
-    "#                        TAs who run that year, their GitHub access AND their\n"
-    "#                        cohort-site cards - is declared PER COHORT in that cohort's\n"
-    "#                        classroom-config/people.yml, not here at the course level.\n"
+    "#   instructors          DISPLAY ONLY - website cards (name/photo/title/link) for\n"
+    "#                        the OPTIONAL public open-courseware course website (the\n"
+    "#                        \"Publish course website\" action). They grant NO GitHub\n"
+    "#                        access. TAs are NOT declared here - they change every\n"
+    "#                        cohort, so a cohort's whole teaching team (instructors &\n"
+    "#                        TAs, their GitHub access AND their cohort-site cards) is\n"
+    "#                        declared PER COHORT in that cohort's classroom-config/people.yml.\n"
     "# ---------------------------------------------------------------------------\n"
 )
 
-# The instructors/teaching_assistants website-card scaffold (display only). Shipped
-# commented in both variants so faculty & instructors can see the cards exist and how to fill them -
-# this is the schema site._people_from_meta reads for the course + cohort site headshots.
+# The instructor website-card scaffold (display only). Shipped commented in both
+# variants so faculty can see the cards exist and how to fill them - this is the schema
+# site._people_from_meta reads for the course-site headshots. (Cohort-site headshots,
+# instructors AND TAs, come from each cohort's own classroom-config/people.yml instead.)
 _CARD_SCAFFOLD = (
     "\n"
-    "  # Website cards (optional, DISPLAY ONLY - no GitHub access) for the OPTIONAL public\n"
-    "  # open-courseware course website. A cohort's own teaching team goes in that cohort's\n"
+    "  # Instructor website cards (optional, DISPLAY ONLY - no GitHub access) for the\n"
+    "  # OPTIONAL public open-courseware course website. TAs are NOT listed here - a\n"
+    "  # cohort's own teaching team (instructors & TAs) goes in that cohort's\n"
     "  # classroom-config/people.yml instead. Uncomment and fill:\n"
     "  # instructors:\n"
     '  #   - github_handle: "janedoe"\n'
@@ -236,12 +239,6 @@ _CARD_SCAFFOLD = (
     '  #     title: "Professor of Data Science"\n'
     '  #     photo: "https://.../headshot.jpg"        # square image URL\n'
     '  #     url:   "https://.../profile/jane-doe"     # bio / profile link\n'
-    "  # teaching_assistants:\n"
-    '  #   - github_handle: "alexsmith"\n'
-    '  #     name:  "Alex Smith"\n'
-    '  #     title: "Teaching Assistant"\n'
-    '  #     photo: "https://avatars.githubusercontent.com/u/000000?v=4"\n'
-    '  #     url:   "https://github.com/alexsmith"\n'
 )
 
 _FACULTY_BLOCK = (

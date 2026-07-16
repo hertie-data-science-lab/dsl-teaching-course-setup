@@ -17,6 +17,10 @@ def test_course_metadata_carries_faculty_block():
     assert "# people:" in md
     assert "github_handle" in md
     assert "schedule:" not in md
+    # instructors get an OPTIONAL open-courseware card scaffold; TAs never do - they
+    # change every cohort, so they're declared per cohort, not course-level.
+    assert "# instructors:" in md
+    assert "teaching_assistants" not in md
 
 
 def test_course_metadata_seeds_admins_live_when_given():

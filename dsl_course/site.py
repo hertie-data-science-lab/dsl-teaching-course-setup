@@ -125,10 +125,10 @@ def _team_people(course_org: str, team: str) -> list[tuple[str, str, str]]:
 
 
 def _people_from_meta(meta: dict) -> tuple[list[tuple], list[tuple]] | None:
-    """Declared people from the COURSE org's `.github/dsl-course.yml` `people:` block -
-    the single source of truth for instructors/TAs, both for GitHub access
-    (sync_faculty) and for website display (used for the cohort site AND the public
-    course site).
+    """Declared people from a `people:` block - either the COURSE org's
+    `.github/dsl-course.yml` (course site: instructors only, TAs are never declared
+    there) or a cohort's own `classroom-config/people.yml` (cohort site: instructors
+    AND TAs). Same schema either way.
 
     Returns `(instructors, teaching_assistants)` as lists of `(name, photo, url,
     title)` for entries active today (per optional start/end dates) that also declare
@@ -166,23 +166,27 @@ def _people_from_meta(meta: dict) -> tuple[list[tuple], list[tuple]] | None:
     return rows("instructors"), rows("teaching_assistants")
 
 
-def _people_yaml(course_org: str, meta: dict | None = None) -> str:
-    """Build _data/people.yml. Prefer the declared `people:` block in the supplied
-    dsl-course.yml meta; else fall back to the GitHub `instructors` team of
-    `course_org` (GitHub display name + avatar + profile link).
+def _people_yaml(org: str, meta: dict | None = None, *, include_tas: bool = True) -> str:
+    """Build _data/people.yml. Prefer the declared `people:` block in the supplied meta
+    (the course org's dsl-course.yml for the course site, a cohort's classroom-config/
+    people.yml for the cohort site); else fall back to the GitHub `instructors` team of
+    `org` (GitHub display name + avatar + profile link).
 
-    Instructors and TAs share that one GitHub team (there's no separate
-    `teaching-assistants` team - see bootstrap_course.FACULTY_TEAMS), so the fallback
-    can't distinguish TAs from instructors; declare a `people:` block to get separate
-    TA cards."""
+    `include_tas=False` (the course site) drops TA cards entirely - TAs are cohort-only,
+    so the multi-year open-courseware site shows instructors only. Instructors and TAs
+    share one GitHub team (there's no separate `teaching-assistants` team - see
+    bootstrap_course.FACULTY_TEAMS), so the fallback can't distinguish TAs from
+    instructors; declare a `people:` block to get separate TA cards."""
     override = _people_from_meta(meta or {})
     if override is not None:
         instructors, tas = override
-        note = "declared in the .github/dsl-course.yml `people:` block"
+        note = "declared in the `people:` block"
     else:
-        instructors = [(*t, "") for t in _team_people(course_org, "instructors")]
+        instructors = [(*t, "") for t in _team_people(org, "instructors")]
         tas = []
-        note = "auto-generated from the course org's instructors team"
+        note = "auto-generated from the org's instructors team"
+    if not include_tas:
+        tas = []
 
     def block(items: list[tuple]) -> str:
         if not items:
@@ -370,8 +374,9 @@ def sync_site(course_org: str, cohort_org: str) -> int:
         meta = yaml.safe_load(meta_raw) if meta_raw else {}
         meta = meta if isinstance(meta, dict) else {}
         # Schedule is cohort-specific (it varies by year), so it comes from the cohort's
-        # own classroom-config/schedule.yml. People (instructors/TAs) no longer live
-        # here - see the COURSE org's `meta` above, read by _people_yaml below.
+        # own classroom-config/schedule.yml. So do this cohort's instructors/TAs - read
+        # from its own classroom-config/people.yml below, NOT the course org (whose
+        # dsl-course.yml carries only the multi-year instructor cards).
         sched = schedule.load(cohort_org)
         if sched.semester_start:
             start = sched.semester_start
@@ -389,12 +394,17 @@ def sync_site(course_org: str, cohort_org: str) -> int:
                 cfg = _set_config(cfg, "course_code", str(meta["course_code"]))
             cfg_path.write_text(cfg)
 
-        # People: regenerate _data/people.yml from the COURSE org's declared `people:`
-        # block (instructors/TAs are the course org's SSOT, not per-cohort - see
-        # bootstrap_course._FACULTY_BLOCK), else fall back to its instructors team.
+        # People: regenerate _data/people.yml from this cohort's own
+        # classroom-config/people.yml (instructors AND TAs - the per-cohort teaching
+        # team; see bootstrap_course._PEOPLE_YML), else fall back to its instructors team.
+        cohort_people_raw = (
+            get_file_content(cohort_org, "classroom-config", "people.yml") or ""
+        )
+        cohort_people = yaml.safe_load(cohort_people_raw) if cohort_people_raw else {}
+        cohort_people = cohort_people if isinstance(cohort_people, dict) else {}
         data_dir = wd / "_data"
         data_dir.mkdir(exist_ok=True)
-        (data_dir / "people.yml").write_text(_people_yaml(course_org, meta))
+        (data_dir / "people.yml").write_text(_people_yaml(cohort_org, cohort_people))
 
         # Exam rows render red via the template's schedule_row_exam.html. Use faculty
         # dates from schedule.yml; else stub mid/end dates of a ~15-week semester
@@ -640,10 +650,14 @@ def sync_public_site(
             cfg = _set_config(cfg, "course_semester", "Open Courseware")
             cfg_path.write_text(cfg)
 
-        # People from the declared `people:` block (else the GitHub teams).
+        # People from the course org's declared `people:` block (else the GitHub teams).
+        # Instructors only - the open-courseware site is multi-year, and TAs are declared
+        # per cohort (in each cohort's classroom-config/people.yml), never course-level.
         data_dir = site_wd / "_data"
         data_dir.mkdir(exist_ok=True)
-        (data_dir / "people.yml").write_text(_people_yaml(course_org, meta))
+        (data_dir / "people.yml").write_text(
+            _people_yaml(course_org, meta, include_tas=False)
+        )
 
         # Lectures + readings only: regen _lectures, and clear _assignments/_events so any
         # template placeholders (and content from a previous run) don't appear publicly.

@@ -24,6 +24,29 @@ def test_slug():
     assert site._slug("") == "exam"
 
 
+_PEOPLE_META = {
+    "people": {
+        "instructors": [{"name": "Prof. Jane", "photo": "j.jpg", "url": "u/jane"}],
+        "teaching_assistants": [{"name": "Alex TA", "photo": "a.jpg", "url": "u/alex"}],
+    }
+}
+
+
+def test_people_yaml_cohort_includes_tas():
+    # The cohort site reads its own people.yml and renders instructors AND TAs.
+    out = site._people_yaml("Some-Cohort-f2026", _PEOPLE_META)
+    assert "Prof. Jane" in out
+    assert "Alex TA" in out
+
+
+def test_people_yaml_course_site_drops_tas():
+    # The multi-year open-courseware site shows instructors only - TAs are cohort-only.
+    out = site._people_yaml("Some-Course", _PEOPLE_META, include_tas=False)
+    assert "Prof. Jane" in out
+    assert "Alex TA" not in out
+    assert "teaching_assistants:" in out  # the (now empty) key is still emitted
+
+
 def test_set_config_replaces_only_the_named_key():
     cfg = 'course_name: "old"\ncourse_code: "X"\n'
     out = site._set_config(cfg, "course_name", "Deep Learning")
