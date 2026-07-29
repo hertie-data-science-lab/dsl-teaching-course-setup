@@ -9,6 +9,11 @@ student**, autograder included.
 - A bootstrapped [cohort](04-new-cohort-org.md) with [students onboarded](05-enrol-students-to-cohort.md) -
   one repo is generated per onboarded student.
 
+**Schedule it instead of clicking it.** An `assignment:` entry in the cohort's
+`schedule.yml` `materials_releases` plan does exactly what the button does, at the datetime
+you gave it - see [Release materials → the schedule does the work](06-release-materials-to-cohort.md#the-schedule-does-the-work).
+Use the button for an early or ad-hoc hand-out.
+
 ## Release assignment
 
 Course `.github` → **Actions** →
@@ -19,10 +24,12 @@ Two stages:
 2. **Generate** one **private** `<slug>-<handle>` repo per onboarded student (student added as
    collaborator). The autograder rides along.
 
-`include_solution` pushes the template's `solution` branch into each student repo (default off).
+Other inputs, all default **off**: `include_solution` (also push the template's `solution`
+branch into each student repo), `group` (one shared repo per **team** from `teams.csv` instead
+of one per student - see [Enrol students → groups](05-enrol-students-to-cohort.md#group-assignments-optional)),
+`dry_run` (list the repos that *would* be created).
 
-> Group projects (`grading.yml` `type: group`) release one shared repo per **team** instead of
-> per student - see [Enrol students → groups](05-enrol-students-to-cohort.md#group-assignments-optional).
+Auditors (`role=auditor` on the roster) are skipped - read-only means no assignment repo.
 
 ## Deadlines
 
@@ -40,10 +47,15 @@ assignments:
 - **The due date students see** (cohort site schedule + the brief's "due" event) is
   `assignments[slug].due` (23:59 that day). Edit → commit → **Sync site**. Omit it and the
   date is **synthesised** (fortnightly).
-- **The grading pin** (which commit the autograder marks) is that **same date + `grace_days`** -
-  there is **no separate deadline input** on the Grade assignment button. `grace_days` is the one
-  knob for a quiet grace period: grade later than the published date without changing what
-  students were told.
+- **The grading deadline** is that **same date + `grace_days`** - there is **no separate
+  deadline input** on the Grade assignment button. `grace_days` is the one knob for a quiet
+  grace period: grade later than the published date without changing what students were told.
+- **The commit that gets graded** is frozen for you. Shortly after the grading deadline
+  passes, the hourly cron records each submission repo's HEAD into
+  `classroom-config/snapshots/<slug>.csv` (`repo,sha,recorded_at`) using the **server's**
+  clock - a git committer date is client-supplied, so a backdated late push would otherwise
+  slip past. The file is **write-once**: later pushes can't move the pin. To deliberately
+  re-freeze (e.g. repos were provisioned late), delete the CSV and the next tick rebuilds it.
 
 ## The site
 
@@ -51,9 +63,7 @@ Releases call **Sync site** automatically (the assignment brief appears on the c
 
 ## Next
 
-- Grading: **Grade assignment** → **Sync gradebooks** → **Render grades** → **Distribute
-  grades**. The grade contract (`classroom-config/grades/<assignment>.csv`) is in
-  [required-input-schema.md](required-input-schema.md).
+- [Grade and return the assignment](08-grade-and-return-assignments.md).
 
 ---
 **Demo:** per-student repos in [`DSL-Demo-f2026`](https://github.com/DSL-Demo-f2026).

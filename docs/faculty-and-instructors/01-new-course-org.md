@@ -36,46 +36,39 @@ serves every future cohort (year). Per-year setup is [New cohort org](04-new-coh
    This creates everything below ([What it creates](#what-it-creates)) and is idempotent -
    safe to re-run.
 
-4. **Confirm admin access in the course org.** Membership is **not** automatic. If you
-   passed handle(s) as `admin` in step 3 they're added to `course-admin` (course-wide, admin
-   rights) **and** declared in `.github/dsl-course.yml`'s `people.course_admins` (so a later
-   sync keeps them). Otherwise declare `course_admins` in that block (step 5) and run
-   **Sync membership** - or, for a one-off, an org owner adds you via the Teams page directly.
+4. **Confirm admin access.** Membership is **not** automatic. Handles passed as `admin` in
+   step 3 are added to `course-admin` **and** declared in `.github/dsl-course.yml`'s
+   `people.course_admins`, so a later sync keeps them. To add more later, edit that block and
+   run **Sync membership**.
 
-   > ⚠️ **Each admin handle gets an org invite that stays `pending` until that person
-   > accepts.** You (your own handle) accept your own invite; a co-admin (e.g. a colleague)
-   > must accept theirs before they show as a member or can run the buttons - they look
-   > "not added" until then. GitHub's member list only shows *accepted* members, so check
-   > *People → Pending invitations* if someone seems missing.
+   > ⚠️ **Each admin handle gets an org invite that stays `pending` until that person accepts**,
+   > and GitHub's member list only shows *accepted* members - check *People → Pending
+   > invitations* if someone looks missing.
 
-   **TAs/co-instructors are not granted access here** - most cohorts have different
-   lecturers/TAs, so each cohort declares its own in `classroom-config/people.yml` once you
-   [bootstrap that cohort](04-new-cohort-org.md). (The course-org `dsl-course.yml` *does*
-   carry an optional `instructors` / `teaching_assistants` block, but that is **display-only**
-   website-card data - it grants no access.)
+   **TAs/co-instructors are not granted access here.** Most cohorts have different lecturers and
+   TAs, so each cohort declares its own in `classroom-config/people.yml` when you
+   [bootstrap that cohort](04-new-cohort-org.md).
 
-5. *(optional)* **Adjust the identity card.** Bootstrap writes `.github/dsl-course.yml` from
-   your inputs: course identity, your `course_admins` (live if you passed `admin`, otherwise a
-   commented template), and a commented **website-card** scaffold for `instructors` /
-   `teaching_assistants` (name/photo/title/link shown on the course + cohort sites - no
-   access). Uncomment the cards to show your teaching team on the websites. If you edit the
-   file (web UI → commit to `main`), run **Refresh actions** to rebuild the profile README.
+5. *(optional)* **Adjust the identity card.** Bootstrap writes `.github/dsl-course.yml`:
+   identity, your `course_admins`, and a commented `instructors`/`teaching_assistants` scaffold
+   that is **display-only** (name/photo/title/link for the public course site's cards - no
+   access anywhere). Uncomment to show your teaching team. After editing (web UI → commit to
+   `main`), run **Refresh actions** to rebuild the profile README.
 
 ## What it creates
 
 In the org's **`.github`** repo (public):
 
-- **All faculty & instructors buttons** in the Actions tab (New materials/assignment, Refresh, Bootstrap
-  cohort, Release, Sync, Grade, …) - seeded from the [central toolkit](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup).
+- **Every button** in the Actions tab - see the [actions reference](actions-reference.md).
 - **`dsl-course.yml`** - the identity card (editable).
-- **`README.md`** - an orientation page (editable/deletable - you're reading the long-form version of it here).
+- **`README.md`** - an orientation page (editable/deletable - this doc is its long-form version).
 - **`profile/README.md`** - the org landing page (auto-generated; don't hand-edit).
 
-Plus, org-wide: the **`instructors` / `course-admin` teams** (`course-admin` → admin on
-`.github`, reconciled from this org's `people:` block - `instructors` is created but left
-unreconciled, since instructors are now declared per cohort; see
-[ARCHITECTURE → Access model](../admin/architecture.md#access-model--two-populations)),
-**2FA enforcement**, and the **`DSL_BOT_TOKEN`** org secret (scoped to `.github`).
+Plus, org-wide: the **`course-admin`** team (admin on `.github`, reconciled from this org's
+`people:` block) and a generic **`instructors`** team (created but left unreconciled, since
+instructors are declared per cohort - see
+[ARCHITECTURE → Access model](../admin/architecture.md#access-model--two-populations)); **2FA
+enforcement**; and the **`DSL_BOT_TOKEN`** org secret (scoped to `.github`).
 
 ```mermaid
 flowchart LR

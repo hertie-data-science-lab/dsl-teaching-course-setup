@@ -1,17 +1,17 @@
 # example-course - a worked dummy course for demos
 
 A complete, ready-to-deploy **dummy course** that exercises the whole engine end to end:
-materials, two assignments, a roster, instructor/TA cards, and an auto-generated cohort
-website with a **real schedule**. Use it two ways:
+materials, a growing lecture package, three assignments (one group project), a roster with an
+auditor, instructor/TA cards, and a full term's auto-release schedule. Use it two ways:
 
-- **Artifact A - the live reference demo.** Deploy this dataset to the demo org pair below,
-  then send faculty & instructors the links (the site + the Actions tab). They click a finished thing - no
-  setup on their end. This is also the script for a live walkthrough.
-- **Artifact B - self-serve.** A faculty & instructors member follows the same steps to stand up *their
-  own* course and feel the workflow. Same dataset, same runbook.
+- **The live reference demo.** Deploy this dataset to the demo org pair below, then send people
+  the links (the site + the Actions tab). They click a finished thing. Also the script for a
+  live walkthrough.
+- **Self-serve.** Follow the same steps to stand up *your own* course and feel the workflow.
 
-The canonical, engine-wide input reference is [`docs/required-input-schema.md`](../docs/faculty-and-instructors/required-input-schema.md).
-This file is the demo-specific concretisation of it.
+The engine-wide input reference is
+[`required-input-schema.md`](../docs/faculty-and-instructors/required-input-schema.md); this file
+is the demo-specific concretisation of it.
 
 ## The demo orgs
 
@@ -25,68 +25,62 @@ This file is the demo-specific concretisation of it.
 ```
 example-course/
   course-org/
-    dsl-course.yml                  # course identity + course_admins (the SSOT) + display-only instructor/TA cards
+    dsl-course.yml                  # course identity + course_admins (SSOT) + display-only cards
     course-materials-f2026/
-      lectures/01_week-1../05_week-5/  # 5 sessions (ordinal-prefixed dirs; slides.md + a code demo each)
+      lectures/01_week-1../05_week-5/  # 5 sessions (slides.md + a code demo each)
       readings/01_week-1../05_week-5/  # 5 sessions of placeholder readings
       syllabus.md
-    lecture-code-f2026/mlpkg/       # a growing package, disclosed module-by-module (release_code)
-    assignment-1-f2026/             # individual (.py)
-      main/                         #   -> main branch: README brief + starter.py
-      solution/                     #   -> solution branch: solution/ + grading.yml + hidden tests/
-    assignment-2-f2026/             # individual (notebook): main/ + solution/
-    assignment-4-project-f2026/     # GROUP project: main/ + solution/ (grading.yml type: group)
+    lecture-code-f2026/mlpkg/       # a growing package, disclosed module-by-module
+    assignment-1-f2026/             # individual (.py)      main/ + solution/
+    assignment-2-f2026/             # individual (notebook) main/ + solution/
+    assignment-4-project-f2026/     # GROUP project         main/ + solution/
   cohort-org/
-    students.csv                    # 4 dummy students + 1 auditor (handles blank - filled on onboard)
+    students.csv                    # 4 students + 1 auditor (handles blank until they onboard)
     teams.csv                       # team membership for the group project
-    schedule.yml                    # the auto-release plan (materials_releases) + due dates + exams
+    schedule.yml                    # the full term: materials_releases + due dates + exams
     people.yml                      # this cohort's own instructors/TAs (real push access)
-    grades/*.csv                    # per-assignment faculty & instructors grade tables (auto/manual/final)
+    grades/*.csv                    # per-assignment grade tables (auto/manual/final)
 ```
 
-> **Assignment layout:** each `assignment-*/` splits into `main/` (-> the repo's `main` branch,
-> what students get) and `solution/` (-> the `solution` branch: the model solution, `grading.yml`,
-> and the HIDDEN `tests/` the faculty-side **Grade assignment** runs). Student repos never get `solution/`.
+> **Assignment layout:** each `assignment-*/` splits into `main/` (→ the repo's `main` branch,
+> what students get) and `solution/` (→ the `solution` branch: model solution, `grading.yml`, and
+> the HIDDEN `tests/` that **Grade assignment** runs). Student repos never get `solution/`.
 
 ## Deploy it (≈20 min)
 
-Prereqs: the bot account is an **owner** of both demo orgs, and `DSL_BOT_TOKEN`
-(`repo` + `admin:org` + `workflow`) is available. See [the token section](../docs/faculty-and-instructors/required-input-schema.md#token).
+Prereqs: the bot is an **owner** of both demo orgs and `DSL_BOT_TOKEN` (`repo` + `admin:org` +
+`workflow`) is set. See [Token](../docs/faculty-and-instructors/required-input-schema.md#token).
 
-1. **Create** `Hertie-DSL-Demo` and `DSL-Demo-f2026` in the GitHub web UI; add the bot as
-   owner of each. *(The only manual step - there is no org-creation API.)*
+1. **Create** `Hertie-DSL-Demo` and `DSL-Demo-f2026` in the web UI; add the bot as owner of
+   each. *(The only manual step - there is no org-creation API.)*
 2. This repo → Actions → **Bootstrap Course Org**: `org=Hertie-DSL-Demo`,
-   `org_name=DSL Demo Course`, `course_name=Deep Learning (Demo)`, `course_code=GRAD-DEMO`,
-   `set_secret=true`.
-3. Copy this dataset's [`course-org/dsl-course.yml`](course-org/dsl-course.yml) into
-   `Hertie-DSL-Demo/.github/dsl-course.yml` (web editor is fine). It declares
-   `course_admins` (real, course-wide access) plus **display-only** instructor/TA cards
-   (headshots + bio links) - so the site shows intended cards, not GitHub avatars. Real
-   instructor/TA push access comes from the cohort's own `people.yml` instead (step 8).
-4. **New materials repo** (`tag=f2026`), then push the contents of `course-org/course-materials-f2026/`
-   into it (lectures/readings/syllabus).
-5. **New assignment** twice (`number=1` then `2`, `tag=f2026`), then push each
-   `course-org/assignment-N-f2026/` (README brief + `starter.py`) into the matching template.
+   `org_name=DSL Demo Course`, `course_code=GRAD-DEMO`, `set_secret=true`.
+3. Copy [`course-org/dsl-course.yml`](course-org/dsl-course.yml) into
+   `Hertie-DSL-Demo/.github/dsl-course.yml`. It declares `course_admins` (real, course-wide
+   access) plus **display-only** cards for the public course site. Real instructor/TA push
+   access comes from the cohort's own `people.yml` (step 8).
+4. **New materials repo** (`tag=f2026`), then push `course-org/course-materials-f2026/` into it.
+5. **New assignment** for `number=1`, `2` and `4-project` (`tag=f2026`), then push each
+   `course-org/assignment-*-f2026/main/` and `/solution/` to the matching branches.
 6. **Refresh actions** (populates dropdowns + propagates the repo secret).
 7. **Bootstrap cohort**: `cohort_org=DSL-Demo-f2026`.
-8. Replace the starter row in `DSL-Demo-f2026/classroom-config/students.csv` with
-   `cohort-org/students.csv`, and copy this dataset's
-   [`cohort-org/schedule.yml`](cohort-org/schedule.yml) into
-   `DSL-Demo-f2026/classroom-config/schedule.yml` - the release calendar (Scheduled release
-   cron) and the **schedule** (real due/exam dates), so the site shows intended dates, not
-   synthesised ones. Also copy [`cohort-org/people.yml`](cohort-org/people.yml) into
-   `DSL-Demo-f2026/classroom-config/people.yml` - this cohort's real instructor/TA push
-   access (a `instructors-f2026` team on the course org, scoped to this year's repos).
-9. **Release materials** for sessions 1-5 (the `01_week-1` ... `05_week-5` directories). **Release assignment** for `assignment-1`.
-10. **Sync site** (releases also trigger it).
+8. Copy this dataset's `cohort-org/` files into `DSL-Demo-f2026/classroom-config/`:
+   [`schedule.yml`](cohort-org/schedule.yml) (the term's release plan + real due/exam dates),
+   [`students.csv`](cohort-org/students.csv), [`people.yml`](cohort-org/people.yml),
+   [`teams.csv`](cohort-org/teams.csv).
+9. **Send enrolment codes** for the cohort - untick `dry_run` to actually email them.
+10. Nothing else. The hourly **Scheduled release** cron works through `schedule.yml`: weeks 1-5
+    of lectures + readings, the `mlpkg` subpackages, assignments 1 and 2, and the three
+    post-deadline autograde runs. Use **Release materials** / **Release assignment** only to
+    jump ahead of the schedule for a demo.
 
 ## What this stands up
 
-- **The site:** `https://dsl-demo-f2026.github.io` - course name, semester, instructor/TA
-  cards, sessions 1-3 lectures linking the released files, two assignment briefs, and a schedule
-  with the **real dates** from step 8 (Assignment 1 due 13 Oct, MidTerm 3 Nov, Final 15 Dec).
-- **The console:** `Hertie-DSL-Demo/.github` Actions tab - every faculty & instructors button.
-- **Onboarding:** open a **Join** issue in `DSL-Demo-f2026/welcome`, type a student ID from
-  the roster (e.g. `220001`), and watch the onboard action enrol you. *(Only IDs whose row
-  you can claim with a real GitHub account run fully end-to-end - the dummy rows have blank
-  handles until someone joins.)*
+- **The site:** `https://dsl-demo-f2026.github.io` - course name, semester, instructor/TA cards
+  from the cohort's `people.yml`, lecture entries linking the released files, the assignment
+  briefs, and a schedule with the real dates (Assignment 1 due 13 Oct, MidTerm 3 Nov, Final
+  15 Dec at 14:00).
+- **The console:** `Hertie-DSL-Demo/.github` Actions tab - every button.
+- **Onboarding:** open a **Join** issue in `DSL-Demo-f2026/welcome` and paste the `enrol_code`
+  that step 9 wrote onto a roster row. Try Eve Evans' code to see the **auditor** path: read
+  access to the released materials, no assignment repo, no gradebook.

@@ -3,18 +3,11 @@
 Step-by-step runbooks for the faculty- and instructor-facing processes, end to end. Each is a
 button (GitHub Actions) plus, where noted, a `git push` of your own content.
 
-> **Read these workflows first.** They are the primary guide. The
-> [deployment checklist](required-input-schema.md#deployment-checklist) and
-> [input schema](required-input-schema.md) are *references* to reach for once you know the
-> flow - not the starting point.
-
-> The process is **self-documenting at the time of use** - each step generates READMEs or
-> placeholder files that tell you what to do next. These docs are the **full E2E overview**
-> so you can see the whole path before you start.
->
-> For the *what-goes-where* data contract (column schemas, file layouts), see
-> [`required-input-schema.md`](required-input-schema.md). These workflow docs are the
-> **how/when**; that one is the **what**.
+> **Read these first.** They are the **how/when**. The
+> [input schema](required-input-schema.md) is the **what** (column schemas, file layouts) - a
+> reference to reach for once you know the flow, not a starting point. Each step is also
+> self-documenting at the time of use: it generates READMEs and placeholders telling you what
+> comes next.
 
 ## The two tiers
 
@@ -42,17 +35,19 @@ flowchart TD
 
   subgraph COHORT["Cohort org (once / year)"]
     E["<b>New cohort org</b><br/>create + bootstrap"]
-    F["<b>Enrol students</b><br/>Join issue + Sync membership"]
+    S["<b>Fill schedule.yml</b><br/>the whole term, up front"]
+    F["<b>Enrol students</b><br/>Send enrolment codes + Join issue"]
+    E --> S
     E --> F
   end
 
   B --> E
-  C --> G["<b>Release materials</b> → cohort"]
-  D --> H["<b>Release assignment</b> → cohort"]
-  E --> G
-  E --> H
+  C --> G["<b>Release</b> materials + assignments<br/>(hourly cron, from the schedule)"]
+  D --> G
+  S --> G
+  F --> G
   G --> I["Sync site (automatic)"]
-  H --> I
+  G --> J["<b>Grade + return</b><br/>autograde → marks → preview → distribute"]
 ```
 
 ## Who can run what (access)
@@ -62,30 +57,33 @@ Two separate populations - neither ever holds the bot token:
 | Button | Gated by | Where it lives |
 |--------|----------|----------------|
 | **Bootstrap Course Org** | `faculty` / `admin` team in **`hertie-data-science-lab`** | [central repo Actions](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions) |
-| Every **course button** (New materials/assignment, Refresh, Bootstrap cohort, Release, Sync) | write on the course org's `.github` → its **`instructors`** / **`course-admin`** team | the course org's `.github` Actions tab |
+| Every **course button** | write on the course org's `.github` - i.e. its **`course-admin`** team (`course_admins`) or an **`instructors-<tag>`** team (a cohort's own `people.yml`) | the course org's `.github` Actions tab |
 
-Team membership is **not** automatic - an org owner/admin adds you (see each workflow's
-prerequisites). The bot account (`hertie-dsl-bot`) must be an **Owner** of every org; that is
-the one irreducible manual prerequisite (no org-creation API).
+Neither is automatic - you're declared in a config file and **Sync membership** grants it, then
+you accept a one-time org invite. Detail:
+[admin-setup → who can run which action](../admin/admin-setup.md#who-can-run-which-action).
+The bot (`hertie-dsl-bot`) must be an **Owner** of every org - the one irreducible manual
+prerequisite (no org-creation API).
 
 ## The workflows
 
-Numbered in reading order:
-
-All **course-level** workflows (1-3) come before the **cohort-level** ones (4-7):
+Numbered in reading order - **course-level** (1-3) before **cohort-level** (4-8):
 
 | # | Workflow | Tier | When |
 |---|----------|------|------|
 | 1 | [New course org](01-new-course-org.md) | course | once, when a course first goes on the platform |
 | 2 | [Add materials to course](02-add-materials-to-course.md) | course | per materials repo (usually once/year) |
 | 3 | [Add assignment to course](03-add-assignment-to-course.md) | course | per assignment |
-| 4 | [New cohort org](04-new-cohort-org.md) | cohort | once per year |
+| 4 | [New cohort org](04-new-cohort-org.md) | cohort | once per year - includes filling the term's schedule |
 | 5 | [Enrol students to cohort](05-enrol-students-to-cohort.md) | cohort | start of each cohort |
-| 6 | [Release materials to cohort](06-release-materials-to-cohort.md) | cohort | per-session cadence |
-| 7 | [Release assignment to cohort](07-release-assignment-to-cohort.md) | cohort | per assignment, once students have onboarded |
+| 6 | [Release materials to cohort](06-release-materials-to-cohort.md) | cohort | scheduled; the button is for ad-hoc release |
+| 7 | [Release assignment to cohort](07-release-assignment-to-cohort.md) | cohort | scheduled; the button is for ad-hoc hand-out |
+| 8 | [Grade and return assignments](08-grade-and-return-assignments.md) | cohort | per assignment, after the deadline |
 
-For a one-page summary of **every button** (not the step-by-step flow), see
-[`actions-reference.md`](actions-reference.md).
+Fill in step 4's `schedule.yml` for the whole term and the hourly cron does 6, 7 and the
+autograde half of 8 for you.
+
+For a one-page summary of **every button**, see [`actions-reference.md`](actions-reference.md).
 
 ## Demo orgs (live reference)
 
