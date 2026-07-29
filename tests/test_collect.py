@@ -5,7 +5,11 @@ strategy: cover the pure logic, not the fan-out).
 
 from __future__ import annotations
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 from dsl_course import collect
+from dsl_course.schedule import Schedule
 
 
 def test_parse_grading_spec_defaults_and_overrides():
@@ -52,3 +56,19 @@ def test_summary_lines_use_tick_cross_not_emoji():
     text = "\n".join(collect.summary_lines(result))
     assert "✓ a" in text and "✗ b" in text
     assert "✅" not in text and "❌" not in text
+
+
+def test_today_in_cohort_tz_follows_the_schedule_timezone():
+    # The fallback grading pin must anchor to the COHORT's timezone, not the (UTC)
+    # Actions runner: +14 and -11 are always different calendar days, so a single
+    # runner-local date() cannot be right for both.
+    east = collect._today_in_cohort_tz(Schedule(timezone="Pacific/Kiritimati"))
+    west = collect._today_in_cohort_tz(Schedule(timezone="Pacific/Niue"))
+    assert east != west
+    assert east == datetime.now(ZoneInfo("Pacific/Kiritimati")).date().isoformat()
+
+
+def test_today_in_cohort_tz_defaults_to_berlin():
+    berlin = datetime.now(ZoneInfo("Europe/Berlin")).date().isoformat()
+    assert collect._today_in_cohort_tz(Schedule()) == berlin  # no timezone declared
+    assert collect._today_in_cohort_tz(Schedule(timezone="Nowhere/Fake")) == berlin

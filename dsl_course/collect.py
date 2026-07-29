@@ -40,7 +40,7 @@ import subprocess
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
-from datetime import date
+from datetime import datetime
 from pathlib import Path
 
 import yaml
@@ -216,9 +216,12 @@ def _grade_target(
         return result
 
 
-def _scheduled_deadline(cohort_org: str, slug: str) -> str | None:
-    """Grading deadline from the cohort's classroom-config/schedule.yml (the SSOT)."""
-    return schedule.grading_deadline(schedule.load(cohort_org), slug)
+def _today_in_cohort_tz(sched: schedule.Schedule) -> str:
+    """Today's date in the COHORT's timezone (schedule.yml `timezone`, default
+    Europe/Berlin) - the last-resort grading pin for an unscheduled assignment. The
+    Actions runner is UTC, so its own `date.today()` can be a day behind Berlin
+    (00:00-02:00 local) and pin the grading to the wrong day."""
+    return datetime.now(schedule._tz(sched.timezone)).date().isoformat()
 
 
 def collect(
@@ -236,9 +239,13 @@ def collect(
         return 1
     slug = assignment_slug(template)
     # SSOT: default the grading pin to the cohort schedule's due date (+ grace_days); an
-    # explicit `deadline` (CLI override) wins; fall back to today only if unscheduled.
+    # explicit `deadline` (CLI override) wins; fall back to today - in the cohort's own
+    # timezone, like every other date here - only if unscheduled.
+    sched = schedule.load(cohort_org)
     deadline = (
-        deadline or _scheduled_deadline(cohort_org, slug) or date.today().isoformat()
+        deadline
+        or schedule.grading_deadline(sched, slug)
+        or _today_in_cohort_tz(sched)
     )
 
     with tempfile.TemporaryDirectory() as sd:
