@@ -1,15 +1,17 @@
 # Architecture & workflows
 
 Admin / developer reference - **how the system is built and how the pieces move**. For the
-faculty-facing overview see the [root README](../../README.md); for operational specifics (exact
-PAT scopes, how to grant access) see [admin-setup.md](admin-setup.md).
+faculty-facing overview see the [root README](../../README.md); for operational specifics (PAT
+scopes, granting access) see [admin-setup.md](admin-setup.md).
 
 - [System overview](#system-overview)
 - [The bot identity](#the-bot-identity)
 - [Token & secret propagation](#token--secret-propagation)
 - [Access model — two populations](#access-model--two-populations)
 - [Core workflows](#core-workflows)
+- [The scheduler](#the-scheduler)
 - [Dynamic dropdowns](#dynamic-dropdowns)
+- [Repo discovery](#repo-discovery)
 - [Cohort website](#cohort-website)
 - [Course website (open courseware)](#course-website-open-courseware)
 - [Bot lifecycle — setup & rotation](#bot-lifecycle--setup--rotation)
@@ -35,7 +37,7 @@ flowchart TB
   end
   subgraph cohort["COHORT org — per year"]
     wel["welcome<br/>Join issue → onboard"]
-    ros["classroom-config<br/>students.csv roster"]
+    ros["classroom-config<br/>roster, teams, grades, snapshots, schedule, people"]
     cmat["materials<br/>released lectures/readings"]
     stu["slug-handle<br/>one private repo per student"]
     site["org.github.io<br/>auto-deployed website"]
@@ -49,13 +51,10 @@ flowchart TB
 
 ## The bot identity
 
-Every button runs server-side under **one** credential, `DSL_BOT_TOKEN` - "the bot".
-**Faculty & instructors never hold or see it**; they trigger the Actions buttons, which run as the bot.
-
-The bot is the shared service account **`hertie-dsl-bot`** - its own email + 2FA, **Owner of
-every course and cohort org**, and its classic PAT is `DSL_BOT_TOKEN`. One account, one token,
-rotated centrally; nobody shares the password. Exact PAT scopes are in
-[ADMIN-SETUP](admin-setup.md#the-bot-account); standing it up and rotating it is the
+Every button runs server-side under **one** credential, `DSL_BOT_TOKEN` - the shared service
+account **`hertie-dsl-bot`**, Owner of every course and cohort org. Faculty and instructors
+never hold or see it; they click buttons, which run as the bot. Which account and its exact PAT
+scopes: [ADMIN-SETUP](admin-setup.md#the-bot-account). Standing it up and rotating it:
 [Bot lifecycle](#bot-lifecycle--setup--rotation).
 
 ## Token & secret propagation
@@ -76,11 +75,11 @@ Why two paths, and why `selected` visibility:
 
 - On the **GitHub Free plan, org secrets don't reach private repos** - so the private content
   repos get a **repo** secret, set by **Refresh actions**.
-- An org secret with the gh-default `private` visibility doesn't reach **public** repos either
-  - and `.github` / `welcome` are public. So the **org** secret is scoped
-  **`visibility=selected → .github`** (plus `welcome` on cohort orgs), which reaches the
-  public infra repos while keeping the org-admin token **out of** student/content repos
-  (`set_org_secret`). `visibility=all` would expose it to every workflow in the org.
+- An org secret with the gh-default `private` visibility doesn't reach **public** repos either,
+  and `.github` / `welcome` are public. So the **org** secret is scoped
+  **`visibility=selected → .github`** (plus `welcome` on cohort orgs), which reaches the public
+  infra repos while keeping the org-admin token **out of** student/content repos.
+  `visibility=all` would expose it to every workflow in the org.
 - On GitHub Team/Enterprise, org secrets reach private repos and this propagation is unnecessary.
 
 ## Access model — two populations
@@ -103,19 +102,18 @@ flowchart TD
 
 - **Provisioning** is a DSL-wide authority: the central `faculty`/`admin` teams, granted
   write/admin on the central repo, may run **Bootstrap Course Org**. Nothing else.
-- **Running a course's buttons** is **per-course**, split by role: `course_admins`
-  (course-wide, admin rights, declared once on the course org and mirrored into every
-  cohort's own `course-admin` team) and `instructors`/`teaching_assistants`
-  (per-cohort, push rights - most cohorts have different lecturers/TAs, so each cohort
-  declares its own in `classroom-config/people.yml`).
-- GitHub shows "Run workflow" only to **write+** users; the seeded `check-team` re-checks repo
-  permission at run time. GitHub Teams are org-scoped (no cross-org grant exists), so
-  `sync_faculty` reconciles two independent flows: `course_admins` mirrors the SAME desired
-  membership into the course org AND every cohort org; a cohort's own `instructors`/
-  `teaching_assistants` reconcile into that cohort's own `instructors` team AND a **parallel**,
-  tag-scoped `instructors-<tag>` team on the course org (push access on just that tag's content
-  repos + `.github`) - no merge across cohorts, each tag gets its own team. Full detail + how to
-  declare people: [ADMIN-SETUP "Who can run which action"](admin-setup.md#who-can-run-which-action).
+- **Running a course's buttons** is **per-course**: `course_admins` (course-wide admin) and each
+  cohort's own `instructors`/`teaching_assistants` (per-cohort push).
+- GitHub shows "Run workflow" only to **write+** users, and the seeded `check-team` job re-checks
+  repo permission at run time. Teams are org-scoped (no cross-org grant exists), so `sync_faculty`
+  runs two independent flows: `course_admins` mirrors the same desired membership into the course
+  org AND every cohort; each cohort's people.yml reconciles into that cohort's `instructors` team
+  AND a **parallel**, tag-scoped `instructors-<tag>` team on the course org - no merge across
+  cohorts. Who-to-declare-where:
+  [ADMIN-SETUP](admin-setup.md#who-can-run-which-action).
+
+Cohort-side, students land on `students` or `auditors` per their roster `role`. Both get read on
+released materials; only `students` gets assignment repos and a gradebook.
 
 ## Core workflows
 
@@ -132,62 +130,43 @@ sequenceDiagram
   A->>A: check-team — faculty/admin in central org
   A->>Bot: bootstrap_course --propagate-secret
   Bot->>Org: org settings (2FA) + role teams
-  Bot->>Org: .github profile + seed faculty & instructors buttons + course_admins in dsl-course.yml
+  Bot->>Org: .github profile + seed the buttons + course_admins in dsl-course.yml
   Bot->>Org: grant instructors/course-admin on .github
   Bot->>Org: add --admins handles to course-admin (immediate) + SSOT (durable)
   Bot->>Org: set DSL_BOT_TOKEN org secret (selected → .github)
-  Bot->>Org: build profile README
 ```
 
-`--admins` both invites those handles to `course-admin` directly (so they have access
-before any sync runs) AND seeds them into `dsl-course.yml`'s `people.course_admins` -
-the SSOT `sync_faculty` reconciles against. Skip the SSOT half and the very next sync
-(a scheduled one, or bootstrapping the next cohort) sees them as undeclared and prunes
-them right back out - if you add an admin some other way (the GitHub Teams UI, a
-one-off `gh api` call), declare them in `dsl-course.yml` too, or the next sync reverts
-it.
+`--admins` both invites those handles to `course-admin` directly (so they have access before
+any sync runs) AND seeds them into `dsl-course.yml`'s `people.course_admins` - the SSOT
+`sync_faculty` reconciles against. **Anything not in the SSOT gets pruned by the next sync**,
+so an admin added via the Teams UI or a one-off `gh api` call must also be declared in
+`dsl-course.yml`.
 
 A **cohort** is bootstrapped from the course org's own **Bootstrap cohort** button (not the
-central action) - you give it the empty cohort org's name. It runs the same `bootstrap_course`
-with `--cohort`, additionally seeding `welcome` + `classroom-config` (roster, teams, grades,
-`schedule.yml`, and `people.yml` for this cohort's own instructors/TAs), tightening
-permissions, scaffolding the website, applying the course's current `course_admins`, and
-registering the cohort in the course's `cohort-courses-pages.yml`. Note the cohort org gets
-**no `dsl-course.yml` of its own** - its `.github` repo holds only the student-facing profile
-README; all of this cohort's config lives in `classroom-config`.
+central action), given the empty cohort org's name. It runs the same `bootstrap_course` with
+`--cohort`: seeds `welcome` + `classroom-config` (roster, teams, grades, `schedule.yml`,
+`people.yml`), creates the `students` + `auditors` teams, tightens permissions, scaffolds the
+website, applies the course's current `course_admins`, registers the cohort in the course's
+`cohort-courses-pages.yml`, and writes a small `.github/dsl-course.yml` **pointer** (`course:`,
+`org:`) so the cohort-side dispatchers know which course org to fire at. All of this cohort's
+real config lives in `classroom-config`.
 
-### Release materials
+### Release
 
-```mermaid
-sequenceDiagram
-  actor F as Faculty, instructors
-  participant A as Release materials
-  participant Src as course-materials-fYYYY, course
-  participant Coh as cohort materials repo
-  F->>A: dispatch (cohort, session)
-  A->>A: check-team — repo permission
-  A->>Src: read every <section>/<NN>_.../ matching that session
-  A->>Coh: copy whole folders under that same name (private, students read)
-  Note over A,Coh: only released sessions appear, syllabus/README optional
-```
+**Materials** copies whole `<section>/<NN>_.../` folders for the chosen sessions from the course
+org into a cohort repo - private, with read for both the `students` and `auditors` teams. Only
+released sessions exist cohort-side; everything is idempotent, so re-releasing is a no-op.
 
-### Release assignment
+**Assignment** is two stages: freeze a cohort-level template from the course template's `main`
+(so a mid-term edit to the course template can't change what a cohort was handed), then generate
+one private `<slug>-<handle>` repo per onboarded, **enrolled** student from that frozen copy.
+Solutions live on the template's `solution` branch and are never shipped unless
+`include_solution` is ticked. Whether a release fans out per student or per team is the
+workflow's `group` checkbox - not anything in `grading.yml`, whose `type:` only serves as the
+autograder's fallback.
 
-```mermaid
-sequenceDiagram
-  actor F as Faculty & instructors
-  participant A as Release assignment
-  participant T as assignment template, main
-  participant CT as cohort template
-  participant S as per-student repos
-  F->>A: dispatch (cohort, assignment, include_solution?)
-  A->>CT: freeze cohort template from T (main only)
-  A->>S: generate slug-handle per student + add collaborator
-  opt include_solution ticked
-    A->>S: push template's solution branch (solution/ folder) into each
-  end
-  Note over T,S: solutions live on the solution branch — never shipped by default
-```
+Both are exposed centrally (in `.github`) and run-from-repo (in each content repo), from the
+same renderer; the run-from-repo copy drops `source_repo` and knows that repo's own sections.
 
 ### Student onboarding
 
@@ -197,18 +176,22 @@ sequenceDiagram
   participant W as welcome, Join issue
   participant O as onboard.yml
   participant R as classroom-config roster
-  St->>W: open Join issue (student id + email + GitHub handle)
-  O->>R: match + verify against the private roster
-  O->>St: grant org membership + students-team read
-  Note over O,St: a push to students.csv triggers "Sync membership" automatically, reconciling the students team from it
+  St->>W: open Join issue, paste the emailed enrol_code
+  O->>R: match the code; record issue-author handle + immutable github_id
+  O->>St: org membership + students (or auditors) team read
+  Note over O,St: a push to students.csv triggers "Sync membership", reconciling both teams
 ```
+
+The enrolment code is random and carries no personal data, so nothing in the public issue needs
+redacting; it is unguessable and single-use, so a classmate cannot bind someone else's roster
+row to their account. The handle comes from the issue **author**, so it cannot be spoofed.
 
 ### Project teams (group assignments)
 
-Group membership follows the same CSV-is-truth pattern as enrolment. `teams.csv` (in
-`classroom-config`, columns `assignment,team,github_handle`) is the **only writer surface**:
-students self-select by opening a "Join team" issue (`team-formation.yml` appends a row -
-authenticated author, one team per assignment, size-capped), and faculty & instructors can edit it directly.
+`teams.csv` (in `classroom-config`, columns `assignment,team,github_handle`) is the **only
+writer surface**: students self-select by opening a "Join team" issue (`team-formation.yml`
+appends a row - authenticated author, one team per assignment, size-capped, auditors refused),
+and faculty can edit it directly.
 
 ```mermaid
 flowchart LR
@@ -220,86 +203,115 @@ flowchart LR
 
 `sync_teams` materialises a GitHub Team `<assignment>-<team>` from the CSV - **one-way and
 idempotent**, so the Team is a downstream projection that can't drift. A push to `teams.csv`
-triggers **Sync membership** automatically, which always fully reconciles (add AND remove -
-no `--prune` toggle at that level; the CSV is the live truth). Provisioning a group assignment
-grants that team its shared repo, so post-sync membership edits propagate to access and members
-get @mentions + a team space. The cohort-wide `students` team and these per-project teams are
-all real GitHub Teams; only the CSV is authoritative.
+triggers **Sync membership**, which always fully reconciles (add AND remove - the CSV is the
+live truth).
+
+## The scheduler
+
+The intended operating mode: fill a cohort's `classroom-config/schedule.yml` once and the
+hourly **Scheduled release** cron runs the term. It calls the *same* idempotent functions the
+manual buttons do, so re-running is a no-op and there is no "already released" state to track.
+Manual `workflow_dispatch` runs default to `dry_run=true`; the cron passes no inputs and so
+releases for real. It is the one org-level workflow with no `check-team` gate - a scheduled run
+has no actor.
+
+Each hourly tick:
+
+1. **Freezes passed deadlines** - for every assignment in `assignments:` whose grading deadline
+   (`due + grace_days`) has passed and has no snapshot yet, records the commit each submission
+   repo is at into `classroom-config/snapshots/<slug>.csv` (`repo,sha,recorded_at`). This runs
+   first, so a `grade:` release firing in the same tick already sees it, and it runs whether or
+   not the cohort uses `materials_releases` at all.
+2. **Fires every release whose `when` has arrived** - `deploy` (copy a course-org path into a
+   cohort repo), `assignment` (provision student repos), `grade` (autograde).
+
+**Why snapshots.** A git committer date is entirely client-supplied (`GIT_COMMITTER_DATE`), so
+the old `git rev-list --before` pin could be defeated by backdating a late commit. The snapshot
+is recorded at a time the **server** chose and `snapshot_assignment` refuses to overwrite an
+existing file, so a later push cannot move the pin. Grading pins to the recorded sha; a blank
+sha means nothing was pushed by the deadline and scores zero; **no** snapshot file at all falls
+back to the date-based pin with a loud warning. Honest limitation: a post-deadline push carrying
+a spoofed pre-deadline date, landing before the first tick, is still captured - the backdating
+window shrinks from unlimited to ≤1h, it does not close. Deleting the CSV lets the next tick
+re-freeze deliberately.
 
 ## Dynamic dropdowns
 
 `workflow_dispatch` dropdowns are static YAML and can't depend on another input, so **Refresh
-actions** regenerates them from live state and re-pushes the workflows (no cron, no app):
-
-```mermaid
-flowchart LR
-  R["Refresh actions"] --> D["regenerate dropdowns"]
-  R --> E["re-seed run-from-repo buttons into content repos"]
-  R --> S["propagate repo secret to private content repos"]
-  R --> P["rebuild profile READMEs"]
-```
+actions** regenerates them from live state and re-pushes the workflows (no cron, no app) - the
+same run re-seeds the run-from-repo buttons, propagates the repo secret, and rebuilds the profile
+READMEs.
 
 - **cohort_org** - from the `.github/cohort-courses-pages.yml` registry.
-- **release_&lt;section&gt; / &lt;section&gt;_path** - a checkbox (default on) + a free-text
-  path field per section, capped at `MAX_RELEASE_SECTIONS` (3, and derived rather than
-  chosen - GitHub's `workflow_dispatch` caps at 10 inputs total, and each section costs
-  2, alongside cohort_org/sessions/include_root_files and, for the central button,
-  source_repo; the arithmetic lives in `release_budget.py`).
-  Leaving the path blank creates/uses a repo named after the section, at its root;
-  `repo/subpath` nests it under a folder there instead, so several sections can share
-  one repo. Named target repos are created automatically. Sections beyond the cap
-  aren't silently dropped - `cap_sections` logs which ones got left out (release them
-  directly via `python3 -m dsl_course.release --destinations`). The run-from-repo copy
-  uses this repo's own discovered sections; the central `.github` copy uses the union
-  discovered across every content repo in the org (`discover_sections_union`), since
-  it can't know which repo you'll pick until you run it - a section checked there that
-  the chosen source repo doesn't actually have simply finds nothing to release.
-- **sessions** - free text, comma and/or hyphen-range (e.g. `1,3,5-7`) - GitHub's
-  `workflow_dispatch` has no multi-select widget, and a checkbox per session would exceed
-  its 10-input cap once a course has more than a handful of sessions. The description lists
-  the sessions discovered in the source repo for reference (run-from-repo copy only).
 - **source_repo** (central only) / **assignment** - the course org's content / `assignment-*` repos.
+- **sessions** - free text, comma and/or hyphen-range (`1,3,5-7`): there is no multi-select
+  widget, and a checkbox per session would blow the input cap. The run-from-repo copy lists the
+  discovered sessions in the field description.
+- **release_&lt;section&gt; / &lt;section&gt;_path** - a checkbox (default on) + a free-text path
+  field per section, capped at `MAX_RELEASE_SECTIONS` (3). The cap is *derived*, not chosen:
+  `workflow_dispatch` allows 10 inputs and each section costs 2, alongside
+  cohort_org/sessions/include_root_files and (centrally) source_repo - the arithmetic lives in
+  `release_budget.py`. A blank path creates/uses a repo named after the section at its root;
+  `repo/subpath` nests it, so sections can share a repo. Sections beyond the cap are logged by
+  `cap_sections`, not silently dropped, and can be released with
+  `python3 -m dsl_course.release --destinations`. The run-from-repo copy uses that repo's own
+  sections; the central copy uses the union across the org, since it can't know which source repo
+  you'll pick.
+
+## Repo discovery
+
+One predicate, `discovery._is_infra_repo`, keeps infrastructure out of **both** orgs' dropdowns
+and scans - so a repo type added on one side can't leak into the other. It excludes:
+
+- names in `INFRA_REPOS` = `welcome`, `classroom-config`, `.github`;
+- anything ending `.github.io` (the generated site repos - critical, since content repos are
+  handed the org-admin token as a repo secret and would publish it to a public repo);
+- any repo carrying a topic in `INFRA_TOPICS` = `submission`, `assignment-template`, `gradebook`
+  (per-student submission repos, frozen cohort-side templates, private `grades-<handle>` repos).
+
+On top of that, `discover_content_repos` also drops `assignment-*` (equipping a template with
+the faculty workflows would copy them into every generated student repo), and
+`discover_assignments` is the inverse: `assignment-*` that are `isTemplate`. Listing is
+paginated (`orgs/<org>/repos?per_page=100`), because a cohort org holds a repo per student per
+assignment plus a gradebook each.
 
 ## Cohort website
 
 Every cohort gets an **auto-deployed website** at `<cohort-org>.github.io`, generated from
 `course-website-template` by `scaffold_site` during Bootstrap cohort. `site.py` then
-**regenerates its content from the live org structure** on every release (and via manual
-**Sync site**): the schedule lists released sessions + assignment due dates + MidTerm/Final
-exams (from `classroom-config/schedule.yml`); lecture entries link the actual released files;
-assignment briefs come from each template's README; instructor/TA **cards** come from the
-COURSE org's declared `people:` block only (falling back to its `instructors` /
-`teaching-assistants` teams if absent); the course name/semester come from the org metadata.
-Note this is display-only and separate from GitHub **access**: a cohort's own
-`classroom-config/people.yml` grants that cohort's instructors/TAs push access (see
-[Access model](#access-model--two-populations)) but does not put them on the website - only a
-course-org `people:` entry with a display `name` does that.
+regenerates its content from the live org structure on every release, on a push to
+`classroom-config/schedule.yml` (via a `repository_dispatch` from that repo), on a daily cron,
+and on manual **Sync site**. The schedule lists released sessions + assignment due dates +
+exams (from `schedule.yml`); lecture entries link the actual released files; assignment briefs
+come from each template's README; instructor/TA **cards** come from that cohort's own
+`classroom-config/people.yml` (falling back to the cohort org's `instructors` team); the course
+name/semester come from the org metadata.
+
+A push to `people.yml` fires no dispatch, so a card edit lands via the daily cron or a manual
+**Sync site**.
 
 ## Course website (open courseware)
 
 A course can **optionally** publish a **public** site at `<course-org>.github.io` via the
 **Publish course website** action (`site.sync_public_site`). It reuses the same
-`course-website-template` + `scaffold_site`, but differs from the cohort site in one
-decisive way: the cohort site *links* to files in private repos (404 for non-members, by
-design), whereas the course `course-materials-*` repos are private too, so the public site
-**hosts the shared files itself** under `public-materials/<source-repo>/session-N/...` (Jekyll
-serves any path not starting with `_`) and links to those site-relative URLs.
+`course-website-template` + `scaffold_site`, but differs from the cohort site in one decisive
+way: the cohort site *links* to files in private repos (404 for non-members, by design),
+whereas the course `course-materials-*` repos are private too, so the public site **hosts the
+shared files itself** under `public-materials/<source-repo>/session-N/...` (Jekyll serves any
+path not starting with `_`) and links to those site-relative URLs.
 
 - **Lectures** are always hosted; **readings** are either a text-only reading list
-  (`reading-list` - citations shown, no files, copyright-safe) or hosted + linked
-  (`actual-readings`). `none` skips readings.
-- **Lectures + readings only** - no assignments or exam rows.
-- **Opt-in, then automatic**: the first run scaffolds the site, later runs re-sync the chosen
-  materials repo; served files are namespaced per source repo so several years coexist.
-  Every run records its settings in the site repo (`_publish-config.yml`, `_`-prefixed so
-  Jekyll ignores it) and a daily cron re-syncs from them, so materials edits reach the
-  public site without another click. Releases and refresh **never** touch it, and the cron
-  is a no-op wherever no one has published, so a public site only exists once faculty &
-  instructors run the action.
+  (`reading-list` - citations, no files, copyright-safe) or hosted + linked
+  (`actual-readings`). `none` skips readings. Lectures + readings only - no assignments, no
+  exam rows.
+- **Opt-in, then automatic.** The first run scaffolds the site; every run records its settings
+  in `_publish-config.yml` at the site root (`_`-prefixed so Jekyll ignores it) and a daily cron
+  re-syncs from them, so materials edits reach the public site without another click. **Delete
+  `_publish-config.yml` to stop the automatic refresh.** The cron is a no-op wherever nobody has
+  published, and releases/refresh never touch it - a public site exists only once someone runs
+  the action.
 
 ## Bot lifecycle — setup & rotation
-
-Standing up the bot, and rotating its token.
 
 ```mermaid
 flowchart TD
@@ -310,62 +322,64 @@ flowchart TD
   E --> F["6 · Verify green + bot-attributed"]
 ```
 
-**Rotation:** mint a fresh PAT (step 2), set it in the central repo (step 4), re-run
-Bootstrap + Refresh (step 5), verify (step 6), then **revoke the previous PAT last**. Set a
-PAT expiry so rotation is forced.
+**Rotation:** mint a fresh PAT (2), set it in the central repo (4), re-run Bootstrap + Refresh
+(5), verify (6), then **revoke the previous PAT last** - only after *every* org verifies green
+under the new one. Set a PAT expiry so rotation is forced.
 
 **Hard rules** (ordering is not optional):
 
 - **Owner before token.** The bot must be Owner of an org *before* its PAT has admin there -
-  invite + accept (step 3) before propagating (step 5). GitHub has no API to force-add a
-  member, so the bot's invite must be accepted once.
-- **Bot must be a member of the central org.** The central Bootstrap action's `check-team`
-  gate reads `hertie-data-science-lab`'s `faculty`/`admin` teams **under `DSL_BOT_TOKEN`**, so
-  the bot's own account has to be a **member** of `hertie-data-science-lab` to see those
-  (closed) teams - otherwise the gate 404s on the lookup and **denies everyone**. Add the bot
-  as a member of the central org once (it doesn't need to be an owner there).
-- **Swap central only after a one-org test.** Setting the central secret (step 4) doesn't
-  touch existing org secrets - they stay until re-propagated - so it's safe; but prove it on
-  one org first.
-- **Never paste a token into chat, PRs, or issues.** Set it *only* via the GitHub Secrets UI.
-  A token that is exposed anywhere must be **revoked and reissued** immediately.
-- **When rotating, revoke the previous PAT last** - only after *every* org verifies green
-  under the new one, or automation breaks mid-rotation.
+  invite + accept (3) before propagating (5). GitHub has no API to force-add a member.
+- **The bot must be a member of the central org.** Bootstrap's `check-team` gate reads
+  `hertie-data-science-lab`'s (closed) `faculty`/`admin` teams **under `DSL_BOT_TOKEN`**, so
+  without that membership the lookup 404s and the gate **denies everyone**. Member is enough;
+  it needn't be an owner there.
+- **Swap central only after a one-org test.** Setting the central secret (4) doesn't touch
+  existing org secrets - they stay until re-propagated - so it's safe, but prove it on one org.
+- **Never paste a token into chat, PRs, or issues.** Set it *only* via the Secrets UI; a token
+  exposed anywhere must be **revoked and reissued** immediately.
 
 ## Code map
 
-Self-contained - workflows + their Python implementation live in this repo.
+Self-contained - workflows and their Python implementation both live in this repo.
 
-- `.github/workflows/` - `bootstrap-org` (+ the legacy create-tier); the faculty & instructors workflows are
-  rendered + seeded into the course/cohort orgs, not kept here.
-- `dsl_course/` - the package:
-  - `bootstrap_course` - configure a course or (`--cohort`) cohort org; grant button access; propagate the secret.
-  - `seed` - place the workflows (central + run-from-repo) and the `refresh` CLI; delegates
-    to four modules, a few of whose names it still re-exports (see its `__all__`; new code
-    imports from the owning module):
+- `.github/workflows/` - `bootstrap-org` (the one central button) + `refresh-inventory`
+  (weekly cron regenerating `inventory/course-orgs.md`) + `ci`. The faculty workflows are
+  *rendered* and seeded into the course/cohort orgs, not kept here.
+- `dsl_course/`:
+  - `bootstrap_course` - configure a course or (`--cohort`) cohort org; create teams; grant
+    button access; propagate the secret.
+  - `seed` - place the workflows (central + run-from-repo) and the `refresh` CLI; it delegates
+    to four modules and re-exports a few of their names (see `__all__`; new code imports from
+    the owner):
     - `workflows_render` - the workflow YAML templates + every `render_*` function;
-    - `discovery` - the cohort registry and all live org/repo/section/session discovery;
+    - `discovery` - the cohort registry and all live org/repo/section/session discovery,
+      including the shared infra-repo predicate;
     - `profile_readme` - the org landing page + the `.github` repo's own README;
-    - `release_budget` - GitHub's 10-input cap and the section-slot arithmetic under it.
-  - `release` - publish a session's materials, across every discovered section (+ optional syllabus/README), into a cohort repo.
-  - `assign` - freeze a cohort assignment template, then fan out per-student repos.
+    - `release_budget` - the 10-input cap and the section-slot arithmetic under it.
+  - `scheduler` - the hourly cron: freeze passed deadlines, then fire due releases.
+  - `schedule` - parse `schedule.yml` (timezone-aware releases, due dates, exams).
+  - `release` / `release_code` - publish a session's materials across every discovered section
+    into a cohort repo / copy one package path additively.
+  - `assign` - freeze a cohort assignment template, then fan out per-student (or per-team) repos.
+  - `collect` - the faculty-side autograder: deadline snapshots, pinned checkout, sandboxed test
+    run, `auto` scores into the grade CSV.
+  - `grades` - gradebook repos (`sync`), the preview PR (`render`), fan-out + email (`distribute`).
+  - `enrol_codes` / `mailer` - generate + email enrolment codes; Graph or SMTP transport.
   - `scaffold` - create structured materials / assignment repos + the website (cohort or course).
-  - `site` - regenerate the cohort website (`sync_site`) and the public course website (`sync_public_site`) from the live org structure.
-  - `sync_roster` / `sync_teams` - reconcile the `students` team / per-project teams from
-    `students.csv` / `teams.csv` (one-way: the CSV is truth, the GitHub Teams are the projection).
-  - `sync_faculty` - reconcile `course-admin` team membership (course org's declared
-    `people:` block - the SSOT) into the course org + every cohort's own team; and,
-    per cohort, `instructors`/`teaching_assistants` (that cohort's own declared
-    `classroom-config/people.yml`) into its own `instructors` team + a parallel,
-    tag-scoped `instructors-<tag>` team on the course org.
-  - `sync_membership` - the one consolidated entrypoint (roster + teams + faculty) that the
-    seeded **Sync membership** button/cron/dispatch all call.
-  - `roster` / `teams` - read the per-cohort `students.csv` / `teams.csv`.
+  - `site` - regenerate the cohort website (`sync_site`) and the public course website
+    (`sync_public_site` / `resync_public_site`).
+  - `sync_roster` / `sync_teams` - reconcile the `students`+`auditors` teams / per-project teams
+    from `students.csv` / `teams.csv` (one-way: the CSV is truth).
+  - `sync_faculty` - reconcile `course-admin` from the course org's `people:` SSOT into the
+    course org + every cohort; and, per cohort, its own `people.yml` into that cohort's
+    `instructors` team + a tag-scoped `instructors-<tag>` team on the course org.
+  - `sync_membership` - the one consolidated entrypoint (roster + teams + faculty) behind the
+    **Sync membership** button/cron/dispatch.
+  - `roster` / `teams` - read `students.csv` / `teams.csv`.
+  - `status` - the **Show status** per-cohort checklist.
+  - `list_orgs` - enumerate DSL course orgs by topic; drives `refresh-inventory.yml`.
   - `utils` - shared `gh`/git helpers with rate-limit backoff.
-  - `list_orgs` - the last of the legacy create-tier (older course-side model).
-    `new_semester`, `post_migrate` and `bootstrap_org` (the same vintage) have been removed -
-    `new_semester`'s hardcoded `CONTENT_FOLDERS` was the exact section-name inconsistency the
-    generic, dynamically-discovered sections now resolve.
 - `templates/` - the files bootstrap seeds into a fresh org, verbatim from disk
   (`bootstrap_course._template`), one subdirectory per destination:
   - `welcome/` - the cohort onboarding + team-formation workflows and their issue forms.

@@ -1,36 +1,48 @@
 # Faculty & instructors actions reference
 
-What each faculty & instructors button does, at a glance. They live in the **course org's `.github` Actions
-tab** (seeded at bootstrap); **Release materials** and **Release assignment** *also* live inside
-each content / assignment-template repo ("run-from-repo"), where `session` is a dropdown of
-that repo's own sessions and each discovered section gets its own include checkbox.
+Every button, one line each. They all live in the **course org's `.github` Actions tab**
+(seeded at bootstrap); **Release materials**, **Release assignment** and **Release code**
+*also* live inside each content repo ("run-from-repo"), where the inputs know that repo's own
+sections and sessions.
 
-For the **step-by-step flows** (which button, which inputs, in what order), see the
-[workflow runbooks](README.md). For the **data contract** (file layouts, CSV columns), see
-[`required-input-schema.md`](required-input-schema.md).
+For the **step-by-step flows** see the [workflow runbooks](README.md); for the **data
+contract** (file layouts, CSV columns) see [`required-input-schema.md`](required-input-schema.md).
 
-## One-time setup
+## Setup
 
-| Action | Where | Effect |
-| --- | --- | --- |
-| **Bootstrap cohort** | `.github` | Configure a pre-created cohort org (welcome + roster + tighten + website), register it, refresh. |
-| **Sync membership** | `.github` | Consolidated, fully-automatic reconcile of `students`-team access (`students.csv`), project teams (`teams.csv`), and instructors/course-admin access (this org's declared `people:` block, mirrored into every cohort). Triggers on push to any of those files (removals take effect immediately - no prune toggle) and a daily cron (catches a faculty & instructors `start`/`end` date lapsing with no edit); `workflow_dispatch` is a manual escape hatch. |
-| **New materials repo** | `.github` | Scaffold a structured `course-materials-<tag>` repo (session folders + Release buttons). |
-| **New assignment** | `.github` | Scaffold an `assignment-N-<tag>` template (starter + autograder on `main`, an empty `solution` branch). |
-| **Refresh actions** | `.github` | Re-seed the run-from-repo buttons into every content repo, propagate the repo secret, repopulate all dropdowns, rebuild the profile READMEs. _(Across all DSL-managed repos at once: [`Refresh Course Org Inventory`](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions/workflows/refresh-inventory.yml) in the central repo.)_ |
-| **Show status** | `.github` | Per-cohort checklist of everything configured (identity, people, schedule + release plan, roster, teams, grades) with a direct edit link for anything missing. Read-only. |
+| Action | Effect |
+| --- | --- |
+| **Bootstrap cohort** | Configure a pre-created cohort org: `welcome` + `classroom-config`, tighten permissions, scaffold the site, apply `course_admins`, register + refresh. |
+| **New materials repo** | Scaffold a `course-materials-<tag>` repo (session folders, `SYLLABUS.md`, the run-from-repo Release buttons). |
+| **New assignment** | Scaffold an `assignment-N-<tag>` template: brief + starter on `main`; a stub model solution, `grading.yml` and a hidden test on the `solution` branch. |
+| **Refresh actions** | Re-seed the run-from-repo buttons, propagate the repo secret, repopulate every dropdown, rebuild the profile READMEs. No inputs. _(All DSL orgs at once: [Refresh Course Orgs Inventory](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions/workflows/refresh-inventory.yml) in the central repo.)_ |
+| **Show status** | Read-only per-cohort checklist of what's configured and what's missing, with an edit link for each gap. |
+| **Sync membership** | Reconcile `students`/`auditors` teams (`students.csv`), project teams (`teams.csv`), and instructor/course-admin access (`people.yml` + the course `people:` block). Automatic on push to those files, plus a daily cron; the button is an escape hatch. |
 
-## Session cadence
+## Release
 
-| Action | Where | Effect |
-| --- | --- | --- |
-| **Release materials** | `.github` (pick source repo, type session, optionally list sections to exclude) **or** the materials repo (session dropdown, real checkboxes per section) | Copies the *whole* `<section>/<NN>_.../` folders, for every discovered section - every file - into the cohort `materials` repo (private + `students` read), nested under that same folder name. Only released sessions appear. Optional `syllabus` / `README` toggles (default off). |
-| **Release assignment** | `.github` or the materials repo | Two stages: freeze a cohort-level template repo `<slug>` from the chosen `assignment-*` template, then generate one private `<slug>-<handle>` repo per onboarded student *from that cohort template* (+ collaborator). `include_solution` pushes the template's `solution` branch into each student repo. |
-| **Grade assignment** | `.github` | Faculty-side autograder: pins each submission to the assignment's scheduled due date (`classroom-config/schedule.yml` → `assignments.<slug>.due` + `grace_days`), runs the hidden tests, records the machine score. |
-| **Sync site** | `.github` | Regenerate a cohort's website from the org structure - releases do this automatically; the standard workflow has no need for manual sync. |
+| Action | Effect |
+| --- | --- |
+| **Scheduled release** | The hourly cron that fires the cohort's `schedule.yml` `materials_releases` plan and freezes passed deadlines. Manual runs default to `dry_run=true`. |
+| **Release materials** | Copy whole `<section>/<NN>_.../` folders for the chosen `sessions` into the cohort (private, `students` + `auditors` read). Per-section checkbox + path; `include_root_files` (default off) adds syllabus + README. |
+| **Release assignment** | Freeze a cohort template from the chosen `assignment-*`, then generate one private `<slug>-<handle>` repo per onboarded student. `include_solution` / `group` / `dry_run`, all default off. |
+| **Release code** | Run from the repo holding your package: copy one path (subpackage folder or module file) into a cohort repo, additively - phased disclosure of a growing package. |
+| **Send enrolment codes** | Generate an `enrol_code` per roster row, write it back to `students.csv`, email each not-yet-onboarded student theirs. **`dry_run` defaults to `true` - nothing is written or sent until you untick it.** |
+| **Sync site** | Regenerate a cohort's website from the live org structure. Releases, a push to `schedule.yml`, and a daily cron all do this for you. |
+
+## Grades
+
+Full flow: [Grade and return assignments](08-grade-and-return-assignments.md).
+
+| Action | Effect |
+| --- | --- |
+| **Grade assignment** | Faculty-side autograder: pins each submission to the frozen deadline snapshot, runs the template's hidden tests, writes `auto`/`team_grade` into `classroom-config/grades/<slug>.csv`. No deadline input; nothing written to student repos. |
+| **Sync gradebooks** | Ensure every onboarded, enrolled student has a private `grades-<handle>` repo (student = read). Idempotent. |
+| **Render grades (preview)** | Pivot the grade CSVs into `gradebook/<handle>.yml` + a wide `cohort-gradebook.csv`, and open **one** PR in `classroom-config` - that diff is the preview. |
+| **Distribute grades** | After merging that PR: push each gradebook to the student's private repo and email them. **`dry_run` defaults to `true`**; `silent` pushes without emailing. |
 
 ## Optional: public course website
 
-| Action | Where | Effect |
-| --- | --- | --- |
-| **Publish course website** | `.github` | Build/refresh a **public** `<course-org>.github.io` site sharing this course's lectures + readings. Opt-in (first run scaffolds it), then re-synced by a daily cron from the settings that run chose. Pick a materials repo; choose readings as `reading-list` (citations only) or `actual-readings` (also host the files). Because the materials repos are private, the site **hosts** the shared files itself. Separate from the per-cohort student-gated sites; releases/refresh never touch it. |
+| Action | Effect |
+| --- | --- |
+| **Publish course website** | Build/refresh a **public** `<course-org>.github.io` sharing this course's lectures + readings. Pick a `source_repo`; `readings_mode` = `reading-list` (citations only, default), `actual-readings` (host the files) or `none`. Because the materials repos are private the site hosts the files itself. The first run opts in and records its settings in `_publish-config.yml`; a daily cron re-syncs from them - delete that file to stop. Releases and Refresh never touch it. |

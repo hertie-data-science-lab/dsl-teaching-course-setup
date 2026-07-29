@@ -23,11 +23,11 @@ flowchart TB
   end
 
   subgraph COHORT["COHORT org — e.g. Deep-Learning-f2026 (per-year)"]
-    welcome["welcome · PUBLIC<br/>Join issue → onboard.yml (enrol)"]
-    cfg["classroom-config · PRIVATE<br/>students.csv roster + grades"]
-    cmat["materials · PRIVATE<br/>released lectures/readings (students-team read)"]
+    welcome["welcome · PUBLIC<br/>Join issue → onboard.yml (paste enrolment code)"]
+    cfg["classroom-config · PRIVATE<br/>roster, teams, schedule, grades, deadline snapshots"]
+    cmat["materials · PRIVATE<br/>released lectures/readings (students + auditors read)"]
     repos["&lt;assignment&gt;-&lt;handle&gt; · PRIVATE<br/>one private repo per student (generated; autograder rides along)"]
-    team["students team · PRIVATE"]
+    team["students / auditors teams · PRIVATE"]
   end
 
   pub["&lt;course-org&gt;.github.io · PUBLIC (opt-in)<br/>open-courseware site — hosts shared lectures + readings"]
@@ -42,19 +42,20 @@ flowchart TB
 ```
 
 Each cohort gets an auto-deployed `<cohort>.github.io` site whose material links are private
-(enrolled students only). Optionally, a course can also publish a **public**
-`<course-org>.github.io` open-courseware site that shares its lectures + readings with the
-world (see [Optional: public course website](#optional-public-course-website)).
+(enrolled students and auditors only). Optionally, a course can also publish a **public**
+`<course-org>.github.io` open-courseware site sharing its lectures + readings with the world -
+see [**Publish course website**](docs/faculty-and-instructors/actions-reference.md#optional-public-course-website).
 
 ## Deploying a course
 
-Three phases - **set up the course** (once), **add a cohort** (per year), then **run it**
-(release weekly).
+Three phases - **set up the course** (once), **add a cohort** (per year), then **run it**. The
+cohort's `schedule.yml` is the operating surface: fill it in up front and an hourly cron handles
+every materials release, assignment hand-out and autograde run for the whole term. The manual
+buttons are for anything ad hoc.
 
-- **▶ Workflow runbooks — [`docs/faculty-and-instructors/`](docs/faculty-and-instructors/README.md) — start here.** The step-by-step guide, one per workflow, each naming the exact button, inputs, and order.
+- **▶ Workflow runbooks — [`docs/faculty-and-instructors/`](docs/faculty-and-instructors/README.md) — start here.** One per workflow, each naming the exact button, inputs, and order.
 - **Worked example:** [`example-course/`](example-course/README.md) - a dummy course you can stand up end to end alongside the runbooks.
-- **Input schema** (reference): [`docs/faculty-and-instructors/required-input-schema.md`](docs/faculty-and-instructors/required-input-schema.md) - the what-goes-where data contract.
-- **Deployment checklist** (reference): [tickable, deploy-ordered](docs/faculty-and-instructors/required-input-schema.md#deployment-checklist) - to track progress once you know the flow.
+- **Input schema + deployment checklist** (reference): [`required-input-schema.md`](docs/faculty-and-instructors/required-input-schema.md) - the what-goes-where data contract, and a [tickable deploy-ordered checklist](docs/faculty-and-instructors/required-input-schema.md#deployment-checklist).
 
 The only manual steps are creating each org in the GitHub web UI
 ([github.com/account/organizations/new](https://github.com/account/organizations/new) - there

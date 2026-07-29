@@ -13,11 +13,9 @@ later copies session folders from here into a cohort. One repo per year: `course
 1. **Scaffold the repo.** Course org → `.github` → **Actions** →
    [New materials repo](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/new-materials.yml),
    input `tag` = `f2026` → creates **`course-materials-f2026`** (private) with the schema the
-   downstream actions expect:
-   - empty `lectures/01_session-1/` + `readings/01_session-1/`
-   - a `README.md`,
-   - a placeholder `syllabus.md`,
-   - and the three run-from-repo Release buttons (`release-materials`, `release-assignment`, `release-code`)
+   downstream actions expect: empty `lectures/01_session-1/` + `readings/01_session-1/`, a
+   `README.md` + `MAINTAINING.md`, a placeholder `SYLLABUS.md`, and the three run-from-repo
+   Release buttons (Release materials / assignment / code).
 
    Your `instructors` team is granted **write** on the new repo automatically, so you can
    push straight away.
@@ -29,7 +27,7 @@ later copies session folders from here into a cohort. One repo per year: `course
    ```
    lectures/01_session-1/   any files - slides, demo code, notebooks …
    readings/01_session-1/   any files
-   syllabus.md              optional
+   SYLLABUS.md              optional (any root file matching *syllabus*)
    ```
 
    Only the leading ordinal (`01_`, `02_`, `03_`, ...) is meaningful - name the rest of the
