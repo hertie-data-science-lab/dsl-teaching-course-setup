@@ -7,6 +7,7 @@ answer, so the pin's every branch is pinned down here with git/gh stubbed.
 
 from __future__ import annotations
 
+import subprocess
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -183,6 +184,91 @@ def test_pin_commit_no_commit_at_all_is_none(monkeypatch):
     fake_git, _calls = _git_stub(rev_list_sha="")
     monkeypatch.setattr(collect, "git", fake_git)
     assert collect._pin_commit(Path("/repo"), "2026-10-13") is None
+
+
+# -------------------------------------------------------- notebook -> importable script
+
+_JUNIT = '<testsuite><testcase name="test_solve"/></testsuite>'
+
+
+def _fake_nbconvert(monkeypatch, written_suffix: str | None):
+    """Stub the two subprocess boundaries `_run_tests` crosses. `written_suffix` is the
+    extension nbconvert is pretended to have chosen for its script output (None = it wrote
+    nothing at all); pytest always drops a passing junit report."""
+
+    def fake_run(argv, **kwargs):
+        if "nbconvert" in argv and written_suffix is not None:
+            nb = Path(argv[-1])
+            (nb.parent / (nb.stem + written_suffix)).write_text(
+                "def solve(xs):\n    return xs\n"
+            )
+        if "pytest" in argv:
+            report = next(a for a in argv if a.startswith("--junitxml="))
+            Path(report.split("=", 1)[1]).write_text(_JUNIT)
+        return subprocess.CompletedProcess(argv, 0)
+
+    monkeypatch.setattr(collect.subprocess, "run", fake_run)
+
+
+@pytest.mark.parametrize("suffix", [".txt", ""])
+def test_run_tests_renames_a_non_py_nbconvert_output(
+    monkeypatch, tmp_path, capsys, suffix
+):
+    # nbconvert takes the output extension from metadata.language_info.file_extension, so a
+    # notebook with empty metadata (or only a kernelspec) converts to starter.txt - or to a
+    # bare `starter` - and the hidden tests' `from starter import ...` fails for EVERY
+    # submission. The score would be a silent 0/n, so the output is renamed back to .py.
+    _fake_nbconvert(monkeypatch, suffix)
+    work = tmp_path / "sub"
+    work.mkdir()
+    (work / "starter.ipynb").write_text("{}")
+    tests = tmp_path / "hidden"
+    tests.mkdir()
+    (tests / "test_x.py").write_text("from starter import solve\n")
+
+    result = collect._run_tests(work, "notebook", tests)
+
+    assert (work / "starter.py").read_text().startswith("def solve")
+    assert not (work / f"starter{suffix}").exists()  # renamed, not copied
+    assert result == {
+        "score": 1,
+        "max": 1,
+        "tests": [{"name": "test_solve", "passed": True}],
+    }
+    assert "-> starter.py" in capsys.readouterr().out  # the rename is not silent
+
+
+def test_run_tests_leaves_a_correct_py_conversion_alone(monkeypatch, tmp_path):
+    # The happy path must not be disturbed: a notebook declaring `file_extension: ".py"`
+    # already converts to starter.py, and a stray same-stem .txt is not the script.
+    _fake_nbconvert(monkeypatch, ".py")
+    work = tmp_path / "sub"
+    work.mkdir()
+    (work / "starter.ipynb").write_text("{}")
+    (work / "starter.txt").write_text("notes, not code")
+    tests = tmp_path / "hidden"
+    tests.mkdir()
+
+    assert collect._run_tests(work, "notebook", tests)["score"] == 1
+    assert (work / "starter.py").read_text().startswith("def solve")
+    assert (work / "starter.txt").read_text() == "notes, not code"  # untouched
+
+
+def test_run_tests_py_format_never_converts_anything(monkeypatch, tmp_path):
+    _fake_nbconvert(monkeypatch, ".txt")
+    work = tmp_path / "sub"
+    work.mkdir()
+    (work / "starter.ipynb").write_text("{}")  # present but irrelevant for format: py
+    tests = tmp_path / "hidden"
+    tests.mkdir()
+
+    assert collect._run_tests(work, "py", tests)["score"] == 1
+    assert not (work / "starter.py").exists() and not (work / "starter.txt").exists()
+
+
+def test_stray_conversion_ignores_a_same_stem_directory(tmp_path):
+    (tmp_path / "starter").mkdir()  # extensionless candidate that is not a file
+    assert collect._stray_conversion(tmp_path / "starter.ipynb") is None
 
 
 # ------------------------------------------------------------------- target discovery
