@@ -241,13 +241,14 @@ flowchart LR
 
 - **cohort_org** - from the `.github/cohort-courses-pages.yml` registry.
 - **release_&lt;section&gt; / &lt;section&gt;_path** - a checkbox (default on) + a free-text
-  path field per section, capped at `MAX_RELEASE_SECTIONS` (3 - GitHub's
-  `workflow_dispatch` caps at 10 inputs total, and each section costs 2, alongside
-  cohort_org/sessions/include_root_files and, for the central button, source_repo).
+  path field per section, capped at `MAX_RELEASE_SECTIONS` (3, and derived rather than
+  chosen - GitHub's `workflow_dispatch` caps at 10 inputs total, and each section costs
+  2, alongside cohort_org/sessions/include_root_files and, for the central button,
+  source_repo; the arithmetic lives in `release_budget.py`).
   Leaving the path blank creates/uses a repo named after the section, at its root;
   `repo/subpath` nests it under a folder there instead, so several sections can share
   one repo. Named target repos are created automatically. Sections beyond the cap
-  aren't silently dropped - `_cap_sections` logs which ones got left out (release them
+  aren't silently dropped - `cap_sections` logs which ones got left out (release them
   directly via `python3 -m dsl_course.release --destinations`). The run-from-repo copy
   uses this repo's own discovered sections; the central `.github` copy uses the union
   discovered across every content repo in the org (`discover_sections_union`), since
@@ -339,7 +340,12 @@ Self-contained - workflows + their Python implementation live in this repo.
   rendered + seeded into the course/cohort orgs, not kept here.
 - `dsl_course/` - the package:
   - `bootstrap_course` - configure a course or (`--cohort`) cohort org; grant button access; propagate the secret.
-  - `seed` - render the workflows (central + run-from-repo), discover dropdown options, refresh.
+  - `seed` - place the workflows (central + run-from-repo) and the `refresh` CLI; re-exports the
+    four modules it delegates to, so `seed.<name>` keeps resolving:
+    - `workflows_render` - the workflow YAML templates + every `render_*` function;
+    - `discovery` - the cohort registry and all live org/repo/section/session discovery;
+    - `profile_readme` - the org landing page + the `.github` repo's own README;
+    - `release_budget` - GitHub's 10-input cap and the section-slot arithmetic under it.
   - `release` - publish a session's materials, across every discovered section (+ optional syllabus/README), into a cohort repo.
   - `assign` - freeze a cohort assignment template, then fan out per-student repos.
   - `scaffold` - create structured materials / assignment repos + the website (cohort or course).

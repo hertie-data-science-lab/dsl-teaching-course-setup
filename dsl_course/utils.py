@@ -7,6 +7,7 @@ import json
 import re
 import subprocess
 import sys
+from collections.abc import Iterable
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -299,6 +300,50 @@ def session_number(name: str) -> int | None:
     return int(m.group(1)) if m else None
 
 
+def session_dirs(dir_paths: Iterable[str]) -> list[tuple[str, str, int]]:
+    """THE session-folder rule, over a flat list of relative directory paths.
+
+    `(parent, folder_name, session_number)` for every ordinal-prefixed directory found
+    at depth 1 (`NN_.../` - the repo itself is one section, so parent is "") or depth 2
+    (`section/NN_.../` - a named section). Anything deeper, and anything without an
+    ordinal prefix, is not a session folder. A `parent` is therefore exactly a
+    releasable section.
+
+    One rule, two transports: the local filesystem (discover_sections here, used by
+    release.py) and the GitHub trees API (dsl_course.discovery) both feed their
+    directory listing through this, so "ordinal-prefixed directory = session folder"
+    is defined once.
+    """
+    found = []
+    for path in dir_paths:
+        parts = path.split("/")
+        if len(parts) > 2:
+            continue
+        n = session_number(parts[-1])
+        if n is None:
+            continue
+        found.append((parts[0] if len(parts) == 2 else "", parts[-1], n))
+    return found
+
+
+def _local_dir_paths(repo_root: Path) -> list[str]:
+    """The relative paths of every directory in `repo_root` down to depth 2 - the
+    filesystem transport for session_dirs (the API side fetches a git tree instead)."""
+    if not repo_root.is_dir():
+        return []
+    paths = []
+    for child in sorted(repo_root.iterdir()):
+        if not child.is_dir():
+            continue
+        paths.append(child.name)
+        paths += [
+            f"{child.name}/{grandchild.name}"
+            for grandchild in sorted(child.iterdir())
+            if grandchild.is_dir()
+        ]
+    return paths
+
+
 def expand_int_spec(spec: str) -> list[int]:
     """Parse a comma/whitespace-separated spec of ordinals and inclusive ranges (e.g.
     "1,3,5-7" -> [1, 3, 5, 6, 7]) into a sorted, de-duplicated list.
@@ -344,19 +389,13 @@ def find_session_dir(section_dir: Path, session: str) -> Path | None:
 def discover_sections(repo_root: Path) -> list[str]:
     """Any top-level directory containing at least one ordinal-prefixed subdirectory is
     a releasable section - no declared config, the directory structure is the only
-    source of truth. Sorted for a deterministic order."""
-    if not repo_root.is_dir():
-        return []
-    sections = []
-    for child in sorted(repo_root.iterdir()):
-        if not child.is_dir():
-            continue
-        if any(
-            grandchild.is_dir() and session_number(grandchild.name) is not None
-            for grandchild in child.iterdir()
-        ):
-            sections.append(child.name)
-    return sections
+    source of truth. Sorted for a deterministic order.
+
+    The local-checkout transport of the session_dirs rule; dsl_course.discovery is the
+    API-side one."""
+    return sorted(
+        {parent for parent, _, _ in session_dirs(_local_dir_paths(repo_root)) if parent}
+    )
 
 
 def grant_team_repo_access(org: str, team: str, repo: str, permission: str) -> bool:

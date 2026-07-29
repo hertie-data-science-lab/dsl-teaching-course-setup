@@ -10,9 +10,11 @@ import pytest
 import yaml
 
 from conftest import workflow_inputs, workflow_jobs
-from dsl_course import seed
+from dsl_course import release_budget, seed, workflows_render
 
-# Renderers that take no args (or only simple lists) -> a quick "it parses" sweep.
+# Every workflow renderer, rendered -> a "it parses, and it's gated" sweep. Completeness
+# is enforced by test_every_renderer_is_covered_by_the_yaml_sweep below, so a new button
+# cannot ship without passing through yaml.safe_load.
 ALL_RENDERED = {
     "release": seed.render_release(
         ["Cohort-f2026"], ["1", "2"], ["lectures", "labs"]
@@ -37,7 +39,12 @@ ALL_RENDERED = {
     "sync_site": seed.render_sync_site(["Cohort-f2026"]),
     "publish_site": seed.render_publish_site(["course-materials-f2026"]),
     "status": seed.render_status(["Cohort-f2026"]),
+    "scheduler": seed.render_scheduler(),
 }
+
+# The only renderer with no check-team gate: cron runs have no actor to check, and the
+# scheduler just re-calls the idempotent release functions.
+UNGATED = {"scheduler"}
 
 
 @pytest.mark.parametrize("name", sorted(ALL_RENDERED))
@@ -45,7 +52,18 @@ def test_renders_valid_yaml(name):
     doc = yaml.safe_load(ALL_RENDERED[name])
     assert isinstance(doc, dict) and doc.get("name")
     # Every faculty workflow is a workflow_dispatch with a check-team gate.
-    assert "check-team" in workflow_jobs(ALL_RENDERED[name])
+    assert ("check-team" in workflow_jobs(ALL_RENDERED[name])) is (name not in UNGATED)
+
+
+def test_every_renderer_is_covered_by_the_yaml_sweep():
+    # A renderer that never gets yaml.safe_load'ed can ship a typo that breaks a faculty
+    # button in every course org, so the sweep above must cover ALL of them by name.
+    renderers = {
+        n.removeprefix("render_")
+        for n in vars(workflows_render)
+        if n.startswith("render_")
+    }
+    assert renderers == set(ALL_RENDERED)
 
 
 def test_publish_site_inputs():
@@ -208,6 +226,38 @@ def test_max_release_sections_caps_at_ten_input_budget():
     assert 4 + 2 * seed.MAX_RELEASE_SECTIONS <= 10
 
 
+def test_release_input_budget_matches_what_the_central_button_renders():
+    # The whole point of deriving MAX_RELEASE_SECTIONS (rather than hard-coding 3) is
+    # that adding a fixed input can't silently eat a section slot. This is the tripwire:
+    # the fixed-input list is checked against the inputs the tighter (central) button
+    # ACTUALLY renders, and the section slots are checked against GitHub's 10-input cap.
+    fixed = workflow_inputs(seed.render_central_release(["m"], ["Cohort-f2026"], []))
+    assert set(fixed) == set(release_budget.FIXED_RELEASE_INPUTS), (
+        "the central Release button's fixed inputs changed - update "
+        "release_budget.FIXED_RELEASE_INPUTS so the section budget is recomputed"
+    )
+    sections = [f"section{i}" for i in range(release_budget.MAX_RELEASE_SECTIONS)]
+    full = workflow_inputs(
+        seed.render_central_release(["m"], ["Cohort-f2026"], sections)
+    )
+    assert len(full) == len(fixed) + release_budget.INPUTS_PER_SECTION * len(sections)
+    assert len(full) <= release_budget.GITHUB_MAX_DISPATCH_INPUTS
+    # ...and the budget is saturated: one more section would break the button outright.
+    over = workflow_inputs(
+        seed.render_central_release(["m"], ["Cohort-f2026"], sections + ["extra"])
+    )
+    assert len(over) > release_budget.GITHUB_MAX_DISPATCH_INPUTS
+
+
+def test_seed_stays_a_working_facade_over_the_split_modules():
+    # seed re-exports the surface other modules (site, scaffold, bootstrap_course,
+    # sync_faculty/membership, scheduler) and the seeded workflows' CLI import by name.
+    for name in seed.__all__:
+        assert hasattr(seed, name), f"seed.{name} disappeared - facade broken"
+    assert seed.render_release is workflows_render.render_release
+    assert seed.MAX_RELEASE_SECTIONS == release_budget.MAX_RELEASE_SECTIONS
+
+
 def test_cap_sections_logs_and_truncates_past_the_limit(capsys):
     capped = seed._cap_sections(
         ["lectures", "labs", "readings", "handouts"], "org/repo"
@@ -215,71 +265,6 @@ def test_cap_sections_logs_and_truncates_past_the_limit(capsys):
     assert capped == ["handouts", "labs", "lectures"]  # sorted, first 3
     err = capsys.readouterr().err
     assert "readings" in err and "org/repo" in err
-
-
-INFRA_AND_CONTENT = [
-    {"name": ".github", "topics": []},
-    {"name": "welcome", "topics": []},
-    {"name": "classroom-config", "topics": []},
-    {"name": "my-course-f2026.github.io", "topics": []},  # the generated site repo
-    {"name": "grades-alice", "topics": ["gradebook"]},  # private student gradebook
-    {"name": "assignment-1-f2026-alice", "topics": ["submission"]},
-    {"name": "assignment-1-f2026-template", "topics": ["assignment-template"]},
-    {"name": "course-materials-f2026", "topics": []},
-    {"name": "labs", "topics": ["teaching"]},
-]
-
-
-def test_is_infra_repo_excludes_by_name_and_by_topic():
-    infra, content = INFRA_AND_CONTENT[:7], INFRA_AND_CONTENT[7:]
-    assert all(seed._is_infra_repo(r) for r in infra)
-    assert not any(seed._is_infra_repo(r) for r in content)
-    assert not seed._is_infra_repo({"name": "notes"})  # topics key absent -> content
-
-
-def test_both_discover_functions_apply_the_same_infra_exclusions(monkeypatch):
-    # One shared predicate: the public <org>.github.io site repo must never be treated
-    # as a content repo (those HOST the faculty workflows and get DSL_BOT_TOKEN set as a
-    # repo secret), and gradebooks/submissions must never appear as release targets.
-    monkeypatch.setattr(seed, "list_org_repos", lambda org: INFRA_AND_CONTENT)
-    expected = ["course-materials-f2026", "labs"]
-    assert seed.discover_cohort_repos(["Cohort-f2026"]) == expected
-    assert seed.discover_content_repos("My-Course-E1234") == expected
-
-
-def test_discover_content_repos_also_excludes_assignment_templates_by_name(monkeypatch):
-    # Course-org assignment templates carry no `assignment-template` topic (that one is
-    # set on the frozen cohort-side copy), so the name prefix is the content-side rule.
-    monkeypatch.setattr(
-        seed,
-        "list_org_repos",
-        lambda org: [
-            {"name": "assignment-1-f2026", "topics": ["assignment"]},
-            {"name": "course-materials-f2026", "topics": []},
-        ],
-    )
-    assert seed.discover_content_repos("My-Course-E1234") == ["course-materials-f2026"]
-
-
-def test_list_org_repos_paginates_instead_of_capping(monkeypatch):
-    # A cohort org holds a repo per student per assignment plus a gradebook each, so any
-    # fixed --limit silently truncates discovery. --paginate walks every page, and each
-    # page's --jq output is NDJSON (not one concatenated array).
-    calls = []
-    pages = (
-        '{"name":"a","topics":[],"isTemplate":false}\n'
-        '{"name":"b","topics":[],"isTemplate":true}\n'
-    )
-    monkeypatch.setattr(seed, "gh", lambda *args: (calls.append(args), (0, pages))[1])
-    assert [r["name"] for r in seed.list_org_repos("Org")] == ["a", "b"]
-    assert "--paginate" in calls[0] and "--limit" not in calls[0]
-    assert "orgs/Org/repos?per_page=100" in calls[0]
-
-
-def test_list_org_repos_reports_a_failed_listing_as_empty(monkeypatch, capsys):
-    monkeypatch.setattr(seed, "gh", lambda *args: (1, "gh: HTTP 502"))
-    assert seed.list_org_repos("Org") == []
-    assert "Org" in capsys.readouterr().err
 
 
 def test_scaffold_buttons_route_inputs_through_env_not_the_shell():
@@ -306,33 +291,6 @@ def test_bootstrap_org_workflow_routes_inputs_through_env_not_the_shell():
     assert step["env"]["ORG"] == "${{ inputs.org }}"
     assert step["env"]["ORG_NAME"] == "${{ inputs.org_name }}"
     assert step["env"]["COURSE_CODE"] == "${{ inputs.course_code }}"
-
-
-def test_discover_sections_union_combines_across_content_repos(monkeypatch):
-    monkeypatch.setattr(
-        seed,
-        "discover_sections",
-        lambda org, repo: {"a": ["lectures"], "b": ["labs", "readings"]}[repo],
-    )
-    assert seed.discover_sections_union("org", ["a", "b"]) == ["labs", "lectures", "readings"]
-
-
-def test_discover_release_sources_detects_root_and_nested_shapes(monkeypatch):
-    # root shape: a release left its per-section path blank, so the repo itself is one
-    # section and sessions sit directly at its root (labs/lectures in a live course).
-    # nested shape: a release routed a section under a shared repo's own subfolder.
-    trees = {
-        "labs": ["01_intro", "02_functions", "materials/01_intro", "readings"],
-        "lectures": ["01_intro"],
-    }
-    monkeypatch.setattr(seed, "_repo_tree_dirs", lambda org, repo: trees[repo])
-    sources = seed.discover_release_sources("org", ["labs", "lectures"])
-    assert set(sources) == {
-        ("labs", "", "01_intro", 1),
-        ("labs", "", "02_functions", 2),
-        ("labs", "materials", "01_intro", 1),
-        ("lectures", "", "01_intro", 1),
-    }
 
 
 def test_choice_falls_back_when_empty():
