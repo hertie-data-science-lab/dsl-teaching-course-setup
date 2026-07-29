@@ -65,10 +65,13 @@ jobs:
           DSL_BOT_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
           SET_SECRET: ${{ inputs.set_secret }}
           ADMIN: ${{ inputs.admin }}
+          ORG: ${{ inputs.org }}
+          ORG_NAME: ${{ inputs.org_name }}
+          COURSE_CODE: ${{ inputs.course_code }}
         run: |
-          args=(--org "${{ inputs.org }}"
-                --org-name "${{ inputs.org_name }}"
-                --course-code "${{ inputs.course_code }}")
+          args=(--org "$ORG"
+                --org-name "$ORG_NAME"
+                --course-code "$COURSE_CODE")
           [ "$SET_SECRET" = "true" ] && args+=(--propagate-secret)
           [ -n "$ADMIN" ] && args+=(--admins "$ADMIN")
           python3 -m dsl_course.bootstrap_course "${args[@]}"

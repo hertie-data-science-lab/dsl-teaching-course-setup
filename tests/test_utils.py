@@ -62,6 +62,28 @@ def test_expand_int_spec_rejects_malformed_input():
         utils.expand_int_spec("5-2")
 
 
+def test_delete_file_treats_only_a_404_as_already_deleted(monkeypatch):
+    # A missing file is a no-op success, but any OTHER failure to read its SHA (no
+    # permission, rate limit, network) must not be reported as a successful delete -
+    # otherwise a retired generated file silently survives in the org.
+    monkeypatch.setattr(utils, "gh", lambda *a, **k: (1, "gh: Not Found (HTTP 404)"))
+    assert utils.delete_file("org", "repo", "x.yml", "retire x") is True
+    monkeypatch.setattr(utils, "gh", lambda *a, **k: (1, "gh: HTTP 403 - forbidden"))
+    assert utils.delete_file("org", "repo", "x.yml", "retire x") is False
+
+
+def test_delete_file_deletes_with_the_fetched_sha(monkeypatch):
+    calls = []
+
+    def fake_gh(*args, **kwargs):
+        calls.append(args)
+        return (0, "deadbeef") if len(calls) == 1 else (0, "")
+
+    monkeypatch.setattr(utils, "gh", fake_gh)
+    assert utils.delete_file("org", "repo", "x.yml", "retire x") is True
+    assert "sha=deadbeef" in calls[1]
+
+
 def test_reconcile_team_members_adds_missing_and_removes_extra(monkeypatch):
     monkeypatch.setattr(utils, "get_team_members", lambda org, team: {"alice", "bob"})
     monkeypatch.setattr(utils, "_acting_login", lambda: None)

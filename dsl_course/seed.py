@@ -55,6 +55,26 @@ CENTRAL = "hertie-data-science-lab/dsl-teaching-course-setup"
 # Seeded workflows run the engine code from this ref of the central repo.
 CENTRAL_REF = "main"
 INFRA_REPOS = {"welcome", "classroom-config", ".github"}
+# Topics marking a repo as machinery rather than faculty-authored content: per-student
+# submission repos and the frozen cohort-side assignment templates (assign.py), and the
+# private per-student gradebooks (grades.py).
+INFRA_TOPICS = {"submission", "assignment-template", "gradebook"}
+
+
+def _is_infra_repo(repo: dict) -> bool:
+    """Whether `repo` (a list_org_repos entry) is machinery rather than course content.
+
+    The single exclusion list behind BOTH discovery functions, so a repo type added on
+    one side can't leak into the other: a generated `<org>.github.io` site repo (public!)
+    must never be treated as a content repo - discover_content_repos' repos HOST the
+    faculty workflows and get the org-admin DSL_BOT_TOKEN set as a repo secret - and a
+    private `grades-<handle>` gradebook must never show up as a release target or get
+    tree-scanned for sessions.
+    """
+    name = repo["name"]
+    if name in INFRA_REPOS or name.endswith(".github.io"):
+        return True
+    return bool(set(repo.get("topics") or []) & INFRA_TOPICS)
 # Per-org identity/people/schedule config, lives at the root of each org's `.github` repo.
 COURSE_CONFIG = "dsl-course.yml"
 WORKFLOWS = (
@@ -865,9 +885,10 @@ jobs:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
           DSL_BOT_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
           ORG: ${{{{ github.repository_owner }}}}
+          TAG: ${{{{ inputs.tag }}}}
         run: |
           gh auth setup-git
-          python3 -m dsl_course.scaffold materials --org "$ORG" --tag "${{{{ inputs.tag }}}}"
+          python3 -m dsl_course.scaffold materials --org "$ORG" --tag "$TAG"
           python3 -m dsl_course.seed refresh --course-org "$ORG"
 """
 
@@ -893,9 +914,11 @@ jobs:
         env:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
           ORG: ${{{{ github.repository_owner }}}}
+          NUMBER: ${{{{ inputs.number }}}}
+          TAG: ${{{{ inputs.tag }}}}
         run: |
           gh auth setup-git
-          python3 -m dsl_course.scaffold assignment --org "$ORG" --number "${{{{ inputs.number }}}}" --tag "${{{{ inputs.tag }}}}"
+          python3 -m dsl_course.scaffold assignment --org "$ORG" --number "$NUMBER" --tag "$TAG"
           python3 -m dsl_course.seed refresh --course-org "$ORG"
 """
 
@@ -1072,35 +1095,14 @@ def register_cohort(course_org: str, cohort_org: str) -> None:
 
 
 def discover_cohort_repos(cohort_orgs: list[str]) -> list[str]:
-    """Candidate target repos: real cohort content repos, excluding infra
-    (welcome/classroom-config/.github), the website, per-student submission repos
-    (`submission` topic) and the frozen assignment templates (`assignment-template`).
-    Only what genuinely exists - no placeholder default, so an org with nothing
-    registered yet correctly shows an empty (not phantom) dropdown."""
+    """Candidate target repos: real cohort content repos, excluding everything
+    _is_infra_repo covers (infra, the website, submission repos, assignment templates,
+    gradebooks). Only what genuinely exists - no placeholder default, so an org with
+    nothing registered yet correctly shows an empty (not phantom) dropdown."""
     repos: set[str] = set()
     for org in cohort_orgs:
-        code, out = gh(
-            "repo", "list", org, "--limit", "300", "--json", "name,repositoryTopics"
-        )
-        if code != 0:
-            continue
-        for r in json.loads(out):
-            topics = {t["name"] for t in (r.get("repositoryTopics") or [])}
-            if (
-                r["name"] in INFRA_REPOS
-                or r["name"].endswith(".github.io")
-                or topics & {"submission", "assignment-template"}
-            ):
-                continue
-            repos.add(r["name"])
+        repos |= {r["name"] for r in list_org_repos(org) if not _is_infra_repo(r)}
     return sorted(repos)
-
-
-def list_dirs(org: str, repo: str, path: str = "") -> list[str]:
-    """Directory names directly under `path` (the repo root if omitted)."""
-    endpoint = f"repos/{org}/{repo}/contents/{path}" if path else f"repos/{org}/{repo}/contents"
-    code, out = gh("api", endpoint, "--jq", '.[] | select(.type=="dir") | .name')
-    return out.splitlines() if code == 0 else []
 
 
 def _repo_tree_dirs(org: str, repo: str) -> list[str]:
@@ -1190,27 +1192,24 @@ def discover_release_sources(
 
 def discover_assignments(course_org: str) -> list[str]:
     """Assignment template repos in the course org (named assignment-*) - the dropdown."""
-    code, out = gh(
-        "repo", "list", course_org, "--limit", "300", "--json", "name,isTemplate"
-    )
-    if code != 0:
-        return []
     return sorted(
         r["name"]
-        for r in json.loads(out)
+        for r in list_org_repos(course_org)
         if r["name"].startswith("assignment-") and r.get("isTemplate")
     )
 
 
 def discover_content_repos(course_org: str) -> list[str]:
-    """Repos that should HOST the release buttons: the materials repo(s), not the
-    `.github` profile repo and not the assignment-* template repos (those are generate
-    sources - equipping them would copy the faculty & instructors workflows into every student repo)."""
-    return [
+    """Repos that should HOST the release buttons: the materials repo(s), not the infra
+    repos (_is_infra_repo - notably NOT the public `<org>.github.io` site repo, which
+    would otherwise be handed the org-admin token as a repo secret) and not the
+    assignment-* template repos (those are generate sources - equipping them would copy
+    the faculty & instructors workflows into every student repo)."""
+    return sorted(
         r["name"]
         for r in list_org_repos(course_org)
-        if r["name"] != ".github" and not r["name"].startswith("assignment-")
-    ]
+        if not _is_infra_repo(r) and not r["name"].startswith("assignment-")
+    )
 
 
 def _push_workflows(
@@ -1247,16 +1246,33 @@ def _push_workflows(
 
 
 def list_org_repos(org: str) -> list[dict]:
+    """Every repo in `org`, fully paginated - the one repo listing every discovery
+    helper here goes through.
+
+    `gh repo list` needs a fixed `--limit`, and a cohort org holds a repo per student
+    per assignment plus a gradebook each, so any fixed cap silently truncates discovery
+    (missing release targets, un-refreshed workflows). `gh api --paginate` walks every
+    page instead. `--jq` emits one JSON object per line per page, so the pages are
+    parsed as NDJSON rather than concatenated arrays.
+
+    Fields are normalised to the names the callers use (`url`, `isTemplate`).
+    """
     code, out = gh(
-        "repo",
-        "list",
-        org,
-        "--limit",
-        "300",
-        "--json",
-        "name,description,visibility,url",
+        "api",
+        "--paginate",
+        f"orgs/{org}/repos?per_page=100",
+        "--jq",
+        ".[] | {name, description, visibility, url: .html_url, "
+        "isTemplate: .is_template, topics: (.topics // [])}",
     )
-    return json.loads(out) if code == 0 else []
+    if code != 0:
+        log_err(f"could not list repos in {org}: {out[:200]}")
+        return []
+    try:
+        return [json.loads(line) for line in out.splitlines() if line.strip()]
+    except json.JSONDecodeError:
+        log_err(f"unparseable repo listing for {org}: {out[:200]}")
+        return []
 
 
 def _repo_table(repos: list[dict]) -> str:

