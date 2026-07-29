@@ -9,9 +9,9 @@ The Teams are a DOWNSTREAM PROJECTION of the CSV, never authoritative, so they c
 a re-sync overwrites them to match. Provisioning a group assignment grants the matching team
 on the group's repo (so post-sync membership edits propagate to access automatically).
 
-With --prune, members no longer in the CSV are removed from their team (off-boarding); off by
-default here so a standalone/manual run never silently revokes access. Emptied teams are left
-in place. The seeded **Sync membership** button (dsl_course.sync_membership) always calls this
+With --prune, members no longer in the CSV are removed from their team (off-boarding) - never
+an org Owner or the acting login (see utils.reconcile_team_members); off by default here so a
+standalone/manual run never silently revokes access. Emptied teams are left in place. The seeded **Sync membership** button (dsl_course.sync_membership) always calls this
 with prune=True - config is meant to be the live truth there; this module's own off-by-default
 is only for ad-hoc/CLI use outside that button.
 
@@ -27,14 +27,12 @@ import sys
 
 from . import teams
 from .utils import (
-    add_team_member,
     create_team,
-    get_team_members,
     log,
     log_err,
     log_ok,
     log_step,
-    remove_team_member,
+    reconcile_team_members,
 )
 
 
@@ -57,25 +55,18 @@ def desired_teams(per: dict[str, dict[str, list[str]]]) -> dict[str, set[str]]:
 
 
 def ensure_team(org: str, slug: str, members: set[str], prune: bool) -> bool:
-    """Create the team (idempotent) and reconcile its membership to `members`."""
+    """Create the team (idempotent) and reconcile its membership to `members`.
+
+    Reconciliation goes through utils.reconcile_team_members so pruning inherits its
+    guard: an org Owner - or the acting login, which GitHub auto-adds as a member of
+    whatever team it creates - is never removed. Without it, a maintainer or the bot
+    sitting in a project team would be evicted on the next pruning sync."""
     ok = create_team(
         org, slug, description="Project team (auto-managed from teams.csv)"
     )
     if not ok:
         return False
-    current = get_team_members(org, slug)
-    for handle in sorted(members - current):
-        if add_team_member(org, slug, handle):
-            log_ok(f"{handle} -> {slug}")
-        else:
-            ok = False
-    if prune:
-        for handle in sorted(current - members):
-            if remove_team_member(org, slug, handle):
-                log_ok(f"removed {handle} from {slug}")
-            else:
-                ok = False
-    return ok
+    return reconcile_team_members(org, slug, members, prune=prune) == 0
 
 
 def sync(cohort_org: str, prune: bool = False, dry_run: bool = False) -> int:
