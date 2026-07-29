@@ -1007,19 +1007,26 @@ jobs:
 def render_publish_site(source_repos: list[str]) -> str:
     """Build/refresh the PUBLIC course site <course-org>.github.io (open courseware).
 
-    Opt-in + manual: the first run scaffolds the site, later runs re-sync it. Hosts the
-    chosen materials repo's lecture files in the public site (the source repos are private,
-    so links would 404); readings are a text-only list or hosted files. Separate from the
-    per-cohort student-gated sites; releases/refresh never touch it."""
+    Opt-in: the first (manual) run scaffolds the site and persists its settings into the
+    site repo; a daily cron then re-syncs from those settings, so a materials edit reaches
+    the public site without another click. Hosts the chosen materials repo's lecture files
+    in the public site (the source repos are private, so links would 404); readings are a
+    text-only list or hosted files. The cron is a no-op for the (many) course orgs that
+    never publish. Separate from the per-cohort student-gated sites; releases never touch
+    it."""
     return f"""name: Publish course website
 
 # Build/refresh the PUBLIC course site <course-org>.github.io (open courseware). The
 # course materials repos are private, so this HOSTS the chosen repo's lecture files in
 # the site (links would otherwise 404). Readings: 'reading-list' shows citations as text
 # only; 'actual-readings' also hosts + links the files (you carry the copyright
-# responsibility); 'none' skips them. Opt-in + manual - the first run scaffolds the site.
+# responsibility); 'none' skips them. Opt-in - the first manual run scaffolds the site and
+# persists its settings into it; the daily cron then re-syncs from those settings (and does
+# nothing at all for a course org that never published a site).
 
 on:
+  schedule:
+    - cron: "30 5 * * *"
   workflow_dispatch:
     inputs:
       source_repo:
@@ -1057,6 +1064,29 @@ jobs:
           args=(--course-org "$COURSE_ORG" --source-repo "$SOURCE_REPO" --readings-mode "$READINGS_MODE")
           [ "$INC_LEC" = "false" ] && args+=(--no-include-lectures)
           python3 -m dsl_course.site public-sync "${{args[@]}}"
+
+  resync:
+    # The daily catch-up: no inputs, so public-sync re-runs the settings the last manual
+    # publish persisted in the site repo. No site / no persisted settings -> quiet no-op.
+    # Cron has no actor, so this path skips the check-team gate (as Sync site does).
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: {CENTRAL}
+          ref: {CENTRAL_REF}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Re-sync course website
+        env:
+          GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
+          COURSE_ORG: ${{{{ github.repository_owner }}}}
+        run: |
+          gh auth setup-git
+          python3 -m dsl_course.site public-sync --course-org "$COURSE_ORG"
 """
 
 
@@ -1434,7 +1464,7 @@ _(automatically bootstrapped from the central
 - [**Show status**](https://github.com/{org}/.github/actions/workflows/status.yml) - a per-cohort checklist of everything configured (identity, people, schedule + release plan, roster, teams, grades) with direct edit links for anything missing. Read-only.
 
 ### Optional: public course website (open courseware)
-- [**Publish course website**](https://github.com/{org}/.github/actions/workflows/publish-site.yml) - build/refresh a PUBLIC site `{org}.github.io` that shares this course's lecture materials and readings with the world. Opt-in + manual (the first run scaffolds the site). Pick a materials repo and choose for readings: `reading-list` (citations only) or `actual-readings` (also host the files). Because the materials repos are private, the site **hosts** the shared files itself. This is separate from each cohort's student-facing site.
+- [**Publish course website**](https://github.com/{org}/.github/actions/workflows/publish-site.yml) - build/refresh a PUBLIC site `{org}.github.io` that shares this course's lecture materials and readings with the world. Opt-in (the first run scaffolds the site); afterwards a daily cron re-syncs it from the settings that run chose, so later materials edits appear without another click. Pick a materials repo and choose for readings: `reading-list` (citations only) or `actual-readings` (also host the files). Because the materials repos are private, the site **hosts** the shared files itself. This is separate from each cohort's student-facing site.
 
 ### Session cadence actions:
 - [**Release materials**](https://github.com/{org}/.github/actions/workflows/release-materials.yml) - publish a given session's content, from every discovered section, into a cohort repo.
@@ -1481,8 +1511,9 @@ they only resolve for enrolled members (deliberate).
 **The public course website** (optional) - `Publish course website` builds `{org}.github.io`, a public
 open-courseware site for the course as a whole. Unlike the cohort sites it **hosts** the shared lecture
 files (the source repos are private, so links would 404); readings are published either as a text-only
-reading list or as hosted files. It is opt-in and manual - releases and refresh never touch it - so a
-public site only exists, and only updates, when you run the action.
+reading list or as hosted files. It is opt-in - releases and refresh never touch it, so a public site
+only exists once you run the action - but after that first run a daily cron re-syncs it from the
+settings you chose, so later materials edits reach it on their own.
 
 ## Repository structure (required)
 

@@ -14,7 +14,9 @@ Two sites, two audiences, one Jekyll template (course-website-template):
   starting with `_`) and links to site-relative URLs. Every section the source repo has
   (`lectures`, `labs`, ... - discovered, not hardcoded) is hosted; `readings` is special,
   being either a text-only list (`reading-list`) or hosted+linked (`actual-readings`).
-  Session materials only - no assignments/events. Button-only; never auto-synced.
+  Session materials only - no assignments/events. Opt-in: the first publish is a manual
+  click, which persists its settings into the site repo (`_publish-config.yml`); the daily
+  cron then re-syncs from those (`public-sync` with no source args).
 
 Pushing the site repo redeploys it either way.
 
@@ -64,6 +66,9 @@ READING_LIST_EXTS = {".md", ".markdown", ".txt", ".bib"}
 # The one section with copyright semantics of its own (--readings-mode); every OTHER
 # section a repo happens to have is published as files, whatever it's called.
 READINGS_SECTION = "readings"
+# The settings of the last manual publish, committed into the site repo so the daily cron
+# can re-sync unattended. Leading `_`, so Jekyll ignores it rather than serving it.
+PUBLISH_CONFIG = "_publish-config.yml"
 _GIT_ENV = GIT_ENV
 
 
@@ -579,10 +584,11 @@ def sync_public_site(
 ) -> int:
     """Build/refresh the PUBLIC course site `<course-org>.github.io` (open courseware).
 
-    Opt-in + manual: the first run scaffolds the site (Pages), later runs re-sync it.
-    Hosts the chosen `course-materials-*` repo's files - every section it actually has
-    (see utils.discover_sections), plus, in `actual-readings` mode, `readings` - in the
-    public site repo and links to them with site-relative URLs. `reading-list` mode
+    Opt-in: the first run scaffolds the site (Pages), later runs re-sync it. Every run
+    records its settings in the site repo (`PUBLISH_CONFIG`) so the daily cron can repeat
+    them unattended. Hosts the chosen `course-materials-*` repo's files - every section it
+    actually has (see utils.discover_sections), plus, in `actual-readings` mode, `readings`
+    - in the public site repo and links to them with site-relative URLs. `reading-list` mode
     publishes the citation text only. `include_lectures` toggles the file sections as a
     group (its name predates generic sections; the workflow input is unchanged). Session
     materials only - no assignments/events. Served files are namespaced per source repo
@@ -725,6 +731,17 @@ def sync_public_site(
             for fname, content in gen.items():
                 (d / fname).write_text(content)
 
+        # Persist the settings THIS publish used, in the site repo itself, so the daily
+        # cron can repeat it with no inputs (see resync_public_site).
+        (site_wd / PUBLISH_CONFIG).write_text(
+            "# Written by `python3 -m dsl_course.site public-sync` - the settings of the\n"
+            "# last publish. The daily 'Publish course website' cron re-syncs from them;\n"
+            "# delete this file to stop the automatic refresh.\n"
+            f"source_repo: {source_repo}\n"
+            f"readings_mode: {readings_mode}\n"
+            f"include_lectures: {str(include_lectures).lower()}\n"
+        )
+
         git("-C", str(site_wd), *_GIT_ENV, "add", "-A")
         code, _ = git(
             "-C",
@@ -746,6 +763,33 @@ def sync_public_site(
     return 0
 
 
+def resync_public_site(course_org: str) -> int:
+    """Re-publish the public course site from the settings the last publish persisted.
+
+    The daily cron path: a materials edit then reaches the public site without anyone
+    re-clicking the button. Opting in is still a deliberate manual publish, so a course org
+    with no public site - or a site with no `PUBLISH_CONFIG` (published before this existed,
+    or deliberately unhooked by deleting the file) - is a one-line no-op, NOT a failure:
+    the cron ships in every course org's `.github`, and most never publish."""
+    site = f"{course_org.lower()}.github.io"
+    hint = "run the Publish course website action (or pass --source-repo) to publish"
+    if not repo_exists(course_org, site):
+        log(f"no public course site ({course_org}/{site}) - nothing to re-sync; {hint}")
+        return 0
+    raw = get_file_content(course_org, site, PUBLISH_CONFIG) or ""
+    cfg = yaml.safe_load(raw) if raw.strip() else None
+    if not isinstance(cfg, dict) or not cfg.get("source_repo"):
+        log(f"no {PUBLISH_CONFIG} in {course_org}/{site} - nothing to re-sync; {hint}")
+        return 0
+    log_step(f"Re-syncing {course_org}/{site} from {PUBLISH_CONFIG}")
+    return sync_public_site(
+        course_org,
+        str(cfg["source_repo"]),
+        str(cfg.get("readings_mode") or "reading-list"),
+        include_lectures=bool(cfg.get("include_lectures", True)),
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -760,7 +804,10 @@ def main() -> int:
     pp = sub.add_parser("public-sync")
     pp.add_argument("--course-org", required=True)
     pp.add_argument(
-        "--source-repo", required=True, help="Course materials repo to publish"
+        "--source-repo",
+        default=None,
+        help="Course materials repo to publish; omit to re-sync from the settings the "
+        f"last publish persisted in the site repo ({PUBLISH_CONFIG})",
     )
     pp.add_argument(
         "--readings-mode",
@@ -772,6 +819,8 @@ def main() -> int:
     )
     args = parser.parse_args()
     if args.cmd == "public-sync":
+        if not args.source_repo:
+            return resync_public_site(args.course_org)
         return sync_public_site(
             args.course_org,
             args.source_repo,

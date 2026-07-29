@@ -277,7 +277,7 @@ course-org `people:` entry with a display `name` does that.
 ## Course website (open courseware)
 
 A course can **optionally** publish a **public** site at `<course-org>.github.io` via the
-manual **Publish course website** action (`site.sync_public_site`). It reuses the same
+**Publish course website** action (`site.sync_public_site`). It reuses the same
 `course-website-template` + `scaffold_site`, but differs from the cohort site in one
 decisive way: the cohort site *links* to files in private repos (404 for non-members, by
 design), whereas the course `course-materials-*` repos are private too, so the public site
@@ -288,10 +288,13 @@ serves any path not starting with `_`) and links to those site-relative URLs.
   (`reading-list` - citations shown, no files, copyright-safe) or hosted + linked
   (`actual-readings`). `none` skips readings.
 - **Lectures + readings only** - no assignments or exam rows.
-- **Opt-in + manual**: the first run scaffolds the site, later runs re-sync the chosen
+- **Opt-in, then automatic**: the first run scaffolds the site, later runs re-sync the chosen
   materials repo; served files are namespaced per source repo so several years coexist.
-  Releases and refresh **never** touch it, so a public site only exists, and only updates,
-  when faculty & instructors run the action.
+  Every run records its settings in the site repo (`_publish-config.yml`, `_`-prefixed so
+  Jekyll ignores it) and a daily cron re-syncs from them, so materials edits reach the
+  public site without another click. Releases and refresh **never** touch it, and the cron
+  is a no-op wherever no one has published, so a public site only exists once faculty &
+  instructors run the action.
 
 ## Bot lifecycle — setup & rotation
 
@@ -352,8 +355,8 @@ Self-contained - workflows + their Python implementation live in this repo.
     seeded **Sync membership** button/cron/dispatch all call.
   - `roster` / `teams` - read the per-cohort `students.csv` / `teams.csv`.
   - `utils` - shared `gh`/git helpers with rate-limit backoff.
-  - `post_migrate` / `bootstrap_org` / `list_orgs` - legacy create-tier (older course-side
-    model; the next slimming target). `new_semester` (the same vintage) has been removed -
-    its hardcoded `CONTENT_FOLDERS` was the exact section-name inconsistency the generic,
-    dynamically-discovered sections now resolve.
+  - `list_orgs` - the last of the legacy create-tier (older course-side model).
+    `new_semester`, `post_migrate` and `bootstrap_org` (the same vintage) have been removed -
+    `new_semester`'s hardcoded `CONTENT_FOLDERS` was the exact section-name inconsistency the
+    generic, dynamically-discovered sections now resolve.
 - `templates/welcome/` - the cohort onboarding workflow + Join issue form.
