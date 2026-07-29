@@ -12,6 +12,7 @@ import re
 from pathlib import Path
 
 from dsl_course import bootstrap_course as bc
+from dsl_course import roster
 
 
 def test_course_metadata_carries_faculty_block():
@@ -71,6 +72,26 @@ def test_classroom_readme_points_to_course_org_for_people():
     assert "course org" in readme
     assert "schedule.yml" in readme
     assert "schedule.csv" not in readme
+
+
+def test_starter_roster_seeds_the_full_column_set():
+    # A cohort discovers the roster schema from its own config repo, so the seeded header
+    # must be exactly roster.FIELDS - a short header (no `enrol_code`/`role`) sends faculty
+    # looking for code-based onboarding and auditors that the columns don't offer.
+    starter = bc._template("classroom-config/students.csv")
+    header, example = starter.splitlines()[:2]
+    assert tuple(header.split(",")) == roster.FIELDS
+    assert len(example.split(",")) == len(roster.FIELDS)
+    (student,) = roster.parse(starter)  # parses cleanly, and the example row is enrolled
+    assert student.is_enrolled and not student.onboarded
+
+
+def test_classroom_readme_documents_every_roster_column():
+    # The README's roster table is what faculty read instead of the schema doc; a column
+    # missing from it is a column nobody fills in.
+    readme = bc._template("classroom-config/README.md")
+    documented = set(re.findall(r"^\| (\w+) \|", readme, re.M))
+    assert set(roster.FIELDS) <= documented
 
 
 def test_every_seeded_template_path_resolves():

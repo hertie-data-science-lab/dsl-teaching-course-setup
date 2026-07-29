@@ -10,7 +10,8 @@ Canonical, engine-wide schema:
 
 ## students.csv - the roster (required)
 
-One row per student. Leave `github_handle`/`github_id` blank - students fill them on join.
+One row per student. Leave `github_handle`/`github_id`/`enrol_code` blank - onboarding and
+the **Send enrolment codes** button fill them in.
 
 | column | filled by | notes |
 |--------|-----------|-------|
@@ -20,10 +21,12 @@ One row per student. Leave `github_handle`/`github_id` blank - students fill the
 | github_handle | onboarding | blank until they join via the welcome "Join" issue |
 | github_id | onboarding | numeric id captured on join - **immutable; never hand-edit** |
 | section | registrar | optional grouping (e.g. A/B) |
+| enrol_code | **Send enrolment codes** | random non-PII token, emailed to the student; they paste it into the "Join" issue. Leave blank - the button fills blanks only, never rewrites an issued code |
+| role | registrar | `enrolled` (blank means enrolled) or `auditor` - auditors are read-only: released materials only, no assignment repos, no gradebook, no project teams |
 
 A push to this file triggers **Sync membership** automatically, reconciling the
-`students` team to match (a deleted row revokes access on that same push - there is no
-separate off-boarding step).
+`students` and `auditors` teams to match (a deleted row revokes access on that same push -
+there is no separate off-boarding step).
 
 ## grades/<assignment>.csv - marks (optional, when returning grades)
 
