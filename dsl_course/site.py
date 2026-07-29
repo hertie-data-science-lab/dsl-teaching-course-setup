@@ -38,6 +38,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
+from functools import lru_cache
 from pathlib import Path
 from urllib.parse import quote
 
@@ -160,7 +161,9 @@ def _people_from_meta(meta: dict) -> tuple[list[tuple], list[tuple]] | None:
     Returns `(instructors, teaching_assistants)` as lists of `(name, photo, url,
     title)` for entries active today (per optional start/end dates) that also declare
     a display `name`, or None when there is no `people:` block at all (then fall back
-    to the GitHub teams). Schema (bootstrap_course._FACULTY_BLOCK):
+    to the GitHub teams). Schema (templates/course/people-header.yml +
+    people-cards.yml for the course org's block, templates/classroom-config/people.yml
+    for a cohort's):
 
         people:
           instructors:
@@ -236,6 +239,28 @@ def _people_yaml(org: str, meta: dict | None = None, *, include_tas: bool = True
     )
 
 
+@lru_cache(maxsize=None)
+def _repo_tree(org: str, repo: str) -> tuple[str, tuple[str, ...]]:
+    """(default branch, every blob path in it) for a repo - one recursive tree fetch,
+    memoised for the run. A cohort site asks for the files of EVERY released session, and
+    they nearly all live in the same repo, so without the memo the identical tree got
+    fetched once per session. Paths come back sorted, so callers filtering them keep a
+    stable diff. `()` when the tree can't be read (the caller then simply finds no files).
+
+    Unbounded cache: this is a one-shot CLI process, and the trees it reads are the
+    handful of repos one cohort released into."""
+    branch = get_default_branch(org, repo)
+    code, out = gh(
+        "api",
+        f"repos/{org}/{repo}/git/trees/{branch}?recursive=1",
+        "--jq",
+        '.tree[] | select(.type=="blob") | .path',
+    )
+    if code != 0:
+        return branch, ()
+    return branch, tuple(sorted(out.splitlines()))
+
+
 def _session_files(org: str, repo: str, subpath: str, folder: str) -> list[tuple[str, str]]:
     """(name, blob-url) for every file at ANY depth under `folder` (already confirmed by
     seed.discover_release_sources to match a session's ordinal prefix), at `subpath`
@@ -245,26 +270,18 @@ def _session_files(org: str, repo: str, subpath: str, folder: str) -> list[tuple
     Recursive, because a release copies a session folder wholesale (release.py's
     copytree), so `03_week-3/handouts/notes.pdf` is just as released as a file sitting
     directly in `03_week-3/` - a non-recursive listing would silently drop it from the
-    site. One recursive tree fetch (not an API call per subfolder); names are the path
-    relative to the session folder, so nested files stay distinguishable, and the
-    ordering is by path for a stable diff."""
+    site. Filters the repo's one memoised recursive tree (`_repo_tree`) client-side, so
+    no API call per session or per subfolder; names are the path relative to the session
+    folder, so nested files stay distinguishable, and the ordering is by path for a
+    stable diff."""
     prefix = f"{subpath}/{folder}" if subpath else folder
-    branch = get_default_branch(org, repo)
-    code, out = gh(
-        "api",
-        f"repos/{org}/{repo}/git/trees/{branch}?recursive=1",
-        "--jq",
-        '.tree[] | select(.type=="blob") | .path',
-    )
-    if code != 0:
-        return []
+    branch, paths = _repo_tree(org, repo)
     base = f"https://github.com/{org}/{repo}/blob/{branch}"
-    pairs = []
-    for path in sorted(out.splitlines()):
-        if not path.startswith(f"{prefix}/"):
-            continue
-        pairs.append((path[len(prefix) + 1 :], f"{base}/{quote(path)}"))
-    return pairs
+    return [
+        (path[len(prefix) + 1 :], f"{base}/{quote(path)}")
+        for path in paths
+        if path.startswith(f"{prefix}/")
+    ]
 
 
 def _singular(label: str) -> str:
@@ -402,28 +419,27 @@ def _session_dates(sched: schedule.Schedule) -> dict[str, datetime]:
 class _SitePlan:
     """What one sync wants its site repo to contain, handed back to `_sync_site_repo`.
 
-    `config` are the `_config.yml` keys to overwrite (course identity); `people` the
-    rendered `_data/people.yml`; `collections` the collection dirs this sync OWNS, each
-    cleared then rewritten from its `{filename: content}` (so an entry that is no longer
-    generated - a de-released session, a template placeholder - disappears, and a
-    collection the sync does not own is left alone); `files` any other tracked file to
-    write; `commit` the commit subject."""
+    `config` are the `_config.yml` keys to overwrite (course identity); `collections` the
+    collection dirs this sync OWNS, each cleared then rewritten from its `{filename:
+    content}` (so an entry that is no longer generated - a de-released session, a template
+    placeholder - disappears, and a collection the sync does not own is left alone);
+    `files` every other tracked file to write, by repo-relative path (`_data/people.yml`,
+    the publish config, ...); `commit` the commit subject; `label`/`done` the wording of
+    this sync's log lines."""
 
     config: dict[str, str]
-    people: str
     collections: dict[str, dict[str, str]]
     commit: str
     files: dict[str, str] = field(default_factory=dict)
+    label: str = "site"
+    done: str = "synced + redeploying"
 
 
 def _sync_site_repo(
     org: str,
     build: Callable[[Path], _SitePlan | None],
     *,
-    label: str = "site",
-    done: str = "synced + redeploying",
     scaffold_missing: bool = False,
-    clone_attempts: int = 1,
 ) -> int:
     """The site-repo mechanics both syncs drive: ensure `<org>.github.io` exists, clone it,
     let `build` gather that sync's own data (writing into the working tree it is handed -
@@ -432,9 +448,9 @@ def _sync_site_repo(
 
     `build` returns None to abort with exit 1, having logged its own reason. A missing site
     repo is a quiet no-op (a cohort that never opted into a site), unless
-    `scaffold_missing` - the public course site's opt-in first publish, which creates it.
-    `clone_attempts` > 1 tolerates a just-scaffolded repo lagging its template-generate."""
+    `scaffold_missing` - the public course site's opt-in first publish, which creates it."""
     site = _site_repo(org)
+    just_scaffolded = False
     if not repo_exists(org, site):
         if not scaffold_missing:
             log(f"  (no site repo {org}/{site} - skipping site sync)")
@@ -444,13 +460,17 @@ def _sync_site_repo(
         log_step(f"No public site yet - scaffolding {org}/{site}")
         if scaffold.scaffold_site(org) != 0:
             return 1
+        just_scaffolded = True
 
     with tempfile.TemporaryDirectory() as work:
         wd = Path(work) / "site"
-        for attempt in range(clone_attempts):
+        # A repo THIS run just created can lag its template-generate, so retry the clone;
+        # an existing site repo either clones now or is a real failure.
+        attempts = 6 if just_scaffolded else 1
+        for attempt in range(attempts):
             if gh("repo", "clone", f"{org}/{site}", str(wd), "--", "-q")[0] == 0:
                 break
-            if attempt + 1 < clone_attempts:
+            if attempt + 1 < attempts:
                 time.sleep(5)
         else:
             log_err(f"could not clone {org}/{site}")
@@ -468,10 +488,6 @@ def _sync_site_repo(
                 cfg = _set_config(cfg, key, value)
             cfg_path.write_text(cfg)
 
-        data_dir = wd / "_data"
-        data_dir.mkdir(exist_ok=True)
-        (data_dir / "people.yml").write_text(plan.people)
-
         # Regenerate the owned collections; leave everything else (layouts, pages) as the
         # template provides.
         for coll, entries in plan.collections.items():
@@ -484,6 +500,7 @@ def _sync_site_repo(
                 (d / fname).write_text(content)
 
         for rel, content in plan.files.items():
+            (wd / rel).parent.mkdir(parents=True, exist_ok=True)
             (wd / rel).write_text(content)
 
         git("-C", str(wd), *_GIT_ENV, "add", "-A")
@@ -491,12 +508,12 @@ def _sync_site_repo(
             "-C", str(wd), *_GIT_ENV, "commit", "-q", "--no-verify", "-m", plan.commit
         )
         if code != 0:
-            log_ok(f"{label} already up to date")
+            log_ok(f"{plan.label} already up to date")
             return 0
         if git("-C", str(wd), *_GIT_ENV, "push", "-q", "origin", "HEAD")[0] != 0:
-            log_err(f"{label} push failed")
+            log_err(f"{plan.label} push failed")
             return 1
-    log_ok(f"{label} {done} -> https://{site}/")
+    log_ok(f"{plan.label} {plan.done} -> https://{site}/")
     return 0
 
 
@@ -561,11 +578,13 @@ def sync_site(course_org: str, cohort_org: str) -> int:
         return _SitePlan(
             config=config,
             # People: this cohort's own classroom-config/people.yml (instructors AND TAs -
-            # the per-cohort teaching team; see bootstrap_course._PEOPLE_YML), else its
-            # instructors team.
-            people=_people_yaml(
-                cohort_org, _yaml_file(cohort_org, "classroom-config", "people.yml")
-            ),
+            # the per-cohort teaching team; schema in
+            # templates/classroom-config/people.yml), else its instructors team.
+            files={
+                "_data/people.yml": _people_yaml(
+                    cohort_org, _yaml_file(cohort_org, "classroom-config", "people.yml")
+                )
+            },
             # Assignment due dates come from schedule.yml when set (keyed on the
             # assignment slug), else a synthesised fortnightly cadence.
             collections={
@@ -763,10 +782,6 @@ def sync_public_site(
 
         return _SitePlan(
             config=config,
-            # People from the course org's declared `people:` block (else the GitHub
-            # teams). Instructors only - the open-courseware site is multi-year, and TAs
-            # are declared per cohort (in each cohort's people.yml), never course-level.
-            people=_people_yaml(course_org, meta, include_tas=False),
             # Sessions only: regen _lectures, and clear _assignments/_events so any
             # template placeholders (and a previous run's content) stay off a public site.
             collections={
@@ -774,9 +789,14 @@ def sync_public_site(
                 "_assignments": {},
                 "_events": {},
             },
-            # Persist the settings THIS publish used, in the site repo itself, so the
-            # daily cron can repeat it with no inputs (see resync_public_site).
             files={
+                # People from the course org's declared `people:` block (else the GitHub
+                # teams). Instructors only - the open-courseware site is multi-year, and
+                # TAs are declared per cohort (in each cohort's people.yml), never
+                # course-level.
+                "_data/people.yml": _people_yaml(course_org, meta, include_tas=False),
+                # Persist the settings THIS publish used, in the site repo itself, so the
+                # daily cron can repeat it with no inputs (see resync_public_site).
                 PUBLISH_CONFIG: (
                     "# Written by `python3 -m dsl_course.site public-sync` - the settings of the\n"
                     "# last publish. The daily 'Publish course website' cron re-syncs from them;\n"
@@ -784,19 +804,14 @@ def sync_public_site(
                     f"source_repo: {source_repo}\n"
                     f"readings_mode: {readings_mode}\n"
                     f"include_lectures: {str(include_lectures).lower()}\n"
-                )
+                ),
             },
             commit=f"site: publish public course site from {source_repo}",
+            label="public site",
+            done="published",
         )
 
-    return _sync_site_repo(
-        course_org,
-        build,
-        label="public site",
-        done="published",
-        scaffold_missing=True,
-        clone_attempts=6,
-    )
+    return _sync_site_repo(course_org, build, scaffold_missing=True)
 
 
 def resync_public_site(course_org: str) -> int:
