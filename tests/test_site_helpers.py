@@ -81,7 +81,7 @@ def test_public_links_are_site_relative(tmp_path):
 
 
 def test_public_lecture_entry_reading_list_mode_has_no_links():
-    e = site._public_lecture_entry("1", date(2025, 1, 1), [], [], "- Smith 2020")
+    e = site._public_lecture_entry("1", date(2025, 1, 1), [], "- Smith 2020")
     assert "links: []" in e
     assert "### Reading list" in e and "Smith 2020" in e
     assert "enrolled" not in e  # public-facing, no student gate language
@@ -110,6 +110,86 @@ def test_lecture_entry_labels_links_by_repo_or_subpath():
 def test_public_lecture_entry_actual_readings_mode_links_are_local():
     lec = [("s.pdf", "/public-materials/m/session-1/lectures/s.pdf")]
     rds = [("r.pdf", "/public-materials/m/session-1/readings/r.pdf")]
-    e = site._public_lecture_entry("1", date(2025, 1, 1), lec, rds, "")
+    e = site._public_lecture_entry(
+        "1", date(2025, 1, 1), [("lectures", lec), ("readings", rds)], ""
+    )
     assert "lecture - s.pdf" in e and "reading - r.pdf" in e
     assert "github.com" not in e and "raw." not in e
+
+
+def test_public_lecture_entry_labels_any_discovered_section():
+    # Sections are free-form directory names - a repo with labs/ and faq/ must get
+    # labelled links, not silently nothing (the site used to look only at lectures/).
+    e = site._public_lecture_entry(
+        "3",
+        date(2025, 1, 1),
+        [
+            ("labs", [("lab3.ipynb", "/public-materials/m/session-3/labs/lab3.ipynb")]),
+            ("faq", [("faq.md", "/public-materials/m/session-3/faq/faq.md")]),
+        ],
+        "",
+    )
+    assert 'name: "lab - lab3.ipynb"' in e
+    assert 'name: "faq - faq.md"' in e  # not "fa - faq.md"
+
+
+def test_singular_strips_only_a_real_trailing_s():
+    assert site._singular("lectures") == "lecture"
+    assert site._singular("labs") == "lab"
+    assert site._singular("faq") == "faq"  # was "fa"
+    assert site._singular("s") == "s"  # never empty
+
+
+_TREE = "\n".join(
+    [
+        "README.md",
+        "lectures/03_week-3/notes.pdf",
+        "lectures/03_week-3/handouts/extra notes.pdf",
+        "lectures/03_week-3/handouts/deep/further.md",
+        "lectures/03_week-30/decoy.pdf",  # prefix-sharing sibling, must not leak in
+        "lectures/04_week-4/other.pdf",
+        "01_intro/root-shape.pdf",
+    ]
+)
+
+
+def _tree_gh(*args, **kwargs):
+    """Fake `gh api .../git/trees/<branch>?recursive=1` - the repo's blob paths."""
+    return (0, _TREE)
+
+
+def test_session_files_lists_nested_files_by_path(monkeypatch):
+    # release.py copytrees a session folder wholesale, so nested files ARE released -
+    # a non-recursive listing dropped them from the site entirely.
+    monkeypatch.setattr(site, "get_default_branch", lambda org, repo: "main")
+    monkeypatch.setattr(site, "gh", _tree_gh)
+    pairs = site._session_files("Cohort-f2026", "materials", "lectures", "03_week-3")
+    assert [n for n, _ in pairs] == [
+        "handouts/deep/further.md",  # sorted by path, so nested first
+        "handouts/extra notes.pdf",
+        "notes.pdf",
+    ]
+    urls = dict(pairs)
+    assert (
+        urls["notes.pdf"]
+        == "https://github.com/Cohort-f2026/materials/blob/main/lectures/03_week-3/notes.pdf"
+    )
+    assert "extra%20notes.pdf" in urls["handouts/extra notes.pdf"]  # spaces encoded
+
+
+def test_session_files_root_shape_and_other_sessions_excluded(monkeypatch):
+    monkeypatch.setattr(site, "get_default_branch", lambda org, repo: "main")
+    monkeypatch.setattr(site, "gh", _tree_gh)
+    # subpath="" - the release landed at the repo root (default destination)
+    assert site._session_files("Cohort-f2026", "lectures", "", "01_intro") == [
+        (
+            "root-shape.pdf",
+            "https://github.com/Cohort-f2026/lectures/blob/main/01_intro/root-shape.pdf",
+        )
+    ]
+
+
+def test_session_files_api_failure_is_empty(monkeypatch):
+    monkeypatch.setattr(site, "get_default_branch", lambda org, repo: "main")
+    monkeypatch.setattr(site, "gh", lambda *a, **k: (1, "not found"))
+    assert site._session_files("Cohort-f2026", "materials", "lectures", "03_x") == []

@@ -11,9 +11,10 @@ Two sites, two audiences, one Jekyll template (course-website-template):
 - **course site** (`<course-org>.github.io`, `sync_public_site`) - PUBLIC open courseware,
   opt-in. The course `course-materials-*` repos are private, so public links to them 404;
   instead this HOSTS the shared files in the public site repo (Jekyll serves any path not
-  starting with `_`) and links to site-relative URLs. Lecture files are always hosted;
-  readings are either a text-only list (`reading-list`) or hosted+linked (`actual-readings`).
-  Lectures + readings only - no assignments/events. Button-only; never auto-synced.
+  starting with `_`) and links to site-relative URLs. Every section the source repo has
+  (`lectures`, `labs`, ... - discovered, not hardcoded) is hosted; `readings` is special,
+  being either a text-only list (`reading-list`) or hosted+linked (`actual-readings`).
+  Session materials only - no assignments/events. Button-only; never auto-synced.
 
 Pushing the site repo redeploys it either way.
 
@@ -42,8 +43,10 @@ from . import schedule, seed
 from .utils import (
     GIT_ENV,
     active_today,
+    discover_sections,
     find_session_dir,
     gh,
+    get_default_branch,
     get_file_content,
     git,
     log,
@@ -54,10 +57,13 @@ from .utils import (
     repo_exists,
 )
 
-# Public course site: served folder for hosted lecture/reading files, and the text-file
+# Public course site: served folder for the hosted section files, and the text-file
 # extensions treated as the (publishable) reading list rather than copyrighted material.
 PUBLIC_MATERIALS_DIR = "public-materials"
 READING_LIST_EXTS = {".md", ".markdown", ".txt", ".bib"}
+# The one section with copyright semantics of its own (--readings-mode); every OTHER
+# section a repo happens to have is published as files, whatever it's called.
+READINGS_SECTION = "readings"
 _GIT_ENV = GIT_ENV
 
 
@@ -210,25 +216,42 @@ def _people_yaml(org: str, meta: dict | None = None, *, include_tas: bool = True
 
 
 def _session_files(org: str, repo: str, subpath: str, folder: str) -> list[tuple[str, str]]:
-    """(name, blob-url) for each file directly under `folder` (already confirmed by
+    """(name, blob-url) for every file at ANY depth under `folder` (already confirmed by
     seed.discover_release_sources to match a session's ordinal prefix), at `subpath`
     in a repo (or the repo root when `subpath` is empty - a release destination left
-    at its default)."""
-    listing_path = f"{subpath}/{folder}" if subpath else folder
+    at its default).
+
+    Recursive, because a release copies a session folder wholesale (release.py's
+    copytree), so `03_week-3/handouts/notes.pdf` is just as released as a file sitting
+    directly in `03_week-3/` - a non-recursive listing would silently drop it from the
+    site. One recursive tree fetch (not an API call per subfolder); names are the path
+    relative to the session folder, so nested files stay distinguishable, and the
+    ordering is by path for a stable diff."""
+    prefix = f"{subpath}/{folder}" if subpath else folder
+    branch = get_default_branch(org, repo)
     code, out = gh(
         "api",
-        f"repos/{org}/{repo}/contents/{listing_path}",
+        f"repos/{org}/{repo}/git/trees/{branch}?recursive=1",
         "--jq",
-        '.[] | select(.type=="file") | .name + "\\t" + .html_url',
+        '.tree[] | select(.type=="blob") | .path',
     )
     if code != 0:
         return []
+    base = f"https://github.com/{org}/{repo}/blob/{branch}"
     pairs = []
-    for line in out.splitlines():
-        if "\t" in line:
-            name, url = line.split("\t", 1)
-            pairs.append((name, url))
+    for path in sorted(out.splitlines()):
+        if not path.startswith(f"{prefix}/"):
+            continue
+        pairs.append((path[len(prefix) + 1 :], f"{base}/{quote(path)}"))
     return pairs
+
+
+def _singular(label: str) -> str:
+    """A section label as a single-item noun for a link name: 'lectures' -> 'lecture',
+    'labs' -> 'lab', 'faq' -> 'faq'. Sections are free-form directory names, so a bare
+    `[:-1]` chopped a real character off every label that isn't a plural ('faq' -> 'fa').
+    Deliberately no inflection library: strip one trailing 's', else leave it alone."""
+    return label[:-1] if len(label) > 1 and label.endswith("s") else label
 
 
 def _lecture_entry(
@@ -247,7 +270,7 @@ def _lecture_entry(
         label = subpath or repo
         for name, url in _session_files(cohort_org, repo, subpath, folder):
             safe = name.replace('"', "'")
-            links.append(f'    - url: {url}\n      name: "{label[:-1]} - {safe}"')
+            links.append(f'    - url: {url}\n      name: "{_singular(label)} - {safe}"')
     links_block = ("links:\n" + "\n".join(links)) if links else "links: []"
     date_str = (
         when.strftime("%Y-%m-%dT%H:%M:%S")
@@ -485,12 +508,13 @@ def _public_links(local_dir: Path, url_prefix: str) -> list[tuple[str, str]]:
 
     URLs are relative to the public site root (`/PUBLIC_MATERIALS_DIR/...`), so they
     resolve for the public - never blob/raw URLs into the private source repo. Names are
-    URL-encoded so spaces etc. survive."""
+    the path relative to the session folder (so two nested `notes.pdf` stay
+    distinguishable, as on the cohort site) and URL-encoded so spaces etc. survive."""
     out = []
     for p in sorted(local_dir.rglob("*")):
         if p.is_file():
             rel = p.relative_to(local_dir).as_posix()
-            out.append((p.name, f"{url_prefix}/{quote(rel)}"))
+            out.append((rel, f"{url_prefix}/{quote(rel)}"))
     return out
 
 
@@ -516,20 +540,23 @@ def _reading_list_md(readings_session_dir: Path) -> str:
 def _public_lecture_entry(
     session: str,
     when: date,
-    lecture_links: list[tuple[str, str]],
-    reading_links: list[tuple[str, str]],
+    section_links: list[tuple[str, list[tuple[str, str]]]],
     reading_list_md: str,
 ) -> str:
-    """A public session entry: hosted lecture (and, in actual-readings mode, reading)
-    links, plus the reading list as inline text when in reading-list mode. Public-facing
-    body - no 'enrolled students only' gate."""
+    """A public session entry: hosted links for every published section (whatever this
+    repo's sections are - `lectures`, `labs`, ... - plus `readings` in actual-readings
+    mode), plus the reading list as inline text when in reading-list mode. Public-facing
+    body - no 'enrolled students only' gate.
+
+    `section_links` is `(section, [(name, url), ...])` in publication order; each link is
+    named `<section-singular> - <file>`, as on the cohort site."""
     links = []
-    for label, pairs in (("lecture", lecture_links), ("reading", reading_links)):
+    for label, pairs in section_links:
         for name, url in pairs:
             safe = name.replace('"', "'")
-            links.append(f'    - url: {url}\n      name: "{label} - {safe}"')
+            links.append(f'    - url: {url}\n      name: "{_singular(label)} - {safe}"')
     links_block = ("links:\n" + "\n".join(links)) if links else "links: []"
-    body = f"Lecture materials and readings for session {session}."
+    body = f"Materials for session {session}."
     if reading_list_md:
         body += "\n\n### Reading list\n\n" + reading_list_md
     return (
@@ -553,13 +580,15 @@ def sync_public_site(
     """Build/refresh the PUBLIC course site `<course-org>.github.io` (open courseware).
 
     Opt-in + manual: the first run scaffolds the site (Pages), later runs re-sync it.
-    Hosts the chosen `course-materials-*` repo's lecture files (and, in `actual-readings`
-    mode, reading files) in the public site repo and links to them with site-relative
-    URLs. `reading-list` mode publishes the citation text only. Lectures + readings only -
-    no assignments/events. Served files are namespaced per source repo so several years
-    can coexist on one site."""
+    Hosts the chosen `course-materials-*` repo's files - every section it actually has
+    (see utils.discover_sections), plus, in `actual-readings` mode, `readings` - in the
+    public site repo and links to them with site-relative URLs. `reading-list` mode
+    publishes the citation text only. `include_lectures` toggles the file sections as a
+    group (its name predates generic sections; the workflow input is unchanged). Session
+    materials only - no assignments/events. Served files are namespaced per source repo
+    so several years can coexist on one site."""
     if not include_lectures and readings_mode == "none":
-        log_err("nothing to publish - lectures off and readings set to none.")
+        log_err("nothing to publish - file sections off and readings set to none.")
         return 1
 
     site = f"{course_org.lower()}.github.io"
@@ -573,7 +602,7 @@ def sync_public_site(
     sessions = seed.discover_sessions(course_org, source_repo)
     log_step(
         f"Publishing {course_org}/{site} from {source_repo}: {len(sessions)} session(s), "
-        f"readings={readings_mode}, lectures={'on' if include_lectures else 'off'}"
+        f"readings={readings_mode}, file sections={'on' if include_lectures else 'off'}"
     )
 
     meta_raw = get_file_content(course_org, ".github", "dsl-course.yml") or ""
@@ -610,33 +639,55 @@ def sync_public_site(
         if served_root.exists():
             shutil.rmtree(served_root)
 
+        # Sections are whatever THIS repo has (the same discovery the release buttons
+        # use), not a hardcoded lectures/readings pair - a course whose content lives in
+        # `labs/` publishes labs. `readings` is the one section with special semantics
+        # (--readings-mode, below); `include_lectures` gates all the others.
+        file_sections = (
+            [sec for sec in discover_sections(src) if sec != READINGS_SECTION]
+            if include_lectures
+            else []
+        )
+        log(f"  sections published as files: {', '.join(file_sections) or '(none)'}")
+
         lecture_entries = {}
         for s in sessions:
             if not s.isdigit():
                 continue
             site_session = served_root / f"session-{s}"
             url_base = f"/{PUBLIC_MATERIALS_DIR}/{source_repo}/session-{s}"
-            lecture_links, reading_links, reading_list_md = [], [], ""
+            section_links: list[tuple[str, list[tuple[str, str]]]] = []
+            reading_list_md = ""
 
-            if include_lectures:
-                lec_src = find_session_dir(src / "lectures", s)
-                if lec_src is not None:
-                    dest = site_session / "lectures"
-                    shutil.copytree(lec_src, dest, dirs_exist_ok=True)
-                    lecture_links = _public_links(dest, f"{url_base}/lectures")
+            for section in file_sections:
+                sec_src = find_session_dir(src / section, s)
+                if sec_src is None:
+                    continue
+                dest = site_session / section
+                shutil.copytree(sec_src, dest, dirs_exist_ok=True)
+                links = _public_links(dest, f"{url_base}/{section}")
+                if links:
+                    section_links.append((section, links))
 
-            read_src = find_session_dir(src / "readings", s)
+            read_src = find_session_dir(src / READINGS_SECTION, s)
             if read_src is not None:
                 if readings_mode == "actual-readings":
-                    dest = site_session / "readings"
+                    dest = site_session / READINGS_SECTION
                     shutil.copytree(read_src, dest, dirs_exist_ok=True)
-                    reading_links = _public_links(dest, f"{url_base}/readings")
+                    links = _public_links(dest, f"{url_base}/{READINGS_SECTION}")
+                    if links:
+                        section_links.append((READINGS_SECTION, links))
                 elif readings_mode == "reading-list":
                     reading_list_md = _reading_list_md(read_src)
 
+            # A session with nothing published in any section gets no page at all,
+            # rather than an empty one the public would click through to.
+            if not section_links and not reading_list_md:
+                log(f"  (session {s}: nothing to publish - no page)")
+                continue
             when = start + timedelta(days=int(s) * 7)
             lecture_entries[f"session-{int(s):02d}.md"] = _public_lecture_entry(
-                s, when, lecture_links, reading_links, reading_list_md
+                s, when, section_links, reading_list_md
             )
 
         # Course identity into _config.yml; semester is neutral (the site is multi-year).
