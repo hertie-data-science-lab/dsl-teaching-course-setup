@@ -40,6 +40,37 @@ jobs:
             const CONFIG = 'classroom-config';
             const TEAMS  = 'teams.csv', ROSTER = 'students.csv';
 
+            // --- CSV, RFC-4180-ish (github-script has no npm deps, so hand-rolled).
+            // Both CSVs are written by Python's csv module, so a field containing a comma (a
+            // roster name like "Doe, Jane") arrives QUOTED. A naive line.split(',') shifts every
+            // column right of it, so we'd miss an enrolled student's handle and could rewrite
+            // teams.csv with mangled rows. Quoted fields may contain commas, newlines and
+            // "" -escaped quotes; serialiseCsv re-quotes on the same rule as csv.QUOTE_MINIMAL.
+            const parseCsv = (text) => {
+              const rows = [];
+              let row = [], field = '', quoted = false;
+              for (let i = 0; i < text.length; i++) {
+                const c = text[i];
+                if (quoted) {
+                  if (c === '"' && text[i + 1] === '"') { field += '"'; i++; }
+                  else if (c === '"') { quoted = false; }
+                  else { field += c; }
+                  continue;
+                }
+                if (c === '"') { quoted = true; }
+                else if (c === ',') { row.push(field); field = ''; }
+                else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+                else if (c !== '\r') { field += c; }
+              }
+              if (field !== '' || row.length) { row.push(field); rows.push(row); }
+              return rows.filter(r => r.some(v => v !== ''));  // drop blank lines
+            };
+            const csvCell = (v) => {
+              const s = (v === undefined || v === null) ? '' : String(v);
+              return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+            };
+            const serialiseCsv = (rows) => rows.map(r => r.map(csvCell).join(',')).join('\n') + '\n';
+
             const fail = async (msg, label) => {
               await github.rest.issues.createComment({
                 owner: org, repo: context.repo.repo, issue_number: issue.number, body: msg });
@@ -66,30 +97,45 @@ jobs:
               'needs-review');
 
             // Verify the author is an onboarded student (handle recorded in the roster).
+            // Columns (dsl_course.roster.FIELDS) are addressed BY NAME, never by position.
             const rosterRaw = await github.rest.repos.getContent({ owner: org, repo: CONFIG, path: ROSTER });
-            const rosterRows = Buffer.from(rosterRaw.data.content, 'base64').toString('utf8')
-              .replace(/\n$/, '').split('\n').slice(1).map(l => l.split(','));
-            const enrolled = rosterRows.some(r => (r[3] || '').toLowerCase() === handle.toLowerCase());
+            const rosterTable = parseCsv(Buffer.from(rosterRaw.data.content, 'base64').toString('utf8'));
+            const iRosterHandle = (rosterTable[0] || []).map(h => h.trim()).indexOf('github_handle');
+            if (iRosterHandle < 0) return fail(
+              `Thanks @${handle} - the roster's header is missing a \`github_handle\` column. ` +
+              `A maintainer will action this.`,
+              'needs-review');
+            const enrolled = rosterTable.slice(1)
+              .some(r => (r[iRosterHandle] || '').trim().toLowerCase() === handle.toLowerCase());
             if (!enrolled) return fail(
               `Thanks @${handle} - I can't find you on the roster yet. Please open a **Join** issue first ` +
               `to onboard, then come back to join a team.`,
               'needs-review');
 
-            // Read teams.csv (create it on first use).
-            let sha = null, rows = [];
-            const header = 'assignment,team,github_handle';
+            // Read teams.csv (create it on first use). Columns: dsl_course.teams.FIELDS.
+            const FIELDS = ['assignment', 'team', 'github_handle'];
+            let sha = null, header = FIELDS, rows = [];
             try {
               const got = await github.rest.repos.getContent({ owner: org, repo: CONFIG, path: TEAMS });
               sha = got.data.sha;
-              rows = Buffer.from(got.data.content, 'base64').toString('utf8')
-                .replace(/\n$/, '').split('\n').slice(1).filter(Boolean).map(l => l.split(','));
+              const table = parseCsv(Buffer.from(got.data.content, 'base64').toString('utf8'));
+              if (table.length) { header = table[0].map(h => h.trim()); rows = table.slice(1); }
             } catch (e) {
               if (e.status !== 404) throw e;
             }
+            const iAssign = header.indexOf('assignment');
+            const iTeam = header.indexOf('team');
+            const iHandle = header.indexOf('github_handle');
+            if (iAssign < 0 || iTeam < 0 || iHandle < 0) return fail(
+              `Thanks @${handle} - \`teams.csv\` is missing a required column ` +
+              `(\`assignment\`, \`team\`, \`github_handle\`). A maintainer will action this.`,
+              'needs-review');
+            const cell = (r, i) => (r[i] || '').trim();
 
             // One team per student per assignment; respect the size cap; idempotent re-open.
-            const mine = rows.find(r => r[0] === assignment && r[2].toLowerCase() === handle.toLowerCase());
-            if (mine && mine[1] === team) {
+            const mine = rows.find(r =>
+              cell(r, iAssign) === assignment && cell(r, iHandle).toLowerCase() === handle.toLowerCase());
+            if (mine && cell(mine, iTeam) === team) {
               await github.rest.issues.createComment({
                 owner: org, repo: context.repo.repo, issue_number: issue.number,
                 body: `You're already in **${team}** for \`${assignment}\` @${handle} - nothing to do.` });
@@ -98,18 +144,21 @@ jobs:
               return;
             }
             if (mine) return fail(
-              `You're already in team **${mine[1]}** for \`${assignment}\` @${handle}. ` +
+              `You're already in team **${cell(mine, iTeam)}** for \`${assignment}\` @${handle}. ` +
               `Contact the teaching team to switch teams.`,
               'needs-review');
-            const size = rows.filter(r => r[0] === assignment && r[1] === team).length;
+            const size = rows.filter(r =>
+              cell(r, iAssign) === assignment && cell(r, iTeam) === team).length;
             if (size >= MAX_TEAM_SIZE) return fail(
               `Team **${team}** for \`${assignment}\` is full (${MAX_TEAM_SIZE} members). ` +
               `Pick another team name.`,
               'needs-review');
 
-            // Append + write back.
-            rows.push([assignment, team, handle]);
-            const body = [header, ...rows.map(r => r.join(','))].join('\n') + '\n';
+            // Append + write back (in the existing header's column order).
+            const fresh = header.map(() => '');
+            fresh[iAssign] = assignment; fresh[iTeam] = team; fresh[iHandle] = handle;
+            rows.push(fresh);
+            const body = serialiseCsv([header, ...rows]);
             await github.rest.repos.createOrUpdateFileContents({
               owner: org, repo: CONFIG, path: TEAMS, ...(sha ? { sha } : {}),
               message: `teams: ${handle} -> ${team} (${assignment})`,

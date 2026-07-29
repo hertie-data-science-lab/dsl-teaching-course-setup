@@ -41,6 +41,37 @@ jobs:
             const userId = issue.user.id;                 // immutable - key on this
             const CONFIG = 'classroom-config', FILE = 'students.csv';
 
+            // --- CSV, RFC-4180-ish (github-script has no npm deps, so hand-rolled).
+            // The Python side writes this file with csv.writer, so a field containing a comma
+            // (a name like "Doe, Jane") arrives QUOTED. A naive line.split(',') shifts every
+            // column right of it, so we'd read the wrong enrol_code and write github_handle /
+            // github_id into the wrong cells. Quoted fields may contain commas, newlines and
+            // "" -escaped quotes; serialiseCsv re-quotes on the same rule as csv.QUOTE_MINIMAL.
+            const parseCsv = (text) => {
+              const rows = [];
+              let row = [], field = '', quoted = false;
+              for (let i = 0; i < text.length; i++) {
+                const c = text[i];
+                if (quoted) {
+                  if (c === '"' && text[i + 1] === '"') { field += '"'; i++; }
+                  else if (c === '"') { quoted = false; }
+                  else { field += c; }
+                  continue;
+                }
+                if (c === '"') { quoted = true; }
+                else if (c === ',') { row.push(field); field = ''; }
+                else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+                else if (c !== '\r') { field += c; }
+              }
+              if (field !== '' || row.length) { row.push(field); rows.push(row); }
+              return rows.filter(r => r.some(v => v !== ''));  // drop blank lines
+            };
+            const csvCell = (v) => {
+              const s = (v === undefined || v === null) ? '' : String(v);
+              return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+            };
+            const serialiseCsv = (rows) => rows.map(r => r.map(csvCell).join(',')).join('\n') + '\n';
+
             const fail = async (msg, label) => {
               await github.rest.issues.createComment({
                 owner: org, repo: context.repo.repo, issue_number: issue.number, body: msg });
@@ -63,29 +94,43 @@ jobs:
               `Thanks @${handle} - I couldn't read an **enrolment code** from the form. Please edit the issue and add it.`,
               'needs-review');
 
-            // Read the PRIVATE roster. Columns: [student_id,email,name,handle,id,section,enrol_code]
+            // Read the PRIVATE roster. Columns (dsl_course.roster.FIELDS):
+            // student_id,hertie_email,name,github_handle,github_id,section,enrol_code
             const got = await github.rest.repos.getContent({ owner: org, repo: CONFIG, path: FILE });
             const sha = got.data.sha;
-            const lines = Buffer.from(got.data.content, 'base64').toString('utf8').replace(/\n$/, '').split('\n');
-            const header = lines[0];
-            const rows = lines.slice(1).map(l => l.split(','));
+            const table = parseCsv(Buffer.from(got.data.content, 'base64').toString('utf8'));
+            const header = (table[0] || []).map(h => h.trim());
+            // Address columns BY NAME - never by position - so a roster gaining/reordering a
+            // column can't make us read a code or overwrite a handle in the wrong cell.
+            const iHandle = header.indexOf('github_handle');
+            const iId = header.indexOf('github_id');
+            const iCode = header.indexOf('enrol_code');
+            if (iHandle < 0 || iId < 0 || iCode < 0) return fail(
+              `Thanks @${handle} - the roster's header is missing a required column ` +
+              `(\`github_handle\`, \`github_id\`, \`enrol_code\`). A maintainer will action this.`,
+              'needs-review');
+            const width = header.length;
+            const rows = table.slice(1).map(r => {
+              while (r.length < width) r.push('');  // keep short rows addressable by index
+              return r;
+            });
 
             // Match the code to a registrar-seeded row - reject non-enrolees.
-            const row = rows.find(r => (r[6] || '').trim().toLowerCase() === code.toLowerCase());
+            const row = rows.find(r => r[iCode].trim().toLowerCase() === code.toLowerCase());
             if (!row) return fail(
               `Thanks @${handle} - that enrolment code isn't recognised. Check the code in your email, ` +
               `or contact the teaching team.`,
               'needs-review');
-            if (row[3] && row[3].toLowerCase() !== handle.toLowerCase()) return fail(
+            if (row[iHandle] && row[iHandle].toLowerCase() !== handle.toLowerCase()) return fail(
               `That enrolment code is already linked to a different GitHub account. ` +
               `Contact the teaching team to resolve this.`,
               'needs-review');
 
             // Write the authenticated handle + immutable id back (idempotent).
-            const already = row[3] === handle;
-            row[3] = handle; row[4] = String(userId);
+            const already = row[iHandle] === handle;
+            row[iHandle] = handle; row[iId] = String(userId);
             if (!already) {
-              const body = [header, ...rows.map(r => r.join(','))].join('\n') + '\n';
+              const body = serialiseCsv([header, ...rows]);
               await github.rest.repos.createOrUpdateFileContents({
                 owner: org, repo: CONFIG, path: FILE, sha,
                 message: `roster: link @${handle} (id ${userId})`,
