@@ -51,7 +51,7 @@ Two **separate** populations - keep them distinct:
   `.github`). (**Publish course website** carries an editorial responsibility:
   `actual-readings` mode hosts the reading files publicly, so only publish materials you hold
   the rights to share - use `reading-list` for copyrighted readings.) The day-to-day buttons
-  gate on **repo permission** on the repo they run in (`seed.py` `_CHECK_TEAM`); bootstrap
+  gate on **repo permission** on the repo they run in (`workflows_render.py` `_CHECK_TEAM`); bootstrap
   grants `course-admin` admin on `.github`, and `sync_faculty` grants each `instructors-<tag>`
   team push on `.github` + that tag's repos as soon as a cohort declares any instructor for
   that tag. GitHub only shows the "Run workflow" button to write+ users, so without one of
