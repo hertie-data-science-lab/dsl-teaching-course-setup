@@ -336,6 +336,23 @@ def _pin_commit(
     return sha
 
 
+def _stray_conversion(nb: Path) -> Path | None:
+    """The file `jupyter nbconvert --to script` actually wrote for `nb`, when that is not
+    the expected `<stem>.py`.
+
+    nbconvert names its output from the notebook's `metadata.language_info.file_extension`,
+    so a notebook whose metadata is empty, carries only a `kernelspec`, or omits
+    `file_extension` (all common in student submissions, and what a fresh `{}`-metadata
+    notebook looks like) converts to `<stem>.txt` - or to a bare `<stem>` if
+    `file_extension` is present but empty. The hidden tests then `from starter import ...`
+    against a file that does not exist and every submission scores zero, so the output is
+    renamed back to `.py` rather than trusted."""
+    for candidate in (nb.with_suffix(".txt"), nb.with_suffix("")):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
 def _run_tests(workdir: Path, fmt: str, tests_src: Path) -> dict | None:
     """Overlay the hidden tests into the checked-out submission and run them token-free.
     Returns the result.json dict, or None if grading could not run."""
@@ -360,6 +377,13 @@ def _run_tests(workdir: Path, fmt: str, tests_src: Path) -> dict | None:
                     timeout=RUN_TIMEOUT,
                     capture_output=True,
                 )
+                script = nb.with_suffix(".py")
+                if not script.exists() and (stray := _stray_conversion(nb)):
+                    stray.rename(script)
+                    log(
+                        f"    ({nb.name} declares no python file_extension - "
+                        f"{stray.name} -> {script.name})"
+                    )
         dest = workdir / "_grading_tests"
         shutil.copytree(tests_src, dest, dirs_exist_ok=True)
         report = workdir / "report.xml"
