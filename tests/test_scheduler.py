@@ -210,6 +210,53 @@ def test_deploy_many_missing_source_path_is_an_error_not_silent(monkeypatch):
     assert errors == 1 and changed is False
 
 
+def _clone_failing(*failing: str):
+    """A fake gh where cloning any repo in `failing` fails; others clone empty."""
+
+    def fake_gh(*args):
+        if args[:2] == ("repo", "clone"):
+            if args[2] in failing:
+                return (1, "boom")
+            Path(args[3]).mkdir(parents=True, exist_ok=True)
+            return (0, "")
+        return (0, "")
+
+    return fake_gh
+
+
+def _no_io(monkeypatch, fake_gh):
+    monkeypatch.setattr(release_code, "gh", fake_gh)
+    monkeypatch.setattr(release_code, "git", lambda *a: (0, ""))
+    monkeypatch.setattr(release_code, "create_repo", lambda *a, **k: True)
+    monkeypatch.setattr(release_code, "grant_students_read", lambda *a, **k: None)
+
+
+def test_deploy_many_counts_a_doomed_deploy_once(monkeypatch):
+    # Source AND dest clone both fail: that is ONE copy lost, not two errors (a
+    # double-count made `release_code` report 2 failures for a single deploy).
+    _no_io(monkeypatch, _clone_failing("Course-Org/cm", "Cohort-Org/materials"))
+    errors, changed = release_code.deploy_many(
+        "Course-Org",
+        "Cohort-Org",
+        [Deploy("cm", "lectures/00_x", "materials", None)],
+        sync=False,
+    )
+    assert (errors, changed) == (1, False)
+
+
+def test_deploy_many_counts_each_unrunnable_deploy_once(monkeypatch):
+    # 3 deploys: the shared source fails AND one dest fails - still 3 lost copies.
+    _no_io(monkeypatch, _clone_failing("Course-Org/cm", "Cohort-Org/labs"))
+    deploys = [
+        Deploy("cm", "lectures/00_x", "lectures", None),
+        Deploy("cm", "labs/00_y", "labs", None),
+        Deploy("cm", "lectures/01_z", "lectures", None),
+    ]
+    assert release_code.deploy_many(
+        "Course-Org", "Cohort-Org", deploys, sync=False
+    ) == (3, False)
+
+
 def test_scheduler_workflow_hourly_and_ungated():
     doc = yaml.safe_load(seed.render_scheduler())
     assert doc.get("name") == "Scheduled release"

@@ -63,8 +63,6 @@ def deploy_many(
             sd = root / "src" / repo
             if gh("repo", "clone", f"{source_org}/{repo}", str(sd), "--", "-q")[0] != 0:
                 log_err(f"could not clone source {source_org}/{repo}")
-                # every copy from this source is now impossible
-                errors += sum(1 for d in deploys if d.source_repo == repo)
             else:
                 src_dirs[repo] = sd
 
@@ -81,9 +79,16 @@ def deploy_many(
             dd = root / "out" / repo
             if gh("repo", "clone", f"{cohort_org}/{repo}", str(dd), "--", "-q")[0] != 0:
                 log_err(f"could not clone dest {cohort_org}/{repo}")
-                errors += sum(1 for d in deploys if d.dest_repo == repo)
             else:
                 dest_dirs[repo] = dd
+
+        # A deploy whose source or dest failed to clone is one impossible copy - count it
+        # ONCE, per deploy, not once per failed clone (both failing is still one copy lost).
+        errors += sum(
+            1
+            for d in deploys
+            if d.source_repo not in src_dirs or d.dest_repo not in dest_dirs
+        )
 
         # 3. apply every copy against the already-cloned trees
         touched: set[str] = set()
