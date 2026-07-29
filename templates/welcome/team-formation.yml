@@ -3,7 +3,8 @@ name: Form team
 # Seed this into a cohort's public `welcome` repo as
 # .github/workflows/team-formation.yml. Students open a "Join team" issue here; the issue
 # AUTHOR is the authenticated GitHub handle (unspoofable). We verify they are an onboarded
-# student, then append a row to the PRIVATE classroom-config/teams.csv - the only writer
+# ENROLLED student - auditors are read-only (released materials, no assignment repos) so they
+# are refused - then append a row to the PRIVATE classroom-config/teams.csv - the only writer
 # surface for team membership. A GitHub Team is materialised FROM that CSV later (one-way, by
 # dsl_course.sync_teams), so the Team is a downstream projection that can't drift the way a
 # Classroom-managed team does. Group-assignment provisioning grants that team its shared repo.
@@ -100,16 +101,30 @@ jobs:
             // Columns (dsl_course.roster.FIELDS) are addressed BY NAME, never by position.
             const rosterRaw = await github.rest.repos.getContent({ owner: org, repo: CONFIG, path: ROSTER });
             const rosterTable = parseCsv(Buffer.from(rosterRaw.data.content, 'base64').toString('utf8'));
-            const iRosterHandle = (rosterTable[0] || []).map(h => h.trim()).indexOf('github_handle');
+            const rosterHeader = (rosterTable[0] || []).map(h => h.trim());
+            const iRosterHandle = rosterHeader.indexOf('github_handle');
+            // `role` is OPTIONAL - a roster seeded before the column existed has none, and a
+            // missing/blank cell means `enrolled` (dsl_course.roster.normalise_role). Never
+            // required, so an older cohort's students keep forming teams.
+            const iRole = rosterHeader.indexOf('role');
             if (iRosterHandle < 0) return fail(
               `Thanks @${handle} - the roster's header is missing a \`github_handle\` column. ` +
               `A maintainer will action this.`,
               'needs-review');
-            const enrolled = rosterTable.slice(1)
-              .some(r => (r[iRosterHandle] || '').trim().toLowerCase() === handle.toLowerCase());
-            if (!enrolled) return fail(
+            const myRow = rosterTable.slice(1)
+              .find(r => (r[iRosterHandle] || '').trim().toLowerCase() === handle.toLowerCase());
+            if (!myRow) return fail(
               `Thanks @${handle} - I can't find you on the roster yet. Please open a **Join** issue first ` +
               `to onboard, then come back to join a team.`,
+              'needs-review');
+            // Auditors are read-only: assignment release is roster-driven (enrolled rows only),
+            // so they never receive an assignment repo - and a group assignment's repo goes to
+            // the whole team. Refuse politely rather than recording a membership that would
+            // hand an auditor a group repo.
+            if (iRole >= 0 && (myRow[iRole] || '').trim().toLowerCase() === 'auditor') return fail(
+              `Thanks @${handle} - you're on the roster as an **auditor** (read-only: the released ` +
+              `materials, but no assignment repos and no grades), so you can't join a project team. ` +
+              `Contact the teaching team if you should be enrolled instead.`,
               'needs-review');
 
             // Read teams.csv (create it on first use). Columns: dsl_course.teams.FIELDS.

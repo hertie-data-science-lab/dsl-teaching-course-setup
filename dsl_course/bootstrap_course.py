@@ -187,264 +187,34 @@ def add_course_admins(org: str, handles: str) -> None:
             log_err(f"  ! could not add {login}: {out[:120]}")
 
 
-# course_admins are declared ONCE on the persistent COURSE org (this block) - the
-# single source of truth for admin access, reconciled into this org's own
-# `course-admin` GitHub team AND mirrored into every cohort org's own `course-admin`
-# team. `github_handle` is the only required field (it's what actually grants
-# access); `start`/`end` are optional ISO dates - omit either for open-ended, or set
-# both to bound access to one window (auto-rotates, no manual removal needed).
+TEMPLATES = Path(__file__).resolve().parents[1] / "templates"
+
+
+def _template(rel: str) -> str:
+    """Read a seeded template file (templates/<rel>) as text.
+
+    Everything under templates/ is content pushed into a course/cohort repo, kept in real
+    files rather than Python literals so faculty & instructors can read (and PR) the thing
+    they'll actually receive. Most are seeded verbatim; the few that carry `{placeholders}`
+    are rendered with str.format (see _course_metadata / _cohort_metadata)."""
+    return (TEMPLATES / rel).read_text(encoding="utf-8")
+
+
+# course_admins are declared ONCE on the persistent COURSE org - the single source of truth
+# for admin access, reconciled into this org's own `course-admin` GitHub team AND mirrored
+# into every cohort org's own `course-admin` team. `github_handle` is the only required
+# field (it's what actually grants access); `start`/`end` are optional ISO dates - omit
+# either for open-ended, or set both to bound access to one window (auto-rotates, no manual
+# removal needed).
 #
-# TAs are never declared here (they change every cohort); instructors appear here only
-# as OPTIONAL open-courseware display cards. A cohort's real teaching team - GitHub
-# access AND cohort-site cards - is declared per cohort in that cohort's own
+# TAs are never declared here (they change every cohort); instructors appear here only as
+# OPTIONAL open-courseware display cards (templates/course/people-cards.yml - the schema
+# site._people_from_meta reads for the course-site headshots). A cohort's real teaching team
+# - GitHub access AND cohort-site cards - is declared per cohort in that cohort's own
 # classroom-config/people.yml (seeded alongside schedule.yml at Bootstrap cohort).
-# Shared preamble + website-card scaffold for the course org's people: block, used by
-# both the fully-commented default (_FACULTY_BLOCK) and the --admins-seeded variant
-# (_course_admins_block). Kept in one place so the two variants can't drift.
-_PEOPLE_HEADER = (
-    "# ---------------------------------------------------------------------------\n"
-    "# People. Two DIFFERENT things live under the `people:` key below - don't\n"
-    "# confuse them:\n"
-    "#\n"
-    "#   course_admins        GRANTS ACCESS. The single source of truth for course-wide\n"
-    "#                        admin rights - the `course-admin` team here, mirrored into\n"
-    "#                        every cohort org. \"Sync membership\" reconciles that team\n"
-    "#                        FROM this list: a handle added any other way (Teams UI, a\n"
-    "#                        gh call) is reverted on the next sync unless it's declared\n"
-    "#                        here, and removing a handle here revokes their access.\n"
-    "#\n"
-    "#   instructors          DISPLAY ONLY - website cards (name/photo/title/link) for\n"
-    "#                        the OPTIONAL public open-courseware course website (the\n"
-    "#                        \"Publish course website\" action). They grant NO GitHub\n"
-    "#                        access. TAs are NOT declared here - they change every\n"
-    "#                        cohort, so a cohort's whole teaching team (instructors &\n"
-    "#                        TAs, their GitHub access AND their cohort-site cards) is\n"
-    "#                        declared PER COHORT in that cohort's classroom-config/people.yml.\n"
-    "# ---------------------------------------------------------------------------\n"
-)
-
-# The instructor website-card scaffold (display only). Shipped commented in both
-# variants so faculty can see the cards exist and how to fill them - this is the schema
-# site._people_from_meta reads for the course-site headshots. (Cohort-site headshots,
-# instructors AND TAs, come from each cohort's own classroom-config/people.yml instead.)
-_CARD_SCAFFOLD = (
-    "\n"
-    "  # Instructor website cards (optional, DISPLAY ONLY - no GitHub access) for the\n"
-    "  # OPTIONAL public open-courseware course website. TAs are NOT listed here - a\n"
-    "  # cohort's own teaching team (instructors & TAs) goes in that cohort's\n"
-    "  # classroom-config/people.yml instead. Uncomment and fill:\n"
-    "  # instructors:\n"
-    '  #   - github_handle: "janedoe"\n'
-    '  #     name:  "Prof. Dr. Jane Doe"\n'
-    '  #     title: "Professor of Data Science"\n'
-    '  #     photo: "https://.../headshot.jpg"        # square image URL\n'
-    '  #     url:   "https://.../profile/jane-doe"     # bio / profile link\n'
-)
-
-_FACULTY_BLOCK = (
-    _PEOPLE_HEADER
-    + "\n"
-    "# Uncomment and fill in at least one course admin (if you passed --admins at\n"
-    "# bootstrap, this is already filled in for you):\n"
-    "# people:\n"
-    "#   course_admins:\n"
-    '#     - github_handle: "adminhandle"    # required - grants the `course-admin` team\n'
-    '#       start: "2026-09-01"             # optional - no start = active immediately\n'
-    '#       end: "2027-06-30"               # optional - no end = indefinite\n'
-    + _CARD_SCAFFOLD
-)
-
-
-# classroom-config (cohort, private) contract: the roster/grades/teams/schedule schema,
-# documented next to the files faculty & instructors edit. Samples use a `.sample` suffix so the engine
-# (sync_teams, scheduled-release, grade sync) never ingests them - only the real names.
-_CLASSROOM_README = """# classroom-config - this cohort's private config
-
-**PRIVATE.** This is the entire per-cohort data hub - roster, teams, grades,
-schedule, and this cohort's own instructors/TAs. No PII (emails, ids, names) leaves
-this repo. Course admins are managed at the **course org** level instead - see that
-org's `.github/dsl-course.yml`; that access is kept current automatically. Faculty & instructors/FAs
-edit these files; the buttons in the **course org's** Actions tab read them.
-Canonical, engine-wide schema:
-<https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/blob/main/docs/faculty-and-instructors/required-input-schema.md>.
-
-## students.csv - the roster (required)
-
-One row per student. Leave `github_handle`/`github_id` blank - students fill them on join.
-
-| column | filled by | notes |
-|--------|-----------|-------|
-| student_id | registrar | institutional id |
-| hertie_email | registrar | **match key** - enrolment reconciles on this |
-| name | registrar | display name |
-| github_handle | onboarding | blank until they join via the welcome "Join" issue |
-| github_id | onboarding | numeric id captured on join - **immutable; never hand-edit** |
-| section | registrar | optional grouping (e.g. A/B) |
-
-A push to this file triggers **Sync membership** automatically, reconciling the
-`students` team to match (a deleted row revokes access on that same push - there is no
-separate off-boarding step).
-
-## grades/<assignment>.csv - marks (optional, when returning grades)
-
-One file per assignment, e.g. `grades/assignment-1.csv`:
-`github_handle, team, auto, manual, team_grade, adjustment, final, comments, team_comments`.
-**Grade assignment** can pre-fill `auto`/`team_grade` from hidden tests; faculty & instructors fill the
-rest, then **Sync gradebooks** -> **Render grades** -> **Distribute grades**. The autograder
-pins to each assignment's **due date** from `schedule.yml` (`assignments.<slug>.due`,
-plus optional `grace_days`) - there is no separate deadline input. A generated,
-read-only `cohort-gradebook.csv` (one row per student, one column-group per
-assignment) appears alongside the per-student gradebooks on every **Render grades** -
-never hand-edit it, it's a glance view, not a source.
-
-## teams.csv - group membership (optional, for group assignments)
-
-`assignment, team, github_handle`. Students self-select via the welcome "Join team" issue,
-or edit directly - a push here also triggers **Sync membership**. See `teams.csv.sample` -
-**the engine only acts on a real `teams.csv`.**
-
-## schedule.yml - the release plan + due dates + exams (optional)
-
-This cohort's whole schedule in one file. `materials_releases:` is the **auto-release
-plan** - labelled entries (`session_2`, `lab_1`, `bonus-dataset`, ...), each with a
-`when:` datetime and one or more actions (`deploy` a source path -> a cohort repo,
-`assignment` provision student repos, `grade` run the autograder). The hourly **Scheduled
-release** cron fires each entry once its `when` has arrived (honoured to the hour). Also
-holds `semester_start`/`semester_end`, `assignments` (due dates for the website + grading
-pin, with an optional `grace_days`), and `exams`. Seeded mostly-commented - uncomment and
-fill what you want; anything left out is synthesised or simply not scheduled.
-
-## people.yml - this cohort's instructors/TAs (optional)
-
-Most cohorts have different lecturers/TAs, so - unlike course admins (course-org level,
-see above) - instructors/TAs are declared here, per cohort. **Sync membership**
-reconciles them into this cohort's own `instructors` team AND a course-org
-`instructors-<tag>` team (push access scoped to just this year's content repos, plus
-the central `.github` repo so they can use the central dispatch buttons too), so they
-can push materials without a course-level declaration. Seeded mostly-commented -
-uncomment and fill what you want to pin.
-"""
-
-_TEAMS_CSV_SAMPLE = """# Sample. Rename to teams.csv to activate. Students normally self-select via
-# the welcome "Join team" issue, so you rarely edit this by hand.
-assignment,team,github_handle
-assignment-4-project,team-1,alice
-assignment-4-project,team-1,bob
-assignment-4-project,team-2,carol
-"""
-
-# This cohort's entire schedule - the auto-release plan (materials_releases) + due
-# dates/exams - lives in one file (classroom-config/schedule.yml, see dsl_course.schedule).
-# Seeded live (not a .sample) and mostly commented, so faculty & instructors uncomment what they want to
-# pin rather than rename a sample to activate it. The commented block is a MAXIMAL scaffold:
-# it shows every action (deploy/assignment/grade) and every field, so faculty & instructors can copy the
-# shape they need.
-_SCHEDULE_YML = """# This cohort's schedule + auto-release plan. Edit here (GitHub web UI is fine - no CLI).
-# Everything is optional: anything you leave out is synthesised (semester start from the
-# fYYYY tag; website exams at weeks 8 & 15) or simply not scheduled. Uncomment and fill
-# what you want. Times are Europe/Berlin unless you set `timezone:` or give an explicit
-# offset; the Scheduled release cron runs hourly, so a `when:` time is honoured to the hour.
-
-# timezone: Europe/Berlin              # optional - how the naive datetimes below are read
-
-# ---------------------------------------------------------------------------
-# materials_releases: the AUTO-RELEASE plan. Each entry is a label (any name you like -
-# session_2, lab_1, bonus-dataset) mapping to a `when:` datetime and one or more actions.
-# The hourly Scheduled release cron fires each entry once its `when` has arrived
-# (idempotent - safe to re-run). Sources are always read from the COURSE org;
-# destinations always written to THIS cohort org.
-# ---------------------------------------------------------------------------
-# materials_releases:
 #
-#   session_2:                          # a normal weekly release (label is just a name)
-#     when: 2026-09-15T14:00            # bare date (2026-09-15) -> 00:00 that day
-#     deploy:                           # copy one or more paths: course repo -> cohort repo
-#       - source_repo: course-materials-f2026    # repo in the COURSE org
-#         source_path: lectures/02_intro          # folder or file to copy
-#         dest_repo: materials                     # repo in THIS cohort org (default: materials)
-#         dest_path: lectures/02_intro             # where to put it (default: same as source_path)
-#       - source_repo: course-materials-f2026
-#         source_path: readings/02_intro
-#         dest_repo: materials
-#         dest_path: readings/02_intro
-#
-#   lab_1:                              # a lab is just another release - no special section
-#     when: 2026-09-17T10:00
-#     deploy:
-#       - source_repo: course-materials-f2026
-#         source_path: labs/01_setup
-#         dest_repo: materials
-#         # dest_path omitted -> mirrors source_path (labs/01_setup)
-#
-#   bonus-dataset:                      # a one-off that isn't a numbered teaching session
-#     when: 2026-10-20T09:30
-#     deploy:
-#       - source_repo: course-datasets-f2026
-#         source_path: week7/housing.csv
-#         dest_repo: materials
-#         dest_path: datasets/housing.csv
-#
-#   assignment-1-handout:               # hand an assignment out (provision one repo/student)
-#     when: 2026-09-22T09:00
-#     assignment: assignment-1-f2026    # the assignment-*-<tag> template repo
-#
-#   assignment-1-grade:                 # run the autograder after the deadline
-#     when: 2026-10-15T00:00
-#     grade:
-#       template: assignment-1-f2026
-#       deadline: 2026-10-13T23:59      # commit cutoff (default: this assignment's due date)
-#       group: false                    # true for a group assignment
-
-# ---------------------------------------------------------------------------
-# The rest is for DISPLAY (website) and GRADING - not the release plan above.
-# ---------------------------------------------------------------------------
-# semester_start: 2026-09-07           # YYYY-MM-DD
-# semester_end: 2026-12-18
-#
-# assignments:                          # due dates (keyed by slug, no -fYYYY tag)
-#   assignment-1:
-#     due: 2026-10-13T23:59            # a bare date -> END of that day (23:59:59)
-#     grace_days: 2                     # OPTIONAL: extra days for GRADING only (not shown
-#                                       # to students). Autograder pins to due + grace_days.
-#   assignment-2:
-#     due: 2026-11-10
-#
-# exams:                                # `date` is a whole day, OR a full datetime when
-#   - name: MidTerm Exam                 # you know the start time
-#     date: 2026-11-03                  # bare date -> the website shows 09:00
-#   - name: Final Exam
-#     date: 2026-12-15T14:00            # real start time, shown as given
-"""
-
-# This cohort's own instructors/TAs (unlike course_admins, declared once at course
-# level - see _FACULTY_BLOCK) - most cohorts have different lecturers/TAs, so they're
-# declared here instead. Seeded live (not a .sample) and mostly commented, matching
-# schedule.yml's uncomment-what-you-want UX.
-_PEOPLE_YML = """# This cohort's instructors/TAs - the single source of truth for GitHub push
-# access to this cohort's own team AND a course-org instructors-<tag> team (scoped
-# to this year's content repos, plus the central .github repo for the central
-# dispatch buttons). Course admins are declared at the course-org level instead (see
-# that org's .github/dsl-course.yml). Uncomment and fill what you want:
-#
-# people:
-#   instructors:
-#     - github_handle: "janedoe"      # required - grants the `instructors` team
-#       name: "Prof. Jane Doe"        # optional, display only
-#       title: "Professor of ..."
-#       photo: "https://.../jane.jpg"
-#       url: "https://.../profile/jane"
-#       start: "2026-09-01"           # optional - no start = active immediately
-#       end: "2027-01-31"             # optional - no end = indefinite
-#   teaching_assistants:
-#     - github_handle: "anOther"
-#       name: "..."                  # optional, display only
-#       photo: "https://.../ta.jpg"
-#       url: "https://.../profile/ta"
-#       start: "2026-09-01"
-#       end: "2027-01-31"
-"""
-
-
+# The preamble (people-header.yml) and card scaffold (people-cards.yml) are shared by both
+# variants below - fully-commented default and --admins-seeded - so the two can't drift.
 def _course_admins_block(admins: list[str] | None) -> str:
     """The `people.course_admins` block for a freshly-seeded dsl-course.yml. With no
     admins given, ships fully commented out (today's default, uncomment-what-you-want
@@ -452,12 +222,14 @@ def _course_admins_block(admins: list[str] | None) -> str:
     they're declared in the SSOT from day one, not just given a one-time direct team
     invite (add_course_admins) that the next sync would otherwise revert for not
     being declared here."""
+    header = _template("course/people-header.yml")
+    cards = _template("course/people-cards.yml")
     if not admins:
-        return _FACULTY_BLOCK
+        return f"{header}\n{_template('course/people-commented.yml')}\n{cards}"
     entries = "\n".join(
         f'    - github_handle: "{a}"    # grants the `course-admin` team' for a in admins
     )
-    return _PEOPLE_HEADER + ("people:\n" "  course_admins:\n" f"{entries}\n") + _CARD_SCAFFOLD
+    return f"{header}people:\n  course_admins:\n{entries}\n\n{cards}"
 
 
 def _course_metadata(
@@ -472,16 +244,13 @@ def _course_metadata(
     org's own course-admin team by sync_faculty). Instructors/TAs and the schedule
     both stay per-cohort instead (they change year to year and, for instructors/TAs,
     usually the people too)."""
-    return (
-        f"org: {org}\n"
-        f"org_name: {org_name}\n"
-        f"course_name: {course_name}\n"
-        f"course_code: {course_code or ''}\n"
-        "\n"
-        "# This is the persistent COURSE org - it spans many cohorts (years). Cohorts are\n"
-        "# registered separately in .github/cohort-courses-pages.yml.\n"
-        f"\n{_course_admins_block(admins)}"
+    identity = _template("course/dsl-course.yml").format(
+        org=org,
+        org_name=org_name,
+        course_name=course_name,
+        course_code=course_code or "",
     )
+    return identity + _course_admins_block(admins)
 
 
 def _cohort_metadata(org: str, course: str) -> str:
@@ -489,14 +258,7 @@ def _cohort_metadata(org: str, course: str) -> str:
     course org. This is the single source the cohort's classroom-config dispatchers
     (dispatch-sync / dispatch-sync-site) read to find where to fire Sync membership /
     Sync site - so without it those auto-triggers can't resolve the course org."""
-    return (
-        "# This cohort org points back to its persistent course org. Read by the\n"
-        "# classroom-config dispatchers (dispatch-sync / dispatch-sync-site) to find where\n"
-        "# to fire Sync membership / Sync site. Identity + schedule live elsewhere (the\n"
-        "# course org's dsl-course.yml and this cohort's classroom-config/schedule.yml).\n"
-        f"course: {course}\n"
-        f"org: {org}\n"
-    )
+    return _template("cohort/dsl-course.yml").format(course=course, org=org)
 
 
 def create_profile_repo(
@@ -587,20 +349,6 @@ def validate_secret_presence(org: str, secret_name: str) -> bool:
     return exists
 
 
-def _welcome_template(rel: str) -> bytes:
-    """Read a seeded-welcome template from the repo's templates/welcome/ dir."""
-    return (
-        Path(__file__).resolve().parents[1] / "templates" / "welcome" / rel
-    ).read_bytes()
-
-
-def _classroom_config_template(rel: str) -> bytes:
-    """Read a seeded classroom-config template from templates/classroom-config/."""
-    return (
-        Path(__file__).resolve().parents[1] / "templates" / "classroom-config" / rel
-    ).read_bytes()
-
-
 def setup_cohort_extras(org: str) -> None:
     """Cohort-only: tighten the org and seed the student-facing repos.
 
@@ -641,28 +389,28 @@ def setup_cohort_extras(org: str) -> None:
             org,
             "welcome",
             ".github/workflows/onboard.yml",
-            _welcome_template("onboard.yml"),
+            _template("welcome/onboard.yml").encode(),
             "ci: seed onboard workflow",
         )
         put_file(
             org,
             "welcome",
             ".github/ISSUE_TEMPLATE/join.yml",
-            _welcome_template("ISSUE_TEMPLATE/join.yml"),
+            _template("welcome/ISSUE_TEMPLATE/join.yml").encode(),
             "ci: seed Join issue form",
         )
         put_file(
             org,
             "welcome",
             ".github/workflows/team-formation.yml",
-            _welcome_template("team-formation.yml"),
+            _template("welcome/team-formation.yml").encode(),
             "ci: seed team-formation workflow",
         )
         put_file(
             org,
             "welcome",
             ".github/ISSUE_TEMPLATE/join-team.yml",
-            _welcome_template("ISSUE_TEMPLATE/join-team.yml"),
+            _template("welcome/ISSUE_TEMPLATE/join-team.yml").encode(),
             "ci: seed Join team issue form",
         )
         log_ok("welcome repo seeded (onboard + team-formation + Join forms)")
@@ -673,22 +421,23 @@ def setup_cohort_extras(org: str) -> None:
         private=True,
         description="PRIVATE cohort config - roster (students.csv). No PII leaves here.",
     ):
-        roster = (
-            "student_id,hertie_email,name,github_handle,github_id,section\n"
-            "000001,student@example.edu,Example Student,,,A\n"
-        )
+        # One example row carrying the full roster header (dsl_course.roster.FIELDS), so a
+        # cohort discovers the real schema - `enrol_code` and `role` included - from its own
+        # config repo. README.md documents each column.
         put_file(
             org,
             "classroom-config",
             "students.csv",
-            roster.encode(),
+            _template("classroom-config/students.csv").encode(),
             "init: starter roster (replace the example row with registrar data)",
         )
+        # The classroom-config contract: the roster/grades/teams/schedule schema, documented
+        # next to the files faculty & instructors edit.
         put_file(
             org,
             "classroom-config",
             "README.md",
-            _CLASSROOM_README.encode(),
+            _template("classroom-config/README.md").encode(),
             "docs: classroom-config schema + contract",
         )
         put_file(
@@ -698,39 +447,45 @@ def setup_cohort_extras(org: str) -> None:
             b"",
             "init: grades/ (add one <assignment>.csv per assignment to return marks)",
         )
+        # Samples keep the `.sample` suffix so the engine (sync_teams, scheduled-release,
+        # grade sync) never ingests them - only the real names.
         put_file(
             org,
             "classroom-config",
             "teams.csv.sample",
-            _TEAMS_CSV_SAMPLE.encode(),
+            _template("classroom-config/teams.csv.sample").encode(),
             "docs: sample teams.csv (group assignments)",
         )
+        # schedule.yml and people.yml are seeded LIVE (not a .sample) but mostly commented,
+        # so faculty & instructors uncomment what they want to pin rather than rename a
+        # sample to activate it. schedule.yml's commented block is a MAXIMAL scaffold - every
+        # action (deploy/assignment/grade) and field, to copy the shape from.
         put_file(
             org,
             "classroom-config",
             "schedule.yml",
-            _SCHEDULE_YML.encode(),
+            _template("classroom-config/schedule.yml").encode(),
             "docs: seed schedule.yml (release plan + due dates + exams)",
         )
         put_file(
             org,
             "classroom-config",
             "people.yml",
-            _PEOPLE_YML.encode(),
+            _template("classroom-config/people.yml").encode(),
             "docs: seed people.yml (this cohort's instructors/TAs)",
         )
         put_file(
             org,
             "classroom-config",
             ".github/workflows/dispatch-sync.yml",
-            _classroom_config_template("dispatch-sync.yml"),
+            _template("classroom-config/dispatch-sync.yml").encode(),
             "ci: seed dispatch-sync workflow",
         )
         put_file(
             org,
             "classroom-config",
             ".github/workflows/dispatch-sync-site.yml",
-            _classroom_config_template("dispatch-sync-site.yml"),
+            _template("classroom-config/dispatch-sync-site.yml").encode(),
             "ci: seed dispatch-sync-site workflow",
         )
         log_ok("classroom-config seeded (roster + README + grades/ + samples)")

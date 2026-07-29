@@ -120,10 +120,36 @@ def test_onboard_treats_a_missing_role_column_as_enrolled():
     assert "iRole >= 0" in code
 
 
+def test_team_formation_refuses_auditors():
+    # Auditors are read-only: assignment release is roster-driven (enrolled rows only), so an
+    # auditor recorded in teams.csv would be handed a group assignment repo anyway. They must
+    # be refused on the same comment + needs-review path as every other rejection.
+    script = script_of("team-formation.yml", "form-team")
+    code = code_of(script)
+    assert f"=== '{roster.ROLE_AUDITOR}'" in code  # matches the Python spelling
+    refusal = re.search(
+        r"if \(iRole >= 0 [^\n]*\n(?:.*\n)*?\s+'needs-review'\);", code
+    ).group(0)
+    assert "auditor" in refusal and "can't join a project team" in refusal
+    # refused before anything is written back to teams.csv
+    assert code.index("iRole >= 0") < code.index("createOrUpdateFileContents")
+
+
+def test_team_formation_treats_a_missing_role_column_as_enrolled():
+    # A cohort whose roster predates the column has no `role` header at all - those students
+    # must keep forming teams (blank/absent = enrolled, per roster.normalise_role), so `role`
+    # is never part of the required-column guard.
+    script = script_of("team-formation.yml", "form-team")
+    code = code_of(script)
+    guard = re.search(r"if \((iRosterHandle < 0[^)]*)\)", code).group(1)
+    assert "iRole" not in guard, "role must not be a required roster column"
+    assert "iRole >= 0" in code  # every read of the role cell is guarded on it existing
+
+
 def test_team_formation_addresses_columns_declared_in_python():
     script = script_of("team-formation.yml", "form-team")
     named = set(re.findall(r"indexOf\('([a-z_]+)'\)", script))
-    assert named == set(teams.FIELDS) | {"github_handle"}
+    assert named == set(teams.FIELDS) | {"github_handle", "role"}
     assert named <= set(teams.FIELDS) | set(roster.FIELDS)
     # The header it writes on first use must match teams.FIELDS exactly, in order.
     literal = re.search(r"const FIELDS = \[(.*?)\];", script).group(1)

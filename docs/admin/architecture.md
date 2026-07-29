@@ -359,4 +359,11 @@ Self-contained - workflows + their Python implementation live in this repo.
     `new_semester`, `post_migrate` and `bootstrap_org` (the same vintage) have been removed -
     `new_semester`'s hardcoded `CONTENT_FOLDERS` was the exact section-name inconsistency the
     generic, dynamically-discovered sections now resolve.
-- `templates/welcome/` - the cohort onboarding workflow + Join issue form.
+- `templates/` - the files bootstrap seeds into a fresh org, verbatim from disk
+  (`bootstrap_course._template`), one subdirectory per destination:
+  - `welcome/` - the cohort onboarding + team-formation workflows and their issue forms.
+  - `classroom-config/` - that repo's starter roster, README contract, `schedule.yml` /
+    `people.yml` scaffolds, `teams.csv.sample`, and its two dispatch workflows.
+  - `course/` - the course org's `.github/dsl-course.yml` (identity + the `people:` block,
+    assembled from the `people-*.yml` fragments).
+  - `cohort/` - a cohort org's `.github/dsl-course.yml` pointer back to its course org.

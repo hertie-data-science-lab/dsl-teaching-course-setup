@@ -1,11 +1,18 @@
 """bootstrap_course metadata builders: instructors/TAs/course-admins live on the
-persistent course org (the SSOT, mirrored into every cohort by sync_faculty). A
-cohort org gets no dsl-course.yml at all - its schedule lives in
-classroom-config/schedule.yml (seeded by _SCHEDULE_YML) instead."""
+persistent course org (the SSOT, mirrored into every cohort by sync_faculty). A cohort
+org's .github/dsl-course.yml is only a pointer back to it - its schedule lives in
+classroom-config/schedule.yml (seeded from templates/classroom-config/schedule.yml).
+
+The seeded content itself lives in real files under templates/, read at runtime by
+bc._template - so these also pin what a fresh cohort's config repo actually receives."""
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
 from dsl_course import bootstrap_course as bc
+from dsl_course import roster
 
 
 def test_course_metadata_carries_faculty_block():
@@ -45,9 +52,9 @@ def test_parse_handles_splits_comma_and_space():
 def test_schedule_yml_seed_is_commented_and_covers_every_field():
     # Mostly-commented, like the old cohort dsl-course.yml schedule block - faculty
     # uncomment what they want to pin.
+    schedule = bc._template("classroom-config/schedule.yml")
     assert all(
-        line.startswith("#") or not line.strip()
-        for line in bc._SCHEDULE_YML.splitlines()
+        line.startswith("#") or not line.strip() for line in schedule.splitlines()
     )
     for key in (
         "timezone", "materials_releases", "when", "deploy",
@@ -55,15 +62,46 @@ def test_schedule_yml_seed_is_commented_and_covers_every_field():
         "assignment", "grade", "semester_start", "semester_end",
         "assignments", "grace_days", "exams",
     ):
-        assert key in bc._SCHEDULE_YML
+        assert key in schedule
 
 
 def test_classroom_readme_points_to_course_org_for_people():
     # There is no cohort dsl-course.yml any more - the README is the one place that
     # still tells faculty where people/instructors are actually managed.
-    assert "course org" in bc._CLASSROOM_README
-    assert "schedule.yml" in bc._CLASSROOM_README
-    assert "schedule.csv" not in bc._CLASSROOM_README
+    readme = bc._template("classroom-config/README.md")
+    assert "course org" in readme
+    assert "schedule.yml" in readme
+    assert "schedule.csv" not in readme
+
+
+def test_starter_roster_seeds_the_full_column_set():
+    # A cohort discovers the roster schema from its own config repo, so the seeded header
+    # must be exactly roster.FIELDS - a short header (no `enrol_code`/`role`) sends faculty
+    # looking for code-based onboarding and auditors that the columns don't offer.
+    starter = bc._template("classroom-config/students.csv")
+    header, example = starter.splitlines()[:2]
+    assert tuple(header.split(",")) == roster.FIELDS
+    assert len(example.split(",")) == len(roster.FIELDS)
+    (student,) = roster.parse(starter)  # parses cleanly, and the example row is enrolled
+    assert student.is_enrolled and not student.onboarded
+
+
+def test_classroom_readme_documents_every_roster_column():
+    # The README's roster table is what faculty read instead of the schema doc; a column
+    # missing from it is a column nobody fills in.
+    readme = bc._template("classroom-config/README.md")
+    documented = set(re.findall(r"^\| (\w+) \|", readme, re.M))
+    assert set(roster.FIELDS) <= documented
+
+
+def test_every_seeded_template_path_resolves():
+    # The seeded content is read from disk at bootstrap time, so a typo'd or renamed path
+    # would only surface mid-bootstrap against a real org.
+    source = Path(bc.__file__).read_text()
+    rels = set(re.findall(r"_template\(\s*[\"']([^\"']+)[\"']\s*\)", source))
+    assert len(rels) >= 12
+    for rel in sorted(rels):
+        assert (bc.TEMPLATES / rel).is_file(), f"missing template: {rel}"
 
 
 def test_cohort_metadata_carries_course_pointer():
