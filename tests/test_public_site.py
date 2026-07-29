@@ -9,9 +9,11 @@ served layout and the generated `_lectures/` entries are the real code.
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 from dsl_course import seed, site
 
@@ -38,9 +40,8 @@ def _seed_source(root: Path) -> None:
         p.write_text(body)
 
 
-@pytest.fixture
-def published(monkeypatch):
-    """Run sync_public_site and return {path: content} of the site repo as committed."""
+def _install_fakes(monkeypatch) -> dict[str, str]:
+    """Fake the gh/git calls; return the live {path: content} of the site repo as committed."""
     committed: dict[str, str] = {}
 
     def fake_gh(*args, **kwargs):
@@ -74,6 +75,13 @@ def published(monkeypatch):
     monkeypatch.setattr(site, "repo_exists", lambda org, name: True)
     monkeypatch.setattr(site, "get_file_content", lambda *a, **k: "")
     monkeypatch.setattr(seed, "discover_sessions", lambda org, repo: ["1", "2", "3"])
+    return committed
+
+
+@pytest.fixture
+def published(monkeypatch):
+    """Run sync_public_site and return {path: content} of the site repo as committed."""
+    committed = _install_fakes(monkeypatch)
 
     def run(**kwargs) -> dict[str, str]:
         assert site.sync_public_site(COURSE, SOURCE, **kwargs) == 0
@@ -129,3 +137,48 @@ def test_readings_only_when_file_sections_are_off(published):
 def test_nothing_to_publish_at_all_is_an_error():
     # No file sections and no readings - refuse before touching a single repo.
     assert site.sync_public_site(COURSE, SOURCE, "none", include_lectures=False) == 1
+
+
+def test_publish_persists_its_settings_in_the_site_repo(published):
+    cfg = yaml.safe_load(published(readings_mode="actual-readings")[site.PUBLISH_CONFIG])
+    assert cfg == {
+        "source_repo": SOURCE,
+        "readings_mode": "actual-readings",
+        "include_lectures": True,
+    }
+    assert site.PUBLISH_CONFIG.startswith("_")  # so Jekyll ignores it
+
+
+def test_cron_resync_repeats_the_last_publishs_settings(monkeypatch):
+    # Round-trip: publish once with non-default settings, then re-sync with NO arguments
+    # (the cron path) and get byte-identical output - the modes came from the site repo.
+    committed = _install_fakes(monkeypatch)
+    assert site.sync_public_site(COURSE, SOURCE, "actual-readings") == 0
+    persisted = dict(committed)
+
+    monkeypatch.setattr(
+        site, "get_file_content", lambda org, repo, path: persisted.get(path, "")
+    )
+    committed.clear()
+    assert site.resync_public_site(COURSE) == 0
+    assert dict(committed) == persisted
+
+
+def test_cron_is_a_quiet_noop_when_the_course_never_published(monkeypatch):
+    # This cron ships in every course org's .github; most never opt in. Never a failure.
+    monkeypatch.setattr(site, "sync_public_site", lambda *a, **k: 1)
+    monkeypatch.setattr(site, "get_file_content", lambda *a, **k: None)
+
+    monkeypatch.setattr(site, "repo_exists", lambda org, name: False)
+    assert site.resync_public_site(COURSE) == 0  # no site repo at all
+
+    monkeypatch.setattr(site, "repo_exists", lambda org, name: True)
+    assert site.resync_public_site(COURSE) == 0  # site, but nothing persisted
+
+
+def test_public_sync_cli_without_source_repo_is_the_resync_path(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["site", "public-sync", "--course-org", COURSE])
+    seen: list[str] = []
+    monkeypatch.setattr(site, "resync_public_site", lambda org: seen.append(org) or 0)
+    assert site.main() == 0
+    assert seen == [COURSE]

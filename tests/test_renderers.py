@@ -74,6 +74,25 @@ def test_publish_site_has_publish_job_running_public_sync():
     assert "--no-include-lectures" in rendered
 
 
+def test_publish_site_cron_resyncs_from_persisted_settings():
+    # The only flow that used to need a human re-click: a daily cron now re-runs the last
+    # publish's persisted settings (public-sync with no source args), while the manual
+    # button keeps its inputs and its check-team gate exactly as before.
+    rendered = seed.render_publish_site(["course-materials-f2026"])
+    doc = yaml.safe_load(rendered)
+    trigger = doc.get("on", doc.get(True))
+    assert trigger["schedule"] == [{"cron": "30 5 * * *"}]
+    assert "workflow_dispatch" in trigger
+    jobs = workflow_jobs(rendered)
+    resync = jobs["resync"]
+    assert resync["if"] == "github.event_name == 'schedule'"
+    assert "needs" not in resync  # cron has no actor, so it skips the check-team gate
+    run = resync["steps"][-1]["run"]
+    assert "python3 -m dsl_course.site public-sync --course-org" in run
+    assert "--source-repo" not in run  # no inputs: the settings come from the site repo
+    assert jobs["publish"]["needs"] == "check-team"
+
+
 def test_provision_has_group_toggle():
     inp = workflow_inputs(
         seed.render_provision(["Cohort-f2026"], ["assignment-4-project-f2026"])
