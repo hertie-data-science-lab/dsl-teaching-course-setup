@@ -409,11 +409,11 @@ _SCHEDULE_YML = """# This cohort's schedule + auto-release plan. Edit here (GitH
 #   assignment-2:
 #     due: 2026-11-10
 #
-# exams:
-#   - name: MidTerm Exam
-#     date: 2026-11-03
+# exams:                                # `date` is a whole day, OR a full datetime when
+#   - name: MidTerm Exam                 # you know the start time
+#     date: 2026-11-03                  # bare date -> the website shows 09:00
 #   - name: Final Exam
-#     date: 2026-12-15
+#     date: 2026-12-15T14:00            # real start time, shown as given
 """
 
 # This cohort's own instructors/TAs (unlike course_admins, declared once at course

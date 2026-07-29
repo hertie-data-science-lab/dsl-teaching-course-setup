@@ -7,8 +7,9 @@ publish citations as text without leaking copyrighted bytes.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 from dsl_course import site
 
@@ -22,6 +23,24 @@ def test_semester_label():
 def test_slug():
     assert site._slug("MidTerm Exam") == "midterm-exam"
     assert site._slug("") == "exam"
+
+
+def test_exam_entry_date_only_keeps_the_nine_am_placeholder():
+    # Unchanged rendering for every schedule that gives a bare `date:` (and for the
+    # synthesised mid/end-of-semester fallback rows).
+    out = site._exam_entry("MidTerm Exam", date(2026, 11, 3))
+    assert "date: 2026-11-03T09:00:00" in out
+    assert 'description: "MidTerm Exam"' in out
+    assert "type: exam" in out
+
+
+def test_exam_entry_renders_the_real_time_when_one_was_given():
+    out = site._exam_entry(
+        "Final Exam", datetime(2026, 12, 15, 14, 0, tzinfo=ZoneInfo("Europe/Berlin"))
+    )
+    assert "date: 2026-12-15T14:00:00" in out
+    assert "09:00" not in out
+    assert "+01:00" not in out  # offset-free, like the assignment due rows
 
 
 _PEOPLE_META = {

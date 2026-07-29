@@ -330,12 +330,21 @@ def _assignment_entry(course_org: str, repo: str, when: date | datetime) -> str:
     )
 
 
-def _exam_entry(title: str, when: date) -> str:
-    """A red exam row (the template's schedule_row_exam.html styles `type: exam`)."""
+def _exam_entry(title: str, when: date | datetime) -> str:
+    """A red exam row (the template's schedule_row_exam.html styles `type: exam`).
+
+    `when` is a datetime when schedule.yml gave the exam a real start time, or a bare date
+    (whole-day entry, or the synthesised mid/end-of-semester fallback) - which keeps the
+    09:00 placeholder. Rendered offset-free, like `_assignment_entry`'s due time."""
+    at = (
+        when.strftime("%Y-%m-%dT%H:%M:%S")
+        if isinstance(when, datetime)
+        else f"{when.isoformat()}T09:00:00"
+    )
     return (
         f"---\n"
         f"type: exam\n"
-        f"date: {when.isoformat()}T09:00:00\n"
+        f"date: {at}\n"
         f'description: "{title}"\n'
         f"---\n"
         f"Details to be confirmed.\n"

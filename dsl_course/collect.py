@@ -1,21 +1,40 @@
 """dsl-course collect -- faculty-side autograding (hidden tests, after the deadline).
 
 Runs entirely in a faculty-controlled job (course-org Actions, bot token). For each
-submission repo it checks out the last commit dated on or before the deadline, overlays
-the assignment's HIDDEN tests (kept on the course template's `solution` branch, never
-shipped to students), runs them, and records a machine score into the PRIVATE grades CSV.
-Faculty & instructors then add manual marks and the existing grades pipeline emails the result - so a
-student never sees a score in their own repo.
+submission repo it checks out the commit that repo was frozen at (see SNAPSHOTS below),
+overlays the assignment's HIDDEN tests (kept on the course template's `solution` branch,
+never shipped to students), runs them, and records a machine score into the PRIVATE grades
+CSV. Faculty & instructors then add manual marks and the existing grades pipeline emails
+the result - so a student never sees a score in their own repo.
 
   course/<template> @ solution branch  ->  grading.yml + hidden tests
                 |
-  cohort/<slug>-<handle>  (individual)   clone @ deadline, overlay tests, run
+  cohort/<slug>-<handle>  (individual)   clone @ snapshot, overlay tests, run
   cohort/<slug>-<team>    (group)              |
                 v
   classroom-config/autograde/<slug>/<key>.json   (per-test detail, private archive)
   classroom-config/grades/<slug>.csv             (auto / team_grade columns filled)
 
 Student code is run in a subprocess with the GitHub token stripped from the environment.
+
+SNAPSHOTS (server-timed deadlines).  Which commit gets graded cannot be decided from
+commit dates alone: a git committer date is entirely client-supplied (`GIT_COMMITTER_DATE`),
+so late work backdated to before the deadline would pass a `rev-list --before` pin. Instead
+the hourly scheduler freezes each assignment shortly after its grading deadline passes,
+writing one row per submission repo into
+
+    classroom-config/snapshots/<slug>.csv     repo,sha,recorded_at
+
+recorded at a time the SERVER chose, and never rewritten once written (`snapshot_assignment`
+refuses to overwrite). Grading then pins to the recorded sha; an empty sha means "nothing
+had been pushed by the deadline" and scores zero. Only if no snapshot exists at all does
+grading fall back to the old date-based pin, with a loud warning.
+
+Honest limitation: a commit pushed AFTER the deadline but BEFORE the next hourly cron tick,
+carrying a spoofed pre-deadline committer date, is still picked up by that first snapshot.
+The window for backdating shrinks from unlimited to <=1h; it does not close. Shortening the
+cron interval shortens it further. (To deliberately re-freeze - e.g. an assignment whose
+repos were provisioned late - delete the snapshot CSV and let the next tick rebuild it.)
 
 grading.yml (on the template's solution branch):
     type: individual        # or group
@@ -33,6 +52,8 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import csv
+import io
 import json
 import os
 import shutil
@@ -40,7 +61,7 @@ import subprocess
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -55,12 +76,15 @@ from .utils import (
     log,
     log_err,
     log_ok,
+    log_skip,
     log_step,
     put_file,
 )
 
 CONFIG_REPO = roster.CONFIG_REPO  # classroom-config
 AUTOGRADE_DIR = "autograde"  # classroom-config/autograde/<slug>/<key>.json
+SNAPSHOT_DIR = "snapshots"  # classroom-config/snapshots/<slug>.csv
+SNAPSHOT_FIELDS = ("repo", "sha", "recorded_at")
 GRADING_FILE = "grading.yml"  # on the template's solution branch
 RUN_TIMEOUT = 300  # seconds per submission
 
@@ -126,6 +150,32 @@ def _zero_result(max_auto: int, note: str) -> dict:
     return {"score": 0, "max": max_auto, "tests": [], "note": note}
 
 
+def snapshot_path(slug: str) -> str:
+    """Where this assignment's deadline snapshot lives in `classroom-config`."""
+    return f"{SNAPSHOT_DIR}/{slug}.csv"
+
+
+def dump_snapshots(rows: list[tuple[str, str, str]]) -> str:
+    """Serialise (repo, sha, recorded_at) rows to snapshot CSV text, repo-sorted so the
+    file is stable and diffable."""
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow(SNAPSHOT_FIELDS)
+    for row in sorted(rows):
+        writer.writerow(row)
+    return out.getvalue()
+
+
+def parse_snapshots(text: str) -> dict[str, str]:
+    """Parse snapshot CSV text into {repo: sha}. A blank sha is meaningful - it records
+    "nothing had been pushed to this repo by the deadline" - so it is kept, not dropped."""
+    return {
+        repo: (row.get("sha") or "").strip()
+        for row in csv.DictReader(io.StringIO(text))
+        if (repo := (row.get("repo") or "").strip())
+    }
+
+
 # ---------------------------------------------------------------------- gh/git wiring
 
 
@@ -138,10 +188,143 @@ def _sanitised_env() -> dict:
     return env
 
 
-def _pin_commit(repo_dir: Path, deadline: str) -> str | None:
-    """Check out the last commit dated on or before `deadline`. `deadline` is an ISO
-    date or datetime; a bare date (no time) is treated as end-of-day. Returns the sha,
-    or None if there is no such commit (no submission by the deadline)."""
+def submission_targets(
+    cohort_org: str, slug: str, is_group: bool | None = None
+) -> list[tuple[str, str, list[str]]]:
+    """The submission units for `slug` as (repo, key, members): one per team for a group
+    assignment, one per onboarded student otherwise. Empty - with the reason logged - when
+    there is nothing to grade.
+
+    `is_group=None` infers it: teams.csv rows keyed on this slug mean a group assignment.
+    That lets the scheduler's snapshot step find the repos without reading grading.yml,
+    which lives on the course template's `solution` branch (a clone away, in the other org).
+    """
+    groups = (
+        teams.teams_for(teams.load(cohort_org), slug) if is_group is not False else {}
+    )
+    if is_group or (is_group is None and groups):
+        if not groups:
+            log_err(f"no teams for `{slug}` in {cohort_org}/{CONFIG_REPO}/teams.csv.")
+            return []
+        return [
+            (f"{slug}-{team}", team, members)
+            for team, members in sorted(groups.items())
+        ]
+    targets = [
+        (f"{slug}-{s.github_handle}", s.github_handle, [s.github_handle])
+        for s in roster.load(cohort_org)
+        if s.onboarded
+    ]
+    if not targets:
+        log_err(f"no onboarded students in {cohort_org} to grade.")
+    return targets
+
+
+def _until_param(deadline: str) -> str:
+    """`deadline` (ISO date or datetime, with or without an offset) as a UTC `...Z` stamp -
+    the form the commits API's `until=` takes. A bare date means end of that day, matching
+    the date-pin fallback; a naive datetime is read as UTC (every schedule-derived deadline
+    is already offset-carrying)."""
+    raw = deadline if ("T" in deadline or ":" in deadline) else f"{deadline}T23:59:59"
+    dt = datetime.fromisoformat(raw)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _snapshot_sha(cohort_org: str, repo: str, deadline: str) -> str | None:
+    """The sha to freeze `repo` at: its last commit on or before `deadline`, read from the
+    API (no clone - this runs for every repo of every assignment, hourly).
+
+    Returns "" when there is nothing to grade: no commit that early, an empty repo, or no
+    such repo at all (an on-time submission cannot live in a repo that does not exist).
+    Returns None when the API call itself failed - the caller then abandons the whole
+    snapshot so the next cron tick retries, rather than baking a transient error into a
+    record that is never rewritten."""
+    code, out = gh(
+        "api",
+        "-X",
+        "GET",
+        f"repos/{cohort_org}/{repo}/commits",
+        "-f",
+        f"until={_until_param(deadline)}",
+        "-f",
+        "per_page=1",
+        "--jq",
+        '.[0].sha // ""',
+    )
+    if code == 0:
+        return out.strip()
+    if any(m in out for m in ("HTTP 404", "Not Found", "HTTP 409", "empty")):
+        return ""
+    log_err(f"  ! could not read commits for {cohort_org}/{repo}: {out[:160]}")
+    return None
+
+
+def load_snapshots(cohort_org: str, slug: str) -> dict[str, str] | None:
+    """{repo: sha} from this assignment's snapshot CSV, or None if no snapshot was ever
+    taken (the two are different: a recorded blank sha means "no submission", while no
+    file at all means grading has to fall back to client-supplied commit dates)."""
+    content = get_file_content(cohort_org, CONFIG_REPO, snapshot_path(slug))
+    return parse_snapshots(content) if content is not None else None
+
+
+def snapshot_assignment(cohort_org: str, slug: str, deadline: str) -> bool:
+    """Freeze, at a server-chosen moment, the commit each of `slug`'s submission repos will
+    be graded at. Write-once: an existing snapshot is never re-taken or overwritten, so a
+    late push can never move the pin. Returns False if the snapshot could not be completed
+    (nothing is written - the next cron tick tries again)."""
+    if load_snapshots(cohort_org, slug) is not None:
+        log_skip(f"snapshot {snapshot_path(slug)}")
+        return True
+    targets = submission_targets(cohort_org, slug)
+    if not targets:
+        return False
+    recorded_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    rows: list[tuple[str, str, str]] = []
+    for repo, _key, _members in targets:
+        sha = _snapshot_sha(cohort_org, repo, deadline)
+        if sha is None:
+            log_err(f"  ! abandoning the {slug} snapshot - will retry on the next run")
+            return False
+        rows.append((repo, sha, recorded_at))
+    if not put_file(
+        cohort_org,
+        CONFIG_REPO,
+        snapshot_path(slug),
+        dump_snapshots(rows).encode(),
+        f"snapshot: {slug} pinned commits as of {deadline}",
+    ):
+        return False
+    pinned = sum(1 for _repo, sha, _at in rows if sha)
+    log_ok(
+        f"snapshot {snapshot_path(slug)}: {pinned}/{len(rows)} repo(s) with a commit "
+        f"on/before {deadline}"
+    )
+    return True
+
+
+def _pin_commit(
+    repo_dir: Path, deadline: str, snapshot: str | None = None
+) -> str | None:
+    """Check out the commit this repo is graded at and return its sha (None = nothing to
+    grade).
+
+    `snapshot` is this repo's server-timed snapshot entry: a sha to grade, or "" for "no
+    commit existed by the deadline". None means no snapshot covers this repo, so we fall
+    back to `rev-list --before` - which filters on the COMMITTER date, a value the student
+    supplies, so it can be backdated. `deadline` is an ISO date or datetime; a bare date
+    (no time) is treated as end-of-day."""
+    if snapshot is not None:
+        if not snapshot:
+            return None  # snapshot recorded no submission on/before the deadline
+        if git("-C", str(repo_dir), "cat-file", "-e", f"{snapshot}^{{commit}}")[0] == 0:
+            git("-C", str(repo_dir), *GIT_ENV, "checkout", "-q", snapshot)
+            return snapshot
+        log_err(
+            f"  ! snapshot commit {snapshot[:8]} is not in the clone (history rewritten?) "
+            f"- falling back to the commit-date pin"
+        )
     before = deadline if ("T" in deadline or ":" in deadline) else f"{deadline} 23:59:59"
     code, out = git(
         "-C", str(repo_dir), "rev-list", "-1", f"--before={before}", "HEAD"
@@ -196,17 +379,23 @@ def _run_tests(workdir: Path, fmt: str, tests_src: Path) -> dict | None:
 
 
 def _grade_target(
-    cohort_org: str, repo: str, spec: dict, tests_src: Path, deadline: str
+    cohort_org: str,
+    repo: str,
+    spec: dict,
+    tests_src: Path,
+    deadline: str,
+    snapshot: str | None = None,
 ) -> dict | None:
-    """Clone one submission, pin to the deadline, run the hidden tests. Always returns a
-    result dict (a zero with a note for non-submissions / failures), or None if unclonable."""
+    """Clone one submission, pin it to its snapshot (else the deadline), run the hidden
+    tests. Always returns a result dict (a zero with a note for non-submissions /
+    failures), or None if unclonable."""
     max_auto = spec.get("max_auto") or 0
     with tempfile.TemporaryDirectory() as work:
         wd = Path(work) / "sub"
         if gh("repo", "clone", f"{cohort_org}/{repo}", str(wd), "--", "-q")[0] != 0:
             log_err(f"  ! could not clone {cohort_org}/{repo} (not generated yet?)")
             return None
-        sha = _pin_commit(wd, deadline)
+        sha = _pin_commit(wd, deadline, snapshot)
         if sha is None:
             return _zero_result(max_auto, f"no submission on/before {deadline}")
         result = _run_tests(wd, spec["format"], tests_src)
@@ -284,26 +473,19 @@ def collect(
             return 1
 
         # Targets: one per team (group) or one per onboarded student (individual).
-        if is_group:
-            groups = teams.teams_for(teams.load(cohort_org), slug)
-            if not groups:
-                log_err(
-                    f"no teams for `{slug}` in {cohort_org}/{CONFIG_REPO}/teams.csv."
-                )
-                return 1
-            targets = [
-                (f"{slug}-{team}", team, members)
-                for team, members in sorted(groups.items())
-            ]
-        else:
-            onboarded = [s for s in roster.load(cohort_org) if s.onboarded]
-            targets = [
-                (f"{slug}-{s.github_handle}", s.github_handle, [s.github_handle])
-                for s in onboarded
-            ]
-            if not targets:
-                log_err(f"no onboarded students in {cohort_org} to grade.")
-                return 1
+        targets = submission_targets(cohort_org, slug, is_group)
+        if not targets:
+            return 1
+
+        # Which commit each repo is graded at was frozen server-side just after the
+        # deadline (see the module docstring). Without that file we can only trust the
+        # student-supplied committer dates - say so loudly rather than silently.
+        snapshots = load_snapshots(cohort_org, slug)
+        if snapshots is None:
+            log_err(
+                f"  ! no {snapshot_path(slug)} for {slug} - pinning on committer dates, "
+                f"which students control; late work backdated before {deadline} will pass"
+            )
 
         log_step(
             f"Collecting {slug} in {cohort_org}: {len(targets)} "
@@ -314,11 +496,21 @@ def collect(
         for repo, key, members in targets:
             log_step(repo)
             if dry_run:
-                log(
-                    f"    DRY-RUN would grade {cohort_org}/{repo} (pin to <= {deadline})"
+                pin = (
+                    f"<= {deadline}"
+                    if snapshots is None
+                    else f"snapshot {(snapshots.get(repo) or 'none')[:8]}"
                 )
+                log(f"    DRY-RUN would grade {cohort_org}/{repo} (pin {pin})")
                 continue
-            result = _grade_target(cohort_org, repo, spec, tests_src, deadline)
+            result = _grade_target(
+                cohort_org,
+                repo,
+                spec,
+                tests_src,
+                deadline,
+                snapshot=None if snapshots is None else snapshots.get(repo),
+            )
             if result is None:
                 continue
             for line in summary_lines(result):

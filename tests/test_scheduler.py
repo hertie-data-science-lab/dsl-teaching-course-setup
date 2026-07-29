@@ -12,8 +12,8 @@ from zoneinfo import ZoneInfo
 
 import yaml
 
-from dsl_course import release_code, scheduler, seed
-from dsl_course.schedule import Deploy, Grade, Release, Schedule
+from dsl_course import collect, release_code, scheduler, seed
+from dsl_course.schedule import AssignmentEntry, Deploy, Grade, Release, Schedule
 
 BERLIN = ZoneInfo("Europe/Berlin")
 WHEN = datetime(2026, 9, 15, 14, 0, tzinfo=BERLIN)
@@ -255,6 +255,150 @@ def test_deploy_many_counts_each_unrunnable_deploy_once(monkeypatch):
     assert release_code.deploy_many(
         "Course-Org", "Cohort-Org", deploys, sync=False
     ) == (3, False)
+
+
+# ------------------------------------------------------------- deadline snapshots
+# The hourly cron is what makes the grading pin trustworthy: it freezes each assignment's
+# commits at a moment the SERVER chose, because committer dates are client-supplied. So the
+# trigger condition (deadline passed, not yet frozen) and its write-once-ness are the logic
+# that matters here.
+
+
+def _assignments(**entries: AssignmentEntry) -> Schedule:
+    return Schedule(assignments=dict(entries))
+
+
+def _due(day: int, grace: int = 0) -> AssignmentEntry:
+    return AssignmentEntry(
+        due=datetime(2026, 10, day, 23, 59, 59, tzinfo=BERLIN), grace_days=grace
+    )
+
+
+def test_due_snapshots_only_passed_deadlines_in_deadline_order():
+    sched = _assignments(
+        **{
+            "assignment-2": _due(20),
+            "assignment-1": _due(13),
+            "assignment-3": _due(30),
+        }
+    )
+    now = datetime(2026, 10, 21, tzinfo=timezone.utc)
+    assert [slug for slug, _dl in scheduler.due_snapshots(sched, now)] == [
+        "assignment-1",
+        "assignment-2",
+    ]
+
+
+def test_due_snapshots_waits_out_grace_days_and_carries_the_pin():
+    sched = _assignments(**{"assignment-1": _due(13, grace=2)})
+    assert scheduler.due_snapshots(sched, datetime(2026, 10, 14, tzinfo=timezone.utc)) == []
+    (slug, deadline), = scheduler.due_snapshots(
+        sched, datetime(2026, 10, 16, tzinfo=timezone.utc)
+    )
+    assert slug == "assignment-1"
+    assert deadline.startswith("2026-10-15T23:59:59")  # due + grace_days, the grading pin
+
+
+def test_due_snapshots_empty_without_assignments():
+    assert scheduler.due_snapshots(Schedule(), datetime(2030, 1, 1, tzinfo=timezone.utc)) == []
+
+
+def _stub_snapshots(monkeypatch, existing: set[str]):
+    """Track snapshot_assignment calls; `existing` are the slugs already frozen."""
+    taken: list[tuple[str, str, str]] = []
+    monkeypatch.setattr(
+        collect, "load_snapshots", lambda org, slug: {} if slug in existing else None
+    )
+    monkeypatch.setattr(
+        collect,
+        "snapshot_assignment",
+        lambda org, slug, deadline: taken.append((org, slug, deadline)) or True,
+    )
+    return taken
+
+
+def test_run_snapshots_a_passed_deadline_that_has_no_snapshot_yet(monkeypatch):
+    taken = _stub_snapshots(monkeypatch, existing=set())
+    monkeypatch.setattr(
+        scheduler.schedule, "load", lambda cohort: _assignments(**{"assignment-1": _due(13)})
+    )
+    now = datetime(2026, 10, 14, tzinfo=timezone.utc)
+    assert scheduler.run("Course-Org", "Cohort-Org", now) == 0
+    org, slug, deadline = taken[0]
+    assert (org, slug) == ("Cohort-Org", "assignment-1")
+    assert deadline.startswith("2026-10-13T23:59:59")
+
+
+def test_run_never_re_snapshots_an_assignment_already_frozen(monkeypatch):
+    # Idempotence is the integrity property: re-freezing hourly would let a late push
+    # (backdated) replace the commit that was recorded at the deadline.
+    taken = _stub_snapshots(monkeypatch, existing={"assignment-1"})
+    monkeypatch.setattr(
+        scheduler.schedule, "load", lambda cohort: _assignments(**{"assignment-1": _due(13)})
+    )
+    assert scheduler.run("Course-Org", "Cohort-Org", datetime(2026, 12, 1, tzinfo=timezone.utc)) == 0
+    assert taken == []
+
+
+def test_run_does_not_snapshot_before_the_deadline_passes(monkeypatch):
+    taken = _stub_snapshots(monkeypatch, existing=set())
+    monkeypatch.setattr(
+        scheduler.schedule, "load", lambda cohort: _assignments(**{"assignment-1": _due(13)})
+    )
+    assert scheduler.run("Course-Org", "Cohort-Org", datetime(2026, 10, 1, tzinfo=timezone.utc)) == 0
+    assert taken == []
+
+
+def test_run_snapshots_even_with_no_materials_releases(monkeypatch):
+    # A cohort can pin due dates without using the auto-release plan at all - the old
+    # early-return on `not sched.releases` would have skipped its snapshots forever.
+    taken = _stub_snapshots(monkeypatch, existing=set())
+    monkeypatch.setattr(
+        scheduler.schedule, "load", lambda cohort: _assignments(**{"assignment-1": _due(13)})
+    )
+    assert scheduler.run("Course-Org", "Cohort-Org", datetime(2026, 11, 1, tzinfo=timezone.utc)) == 0
+    assert [slug for _org, slug, _dl in taken] == ["assignment-1"]
+
+
+def test_run_dry_run_snapshots_nothing(monkeypatch):
+    taken = _stub_snapshots(monkeypatch, existing=set())
+    monkeypatch.setattr(
+        scheduler.schedule, "load", lambda cohort: _assignments(**{"assignment-1": _due(13)})
+    )
+    now = datetime(2026, 11, 1, tzinfo=timezone.utc)
+    assert scheduler.run("Course-Org", "Cohort-Org", now, dry_run=True) == 0
+    assert taken == []
+
+
+def test_run_reports_a_failed_snapshot(monkeypatch):
+    monkeypatch.setattr(collect, "load_snapshots", lambda org, slug: None)
+    monkeypatch.setattr(collect, "snapshot_assignment", lambda org, slug, deadline: False)
+    monkeypatch.setattr(
+        scheduler.schedule, "load", lambda cohort: _assignments(**{"assignment-1": _due(13)})
+    )
+    assert scheduler.run("Course-Org", "Cohort-Org", datetime(2026, 11, 1, tzinfo=timezone.utc)) == 1
+
+
+def test_run_snapshots_before_firing_a_grade_release(monkeypatch):
+    # Order matters: a grade release firing in the same tick must already see the snapshot.
+    order: list[str] = []
+    monkeypatch.setattr(collect, "load_snapshots", lambda org, slug: None)
+    monkeypatch.setattr(
+        collect,
+        "snapshot_assignment",
+        lambda org, slug, deadline: order.append("snapshot") or True,
+    )
+    monkeypatch.setattr(
+        "dsl_course.collect.collect",
+        lambda m, t, c, deadline, group=False: order.append("collect") or 0,
+    )
+    sched = Schedule(
+        assignments={"assignment-1": _due(13)},
+        releases=[_r("a1-grade", datetime(2026, 10, 14, tzinfo=BERLIN), grade=Grade("assignment-1-f2026"))],
+    )
+    monkeypatch.setattr(scheduler.schedule, "load", lambda cohort: sched)
+    assert scheduler.run("Course-Org", "Cohort-Org", datetime(2026, 10, 15, tzinfo=timezone.utc)) == 0
+    assert order == ["snapshot", "collect"]
 
 
 def test_scheduler_workflow_hourly_and_ungated():

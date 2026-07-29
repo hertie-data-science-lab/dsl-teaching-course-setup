@@ -1,15 +1,24 @@
-"""collect pure cores -- the grading-spec parse, the junit -> result.json contract, and
-the summary glyphs. The gh/git/subprocess wiring is deliberately not tested (testing
-strategy: cover the pure logic, not the fan-out).
+"""collect pure cores -- the grading-spec parse, the junit -> result.json contract, the
+summary glyphs, and the deadline-snapshot logic. The gh/git/subprocess wiring is
+deliberately not tested (testing strategy: cover the pure logic, not the fan-out), except
+where a snapshot decision IS the logic - which commit gets graded is an academic-integrity
+answer, so the pin's every branch is pinned down here with git/gh stubbed.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from dsl_course import collect
+from dsl_course.roster import Student
 from dsl_course.schedule import Schedule
+
+SHA = "a" * 40
+OTHER_SHA = "b" * 40
 
 
 def test_parse_grading_spec_defaults_and_overrides():
@@ -72,3 +81,305 @@ def test_today_in_cohort_tz_defaults_to_berlin():
     berlin = datetime.now(ZoneInfo("Europe/Berlin")).date().isoformat()
     assert collect._today_in_cohort_tz(Schedule()) == berlin  # no timezone declared
     assert collect._today_in_cohort_tz(Schedule(timezone="Nowhere/Fake")) == berlin
+
+
+# ----------------------------------------------------------------- snapshot CSV (pure)
+
+
+def test_snapshot_csv_round_trips_and_keeps_a_blank_sha():
+    # A blank sha is a RECORD, not a gap: "nothing had been pushed by the deadline". Drop
+    # it and grading falls back to the student-datable pin for exactly the repos where a
+    # backdated commit would be most valuable.
+    rows = [
+        ("assignment-1-ben", "", "2026-10-16T00:04:12+00:00"),
+        ("assignment-1-anna", SHA, "2026-10-16T00:04:12+00:00"),
+    ]
+    text = collect.dump_snapshots(rows)
+    assert text.splitlines()[0] == "repo,sha,recorded_at"
+    assert text.splitlines()[1].startswith("assignment-1-anna,")  # repo-sorted, stable
+    assert collect.parse_snapshots(text) == {
+        "assignment-1-anna": SHA,
+        "assignment-1-ben": "",
+    }
+
+
+def test_parse_snapshots_skips_rows_without_a_repo():
+    text = "repo,sha,recorded_at\n,deadbeef,2026-10-16T00:00:00+00:00\n"
+    assert collect.parse_snapshots(text) == {}
+
+
+def test_snapshot_path_lives_under_snapshots():
+    assert collect.snapshot_path("assignment-1") == "snapshots/assignment-1.csv"
+
+
+@pytest.mark.parametrize(
+    "deadline,expected",
+    [
+        ("2026-10-13", "2026-10-13T23:59:59Z"),  # bare date -> end of day, like the pin
+        ("2026-10-15T23:59:59+02:00", "2026-10-15T21:59:59Z"),  # offset -> UTC
+        ("2026-10-15T23:59:59", "2026-10-15T23:59:59Z"),  # naive read as UTC
+    ],
+)
+def test_until_param_is_always_a_utc_z_stamp(deadline, expected):
+    # A `+HH:MM` offset in a query string would be read as a space, silently shifting the
+    # cutoff by hours - so the API cutoff is always normalised to UTC Z.
+    assert collect._until_param(deadline) == expected
+
+
+# ------------------------------------------------------------------------------ the pin
+
+
+def _git_stub(rev_list_sha: str = "", sha_in_clone: bool = True):
+    """A fake `git` recording its calls: `cat-file -e` answers whether the snapshot sha is
+    in the clone, `rev-list` answers the date-based fallback."""
+    calls: list[tuple[str, ...]] = []
+
+    def fake_git(*args, **kwargs):
+        calls.append(args)
+        if "cat-file" in args:
+            return (0 if sha_in_clone else 1, "")
+        if "rev-list" in args:
+            return (0, rev_list_sha) if rev_list_sha else (1, "")
+        return (0, "")
+
+    return fake_git, calls
+
+
+def test_pin_commit_prefers_the_snapshot_sha_and_never_looks_at_dates(monkeypatch):
+    fake_git, calls = _git_stub(rev_list_sha=OTHER_SHA)
+    monkeypatch.setattr(collect, "git", fake_git)
+    assert collect._pin_commit(Path("/repo"), "2026-10-15T23:59:59+02:00", SHA) == SHA
+    assert any("checkout" in c and SHA in c for c in calls)
+    # the whole point: the client-supplied committer date is never consulted
+    assert not any("rev-list" in c for c in calls)
+
+
+def test_pin_commit_blank_snapshot_is_a_recorded_non_submission(monkeypatch):
+    # "" means the server saw no commit by the deadline. Falling back to rev-list here
+    # would re-open the hole: a later push backdated before the deadline would grade.
+    fake_git, calls = _git_stub(rev_list_sha=OTHER_SHA)
+    monkeypatch.setattr(collect, "git", fake_git)
+    assert collect._pin_commit(Path("/repo"), "2026-10-15T23:59:59+02:00", "") is None
+    assert calls == []
+
+
+def test_pin_commit_falls_back_when_the_snapshot_sha_is_gone(monkeypatch):
+    # History rewritten since the snapshot: warn, then pin on dates rather than crash.
+    fake_git, calls = _git_stub(rev_list_sha=OTHER_SHA, sha_in_clone=False)
+    monkeypatch.setattr(collect, "git", fake_git)
+    assert collect._pin_commit(Path("/repo"), "2026-10-15T23:59", SHA) == OTHER_SHA
+    assert any("rev-list" in c for c in calls)
+
+
+def test_pin_commit_without_a_snapshot_uses_the_date_pin(monkeypatch):
+    fake_git, calls = _git_stub(rev_list_sha=OTHER_SHA)
+    monkeypatch.setattr(collect, "git", fake_git)
+    assert collect._pin_commit(Path("/repo"), "2026-10-13") == OTHER_SHA
+    before = [a for c in calls for a in c if a.startswith("--before=")]
+    assert before == ["--before=2026-10-13 23:59:59"]  # bare date -> end of day
+
+
+def test_pin_commit_no_commit_at_all_is_none(monkeypatch):
+    fake_git, _calls = _git_stub(rev_list_sha="")
+    monkeypatch.setattr(collect, "git", fake_git)
+    assert collect._pin_commit(Path("/repo"), "2026-10-13") is None
+
+
+# ------------------------------------------------------------------- target discovery
+
+
+_STUDENTS = [
+    Student("1", "a@x", "Anna", "anna-adams", "", ""),
+    Student("2", "b@x", "Ben", "ben-baker", "", ""),
+    Student("3", "c@x", "Not yet", "", "", ""),  # enrolled, not onboarded
+]
+_TEAMS = {"assignment-4-project": {"team-y": ["carla"], "team-x": ["anna-adams"]}}
+
+
+def test_submission_targets_individual_skips_unonboarded(monkeypatch):
+    monkeypatch.setattr(collect.roster, "load", lambda org: _STUDENTS)
+    monkeypatch.setattr(collect.teams, "load", lambda org: {})
+    assert collect.submission_targets("Cohort", "assignment-1") == [
+        ("assignment-1-anna-adams", "anna-adams", ["anna-adams"]),
+        ("assignment-1-ben-baker", "ben-baker", ["ben-baker"]),
+    ]
+
+
+def test_submission_targets_infers_group_from_teams_csv(monkeypatch):
+    # The snapshot step has no grading.yml to read (it lives on the course template's
+    # solution branch, in the other org), so teams.csv rows keyed on the slug are what
+    # make an assignment a group one.
+    monkeypatch.setattr(collect.teams, "load", lambda org: _TEAMS)
+    monkeypatch.setattr(collect.roster, "load", lambda org: _STUDENTS)
+    assert collect.submission_targets("Cohort", "assignment-4-project") == [
+        ("assignment-4-project-team-x", "team-x", ["anna-adams"]),
+        ("assignment-4-project-team-y", "team-y", ["carla"]),
+    ]
+
+
+def test_submission_targets_group_without_teams_is_empty(monkeypatch):
+    monkeypatch.setattr(collect.teams, "load", lambda org: {})
+    assert collect.submission_targets("Cohort", "assignment-4-project", True) == []
+
+
+# -------------------------------------------------------------------- taking a snapshot
+
+
+@pytest.mark.parametrize(
+    "response,expected",
+    [
+        ((0, SHA), SHA),
+        ((0, ""), ""),  # repo exists, no commit that early
+        ((1, "gh: Not Found (HTTP 404)"), ""),  # not generated -> nothing was on time
+        ((1, "Git Repository is empty (HTTP 409)"), ""),
+        ((1, "server error (HTTP 500)"), None),  # transient -> the caller must retry
+    ],
+)
+def test_snapshot_sha_maps_api_outcomes(monkeypatch, response, expected):
+    monkeypatch.setattr(collect, "gh", lambda *a, **k: response)
+    assert collect._snapshot_sha("Cohort", "assignment-1-anna", "2026-10-13") == expected
+
+
+def test_snapshot_sha_asks_the_api_for_one_commit_before_a_utc_cutoff(monkeypatch):
+    seen: list[tuple[str, ...]] = []
+    monkeypatch.setattr(collect, "gh", lambda *a, **k: seen.append(a) or (0, SHA))
+    collect._snapshot_sha("Cohort", "assignment-1-anna", "2026-10-15T23:59:59+02:00")
+    args = seen[0]
+    assert "repos/Cohort/assignment-1-anna/commits" in args
+    assert "until=2026-10-15T21:59:59Z" in args and "per_page=1" in args
+
+
+def _stub_snapshot_write(monkeypatch, shas: dict[str, str | None], existing=None):
+    """Wire snapshot_assignment onto stubs; returns the (path, text) writes it makes."""
+    written: list[tuple[str, str]] = []
+    monkeypatch.setattr(collect, "load_snapshots", lambda org, slug: existing)
+    monkeypatch.setattr(
+        collect,
+        "submission_targets",
+        lambda org, slug, is_group=None: [(r, r.split("-")[-1], []) for r in shas],
+    )
+    monkeypatch.setattr(collect, "_snapshot_sha", lambda org, repo, deadline: shas[repo])
+    monkeypatch.setattr(
+        collect,
+        "put_file",
+        lambda org, repo, path, content, msg: written.append((path, content.decode()))
+        or True,
+    )
+    return written
+
+
+def test_snapshot_assignment_records_one_row_per_repo(monkeypatch):
+    written = _stub_snapshot_write(
+        monkeypatch, {"assignment-1-anna": SHA, "assignment-1-ben": ""}
+    )
+    assert collect.snapshot_assignment(
+        "Cohort", "assignment-1", "2026-10-15T23:59:59+02:00"
+    )
+    ((path, text),) = written
+    assert path == "snapshots/assignment-1.csv"
+    assert collect.parse_snapshots(text) == {
+        "assignment-1-anna": SHA,
+        "assignment-1-ben": "",
+    }
+    # recorded_at is the SERVER's clock, not anything the schedule or a student supplied
+    stamps = {row.split(",")[2] for row in text.splitlines()[1:]}
+    assert len(stamps) == 1 and stamps.pop().endswith("+00:00")
+
+
+def test_snapshot_assignment_never_overwrites_an_existing_snapshot(monkeypatch):
+    # Write-once is the whole guarantee: a later run must not be able to move the pin.
+    def boom(*args, **kwargs):
+        raise AssertionError("an existing snapshot must never be re-taken")
+
+    monkeypatch.setattr(collect, "load_snapshots", lambda org, slug: {"r": SHA})
+    monkeypatch.setattr(collect, "_snapshot_sha", boom)
+    monkeypatch.setattr(collect, "put_file", boom)
+    assert (
+        collect.snapshot_assignment("Cohort", "assignment-1", "2026-10-15T23:59") is True
+    )
+
+
+def test_snapshot_assignment_writes_nothing_when_a_lookup_fails(monkeypatch):
+    # A transient API failure must not be frozen into a never-rewritten record: abandon
+    # the whole file so the next hourly tick rebuilds it.
+    written = _stub_snapshot_write(
+        monkeypatch, {"assignment-1-anna": SHA, "assignment-1-ben": None}
+    )
+    assert (
+        collect.snapshot_assignment("Cohort", "assignment-1", "2026-10-15T23:59") is False
+    )
+    assert written == []
+
+
+def test_snapshot_assignment_fails_when_there_is_nothing_to_snapshot(monkeypatch):
+    monkeypatch.setattr(collect, "load_snapshots", lambda org, slug: None)
+    monkeypatch.setattr(collect, "submission_targets", lambda *a, **k: [])
+    assert (
+        collect.snapshot_assignment("Cohort", "assignment-1", "2026-10-15T23:59") is False
+    )
+
+
+def test_load_snapshots_distinguishes_a_missing_file_from_blank_shas(monkeypatch):
+    monkeypatch.setattr(collect, "get_file_content", lambda *a: None)
+    assert collect.load_snapshots("Cohort", "assignment-1") is None
+    monkeypatch.setattr(
+        collect,
+        "get_file_content",
+        lambda *a: "repo,sha,recorded_at\nr,,2026-10-16T00:00:00+00:00\n",
+    )
+    assert collect.load_snapshots("Cohort", "assignment-1") == {"r": ""}
+
+
+# --------------------------------------------------------- collect() threads it through
+
+
+def _fake_solution_clone(*args, **kwargs):
+    """`gh repo clone` of the template's solution branch, faked into a real directory."""
+    if args[:2] == ("repo", "clone"):
+        dest = Path(args[3])
+        dest.mkdir(parents=True, exist_ok=True)
+        (dest / "grading.yml").write_text("autograde: true\nmax_auto: 2\n")
+        (dest / "tests").mkdir(exist_ok=True)
+    return (0, "")
+
+
+def _stub_collect(monkeypatch, snapshots):
+    monkeypatch.setattr(collect, "gh", _fake_solution_clone)
+    monkeypatch.setattr(collect.schedule, "load", lambda org: Schedule())
+    monkeypatch.setattr(
+        collect,
+        "submission_targets",
+        lambda org, slug, is_group=None: [
+            (f"{slug}-{h}", h, [h]) for h in ("anna", "ben", "cara")
+        ],
+    )
+    monkeypatch.setattr(collect, "load_snapshots", lambda org, slug: snapshots)
+    monkeypatch.setattr(collect, "put_file", lambda *a, **k: True)
+    monkeypatch.setattr(collect, "get_file_content", lambda *a: "")
+    seen: dict[str, str | None] = {}
+
+    def fake_grade(cohort_org, repo, spec, tests_src, deadline, snapshot=None):
+        seen[repo] = snapshot
+        return {"score": 1, "max": 2, "tests": []}
+
+    monkeypatch.setattr(collect, "_grade_target", fake_grade)
+    return seen
+
+
+def test_collect_passes_each_repos_own_snapshot_entry_to_grading(monkeypatch):
+    # The wiring bug worth a test: loading the snapshot but grading the wrong commit.
+    seen = _stub_collect(
+        monkeypatch, {"assignment-1-anna": SHA, "assignment-1-ben": ""}
+    )
+    assert collect.collect("Course", "assignment-1-f2026", "Cohort") == 0
+    assert seen["assignment-1-anna"] == SHA
+    assert seen["assignment-1-ben"] == ""  # recorded non-submission, graded as such
+    assert seen["assignment-1-cara"] is None  # absent from the snapshot -> date fallback
+
+
+def test_collect_without_a_snapshot_grades_on_dates_and_says_so(monkeypatch, capsys):
+    seen = _stub_collect(monkeypatch, None)
+    assert collect.collect("Course", "assignment-1-f2026", "Cohort") == 0
+    assert set(seen.values()) == {None}
+    err = capsys.readouterr().err
+    assert "snapshots/assignment-1.csv" in err and "students control" in err
