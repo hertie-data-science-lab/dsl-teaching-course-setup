@@ -47,7 +47,6 @@ def gh(*args: str, stdin: str | None = None, retries: int = 3) -> tuple[int, str
         )
         time.sleep(delay)
         delay *= 2
-    return result.returncode, out
 
 
 def gh_json(*args: str) -> Any:
@@ -484,10 +483,17 @@ def get_file_content(org: str, repo: str, path: str) -> str | None:
 def delete_file(org: str, repo: str, path: str, message: str) -> bool:
     """Delete a file via the Contents API (needs its current SHA). A no-op (returns
     True) if the file doesn't exist - safe to call unconditionally when retiring a
-    since-renamed/removed generated file."""
+    since-renamed/removed generated file.
+
+    Only a genuine 404 counts as already-deleted: any other failure to read the SHA (no
+    permission, rate limit, network) must not be reported as a successful delete, or a
+    retired file silently survives."""
     code, sha = gh("api", f"repos/{org}/{repo}/contents/{path}", "--jq", ".sha")
     if code != 0:
-        return True
+        if "HTTP 404" in sha or "Not Found" in sha:
+            return True
+        log_err(f"could not read {path} to delete it: {sha[:200]}")
+        return False
     code, out = gh(
         "api",
         "--method",
@@ -502,14 +508,6 @@ def delete_file(org: str, repo: str, path: str, message: str) -> bool:
         return True
     log_err(f"failed to delete {path}: {out[:200]}")
     return False
-
-
-def semester_label(semester: str) -> str:
-    """'f2025' -> 'Fall 2025', 's2026' -> 'Spring 2026'."""
-    code = semester[0].lower()
-    year = semester[1:]
-    season = {"f": "Fall", "s": "Spring"}.get(code, code.upper())
-    return f"{season} {year}"
 
 
 def current_mds_year() -> int:
