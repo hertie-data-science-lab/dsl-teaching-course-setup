@@ -1,10 +1,11 @@
 """dsl-course assign -- provision per-student assignment repos from a template repo.
 
-Generates ONE private repo per onboarded student from an assignment TEMPLATE repo
+Generates ONE private repo per onboarded ENROLLED student from an assignment TEMPLATE repo
 (e.g. assignment-1-f2026) in the course org, using GitHub's native template-generate,
 then adds the student as a collaborator (maintain). The template carries its own
 starter code + autograder workflow, which every generated repo inherits. Students
-never use a CLI. Idempotent: existing repos are left alone.
+never use a CLI. Roster rows with `role=auditor` are skipped - auditors are read-only.
+Idempotent: existing repos are left alone.
 
     course/<template>  (private, is_template)
             |  generate (native)
@@ -284,8 +285,11 @@ def provision_all(
     students = roster.load_path(roster_path) if roster_path else roster.load(cohort_org)
     if not students:
         return 1
-    onboarded = [s for s in students if s.onboarded]
-    skipped = len(students) - len(onboarded)
+    # Auditors are read-only - they see released materials, never an assignment repo.
+    participants = roster.enrolled(students)
+    auditing = len(students) - len(participants)
+    onboarded = [s for s in participants if s.onboarded]
+    skipped = len(participants) - len(onboarded)
     slug = assignment_slug(template)
 
     # A provisioning unit is (repo_name, [member handles]). Individual = one per student
@@ -315,6 +319,8 @@ def provision_all(
     )
     if skipped:
         log(f"  ({skipped} not-yet-onboarded row(s) skipped)")
+    if auditing:
+        log(f"  ({auditing} auditor row(s) skipped - read-only, no assignment repos)")
 
     if dry_run:
         log(f"    DRY-RUN  cohort template {cohort_org}/{slug}")

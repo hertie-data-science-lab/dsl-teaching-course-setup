@@ -10,7 +10,7 @@ import io
 
 import yaml
 
-from dsl_course import grades
+from dsl_course import grades, roster
 
 
 def test_parse_grades_tolerates_blank_and_missing_columns():
@@ -162,3 +162,21 @@ def test_render_cohort_csv_pivots_to_one_row_per_handle():
     assert ben["assignment-1_team"] == "team-x" and ben["assignment-1_team_grade"] == "85"
     # ben has no assignment-2 row at all - blank, not missing
     assert ben["assignment-2_final"] == ""
+
+
+def test_gradebook_sync_skips_auditors(monkeypatch, capsys):
+    # Auditors are never assessed, so they get no private gradebook repo. Dry-run keeps
+    # this pure - the roster is the only input, and nothing is provisioned.
+    students = roster.parse(
+        "student_id,hertie_email,name,github_handle,github_id,section,enrol_code,role\n"
+        "1,ada@uni.edu,Ada,ada-l,42,A,dsl-abc,enrolled\n"
+        "2,eve@uni.edu,Eve,eve-e,43,B,dsl-xyz,auditor\n"
+        "3,bob@uni.edu,Bob,bob-b,44,B,dsl-def,\n"  # blank role -> enrolled
+    )
+    monkeypatch.setattr(grades.roster, "load", lambda org: students)
+    assert grades.sync("COHORT", dry_run=True) == 0
+    out = capsys.readouterr().out
+    assert "grades-ada-l" in out and "grades-bob-b" in out
+    assert "eve-e" not in out
+    assert "Syncing 2 gradebook repo(s)" in out
+    assert "1 auditor row(s) skipped" in out

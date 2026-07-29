@@ -209,6 +209,8 @@ Roster columns:
 | `github_handle` | **onboarding** | blank until the student joins |
 | `github_id` | **onboarding** | blank until the student joins |
 | `section` | registrar (seed) | ✓ |
+| `enrol_code` | **Email enrolment codes** button | generated; the token the student pastes to join |
+| `role` | registrar (seed) | optional - blank or `enrolled` (default) = full participant; `auditor` = read-only (released materials, no assignment repos, no grades) |
 
 ## People
 

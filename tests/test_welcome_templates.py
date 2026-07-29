@@ -92,8 +92,32 @@ def test_csv_helpers_do_not_drift_between_workflows():
 def test_onboard_addresses_roster_columns_declared_in_python():
     script = script_of("onboard.yml", "onboard")
     named = set(re.findall(r"indexOf\('([a-z_]+)'\)", script))
-    assert named == {"github_handle", "github_id", "enrol_code"}
+    assert named == {"github_handle", "github_id", "enrol_code", "role"}
     assert named <= set(roster.FIELDS)  # the contract with dsl_course.roster
+
+
+def test_onboard_routes_auditors_to_the_auditors_team():
+    # The role column decides the team: auditors are read-only (released materials, no
+    # assignment repos), enrolled students go to `students`. Nothing else about the flow
+    # differs, so the team slug must be a variable, not a hardcoded 'students'.
+    script = script_of("onboard.yml", "onboard")
+    code = code_of(script)
+    assert f"=== '{roster.ROLE_AUDITOR}'" in code  # matches the Python spelling
+    assert "'auditors' : 'students'" in code
+    assert "team_slug: team" in code
+    assert "team_slug: 'students'" not in code
+
+
+def test_onboard_treats_a_missing_role_column_as_enrolled():
+    # A cohort whose roster predates the column has no `role` header at all - it must
+    # keep onboarding (blank/absent = enrolled, per roster.normalise_role), so `role` is
+    # never part of the required-column guard.
+    script = script_of("onboard.yml", "onboard")
+    code = code_of(script)
+    guard = re.search(r"if \((iHandle < 0[^)]*)\)", code).group(1)
+    assert "iRole" not in guard, "role must not be a required roster column"
+    # every read of the role cell is guarded on the column existing
+    assert "iRole >= 0" in code
 
 
 def test_team_formation_addresses_columns_declared_in_python():

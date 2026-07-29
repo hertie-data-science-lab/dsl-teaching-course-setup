@@ -3,7 +3,7 @@ one or more cohort repos.
 
 Run from inside a course content repo (materials-f2026): that repo is the SOURCE.
 Each discovered section is routed to a target repo (+ optional subpath within it),
-created if it doesn't exist yet (private repo + `students` team read). Only the
+created if it doesn't exist yet (private repo + `students`/`auditors` team read). Only the
 released sessions appear, so "each session opens up". Git-clone based so binary PDFs
 copy intact.
 
@@ -21,7 +21,7 @@ folder named after the section) unless it's in --exclude. At least one of
     course/<source-repo>   (private)
             |  copy session(s) N from every routed section
             v
-    cohort/<repo-a>, cohort/<repo-b>, ...   (private + students read)
+    cohort/<repo-a>, cohort/<repo-b>, ...   (private + students/auditors read)
 
 Usage:
     python3 -m dsl_course.release \\
@@ -59,19 +59,27 @@ from .utils import (
 _GIT_ENV = GIT_ENV
 
 
-def grant_students_read(cohort_org: str, repo: str) -> None:
-    code, _ = gh(
-        "api",
-        "--method",
-        "PUT",
-        f"orgs/{cohort_org}/teams/students/repos/{cohort_org}/{repo}",
-        "--field",
-        "permission=pull",
-    )
-    if code == 0:
-        log_ok("students team -> read")
-    else:
-        log("  (students team not found - create it first)")
+READ_TEAMS = ("students", "auditors")
+
+
+def grant_read_teams(cohort_org: str, repo: str) -> None:
+    """Give both cohort role teams read on a released repo.
+
+    Auditors see exactly what enrolled students see once it's released - the split is
+    assignments and grades, not content - so every release grant covers both teams."""
+    for team in READ_TEAMS:
+        code, _ = gh(
+            "api",
+            "--method",
+            "PUT",
+            f"orgs/{cohort_org}/teams/{team}/repos/{cohort_org}/{repo}",
+            "--field",
+            "permission=pull",
+        )
+        if code == 0:
+            log_ok(f"{team} team -> read")
+        else:
+            log(f"  ({team} team not found - create it first)")
 
 
 def _syllabus_files(root: Path) -> list[Path]:
@@ -181,7 +189,7 @@ def release(
                 private=True,
                 description="Released course materials (enrolled students only)",
             )
-            grant_students_read(cohort_org, repo)
+            grant_read_teams(cohort_org, repo)
 
             out = Path(work) / f"out-{repo}"
             if gh("repo", "clone", f"{cohort_org}/{repo}", str(out), "--", "-q")[0] != 0:
