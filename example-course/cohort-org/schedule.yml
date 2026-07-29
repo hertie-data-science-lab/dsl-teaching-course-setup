@@ -61,5 +61,7 @@ assignments:
   assignment-2: {due: 2026-11-17T23:59}
 
 exams:
+  # a bare date is a whole-day entry (the website shows 09:00); give a full datetime when
+  # you know the real start time
   - {name: MidTerm Exam, date: 2026-11-03}
-  - {name: Final Exam, date: 2026-12-15}
+  - {name: Final Exam, date: 2026-12-15T14:00}

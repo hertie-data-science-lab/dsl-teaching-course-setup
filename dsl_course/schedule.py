@@ -16,8 +16,9 @@ single home for the timed release plan AND the dates other tools display/enforce
       assignment-1:                  # due date is END of day (23:59:59) - "due on the
         due: 2026-10-13              # 13th" closes at day's end (a release date opens at
         grace_days: 2               # its start). grace_days extends the grading pin only.
-    exams:
-      - {name: MidTerm Exam, date: 2026-11-03}
+    exams:                           # `date` is a whole day, or a full datetime when the
+      - {name: MidTerm Exam, date: 2026-11-03}         # exam's start time is known
+      - {name: Final Exam, date: 2026-12-15T14:00}
     semester_start: 2026-09-07
     semester_end: 2026-12-18
 
@@ -110,6 +111,18 @@ def _coerce_datetime(
     return dt
 
 
+def _coerce_date_or_datetime(value: object, tz: ZoneInfo) -> date | datetime | None:
+    """A whole-day value -> `date`; one that carries a time -> a tz-aware `datetime`
+    (coerced exactly like a release `when`: naive is stamped with `tz`, an explicit offset
+    is kept). Keeping the two distinct is what lets a reader tell "no time was given" from
+    "midnight" - the website renders a placeholder time for the former."""
+    if isinstance(value, datetime) or (
+        isinstance(value, str) and ("T" in value or ":" in value)
+    ):
+        return _coerce_datetime(value, tz)
+    return _coerce_date(value)
+
+
 @dataclass
 class Deploy:
     """One source->dest copy: a path in a COURSE-org source repo copied into a COHORT-org
@@ -150,7 +163,7 @@ class AssignmentEntry:
 @dataclass
 class Exam:
     name: str
-    date: date
+    date: date | datetime  # a bare date = whole day; a datetime = real start time
 
 
 @dataclass
@@ -242,11 +255,14 @@ def _parse_assignments(raw: object, tz: ZoneInfo) -> dict[str, AssignmentEntry]:
     return out
 
 
-def _parse_exams(raw: object) -> list[Exam]:
+def _parse_exams(raw: object, tz: ZoneInfo) -> list[Exam]:
+    """Parse `exams:` - a list of `{name, date}`. `date` is a whole-day date, or a full
+    datetime when the exam's start time is known (the website then shows that time
+    instead of its 09:00 placeholder)."""
     return [
         Exam(name=str(e.get("name", "Exam")), date=d)
         for e in (raw or [])
-        if isinstance(e, dict) and (d := _coerce_date(e.get("date")))
+        if isinstance(e, dict) and (d := _coerce_date_or_datetime(e.get("date"), tz))
     ]
 
 
@@ -261,17 +277,23 @@ def parse(meta: dict) -> Schedule:
         semester_start=_coerce_date(meta.get("semester_start")),
         semester_end=_coerce_date(meta.get("semester_end")),
         assignments=_parse_assignments(meta.get("assignments"), tz),
-        exams=_parse_exams(meta.get("exams")),
+        exams=_parse_exams(meta.get("exams"), tz),
     )
 
 
-def grading_deadline(sched: Schedule, slug: str) -> str | None:
-    """The grading pin for `slug`: due datetime + optional grace_days. ISO string, or
-    None if unscheduled."""
+def grading_deadline_at(sched: Schedule, slug: str) -> datetime | None:
+    """The grading pin for `slug` as a tz-aware datetime: due + optional grace_days. None
+    if unscheduled."""
     entry = sched.assignments.get(slug)
     if entry is None:
         return None
-    return (entry.due + timedelta(days=entry.grace_days)).isoformat()
+    return entry.due + timedelta(days=entry.grace_days)
+
+
+def grading_deadline(sched: Schedule, slug: str) -> str | None:
+    """`grading_deadline_at` as an ISO string, or None if unscheduled."""
+    at = grading_deadline_at(sched, slug)
+    return at.isoformat() if at is not None else None
 
 
 # ---------------------------------------------------------------------- gh/git wiring
