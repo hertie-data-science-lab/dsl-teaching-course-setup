@@ -208,6 +208,22 @@ def test_session_files_root_shape_and_other_sessions_excluded(monkeypatch):
     ]
 
 
+def test_repo_tree_is_fetched_once_per_repo(monkeypatch):
+    # A cohort site asks for the files of every released session, nearly always from the
+    # same repo - one tree fetch must serve them all, not one fetch per session.
+    calls = []
+
+    def counting_gh(*args, **kwargs):
+        calls.append(args)
+        return (0, _TREE)
+
+    monkeypatch.setattr(site, "get_default_branch", lambda org, repo: "main")
+    monkeypatch.setattr(site, "gh", counting_gh)
+    for folder in ("03_week-3", "04_week-4", "03_week-30"):
+        assert site._session_files("Cohort-f2026", "materials", "lectures", folder)
+    assert len(calls) == 1
+
+
 def test_session_files_api_failure_is_empty(monkeypatch):
     monkeypatch.setattr(site, "get_default_branch", lambda org, repo: "main")
     monkeypatch.setattr(site, "gh", lambda *a, **k: (1, "not found"))

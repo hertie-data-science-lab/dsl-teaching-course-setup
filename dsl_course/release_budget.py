@@ -29,12 +29,11 @@ FIXED_RELEASE_INPUTS = ("source_repo", "cohort_org", "sessions", "include_root_f
 INPUTS_PER_SECTION = 2
 
 
-def section_slots(fixed_inputs: int = len(FIXED_RELEASE_INPUTS)) -> int:
-    """How many sections can still get checkboxes, given `fixed_inputs` fixed ones."""
-    return (GITHUB_MAX_DISPATCH_INPUTS - fixed_inputs) // INPUTS_PER_SECTION
-
-
-MAX_RELEASE_SECTIONS = section_slots()
+# How many sections can still get checkboxes: whatever is left of the 10-input budget
+# after the fixed inputs, two inputs per section.
+MAX_RELEASE_SECTIONS = (
+    GITHUB_MAX_DISPATCH_INPUTS - len(FIXED_RELEASE_INPUTS)
+) // INPUTS_PER_SECTION
 
 
 def cap_sections(sections: list[str], context: str) -> list[str]:

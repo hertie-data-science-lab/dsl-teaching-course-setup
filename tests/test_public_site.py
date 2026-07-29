@@ -134,6 +134,14 @@ def test_readings_only_when_file_sections_are_off(published):
     assert "_lectures/session-02.md" not in files
 
 
+def test_people_are_written_even_when_the_clone_has_no_data_dir(published):
+    # People ride in the plan's `files` like any other tracked file, so the write must
+    # create `_data/` itself - the site template does not necessarily ship one.
+    files = published(readings_mode="none")
+    assert "_data/people.yml" in files
+    assert "instructors:" in files["_data/people.yml"]
+
+
 def test_nothing_to_publish_at_all_is_an_error():
     # No file sections and no readings - refuse before touching a single repo.
     assert site.sync_public_site(COURSE, SOURCE, "none", include_lectures=False) == 1

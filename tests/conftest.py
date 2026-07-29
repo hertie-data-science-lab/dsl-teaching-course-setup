@@ -9,7 +9,17 @@ that only asserts we wrote the call we wrote; its real failure modes need a live
 
 from __future__ import annotations
 
+import pytest
 import yaml
+
+from dsl_course import site
+
+
+@pytest.fixture(autouse=True)
+def _clear_repo_tree_memo():
+    """`site._repo_tree` memoises a repo's tree for the whole process (one CLI run); tests
+    reuse the same org/repo names with different fakes, so clear it between them."""
+    site._repo_tree.cache_clear()
 
 
 def workflow_inputs(rendered: str) -> dict:

@@ -340,8 +340,9 @@ Self-contained - workflows + their Python implementation live in this repo.
   rendered + seeded into the course/cohort orgs, not kept here.
 - `dsl_course/` - the package:
   - `bootstrap_course` - configure a course or (`--cohort`) cohort org; grant button access; propagate the secret.
-  - `seed` - place the workflows (central + run-from-repo) and the `refresh` CLI; re-exports the
-    four modules it delegates to, so `seed.<name>` keeps resolving:
+  - `seed` - place the workflows (central + run-from-repo) and the `refresh` CLI; delegates
+    to four modules, a few of whose names it still re-exports (see its `__all__`; new code
+    imports from the owning module):
     - `workflows_render` - the workflow YAML templates + every `render_*` function;
     - `discovery` - the cohort registry and all live org/repo/section/session discovery;
     - `profile_readme` - the org landing page + the `.github` repo's own README;
