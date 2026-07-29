@@ -11,7 +11,8 @@ refreshed on demand: `refresh` reads the course org's .github/cohort-courses-pag
 their repos, and re-pushes the content actions to every course repo. No cron, no app.
 
 This module is the placement + CLI layer; the three jobs it used to also do live next to
-it, and are re-exported below so `dsl_course.seed.<name>` keeps working:
+it, and are imported from there (see `__all__` for the few names still reached for as
+`seed.<name>`):
 
 - workflows_render - the workflow YAML templates and every render_* function;
 - discovery       - the cohort registry and all live org/repo/section/session discovery;
@@ -31,40 +32,22 @@ import argparse
 import os
 import sys
 
-from .central import CENTRAL, CENTRAL_REF
 from .discovery import (
     COHORTS_PATH,
-    INFRA_REPOS,
-    INFRA_TOPICS,
-    _is_infra_repo,
-    _repo_tree_dirs,
     discover_assignments,
     discover_cohort_repos,
     discover_cohorts,
     discover_content_repos,
     discover_release_sources,
-    discover_sections,
     discover_sections_and_sessions,
     discover_sections_union,
     discover_sessions,
-    list_org_repos,
     register_cohort,
 )
-from .profile_readme import (
-    COURSE_CONFIG,
-    render_dotgithub_readme,
-    render_profile_readme,
-    update_profile_readme,
-)
-from .release_budget import MAX_RELEASE_SECTIONS, cap_sections
+from .profile_readme import update_profile_readme
+from .release_budget import cap_sections
 from .utils import delete_file, gh, log_ok, log_step, put_file
 from .workflows_render import (
-    _CHECK_TEAM,
-    _FACULTY_ONLY,
-    _choice,
-    _cohort_dropdown,
-    _section_release_inputs,
-    _sessions_input,
     render_bootstrap_cohort,
     render_central_release,
     render_distribute_grades,
@@ -85,76 +68,26 @@ from .workflows_render import (
     render_sync_site,
 )
 
-# Historic name for release_budget.cap_sections, kept so `seed._cap_sections` (docs,
-# tests, any pinned caller) still resolves.
-_cap_sections = cap_sections
-
-# The facade: `dsl_course.seed.<name>` resolves for everything the module ever exposed,
-# so the split above is invisible to callers (site, scaffold, bootstrap_course,
-# sync_faculty, sync_membership, scheduler, the seeded workflows' CLI) - new code should
-# import from the owning module instead.
+# What the rest of the package reaches for as `seed.<name>`: this module's own jobs, plus
+# the handful of discovery/profile names its callers (site, scaffold, bootstrap_course,
+# sync_faculty, sync_membership) grew up importing from here. Everything else the split
+# moved out is imported from its owning module (workflows_render, discovery,
+# release_budget, profile_readme, central) - so should new code be.
 __all__ = [
     # placement + CLI (this module's own job)
-    "WORKFLOWS",
-    "main",
-    "refresh",
     "seed_github_workflows",
-    "_propagate_repo_secret",
     "_push_workflows",
-    # central.py
-    "CENTRAL",
-    "CENTRAL_REF",
-    # release_budget.py
-    "MAX_RELEASE_SECTIONS",
-    "cap_sections",
-    "_cap_sections",
     # discovery.py
     "COHORTS_PATH",
-    "INFRA_REPOS",
-    "INFRA_TOPICS",
     "discover_assignments",
     "discover_cohort_repos",
     "discover_cohorts",
     "discover_content_repos",
     "discover_release_sources",
-    "discover_sections",
-    "discover_sections_and_sessions",
-    "discover_sections_union",
     "discover_sessions",
-    "list_org_repos",
     "register_cohort",
-    "_is_infra_repo",
-    "_repo_tree_dirs",
     # profile_readme.py
-    "COURSE_CONFIG",
-    "render_dotgithub_readme",
-    "render_profile_readme",
     "update_profile_readme",
-    # workflows_render.py
-    "render_bootstrap_cohort",
-    "render_central_release",
-    "render_distribute_grades",
-    "render_grade_assignment",
-    "render_new_assignment",
-    "render_new_materials",
-    "render_provision",
-    "render_publish_site",
-    "render_refresh",
-    "render_release",
-    "render_release_code",
-    "render_render_grades",
-    "render_scheduler",
-    "render_send_codes",
-    "render_status",
-    "render_sync_gradebooks",
-    "render_sync_membership",
-    "render_sync_site",
-    "_CHECK_TEAM",
-    "_FACULTY_ONLY",
-    "_choice",
-    "_cohort_dropdown",
-    "_section_release_inputs",
-    "_sessions_input",
 ]
 
 # The run-from-repo workflows _push_workflows places in every content repo.
