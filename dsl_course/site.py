@@ -35,6 +35,8 @@ import shutil
 import sys
 import tempfile
 import time
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote
@@ -42,6 +44,7 @@ from urllib.parse import quote
 import yaml
 
 from . import schedule, seed
+from .assign import assignment_slug
 from .utils import (
     GIT_ENV,
     active_today,
@@ -106,6 +109,19 @@ def _set_config(text: str, key: str, value: str) -> str:
     return re.sub(
         rf"(?m)^({re.escape(key)}:\s*).*$", rf'\1"{_q(value)}"', text, count=1
     )
+
+
+def _site_repo(org: str) -> str:
+    """The GitHub Pages org site repo for an org - pushing it redeploys the site."""
+    return f"{org.lower()}.github.io"
+
+
+def _yaml_file(org: str, repo: str, path: str) -> dict:
+    """A YAML config file from a repo as a mapping - `{}` when absent, empty or not a
+    mapping (every caller here treats a malformed file as 'nothing declared')."""
+    raw = get_file_content(org, repo, path) or ""
+    data = yaml.safe_load(raw) if raw else {}
+    return data if isinstance(data, dict) else {}
 
 
 def _team_people(course_org: str, team: str) -> list[tuple[str, str, str]]:
@@ -259,6 +275,28 @@ def _singular(label: str) -> str:
     return label[:-1] if len(label) > 1 and label.endswith("s") else label
 
 
+def _iso_when(when: date | datetime, fallback_time: str = "09:00:00") -> str:
+    """`when` as the offset-free local ISO stamp a front-matter `date:` wants.
+
+    A datetime (a real time from schedule.yml) keeps its own clock time; a bare date (a
+    synthesised fallback, or a whole-day schedule entry) gets `fallback_time`."""
+    if isinstance(when, datetime):
+        return when.strftime("%Y-%m-%dT%H:%M:%S")
+    return f"{when.isoformat()}T{fallback_time}"
+
+
+def _links_block(sections: list[tuple[str, list[tuple[str, str]]]]) -> str:
+    """A front-matter `links:` block from `(section-label, [(file-name, url), ...])` pairs
+    in publication order, each link named `<section-singular> - <file>` (both sites label
+    them identically), or `links: []` when there is nothing to link."""
+    rows = []
+    for label, pairs in sections:
+        for name, url in pairs:
+            safe = name.replace('"', "'")
+            rows.append(f'    - url: {url}\n      name: "{_singular(label)} - {safe}"')
+    return ("links:\n" + "\n".join(rows)) if rows else "links: []"
+
+
 def _lecture_entry(
     cohort_org: str,
     session: str,
@@ -270,22 +308,16 @@ def _lecture_entry(
     sources known to match, so every call here is a real hit, not a probe. `when` is the
     release datetime from schedule.yml (its real time is shown) or a synthesised date
     fallback (rendered at 09:00) when the session isn't in the release plan."""
-    links = []
-    for repo, subpath, folder in sources:
-        label = subpath or repo
-        for name, url in _session_files(cohort_org, repo, subpath, folder):
-            safe = name.replace('"', "'")
-            links.append(f'    - url: {url}\n      name: "{_singular(label)} - {safe}"')
-    links_block = ("links:\n" + "\n".join(links)) if links else "links: []"
-    date_str = (
-        when.strftime("%Y-%m-%dT%H:%M:%S")
-        if isinstance(when, datetime)
-        else f"{when.isoformat()}T09:00:00"
+    links_block = _links_block(
+        [
+            (subpath or repo, _session_files(cohort_org, repo, subpath, folder))
+            for repo, subpath, folder in sources
+        ]
     )
     return (
         f"---\n"
         f"type: lecture\n"
-        f"date: {date_str}\n"
+        f"date: {_iso_when(when)}\n"
         f'title: "Session {session}"\n'
         f'tldr: "Released materials for session {session} (enrolled students only)."\n'
         f"{links_block}\n"
@@ -296,7 +328,7 @@ def _lecture_entry(
 
 
 def _assignment_entry(course_org: str, repo: str, when: date | datetime) -> str:
-    slug = re.sub(r"-[fs]\d{4}$", "", repo)
+    slug = assignment_slug(repo)
     readme = get_file_content(course_org, repo, "README.md") or ""
     title = slug.replace("-", " ").title()
     for line in readme.splitlines():
@@ -307,13 +339,8 @@ def _assignment_entry(course_org: str, repo: str, when: date | datetime) -> str:
     body = "\n".join(
         ln for ln in readme.splitlines() if not ln.startswith("# ")
     ).strip()
-    # `when` is a datetime (real due time from schedule.yml) or a bare date (synthesised
-    # fallback) - render a stable, local (offset-free) ISO the site template can display.
-    due = (
-        when.strftime("%Y-%m-%dT%H:%M:%S")
-        if isinstance(when, datetime)
-        else f"{when.isoformat()}T23:59:00"
-    )
+    # An unscheduled assignment's synthesised fallback date is due end-of-day.
+    due = _iso_when(when, "23:59:00")
     return (
         f"---\n"
         f"type: assignment\n"
@@ -336,15 +363,10 @@ def _exam_entry(title: str, when: date | datetime) -> str:
     `when` is a datetime when schedule.yml gave the exam a real start time, or a bare date
     (whole-day entry, or the synthesised mid/end-of-semester fallback) - which keeps the
     09:00 placeholder. Rendered offset-free, like `_assignment_entry`'s due time."""
-    at = (
-        when.strftime("%Y-%m-%dT%H:%M:%S")
-        if isinstance(when, datetime)
-        else f"{when.isoformat()}T09:00:00"
-    )
     return (
         f"---\n"
         f"type: exam\n"
-        f"date: {at}\n"
+        f"date: {_iso_when(when)}\n"
         f'description: "{title}"\n'
         f"---\n"
         f"Details to be confirmed.\n"
@@ -354,7 +376,7 @@ def _exam_entry(title: str, when: date | datetime) -> str:
 def _due_date(sched: schedule.Schedule, repo: str, fallback: date) -> date | datetime:
     """This assignment's due date from schedule.yml (keyed on the slug, repo minus its
     -fYYYY/-sYYYY tag), or `fallback` if unscheduled."""
-    entry = sched.assignments.get(re.sub(r"-[fs]\d{4}$", "", repo))
+    entry = sched.assignments.get(assignment_slug(repo))
     return entry.due if entry else fallback
 
 
@@ -376,72 +398,150 @@ def _session_dates(sched: schedule.Schedule) -> dict[str, datetime]:
     return out
 
 
-def sync_site(course_org: str, cohort_org: str) -> int:
-    site = f"{cohort_org.lower()}.github.io"
-    if not repo_exists(cohort_org, site):
-        log(f"  (no site repo {cohort_org}/{site} - skipping site sync)")
-        return 0
-    content_repos = seed.discover_cohort_repos([cohort_org])
-    release_sources = seed.discover_release_sources(cohort_org, content_repos)
-    sources_by_session: dict[str, list[tuple[str, str, str]]] = {}
-    for repo, subpath, folder, n in release_sources:
-        sources_by_session.setdefault(str(n), []).append((repo, subpath, folder))
-    sessions = sorted(sources_by_session, key=int)
-    assignments = seed.discover_assignments(course_org)
-    # A persistent course org holds per-year templates (assignment-*-fYYYY); a cohort site
-    # should list only its own year's, matched on the cohort's fYYYY/sYYYY tag.
-    tag = _cohort_tag(cohort_org)
-    if tag:
-        assignments = [a for a in assignments if a.lower().endswith(tag)]
-    log_step(
-        f"Syncing {cohort_org}/{site}: {len(sessions)} released session(s), "
-        f"{len(assignments)} assignment(s)"
-    )
-    start = _semester_start(cohort_org)
+@dataclass
+class _SitePlan:
+    """What one sync wants its site repo to contain, handed back to `_sync_site_repo`.
+
+    `config` are the `_config.yml` keys to overwrite (course identity); `people` the
+    rendered `_data/people.yml`; `collections` the collection dirs this sync OWNS, each
+    cleared then rewritten from its `{filename: content}` (so an entry that is no longer
+    generated - a de-released session, a template placeholder - disappears, and a
+    collection the sync does not own is left alone); `files` any other tracked file to
+    write; `commit` the commit subject."""
+
+    config: dict[str, str]
+    people: str
+    collections: dict[str, dict[str, str]]
+    commit: str
+    files: dict[str, str] = field(default_factory=dict)
+
+
+def _sync_site_repo(
+    org: str,
+    build: Callable[[Path], _SitePlan | None],
+    *,
+    label: str = "site",
+    done: str = "synced + redeploying",
+    scaffold_missing: bool = False,
+    clone_attempts: int = 1,
+) -> int:
+    """The site-repo mechanics both syncs drive: ensure `<org>.github.io` exists, clone it,
+    let `build` gather that sync's own data (writing into the working tree it is handed -
+    the public site hosts files there) and declare a `_SitePlan`, apply the plan, then
+    commit-if-changed and push. Pushing redeploys the site.
+
+    `build` returns None to abort with exit 1, having logged its own reason. A missing site
+    repo is a quiet no-op (a cohort that never opted into a site), unless
+    `scaffold_missing` - the public course site's opt-in first publish, which creates it.
+    `clone_attempts` > 1 tolerates a just-scaffolded repo lagging its template-generate."""
+    site = _site_repo(org)
+    if not repo_exists(org, site):
+        if not scaffold_missing:
+            log(f"  (no site repo {org}/{site} - skipping site sync)")
+            return 0
+        from . import scaffold
+
+        log_step(f"No public site yet - scaffolding {org}/{site}")
+        if scaffold.scaffold_site(org) != 0:
+            return 1
 
     with tempfile.TemporaryDirectory() as work:
         wd = Path(work) / "site"
-        if gh("repo", "clone", f"{cohort_org}/{site}", str(wd), "--", "-q")[0] != 0:
-            log_err(f"could not clone {cohort_org}/{site}")
+        for attempt in range(clone_attempts):
+            if gh("repo", "clone", f"{org}/{site}", str(wd), "--", "-q")[0] == 0:
+                break
+            if attempt + 1 < clone_attempts:
+                time.sleep(5)
+        else:
+            log_err(f"could not clone {org}/{site}")
             return 1
 
-        # Course identity: pull name/code from the course org metadata, semester from the
-        # cohort tag, into _config.yml (site.course_name / _semester / _code).
-        meta_raw = get_file_content(course_org, ".github", "dsl-course.yml") or ""
-        meta = yaml.safe_load(meta_raw) if meta_raw else {}
-        meta = meta if isinstance(meta, dict) else {}
+        plan = build(wd)
+        if plan is None:
+            return 1
+
+        # Course identity into _config.yml (site.course_name / _semester / _code).
+        cfg_path = wd / "_config.yml"
+        if cfg_path.is_file():
+            cfg = cfg_path.read_text()
+            for key, value in plan.config.items():
+                cfg = _set_config(cfg, key, value)
+            cfg_path.write_text(cfg)
+
+        data_dir = wd / "_data"
+        data_dir.mkdir(exist_ok=True)
+        (data_dir / "people.yml").write_text(plan.people)
+
+        # Regenerate the owned collections; leave everything else (layouts, pages) as the
+        # template provides.
+        for coll, entries in plan.collections.items():
+            d = wd / coll
+            if d.is_dir():
+                shutil.rmtree(d)
+            d.mkdir(parents=True)
+            (d / ".gitkeep").write_text("")
+            for fname, content in entries.items():
+                (d / fname).write_text(content)
+
+        for rel, content in plan.files.items():
+            (wd / rel).write_text(content)
+
+        git("-C", str(wd), *_GIT_ENV, "add", "-A")
+        code, _ = git(
+            "-C", str(wd), *_GIT_ENV, "commit", "-q", "--no-verify", "-m", plan.commit
+        )
+        if code != 0:
+            log_ok(f"{label} already up to date")
+            return 0
+        if git("-C", str(wd), *_GIT_ENV, "push", "-q", "origin", "HEAD")[0] != 0:
+            log_err(f"{label} push failed")
+            return 1
+    log_ok(f"{label} {done} -> https://{site}/")
+    return 0
+
+
+def sync_site(course_org: str, cohort_org: str) -> int:
+    """Regenerate the cohort's student-facing site from the live org state: released
+    sessions (linked into the private content repos), this year's assignments and the
+    exam rows."""
+
+    def build(_wd: Path) -> _SitePlan:
+        content_repos = seed.discover_cohort_repos([cohort_org])
+        release_sources = seed.discover_release_sources(cohort_org, content_repos)
+        sources_by_session: dict[str, list[tuple[str, str, str]]] = {}
+        for repo, subpath, folder, n in release_sources:
+            sources_by_session.setdefault(str(n), []).append((repo, subpath, folder))
+        sessions = sorted(sources_by_session, key=int)
+        assignments = seed.discover_assignments(course_org)
+        # A persistent course org holds per-year templates (assignment-*-fYYYY); a cohort
+        # site should list only its own year's, matched on the cohort's fYYYY/sYYYY tag.
+        tag = _cohort_tag(cohort_org)
+        if tag:
+            assignments = [a for a in assignments if a.lower().endswith(tag)]
+        log_step(
+            f"Syncing {cohort_org}/{_site_repo(cohort_org)}: {len(sessions)} released "
+            f"session(s), {len(assignments)} assignment(s)"
+        )
+
+        # Course identity comes from the course org metadata, semester from the cohort tag.
+        meta = _yaml_file(course_org, ".github", "dsl-course.yml")
         # Schedule is cohort-specific (it varies by year), so it comes from the cohort's
         # own classroom-config/schedule.yml. So do this cohort's instructors/TAs - read
         # from its own classroom-config/people.yml below, NOT the course org (whose
         # dsl-course.yml carries only the multi-year instructor cards).
         sched = schedule.load(cohort_org)
-        if sched.semester_start:
-            start = sched.semester_start
+        start = sched.semester_start or _semester_start(cohort_org)
         # Real per-session release datetimes from schedule.yml's materials_releases; a
         # session not in the plan falls back to a synthesised weekly date below.
         session_when = _session_dates(sched)
-        cfg_path = wd / "_config.yml"
-        if cfg_path.is_file() and isinstance(meta, dict):
-            cfg = cfg_path.read_text()
-            if meta.get("course_name"):
-                cfg = _set_config(cfg, "course_name", str(meta["course_name"]))
-            if _semester_label(cohort_org):
-                cfg = _set_config(cfg, "course_semester", _semester_label(cohort_org))
-            if meta.get("course_code"):
-                cfg = _set_config(cfg, "course_code", str(meta["course_code"]))
-            cfg_path.write_text(cfg)
 
-        # People: regenerate _data/people.yml from this cohort's own
-        # classroom-config/people.yml (instructors AND TAs - the per-cohort teaching
-        # team; see bootstrap_course._PEOPLE_YML), else fall back to its instructors team.
-        cohort_people_raw = (
-            get_file_content(cohort_org, "classroom-config", "people.yml") or ""
-        )
-        cohort_people = yaml.safe_load(cohort_people_raw) if cohort_people_raw else {}
-        cohort_people = cohort_people if isinstance(cohort_people, dict) else {}
-        data_dir = wd / "_data"
-        data_dir.mkdir(exist_ok=True)
-        (data_dir / "people.yml").write_text(_people_yaml(cohort_org, cohort_people))
+        config = {}
+        if meta.get("course_name"):
+            config["course_name"] = str(meta["course_name"])
+        if _semester_label(cohort_org):
+            config["course_semester"] = _semester_label(cohort_org)
+        if meta.get("course_code"):
+            config["course_code"] = str(meta["course_code"])
 
         # Exam rows render red via the template's schedule_row_exam.html. Use faculty
         # dates from schedule.yml; else stub mid/end dates of a ~15-week semester
@@ -458,13 +558,18 @@ def sync_site(course_org: str, cohort_org: str) -> int:
                 "final.md": _exam_entry("Final Exam", end),
             }
 
-        # Regenerate the generated collections; leave everything else (layouts, _data,
-        # pages) as the template provides. Assignment due dates come from schedule.yml
-        # when set (keyed on the assignment slug), else a synthesised fortnightly cadence.
-        for coll, gen in (
-            (
-                "_lectures",
-                {
+        return _SitePlan(
+            config=config,
+            # People: this cohort's own classroom-config/people.yml (instructors AND TAs -
+            # the per-cohort teaching team; see bootstrap_course._PEOPLE_YML), else its
+            # instructors team.
+            people=_people_yaml(
+                cohort_org, _yaml_file(cohort_org, "classroom-config", "people.yml")
+            ),
+            # Assignment due dates come from schedule.yml when set (keyed on the
+            # assignment slug), else a synthesised fortnightly cadence.
+            collections={
+                "_lectures": {
                     f"session-{int(s):02d}.md": _lecture_entry(
                         cohort_org,
                         s,
@@ -474,10 +579,7 @@ def sync_site(course_org: str, cohort_org: str) -> int:
                     for s in sessions
                     if s.isdigit()
                 },
-            ),
-            (
-                "_assignments",
-                {
+                "_assignments": {
                     f"{i + 1:02d}-{a}.md": _assignment_entry(
                         course_org,
                         a,
@@ -485,36 +587,12 @@ def sync_site(course_org: str, cohort_org: str) -> int:
                     )
                     for i, a in enumerate(assignments)
                 },
-            ),
-            ("_events", exam_entries),
-        ):
-            d = wd / coll
-            if d.is_dir():
-                shutil.rmtree(d)
-            d.mkdir(parents=True)
-            (d / ".gitkeep").write_text("")
-            for fname, content in gen.items():
-                (d / fname).write_text(content)
-
-        git("-C", str(wd), *_GIT_ENV, "add", "-A")
-        code, _ = git(
-            "-C",
-            str(wd),
-            *_GIT_ENV,
-            "commit",
-            "-q",
-            "--no-verify",
-            "-m",
-            "site: sync from org structure",
+                "_events": exam_entries,
+            },
+            commit="site: sync from org structure",
         )
-        if code != 0:
-            log_ok("site already up to date")
-            return 0
-        if git("-C", str(wd), *_GIT_ENV, "push", "-q", "origin", "HEAD")[0] != 0:
-            log_err("site push failed")
-            return 1
-    log_ok(f"site synced + redeploying -> https://{cohort_org.lower()}.github.io/")
-    return 0
+
+    return _sync_site_repo(cohort_org, build)
 
 
 def _public_links(local_dir: Path, url_prefix: str) -> list[tuple[str, str]]:
@@ -564,19 +642,14 @@ def _public_lecture_entry(
 
     `section_links` is `(section, [(name, url), ...])` in publication order; each link is
     named `<section-singular> - <file>`, as on the cohort site."""
-    links = []
-    for label, pairs in section_links:
-        for name, url in pairs:
-            safe = name.replace('"', "'")
-            links.append(f'    - url: {url}\n      name: "{_singular(label)} - {safe}"')
-    links_block = ("links:\n" + "\n".join(links)) if links else "links: []"
+    links_block = _links_block(section_links)
     body = f"Materials for session {session}."
     if reading_list_md:
         body += "\n\n### Reading list\n\n" + reading_list_md
     return (
         f"---\n"
         f"type: lecture\n"
-        f"date: {when.isoformat()}T09:00:00\n"
+        f"date: {_iso_when(when)}\n"
         f'title: "Session {session}"\n'
         f'tldr: "Materials for session {session}."\n'
         f"{links_block}\n"
@@ -606,170 +679,124 @@ def sync_public_site(
         log_err("nothing to publish - file sections off and readings set to none.")
         return 1
 
-    site = f"{course_org.lower()}.github.io"
-    if not repo_exists(course_org, site):
-        from . import scaffold
-
-        log_step(f"No public site yet - scaffolding {course_org}/{site}")
-        if scaffold.scaffold_site(course_org) != 0:
-            return 1
-
-    sessions = seed.discover_sessions(course_org, source_repo)
-    log_step(
-        f"Publishing {course_org}/{site} from {source_repo}: {len(sessions)} session(s), "
-        f"readings={readings_mode}, file sections={'on' if include_lectures else 'off'}"
-    )
-
-    meta_raw = get_file_content(course_org, ".github", "dsl-course.yml") or ""
-    meta = yaml.safe_load(meta_raw) if meta_raw else {}
-    if not isinstance(meta, dict):
-        meta = {}
-    # A course site spans years and has no per-cohort schedule.yml to read (that's
-    # cohort-scoped), so the date is a neutral fallback that only orders the session
-    # entries.
-    start = date(2025, 1, 1)
-
-    with tempfile.TemporaryDirectory() as work:
-        src, site_wd = Path(work) / "src", Path(work) / "site"
-        if (
-            gh("repo", "clone", f"{course_org}/{source_repo}", str(src), "--", "-q")[0]
-            != 0
-        ):
-            log_err(f"could not clone {course_org}/{source_repo}")
-            return 1
-        # A just-generated site repo can lag the template-generate call, so retry the clone.
-        for _ in range(6):
-            if (
-                gh("repo", "clone", f"{course_org}/{site}", str(site_wd), "--", "-q")[0]
-                == 0
-            ):
-                break
-            time.sleep(5)
-        else:
-            log_err(f"could not clone {course_org}/{site}")
-            return 1
+    def build(site_wd: Path) -> _SitePlan | None:
+        sessions = seed.discover_sessions(course_org, source_repo)
+        log_step(
+            f"Publishing {course_org}/{_site_repo(course_org)} from {source_repo}: "
+            f"{len(sessions)} session(s), readings={readings_mode}, "
+            f"file sections={'on' if include_lectures else 'off'}"
+        )
+        meta = _yaml_file(course_org, ".github", "dsl-course.yml")
+        # A course site spans years and has no per-cohort schedule.yml to read (that's
+        # cohort-scoped), so the date is a neutral fallback that only orders the session
+        # entries.
+        start = date(2025, 1, 1)
 
         # Wipe only THIS source's served subtree (idempotent re-publish; multi-repo safe).
         served_root = site_wd / PUBLIC_MATERIALS_DIR / source_repo
         if served_root.exists():
             shutil.rmtree(served_root)
 
-        # Sections are whatever THIS repo has (the same discovery the release buttons
-        # use), not a hardcoded lectures/readings pair - a course whose content lives in
-        # `labs/` publishes labs. `readings` is the one section with special semantics
-        # (--readings-mode, below); `include_lectures` gates all the others.
-        file_sections = (
-            [sec for sec in discover_sections(src) if sec != READINGS_SECTION]
-            if include_lectures
-            else []
-        )
-        log(f"  sections published as files: {', '.join(file_sections) or '(none)'}")
+        lecture_entries: dict[str, str] = {}
+        with tempfile.TemporaryDirectory() as work:
+            src, spec = Path(work) / "src", f"{course_org}/{source_repo}"
+            if gh("repo", "clone", spec, str(src), "--", "-q")[0] != 0:
+                log_err(f"could not clone {spec}")
+                return None
 
-        lecture_entries = {}
-        for s in sessions:
-            if not s.isdigit():
-                continue
-            site_session = served_root / f"session-{s}"
-            url_base = f"/{PUBLIC_MATERIALS_DIR}/{source_repo}/session-{s}"
-            section_links: list[tuple[str, list[tuple[str, str]]]] = []
-            reading_list_md = ""
-
-            for section in file_sections:
-                sec_src = find_session_dir(src / section, s)
-                if sec_src is None:
-                    continue
-                dest = site_session / section
-                shutil.copytree(sec_src, dest, dirs_exist_ok=True)
-                links = _public_links(dest, f"{url_base}/{section}")
-                if links:
-                    section_links.append((section, links))
-
-            read_src = find_session_dir(src / READINGS_SECTION, s)
-            if read_src is not None:
-                if readings_mode == "actual-readings":
-                    dest = site_session / READINGS_SECTION
-                    shutil.copytree(read_src, dest, dirs_exist_ok=True)
-                    links = _public_links(dest, f"{url_base}/{READINGS_SECTION}")
-                    if links:
-                        section_links.append((READINGS_SECTION, links))
-                elif readings_mode == "reading-list":
-                    reading_list_md = _reading_list_md(read_src)
-
-            # A session with nothing published in any section gets no page at all,
-            # rather than an empty one the public would click through to.
-            if not section_links and not reading_list_md:
-                log(f"  (session {s}: nothing to publish - no page)")
-                continue
-            when = start + timedelta(days=int(s) * 7)
-            lecture_entries[f"session-{int(s):02d}.md"] = _public_lecture_entry(
-                s, when, section_links, reading_list_md
+            # Sections are whatever THIS repo has (the same discovery the release buttons
+            # use), not a hardcoded lectures/readings pair - a course whose content lives
+            # in `labs/` publishes labs. `readings` is the one section with special
+            # semantics (--readings-mode, below); `include_lectures` gates all the others.
+            file_sections = (
+                [sec for sec in discover_sections(src) if sec != READINGS_SECTION]
+                if include_lectures
+                else []
             )
+            log(f"  sections published as files: {', '.join(file_sections) or '(none)'}")
 
-        # Course identity into _config.yml; semester is neutral (the site is multi-year).
-        cfg_path = site_wd / "_config.yml"
-        if cfg_path.is_file():
-            cfg = cfg_path.read_text()
-            if meta.get("course_name"):
-                cfg = _set_config(cfg, "course_name", str(meta["course_name"]))
-            if meta.get("course_code"):
-                cfg = _set_config(cfg, "course_code", str(meta["course_code"]))
-            cfg = _set_config(cfg, "course_semester", "Open Courseware")
-            cfg_path.write_text(cfg)
+            for s in sessions:
+                if not s.isdigit():
+                    continue
+                site_session = served_root / f"session-{s}"
+                url_base = f"/{PUBLIC_MATERIALS_DIR}/{source_repo}/session-{s}"
+                section_links: list[tuple[str, list[tuple[str, str]]]] = []
+                reading_list_md = ""
 
-        # People from the course org's declared `people:` block (else the GitHub teams).
-        # Instructors only - the open-courseware site is multi-year, and TAs are declared
-        # per cohort (in each cohort's classroom-config/people.yml), never course-level.
-        data_dir = site_wd / "_data"
-        data_dir.mkdir(exist_ok=True)
-        (data_dir / "people.yml").write_text(
-            _people_yaml(course_org, meta, include_tas=False)
+                for section in file_sections:
+                    sec_src = find_session_dir(src / section, s)
+                    if sec_src is None:
+                        continue
+                    dest = site_session / section
+                    shutil.copytree(sec_src, dest, dirs_exist_ok=True)
+                    links = _public_links(dest, f"{url_base}/{section}")
+                    if links:
+                        section_links.append((section, links))
+
+                read_src = find_session_dir(src / READINGS_SECTION, s)
+                if read_src is not None:
+                    if readings_mode == "actual-readings":
+                        dest = site_session / READINGS_SECTION
+                        shutil.copytree(read_src, dest, dirs_exist_ok=True)
+                        links = _public_links(dest, f"{url_base}/{READINGS_SECTION}")
+                        if links:
+                            section_links.append((READINGS_SECTION, links))
+                    elif readings_mode == "reading-list":
+                        reading_list_md = _reading_list_md(read_src)
+
+                # A session with nothing published in any section gets no page at all,
+                # rather than an empty one the public would click through to.
+                if not section_links and not reading_list_md:
+                    log(f"  (session {s}: nothing to publish - no page)")
+                    continue
+                when = start + timedelta(days=int(s) * 7)
+                lecture_entries[f"session-{int(s):02d}.md"] = _public_lecture_entry(
+                    s, when, section_links, reading_list_md
+                )
+
+        config = {}
+        if meta.get("course_name"):
+            config["course_name"] = str(meta["course_name"])
+        if meta.get("course_code"):
+            config["course_code"] = str(meta["course_code"])
+        config["course_semester"] = "Open Courseware"  # neutral: the site is multi-year
+
+        return _SitePlan(
+            config=config,
+            # People from the course org's declared `people:` block (else the GitHub
+            # teams). Instructors only - the open-courseware site is multi-year, and TAs
+            # are declared per cohort (in each cohort's people.yml), never course-level.
+            people=_people_yaml(course_org, meta, include_tas=False),
+            # Sessions only: regen _lectures, and clear _assignments/_events so any
+            # template placeholders (and a previous run's content) stay off a public site.
+            collections={
+                "_lectures": lecture_entries,
+                "_assignments": {},
+                "_events": {},
+            },
+            # Persist the settings THIS publish used, in the site repo itself, so the
+            # daily cron can repeat it with no inputs (see resync_public_site).
+            files={
+                PUBLISH_CONFIG: (
+                    "# Written by `python3 -m dsl_course.site public-sync` - the settings of the\n"
+                    "# last publish. The daily 'Publish course website' cron re-syncs from them;\n"
+                    "# delete this file to stop the automatic refresh.\n"
+                    f"source_repo: {source_repo}\n"
+                    f"readings_mode: {readings_mode}\n"
+                    f"include_lectures: {str(include_lectures).lower()}\n"
+                )
+            },
+            commit=f"site: publish public course site from {source_repo}",
         )
 
-        # Lectures + readings only: regen _lectures, and clear _assignments/_events so any
-        # template placeholders (and content from a previous run) don't appear publicly.
-        for coll, gen in (
-            ("_lectures", lecture_entries),
-            ("_assignments", {}),
-            ("_events", {}),
-        ):
-            d = site_wd / coll
-            if d.is_dir():
-                shutil.rmtree(d)
-            d.mkdir(parents=True)
-            (d / ".gitkeep").write_text("")
-            for fname, content in gen.items():
-                (d / fname).write_text(content)
-
-        # Persist the settings THIS publish used, in the site repo itself, so the daily
-        # cron can repeat it with no inputs (see resync_public_site).
-        (site_wd / PUBLISH_CONFIG).write_text(
-            "# Written by `python3 -m dsl_course.site public-sync` - the settings of the\n"
-            "# last publish. The daily 'Publish course website' cron re-syncs from them;\n"
-            "# delete this file to stop the automatic refresh.\n"
-            f"source_repo: {source_repo}\n"
-            f"readings_mode: {readings_mode}\n"
-            f"include_lectures: {str(include_lectures).lower()}\n"
-        )
-
-        git("-C", str(site_wd), *_GIT_ENV, "add", "-A")
-        code, _ = git(
-            "-C",
-            str(site_wd),
-            *_GIT_ENV,
-            "commit",
-            "-q",
-            "--no-verify",
-            "-m",
-            f"site: publish public course site from {source_repo}",
-        )
-        if code != 0:
-            log_ok("public site already up to date")
-            return 0
-        if git("-C", str(site_wd), *_GIT_ENV, "push", "-q", "origin", "HEAD")[0] != 0:
-            log_err("public site push failed")
-            return 1
-    log_ok(f"public site published -> https://{course_org.lower()}.github.io/")
-    return 0
+    return _sync_site_repo(
+        course_org,
+        build,
+        label="public site",
+        done="published",
+        scaffold_missing=True,
+        clone_attempts=6,
+    )
 
 
 def resync_public_site(course_org: str) -> int:
@@ -780,7 +807,7 @@ def resync_public_site(course_org: str) -> int:
     with no public site - or a site with no `PUBLISH_CONFIG` (published before this existed,
     or deliberately unhooked by deleting the file) - is a one-line no-op, NOT a failure:
     the cron ships in every course org's `.github`, and most never publish."""
-    site = f"{course_org.lower()}.github.io"
+    site = _site_repo(course_org)
     hint = "run the Publish course website action (or pass --source-repo) to publish"
     if not repo_exists(course_org, site):
         log(f"no public course site ({course_org}/{site}) - nothing to re-sync; {hint}")
