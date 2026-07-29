@@ -43,8 +43,9 @@ never hand-edit it, it's a glance view, not a source.
 ## teams.csv - group membership (optional, for group assignments)
 
 `assignment, team, github_handle`. Students self-select via the welcome "Join team" issue,
-or edit directly - a push here also triggers **Sync membership**. See `teams.csv.sample` -
-**the engine only acts on a real `teams.csv`.**
+or edit directly - a push here also triggers **Sync membership**. Auditors (`role: auditor`
+above) are refused by that issue: no assignment repos means no project teams. See
+`teams.csv.sample` - **the engine only acts on a real `teams.csv`.**
 
 ## schedule.yml - the release plan + due dates + exams (optional)
 
