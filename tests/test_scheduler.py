@@ -176,7 +176,7 @@ def test_deploy_many_clones_each_repo_once(monkeypatch):
     monkeypatch.setattr(release_code, "gh", fake_gh)
     monkeypatch.setattr(release_code, "git", lambda *a: (0, ""))  # commit + push succeed
     monkeypatch.setattr(release_code, "create_repo", lambda *a, **k: True)
-    monkeypatch.setattr(release_code, "grant_students_read", lambda *a, **k: None)
+    monkeypatch.setattr(release_code, "grant_read_teams", lambda *a, **k: None)
 
     deploys = [
         Deploy("cm", "lectures/00_x", "lectures", None),
@@ -202,7 +202,7 @@ def test_deploy_many_missing_source_path_is_an_error_not_silent(monkeypatch):
     monkeypatch.setattr(release_code, "gh", fake_gh)
     monkeypatch.setattr(release_code, "git", lambda *a: (0, ""))
     monkeypatch.setattr(release_code, "create_repo", lambda *a, **k: True)
-    monkeypatch.setattr(release_code, "grant_students_read", lambda *a, **k: None)
+    monkeypatch.setattr(release_code, "grant_read_teams", lambda *a, **k: None)
 
     errors, changed = release_code.deploy_many(
         "Course-Org", "Cohort-Org", [Deploy("cm", "lectures/does-not-exist", "materials", None)], sync=False
@@ -228,7 +228,7 @@ def _no_io(monkeypatch, fake_gh):
     monkeypatch.setattr(release_code, "gh", fake_gh)
     monkeypatch.setattr(release_code, "git", lambda *a: (0, ""))
     monkeypatch.setattr(release_code, "create_repo", lambda *a, **k: True)
-    monkeypatch.setattr(release_code, "grant_students_read", lambda *a, **k: None)
+    monkeypatch.setattr(release_code, "grant_read_teams", lambda *a, **k: None)
 
 
 def test_deploy_many_counts_a_doomed_deploy_once(monkeypatch):

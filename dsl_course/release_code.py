@@ -26,7 +26,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from .release import grant_students_read
+from .release import grant_read_teams
 from .schedule import Deploy
 from .utils import GIT_ENV, create_repo, gh, git, log, log_err, log_ok, log_step
 
@@ -75,7 +75,7 @@ def deploy_many(
                 private=True,
                 description="Released course materials (enrolled students only)",
             )
-            grant_students_read(cohort_org, repo)
+            grant_read_teams(cohort_org, repo)
             dd = root / "out" / repo
             if gh("repo", "clone", f"{cohort_org}/{repo}", str(dd), "--", "-q")[0] != 0:
                 log_err(f"could not clone dest {cohort_org}/{repo}")

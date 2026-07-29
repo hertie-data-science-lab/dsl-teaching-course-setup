@@ -5,7 +5,9 @@ name: Onboard student
 # the authenticated GitHub handle (unspoofable). We match the typed ENROLMENT CODE (a
 # random, non-PII token the bot emailed to each student) against the PRIVATE
 # classroom-config/students.csv, reject non-enrolees, record the handle + immutable GitHub
-# id (building the email <-> GH-id mapping), then grant org + students-team access.
+# id (building the email <-> GH-id mapping), then grant org membership + the role team the
+# matched row's `role` column names: `students` (enrolled) or `auditors` (read-only - same
+# released materials, no assignment repos). A roster with no `role` column is all-enrolled.
 #
 # The code carries no personal data, so nothing in the public issue needs redacting; and
 # because it's unguessable + single-use (the "already linked" guard), a classmate can't
@@ -95,7 +97,7 @@ jobs:
               'needs-review');
 
             // Read the PRIVATE roster. Columns (dsl_course.roster.FIELDS):
-            // student_id,hertie_email,name,github_handle,github_id,section,enrol_code
+            // student_id,hertie_email,name,github_handle,github_id,section,enrol_code,role
             const got = await github.rest.repos.getContent({ owner: org, repo: CONFIG, path: FILE });
             const sha = got.data.sha;
             const table = parseCsv(Buffer.from(got.data.content, 'base64').toString('utf8'));
@@ -105,6 +107,10 @@ jobs:
             const iHandle = header.indexOf('github_handle');
             const iId = header.indexOf('github_id');
             const iCode = header.indexOf('enrol_code');
+            // `role` is OPTIONAL - a roster seeded before the column existed has none, and a
+            // missing/blank cell means `enrolled` (dsl_course.roster.normalise_role). Never
+            // required, so an older cohort's roster keeps onboarding.
+            const iRole = header.indexOf('role');
             if (iHandle < 0 || iId < 0 || iCode < 0) return fail(
               `Thanks @${handle} - the roster's header is missing a required column ` +
               `(\`github_handle\`, \`github_id\`, \`enrol_code\`). A maintainer will action this.`,
@@ -138,10 +144,16 @@ jobs:
               });
             }
 
-            // Grant access: org membership (invites if needed) + students team.
+            // Route by role: auditors are read-only (released materials, no assignments), so
+            // they go to the `auditors` team; everyone else to `students`. Both teams carry
+            // read on released repos - only `students` gets assignment repos + a gradebook.
+            const isAuditor = iRole >= 0 && (row[iRole] || '').trim().toLowerCase() === 'auditor';
+            const team = isAuditor ? 'auditors' : 'students';
+
+            // Grant access: org membership (invites if needed) + the role team.
             await github.rest.orgs.setMembershipForUser({ org, username: handle, role: 'member' });
             await github.rest.teams.addOrUpdateMembershipForUserInOrg({
-              org, team_slug: 'students', username: handle, role: 'member' });
+              org, team_slug: team, username: handle, role: 'member' });
 
             // Confirm.
             await github.rest.issues.createComment({
@@ -149,11 +161,14 @@ jobs:
                 `Welcome **@${handle}** - your enrolment code is matched.`,
                 ``,
                 `- **Check your email and accept the invitation to the \`${org}\` org** - until you accept, you can't see anything here.`,
-                `- Your handle + GitHub id are recorded; you've been added to the **students** team (unlocks released materials once you've accepted).`,
-                `- Your assignment repos appear here once the teaching team provisions each assignment.`,
+                `- Your handle + GitHub id are recorded; you've been added to the **${team}** team (unlocks released materials once you've accepted).`,
+                isAuditor
+                  ? `- You're enrolled as an **auditor**: you get the released materials, but no assignment repos and no grades.`
+                  : `- Your assignment repos appear here once the teaching team provisions each assignment.`,
               ].join('\n') });
             await github.rest.issues.addLabels({
-              owner: org, repo: context.repo.repo, issue_number: issue.number, labels: ['enrolled'] });
+              owner: org, repo: context.repo.repo, issue_number: issue.number,
+              labels: [isAuditor ? 'auditor' : 'enrolled'] });
             await github.rest.issues.update({
               owner: org, repo: context.repo.repo, issue_number: issue.number, state: 'closed' });
         env:

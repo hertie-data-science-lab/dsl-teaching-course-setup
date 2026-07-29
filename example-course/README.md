@@ -37,7 +37,7 @@ example-course/
     assignment-2-f2026/             # individual (notebook): main/ + solution/
     assignment-4-project-f2026/     # GROUP project: main/ + solution/ (grading.yml type: group)
   cohort-org/
-    students.csv                    # 4 dummy students (handles blank - filled on onboard)
+    students.csv                    # 4 dummy students + 1 auditor (handles blank - filled on onboard)
     teams.csv                       # team membership for the group project
     schedule.yml                    # the auto-release plan (materials_releases) + due dates + exams
     people.yml                      # this cohort's own instructors/TAs (real push access)

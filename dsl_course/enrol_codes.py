@@ -10,6 +10,9 @@ unguessable, a classmate can't bind your roster row to their account. This one a
 Email reaches the student's UNIVERSITY inbox (the roster `hertie_email`), replacing the
 Excel -> Power Automate -> Outlook mail-merge. Reuses dsl_course.mailer.
 
+Every roster row gets a code, auditors included - the code is how anyone onboards at all;
+their `role` column is what routes them to the read-only `auditors` team on the way in.
+
 Usage:
     python3 -m dsl_course.enrol_codes --cohort-org Deep-Learning-EXAMPLE-f2026 --dry-run
     python3 -m dsl_course.enrol_codes --cohort-org Deep-Learning-EXAMPLE-f2026

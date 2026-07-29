@@ -273,15 +273,21 @@ def provision_one(cohort_org: str, handle: str) -> str:
 
 
 def sync(cohort_org: str, dry_run: bool = False) -> int:
-    """Provision one private gradebook repo per onboarded student. Idempotent."""
+    """Provision one private gradebook repo per onboarded enrolled student. Idempotent.
+
+    Auditors are read-only and are never assessed, so they get no gradebook."""
     students = roster.load(cohort_org)
     if not students:
         return 1
-    onboarded = [s for s in students if s.onboarded]
-    skipped = len(students) - len(onboarded)
+    participants = roster.enrolled(students)
+    auditing = len(students) - len(participants)
+    onboarded = [s for s in participants if s.onboarded]
+    skipped = len(participants) - len(onboarded)
     log_step(f"Syncing {len(onboarded)} gradebook repo(s) in {cohort_org}")
     if skipped:
         log(f"  ({skipped} not-yet-onboarded row(s) skipped)")
+    if auditing:
+        log(f"  ({auditing} auditor row(s) skipped - read-only, never assessed)")
 
     results: dict[str, int] = {}
     for s in onboarded:

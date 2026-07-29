@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from dsl_course import release
+from dsl_course import release, release_code
 
 
 def test_syllabus_files_is_caps_agnostic(tmp_path):
@@ -103,3 +103,10 @@ def test_route_sections_excluded_and_unrouted_sections_are_dropped():
 
 def test_route_sections_no_destinations_and_no_default_repo_routes_nothing():
     assert release.route_sections(["lectures"], {}, None, set()) == {}
+
+
+def test_released_repos_are_read_by_both_cohort_role_teams():
+    # Auditors see exactly what enrolled students see once it's released - the read grant
+    # is one helper covering both teams, so no release site can grant only `students`.
+    assert release.READ_TEAMS == ("students", "auditors")
+    assert release_code.grant_read_teams is release.grant_read_teams
