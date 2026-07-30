@@ -117,3 +117,37 @@ def test_cohort_metadata_carries_course_pointer():
         if ln.startswith("course:")
     )
     assert course == "My-Course-E1"
+
+
+def test_cohort_github_repo_never_carries_the_course_hub_topic():
+    # list_orgs.py enumerates COURSE orgs by the dsl-course-hub topic; a cohort org
+    # stamped with it shows up in the course-org inventory as a phantom course.
+    assert bc._profile_topics(is_cohort=True, course_code="E1234") == ["dsl-cohort"]
+    assert bc._profile_topics(is_cohort=False, course_code="E1234") == [
+        "dsl-course-hub",
+        "course-e1234",
+    ]
+    assert bc._profile_topics(is_cohort=False) == ["dsl-course-hub"]
+
+
+def test_inventory_skips_cohort_pointer_orgs(monkeypatch):
+    # Cohorts bootstrapped before the topic split still carry dsl-course-hub, so the
+    # inventory must also filter by metadata shape: a cohort's dsl-course.yml is a
+    # `course:` pointer, a course org's is not.
+    from dsl_course import list_orgs
+
+    monkeypatch.setattr(
+        list_orgs,
+        "gh_json",
+        lambda *a: [
+            {"owner": {"login": "Course-Org"}, "name": ".github"},
+            {"owner": {"login": "Cohort-Org"}, "name": ".github"},
+        ],
+    )
+    metas = {
+        "Course-Org": {"org_name": "Course Org", "course_name": "ML", "course_code": "E1"},
+        "Cohort-Org": {"course": "Course-Org", "org": "Cohort-Org"},
+    }
+    monkeypatch.setattr(list_orgs, "_fetch_metadata", lambda org: metas[org])
+    orgs = list_orgs.discover_course_orgs()
+    assert [o["org"] for o in orgs] == ["Course-Org"]

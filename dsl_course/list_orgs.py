@@ -51,6 +51,12 @@ def discover_course_orgs() -> list[dict]:
             continue
 
         meta = _fetch_metadata(owner)
+        if meta.get("course"):
+            # A cohort org's dsl-course.yml is a pointer back to its course org
+            # (`course:`/`org:` keys only). Cohorts bootstrapped before the topic split
+            # still carry dsl-course-hub on their .github, so filter them here too -
+            # this inventory enumerates COURSE orgs, never their per-year cohorts.
+            continue
         orgs.append(
             {
                 "org": owner,

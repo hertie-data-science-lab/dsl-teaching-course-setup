@@ -44,6 +44,19 @@ from .utils import (
 )
 
 COURSE_HUB_TOPIC = "dsl-course-hub"
+COHORT_TOPIC = "dsl-cohort"
+
+
+def _profile_topics(is_cohort: bool, course_code: str = "") -> list[str]:
+    """Topics for an org's .github repo. list_orgs.py enumerates COURSE orgs by
+    dsl-course-hub, so a cohort org must NOT carry it (it would show up in the
+    course-org inventory as a course); cohorts get dsl-cohort, a human-facing marker."""
+    if is_cohort:
+        return [COHORT_TOPIC]
+    topics = [COURSE_HUB_TOPIC]
+    if course_code:
+        topics.append(f"course-{course_code.lower()}")
+    return topics
 
 
 # ---------------------------------------------------------------------------------------
@@ -370,11 +383,7 @@ def create_profile_repo(
             "init: course metadata for DSL discovery tooling",
         )
 
-    # Topic marker - list_orgs.py searches for this topic to enumerate course orgs
-    topics = [COURSE_HUB_TOPIC]
-    if course_code:
-        topics.append(f"course-{course_code.lower()}")
-    set_repo_topics(org, ".github", topics)
+    set_repo_topics(org, ".github", _profile_topics(is_cohort, course_code))
 
     log_ok(".github profile repo initialised")
 
