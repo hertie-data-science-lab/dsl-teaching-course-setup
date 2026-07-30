@@ -9,6 +9,9 @@ name: Onboard student
 # matched row's `role` column names: `students` (enrolled) or `auditors` (read-only - same
 # released materials, no assignment repos). A roster with no `role` column is all-enrolled.
 #
+# Existing org ADMINS (owners - e.g. a course admin testing the student flow) get the roster
+# link but no access change: granting them `member` would demote the owner.
+#
 # The code carries no personal data, so nothing in the public issue needs redacting; and
 # because it's unguessable + single-use (the "already linked" guard), a classmate can't
 # bind your roster row to their account.
@@ -142,6 +145,35 @@ jobs:
                 message: `roster: link @${handle} (id ${userId})`,
                 content: Buffer.from(body, 'utf8').toString('base64'),
               });
+            }
+
+            // Never DOWNGRADE org staff. A course admin is an org OWNER (`role: admin`);
+            // `setMembershipForUser({ role: 'member' })` on them silently demotes the owner
+            // to a plain member, which strips their access to every private repo (the org is
+            // default_repository_permission=none) until someone restores it via the bot. So
+            // when a Join issue comes from an admin - typically an admin testing the student
+            // flow - link the roster row above (that's the useful half) and skip every
+            // access-changing call.
+            let orgRole = null;
+            try {
+              const membership = await github.rest.orgs.getMembershipForUser({ org, username: handle });
+              orgRole = membership.data.role;      // 'admin' (owner) | 'member'
+            } catch (e) {
+              if (e.status !== 404) throw e;       // 404 = not an org member (yet) - the normal case
+            }
+            if (orgRole === 'admin') {
+              await github.rest.issues.createComment({
+                owner: org, repo: context.repo.repo, issue_number: issue.number, body: [
+                  `Thanks **@${handle}** - your enrolment code is matched, and your handle + GitHub id are now linked to that roster row.`,
+                  ``,
+                  `- You're already an **owner/admin of \`${org}\`**, so I made **no access changes**: adding you as a \`member\` would DOWNGRADE your owner role and lock you out of the private repos.`,
+                  `- Nothing else to do. To exercise the real student path end to end, re-run this from an account that isn't org staff.`,
+                ].join('\n') });
+              await github.rest.issues.addLabels({
+                owner: org, repo: context.repo.repo, issue_number: issue.number, labels: ['staff'] });
+              await github.rest.issues.update({
+                owner: org, repo: context.repo.repo, issue_number: issue.number, state: 'closed' });
+              return;
             }
 
             // Route by role: auditors are read-only (released materials, no assignments), so
