@@ -1,0 +1,34 @@
+name: Join a team
+description: Join or form a team for a group assignment
+title: "Join team: <team name>"
+labels: ["team-formation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Your **GitHub handle is captured automatically** - you are the issue author, so it is authenticated and cannot be faked.
+        To **form a new team**, pick a team name nobody is using yet. To **join an existing team**, use its exact name.
+        **Do not post your email or other personal data here** - this is a public repo.
+  - type: input
+    id: assignment
+    attributes:
+      label: Assignment
+      description: The assignment slug for this group project (ask the teaching team if unsure).
+      placeholder: "e.g. assignment-4-project"
+    validations:
+      required: true
+  - type: input
+    id: team
+    attributes:
+      label: Team
+      description: "Team name (letters, numbers, dashes). Create a new one or join an existing team."
+      placeholder: "e.g. team-x"
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Confirmation
+      options:
+        - label: I am enrolled in this course and have already joined (onboarded) via a "Join" issue.
+          required: true

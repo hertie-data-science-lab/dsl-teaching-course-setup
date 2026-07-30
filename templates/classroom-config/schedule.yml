@@ -1,0 +1,75 @@
+# This cohort's schedule + auto-release plan. Edit here (GitHub web UI is fine - no CLI).
+# Everything is optional: anything you leave out is synthesised (semester start from the
+# fYYYY tag; website exams at weeks 8 & 15) or simply not scheduled. Uncomment and fill
+# what you want. Times are Europe/Berlin unless you set `timezone:` or give an explicit
+# offset; the Scheduled release cron runs hourly, so a `when:` time is honoured to the hour.
+
+# timezone: Europe/Berlin              # optional - how the naive datetimes below are read
+
+# ---------------------------------------------------------------------------
+# materials_releases: the AUTO-RELEASE plan. Each entry is a label (any name you like -
+# session_2, lab_1, bonus-dataset) mapping to a `when:` datetime and one or more actions.
+# The hourly Scheduled release cron fires each entry once its `when` has arrived
+# (idempotent - safe to re-run). Sources are always read from the COURSE org;
+# destinations always written to THIS cohort org.
+# ---------------------------------------------------------------------------
+# materials_releases:
+#
+#   session_2:                          # a normal weekly release (label is just a name)
+#     when: 2026-09-15T14:00            # bare date (2026-09-15) -> 00:00 that day
+#     deploy:                           # copy one or more paths: course repo -> cohort repo
+#       - source_repo: course-materials-f2026    # repo in the COURSE org
+#         source_path: lectures/02_intro          # folder or file to copy
+#         dest_repo: materials                     # repo in THIS cohort org (default: materials)
+#         dest_path: lectures/02_intro             # where to put it (default: same as source_path)
+#       - source_repo: course-materials-f2026
+#         source_path: readings/02_intro
+#         dest_repo: materials
+#         dest_path: readings/02_intro
+#
+#   lab_1:                              # a lab is just another release - no special section
+#     when: 2026-09-17T10:00
+#     deploy:
+#       - source_repo: course-materials-f2026
+#         source_path: labs/01_setup
+#         dest_repo: materials
+#         # dest_path omitted -> mirrors source_path (labs/01_setup)
+#
+#   bonus-dataset:                      # a one-off that isn't a numbered teaching session
+#     when: 2026-10-20T09:30
+#     deploy:
+#       - source_repo: course-datasets-f2026
+#         source_path: week7/housing.csv
+#         dest_repo: materials
+#         dest_path: datasets/housing.csv
+#
+#   assignment-1-handout:               # hand an assignment out (provision one repo/student)
+#     when: 2026-09-22T09:00
+#     assignment: assignment-1-f2026    # the assignment-*-<tag> template repo
+#
+#   assignment-1-grade:                 # run the autograder after the deadline
+#     when: 2026-10-15T00:00
+#     grade:
+#       template: assignment-1-f2026
+#       deadline: 2026-10-13T23:59      # commit cutoff (default: this assignment's due date)
+#       group: false                    # true for a group assignment
+
+# ---------------------------------------------------------------------------
+# The rest is for DISPLAY (website) and GRADING - not the release plan above.
+# ---------------------------------------------------------------------------
+# semester_start: 2026-09-07           # YYYY-MM-DD
+# semester_end: 2026-12-18
+#
+# assignments:                          # due dates (keyed by slug, no -fYYYY tag)
+#   assignment-1:
+#     due: 2026-10-13T23:59            # a bare date -> END of that day (23:59:59)
+#     grace_days: 2                     # OPTIONAL: extra days for GRADING only (not shown
+#                                       # to students). Autograder pins to due + grace_days.
+#   assignment-2:
+#     due: 2026-11-10
+#
+# exams:                                # `date` is a whole day, OR a full datetime when
+#   - name: MidTerm Exam                 # you know the start time
+#     date: 2026-11-03                  # bare date -> the website shows 09:00
+#   - name: Final Exam
+#     date: 2026-12-15T14:00            # real start time, shown as given

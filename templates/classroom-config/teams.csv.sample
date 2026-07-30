@@ -1,0 +1,6 @@
+# Sample. Rename to teams.csv to activate. Students normally self-select via
+# the welcome "Join team" issue, so you rarely edit this by hand.
+assignment,team,github_handle
+assignment-4-project,team-1,alice
+assignment-4-project,team-1,bob
+assignment-4-project,team-2,carol

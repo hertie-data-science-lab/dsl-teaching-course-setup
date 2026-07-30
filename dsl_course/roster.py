@@ -1,0 +1,133 @@
+"""dsl-course roster -- read the per-cohort students.csv.
+
+The single durable roster artifact is a PRIVATE per-cohort `students.csv`, kept in
+the cohort org's `classroom-config` repo. Columns:
+
+    student_id,hertie_email,name,github_handle,github_id,section,enrol_code,role
+
+It is simultaneously the manual roster we maintain now, and the exact shape a future
+Moodle adapter will emit. `github_handle` / `github_id` are blank until the student
+onboards (the `welcome` Join issue fills them); a row with a blank handle is
+enrolled-but-not-yet-onboarded and is skipped by provisioning.
+
+`role` splits the cohort into `enrolled` (the default - full participants) and `auditor`
+(read-only: released materials, but no assignment repos and no gradebook). A roster
+written before the column existed has no `role` cell at all, so a missing or blank value
+means `enrolled` - never break onboarding for a deployed cohort's roster.
+"""
+
+from __future__ import annotations
+
+import csv
+import io
+from dataclasses import dataclass
+
+from .utils import get_file_content, log_err
+
+CONFIG_REPO = "classroom-config"
+ROSTER_PATH = "students.csv"
+ROLE_ENROLLED = "enrolled"
+ROLE_AUDITOR = "auditor"
+FIELDS = (
+    "student_id",
+    "hertie_email",
+    "name",
+    "github_handle",
+    "github_id",
+    "section",
+    "enrol_code",
+    "role",
+)
+
+
+@dataclass
+class Student:
+    student_id: str
+    hertie_email: str
+    name: str
+    github_handle: str
+    github_id: str
+    section: str
+    enrol_code: str = (
+        ""  # random non-PII token the bot generates + emails; pasted to enrol
+    )
+    role: str = ROLE_ENROLLED  # `enrolled` (default) or `auditor` (read-only)
+
+    @property
+    def onboarded(self) -> bool:
+        return bool(self.github_handle.strip())
+
+    @property
+    def is_auditor(self) -> bool:
+        """Read-only participant: released materials, no assignments, no gradebook."""
+        return self.role.strip().lower() == ROLE_AUDITOR
+
+    @property
+    def is_enrolled(self) -> bool:
+        """Full participant - the default, so a blank role never locks anyone out."""
+        return not self.is_auditor
+
+
+def normalise_role(value: str) -> str:
+    """Map a raw `role` cell to `enrolled` / `auditor`.
+
+    Blank (or a column that isn't there at all - a roster seeded before the column
+    existed) means `enrolled`, so no deployed cohort breaks. Anything unrecognised also
+    reads as `enrolled`, but says so on stderr rather than silently mis-classifying."""
+    role = value.strip().lower()
+    if role == ROLE_AUDITOR:
+        return ROLE_AUDITOR
+    if role and role != ROLE_ENROLLED:
+        log_err(f"unknown roster role '{value.strip()}' - treating as {ROLE_ENROLLED}")
+    return ROLE_ENROLLED
+
+
+def parse(text: str) -> list[Student]:
+    """Parse students.csv text into Student rows.
+
+    Tolerant of a roster written before a column existed: a missing `enrol_code` or
+    `role` column is fine (blank / `enrolled` respectively)."""
+    rows = []
+    for row in csv.DictReader(io.StringIO(text)):
+        values = {f: (row.get(f) or "").strip() for f in FIELDS}
+        values["role"] = normalise_role(values["role"])
+        rows.append(Student(**values))
+    return rows
+
+
+def enrolled(students: list[Student]) -> list[Student]:
+    """The full participants - the only rows that get assignment repos + gradebooks."""
+    return [s for s in students if s.is_enrolled]
+
+
+def auditors(students: list[Student]) -> list[Student]:
+    """The read-only rows (released materials only)."""
+    return [s for s in students if s.is_auditor]
+
+
+def dump(students: list[Student]) -> str:
+    """Serialise rows back to students.csv text (header + one row per student)."""
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow(FIELDS)
+    for s in students:
+        writer.writerow([getattr(s, f) for f in FIELDS])
+    return out.getvalue()
+
+
+def load(cohort_org: str) -> list[Student]:
+    """Fetch + parse students.csv from the cohort's PRIVATE classroom-config repo."""
+    content = get_file_content(cohort_org, CONFIG_REPO, ROSTER_PATH)
+    if content is None:
+        log_err(
+            f"Could not find {ROSTER_PATH} in {cohort_org}/{CONFIG_REPO} - "
+            f"bootstrap the cohort first (bootstrap_course --cohort)."
+        )
+        return []
+    return parse(content)
+
+
+def load_path(path: str) -> list[Student]:
+    """Parse a local students.csv (for running outside Actions)."""
+    with open(path, encoding="utf-8") as fh:
+        return parse(fh.read())

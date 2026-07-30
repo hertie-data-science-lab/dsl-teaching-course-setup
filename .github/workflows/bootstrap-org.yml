@@ -1,0 +1,77 @@
+name: Bootstrap Course Org
+
+on:
+  workflow_dispatch:
+    inputs:
+      org:
+        description: "Course org to bootstrap (e.g. Hertie-School-DSL-Demo-E1234)"
+        required: true
+      org_name:
+        description: "Display name for org profile (e.g. DSL Demo)"
+        required: true
+      course_code:
+        description: "Course code (e.g. GRAD-E1234)."
+        required: true
+      set_secret:
+        description: "Set the DSL_BOT_TOKEN org secret automatically (recommended; uncheck only to set it by hand)"
+        required: false
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+      admin:
+        description: "Course admin GitHub handle(s), comma-separated"
+        required: false
+        default: ""
+
+jobs:
+  check-team:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify triggering user is in faculty or admin team
+        env:
+          GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          for team in faculty admin; do
+            code=$(gh api "orgs/hertie-data-science-lab/teams/$team/memberships/$ACTOR" \
+                     --jq '.state' 2>/dev/null || true)
+            if [ "$code" = "active" ]; then exit 0; fi
+          done
+          echo "::error::$ACTOR is not in the faculty or admin team - access denied"
+          exit 1
+
+  bootstrap:
+    name: Bootstrap ${{ inputs.org }}
+    needs: check-team
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Bootstrap course org
+        env:
+          GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
+          DSL_BOT_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
+          SET_SECRET: ${{ inputs.set_secret }}
+          ADMIN: ${{ inputs.admin }}
+          ORG: ${{ inputs.org }}
+          ORG_NAME: ${{ inputs.org_name }}
+          COURSE_CODE: ${{ inputs.course_code }}
+        run: |
+          args=(--org "$ORG"
+                --org-name "$ORG_NAME"
+                --course-code "$COURSE_CODE")
+          [ "$SET_SECRET" = "true" ] && args+=(--propagate-secret)
+          [ -n "$ADMIN" ] && args+=(--admins "$ADMIN")
+          python3 -m dsl_course.bootstrap_course "${args[@]}"
