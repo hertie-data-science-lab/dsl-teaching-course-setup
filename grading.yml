@@ -1,0 +1,10 @@
+# Assignment 2 - individual, Jupyter notebook.
+# `format: notebook` makes the grading runner nbconvert every .ipynb in the submission to a
+# script first, so `starter.ipynb` becomes the importable `starter` module the hidden tests
+# import. The score lands in the `auto` column of grades/assignment-2.csv; the remaining 12
+# of the 20 marks (code quality + the three write-up paragraphs) are hand-marked.
+type: individual
+format: notebook
+autograde: true
+max_auto: 8
+tests: tests
