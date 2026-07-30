@@ -1,77 +1,84 @@
-# DSL Teaching & Course Setup
+# Assignment 1 - linear regression from scratch (individual)
 
-Central registry of the workflows that deliver courses at the Hertie Data Science Lab.
-Everything faculty-facing is a **GitHub Actions button**; the Python in `dsl_course/` is the
-single implementation behind every button.
+**Weight:** 15% of the final mark
+**Due:** Tuesday 13 October 2026, 23:59 (Europe/Berlin)
+**Submission:** push to `main` in this repository - that push *is* your submission.
 
-## The model
+## The task
 
-Two org tiers:
-1. the **course** org is the faculty-facing control plane - the historical registry of
-   course materials, persistent across years, where faculty & instructors push version-controlled materials
-   from;
-2. the **cohort** org is the per-year student-facing delivery target - materials are released
-   here, student assignments are submitted and assessed here, and student-facing features
-   (onboarding, the website) live here.
+Implement ordinary least squares yourself, in `starter.py`, using **only the Python standard
+library**. No NumPy, no pandas, no scikit-learn. The point is that you can derive and code
+the estimator once before delegating it for the rest of your career.
 
-```mermaid
-flowchart TB
-  subgraph COURSE["COURSE org — e.g. Hertie-School-Deep-Learning-E1394 (persistent)"]
-    mat["course-materials-f2026 · PRIVATE<br/>lectures/01_.../ + readings/01_.../ (+ syllabus, README)"]
-    tmpl["assignment-1-f2026 ... · PRIVATE<br/>template repos (is_template) + autograder"]
-    gh[".github · PUBLIC<br/>profile (auto) + ALL faculty & instructors buttons + cohort registry"]
-  end
+Fill in the four functions:
 
-  subgraph COHORT["COHORT org — e.g. Deep-Learning-f2026 (per-year)"]
-    welcome["welcome · PUBLIC<br/>Join issue → onboard.yml (paste enrolment code)"]
-    cfg["classroom-config · PRIVATE<br/>roster, teams, schedule, grades, deadline snapshots"]
-    cmat["materials · PRIVATE<br/>released lectures/readings (students + auditors read)"]
-    repos["&lt;assignment&gt;-&lt;handle&gt; · PRIVATE<br/>one private repo per student (generated; autograder rides along)"]
-    team["students / auditors teams · PRIVATE"]
-  end
+| Function | Returns |
+|---|---|
+| `fit_linear_regression(X, y)` | coefficients `[b0, b1, ..., bp]`, intercept **first** |
+| `predict(X, beta)` | a list of fitted values, one per row of `X` |
+| `r_squared(y_true, y_pred)` | the coefficient of determination |
+| `solve_linear_system(A, b)` | solves `A z = b`; raises `ValueError` if `A` is singular |
 
-  pub["&lt;course-org&gt;.github.io · PUBLIC (opt-in)<br/>open-courseware site — hosts shared lectures + readings"]
+`X` is a list of rows, each row a list of feature values, **without** a column of ones -
+`fit_linear_regression` adds the intercept itself.
 
-  COURSE -->|"release / generate (bot token, cross-org)"| COHORT
-  gh -.->|"Publish course website (opt-in)"| pub
+## What you are implementing
 
-  classDef public fill:#e6f4ea,stroke:#2e7d32,color:#1b5e20;
-  classDef private fill:#f3f3f3,stroke:#8a8a8a,color:#3c3c3c;
-  class gh,welcome,pub public;
-  class mat,tmpl,cfg,cmat,repos,team private;
+Minimise the residual sum of squares. Setting the gradient to zero gives the normal
+equations:
+
+```
+X'X b = X'y
 ```
 
-Each cohort gets an auto-deployed `<cohort>.github.io` site whose material links are private
-(enrolled students and auditors only). Optionally, a course can also publish a **public**
-`<course-org>.github.io` open-courseware site sharing its lectures + readings with the world -
-see [**Publish course website**](docs/faculty-and-instructors/actions-reference.md#optional-public-course-website).
+Do **not** compute `(X'X)^-1`. Build `X'X` and `X'y`, then solve the system with Gaussian
+elimination with partial pivoting - that is what `solve_linear_system` is for, and it is the
+part of the assignment where the marks are.
 
-## Deploying a course
+Definition of R-squared, for the avoidance of doubt:
 
-Three phases - **set up the course** (once), **add a cohort** (per year), then **run it**. The
-cohort's `schedule.yml` is the operating surface: fill it in up front and an hourly cron handles
-every materials release, assignment hand-out and autograde run for the whole term. The manual
-buttons are for anything ad hoc.
+```
+R^2 = 1 - RSS/TSS,   RSS = sum (y_i - y_hat_i)^2,   TSS = sum (y_i - mean(y))^2
+```
 
-- **▶ Workflow runbooks — [`docs/faculty-and-instructors/`](docs/faculty-and-instructors/README.md) — start here.** One per workflow, each naming the exact button, inputs, and order.
-- **Worked example:** [`example-course/`](example-course/README.md) - a dummy course you can stand up end to end alongside the runbooks.
-- **Input schema + deployment checklist** (reference): [`required-input-schema.md`](docs/faculty-and-instructors/required-input-schema.md) - the what-goes-where data contract, and a [tickable deploy-ordered checklist](docs/faculty-and-instructors/required-input-schema.md#deployment-checklist).
+## What is assessed
 
-The only manual steps are creating each org in the GitHub web UI
-([github.com/account/organizations/new](https://github.com/account/organizations/new) - there
-is no org-creation API) and inviting **`hertie-dsl-bot`** as **Owner** (Org → People →
-Invite; the DSL team must **accept** the pending invite before you bootstrap -
-[which account?](docs/admin/admin-setup.md#the-bot-account)); everything after that is a button.
+- **10 marks, automated.** Hidden tests, run after the deadline. They check exact recovery on
+  noiseless data, the two defining properties of a least-squares fit (residuals sum to zero
+  and are orthogonal to every feature), that no perturbation of your coefficients lowers the
+  RSS, and the three boundary values of R-squared (1, 0, and negative).
+- **5 marks, by hand.** Code clarity, docstrings, and the two short answers below.
 
-## Faculty actions
+## Short answers
 
-Every faculty & instructors action is a GitHub Actions button in the course org's bootstrapped `.github`
-Actions tab. See the **[workflow runbooks](docs/faculty-and-instructors/README.md)** for the flows, or the
-**[actions reference](docs/faculty-and-instructors/actions-reference.md)** for a one-page summary of every button.
+Add these to the bottom of `starter.py` as a module-level docstring or comment block, 3-5
+sentences each:
 
----
+1. Why does partial pivoting matter numerically, and what goes wrong without it?
+2. Your `fit_linear_regression` fails on a design matrix containing both `area_in_sqm` and
+   `area_in_sqft`. Explain why in terms of `X'X`, and say what you would do about it.
 
-**Admin & developer reference** (faculty & instructors delivering a course don't need this):
-[`docs/admin/`](docs/admin/) - the [architecture](docs/admin/architecture.md) (system design,
-token propagation, who-can-run access, the code map) and [operational setup](docs/admin/admin-setup.md)
-(the bot credential, exact PAT scopes, the token/secret model).
+## Rules
+
+- Standard library only. `import math` is fine; `import numpy` will fail the tests.
+- Do not rename the functions, change their signatures, or move them out of `starter.py`.
+- Keep the file importable: no code that runs on import beyond definitions (guard any demo
+  with `if __name__ == "__main__":`).
+- Individual work. Name anyone you discussed it with in a comment; that costs you nothing.
+- Declare any AI assistance, and be able to explain every line you submit.
+
+## Checking your own work
+
+You do not get the hidden tests, but you can check the properties they check:
+
+```python
+X = [[32], [45], [52], [60], [68], [75], [80], [95]]
+y = [540, 510, 640, 545, 720, 620, 770, 860]
+beta = fit_linear_regression(X, y)
+resid = [yi - yh for yi, yh in zip(y, predict(X, beta))]
+print(sum(resid))                                   # ~0
+print(sum(r * row[0] for r, row in zip(resid, X)))  # ~0
+```
+
+Both numbers must be zero to within floating-point tolerance. If they are not, your solve is
+wrong, and every other test will fail too.

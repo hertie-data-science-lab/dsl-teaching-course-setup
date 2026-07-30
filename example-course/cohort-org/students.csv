@@ -1,6 +1,0 @@
-student_id,hertie_email,name,github_handle,github_id,section,enrol_code,role
-220001,anna.adams@students.demo.edu,Anna Adams,,,A,,enrolled
-220002,ben.baker@students.demo.edu,Ben Baker,,,A,,enrolled
-220003,carla.cohen@students.demo.edu,Carla Cohen,,,B,,enrolled
-220004,dan.davies@students.demo.edu,Dan Davies,,,B,,
-220005,eve.evans@students.demo.edu,Eve Evans,,,B,,auditor
