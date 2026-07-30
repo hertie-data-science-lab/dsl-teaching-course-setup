@@ -120,6 +120,24 @@ def test_onboard_treats_a_missing_role_column_as_enrolled():
     assert "iRole >= 0" in code
 
 
+def test_onboard_never_downgrades_an_existing_org_admin():
+    # An org OWNER filing a Join issue (a course admin testing the flow) must not be
+    # re-invited as a plain `member`: that demotes them and strips access to every private
+    # repo. The membership pre-check has to run BEFORE the grants and short-circuit them,
+    # but AFTER the roster link-back (recording the handle/id is safe and useful).
+    script = script_of("onboard.yml", "onboard")
+    code = code_of(script)
+    assert "orgs.getMembershipForUser" in code
+    assert "e.status !== 404" in code, "not-a-member (404) must not abort onboarding"
+    assert "orgRole === 'admin'" in code
+    assert code.index("createOrUpdateFileContents") < code.index("getMembershipForUser")
+    assert code.index("getMembershipForUser") < code.index("setMembershipForUser")
+    assert code.index("orgRole === 'admin'") < code.index("setMembershipForUser")
+    # the guard returns before the team write too, and says why nothing changed
+    assert code.index("orgRole === 'admin'") < code.index("team_slug: team")
+    assert "no access changes" in script
+
+
 def test_team_formation_refuses_auditors():
     # Auditors are read-only: assignment release is roster-driven (enrolled rows only), so an
     # auditor recorded in teams.csv would be handed a group assignment repo anyway. They must
