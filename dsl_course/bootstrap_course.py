@@ -149,6 +149,30 @@ def grant_button_access(org: str) -> None:
             log_ok(f"  {team} -> {perm} on {org}/.github")
 
 
+# The COHORT infra repos the faculty teams need the same standing grant on as `.github`.
+# A cohort org is tightened to default_repository_permission=none, so without these grants
+# only org OWNERS can touch either repo - yet the whole faculty workflow lives in them:
+# `classroom-config` is what instructors edit (schedule.yml, students.csv, teams.csv,
+# people.yml) and read (grades/), and `welcome` is where they triage `needs-review`
+# onboarding issues. Course orgs have neither repo, so this is cohort-only.
+COHORT_FACULTY_REPOS = ["welcome", "classroom-config"]
+
+
+def grant_cohort_faculty_access(org: str) -> None:
+    """Give this cohort's faculty teams their standing access (COURSE_TEAM_ACCESS:
+    instructors write, course-admin admin) on the cohort infra repos - `.github` is
+    granted separately by grant_button_access, in both org kinds.
+
+    Idempotent, and deliberately outside the `if create_repo(...)` seeding blocks in
+    setup_cohort_extras, so re-running "Bootstrap cohort" on an org bootstrapped before
+    this existed repairs the missing grants."""
+    log_step("Granting cohort faculty access (welcome, classroom-config)")
+    for repo in COHORT_FACULTY_REPOS:
+        for team, perm in COURSE_TEAM_ACCESS.items():
+            if grant_team_repo_access(org, team, repo, perm):
+                log_ok(f"  {team} -> {perm} on {org}/{repo}")
+
+
 def _parse_handles(handles: str) -> list[str]:
     return [h.strip() for h in handles.replace(",", " ").split() if h.strip()]
 
@@ -355,7 +379,8 @@ def setup_cohort_extras(org: str) -> None:
     Layered on top of the common bootstrap when --cohort is passed:
     - safe-by-default permissions (members get no repo access unless granted);
     - public `welcome` repo with the Join issue form + onboard workflow;
-    - private `classroom-config` repo with a starter students.csv.
+    - private `classroom-config` repo with a starter students.csv;
+    - the faculty teams' standing grant on both of those repos.
     The `materials` repo is created on the first release, so it's not made here.
     """
     log_step("Cohort setup: tighten org + seed welcome/classroom-config")
@@ -489,6 +514,10 @@ def setup_cohort_extras(org: str) -> None:
             "ci: seed dispatch-sync-site workflow",
         )
         log_ok("classroom-config seeded (roster + README + grades/ + samples)")
+
+    # Faculty access on the two repos just seeded - unconditional (not inside the
+    # create_repo blocks above), so a re-run repairs an org that predates this.
+    grant_cohort_faculty_access(org)
 
     # Public, auto-deployed cohort website (from course-website-template).
     scaffold.scaffold_site(org)
@@ -766,6 +795,9 @@ then run bootstrap with --cohort (seeds welcome + roster + tightens perms).
             f"(edit https://github.com/{args.org}/classroom-config/blob/HEAD/students.csv with registrar data), "
             f"plus schedule.yml and people.yml (this cohort's calendar/due-dates and "
             f"instructors/TAs - both seeded mostly-commented, uncomment what you want)\n"
+            f"- faculty access: instructors (write) + course-admin (admin) on welcome and "
+            f"classroom-config, so non-owner faculty can edit the roster/schedule and "
+            f"triage onboarding issues\n"
         )
 
     return 0
