@@ -1,0 +1,10 @@
+# Assignment 1 - individual, plain Python.
+# The autograder runs solution/tests/ against each student's submission after the deadline
+# and writes the score into the `auto` column of classroom-config/grades/assignment-1.csv.
+# The remaining 5 of the 15 marks (code quality + the two short answers) are hand-marked in
+# the `manual` column.
+type: individual
+format: py
+autograde: true
+max_auto: 10
+tests: tests
