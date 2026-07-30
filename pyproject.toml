@@ -1,0 +1,5 @@
+[tool.pytest.ini_options]
+# Put the repo root (for `import dsl_course`) and tests/ (for `import conftest`) on the
+# path so tests run from anywhere without an installed package.
+pythonpath = [".", "tests"]
+testpaths = ["tests"]

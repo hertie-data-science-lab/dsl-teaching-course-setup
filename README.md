@@ -1,89 +1,77 @@
-# Group project - an end-to-end modelling report
+# DSL Teaching & Course Setup
 
-**Weight:** 25% of the final mark
-**Teams:** 2-3 students (see `teams.csv`; one repository per team)
-**Released:** 20 October 2026 | **Clinic:** 17 November | **Due:** Friday 27 November, 23:59
-**Submission:** push to `main` in this team repository. The last commit before the deadline
-(plus a silent 72-hour grace window) is what we mark.
+Central registry of the workflows that deliver courses at the Hertie Data Science Lab.
+Everything faculty-facing is a **GitHub Actions button**; the Python in `dsl_course/` is the
+single implementation behind every button.
 
-## The task
+## The model
 
-Take a question you care about, a dataset you can defend, and build the smallest model that
-answers it honestly. Then write it up so that a reader who was not in the room can tell
-whether to believe you.
+Two org tiers:
+1. the **course** org is the faculty-facing control plane - the historical registry of
+   course materials, persistent across years, where faculty & instructors push version-controlled materials
+   from;
+2. the **cohort** org is the per-year student-facing delivery target - materials are released
+   here, student assignments are submitted and assessed here, and student-facing features
+   (onboarding, the website) live here.
 
-Not "get the highest score". A careful ridge regression with an honest evaluation beats a
-tuned ensemble with a leak, every time, and we can tell the difference.
+```mermaid
+flowchart TB
+  subgraph COURSE["COURSE org — e.g. Hertie-School-Deep-Learning-E1394 (persistent)"]
+    mat["course-materials-f2026 · PRIVATE<br/>lectures/01_.../ + readings/01_.../ (+ syllabus, README)"]
+    tmpl["assignment-1-f2026 ... · PRIVATE<br/>template repos (is_template) + autograder"]
+    gh[".github · PUBLIC<br/>profile (auto) + ALL faculty & instructors buttons + cohort registry"]
+  end
 
-## What to build
+  subgraph COHORT["COHORT org — e.g. Deep-Learning-f2026 (per-year)"]
+    welcome["welcome · PUBLIC<br/>Join issue → onboard.yml (paste enrolment code)"]
+    cfg["classroom-config · PRIVATE<br/>roster, teams, schedule, grades, deadline snapshots"]
+    cmat["materials · PRIVATE<br/>released lectures/readings (students + auditors read)"]
+    repos["&lt;assignment&gt;-&lt;handle&gt; · PRIVATE<br/>one private repo per student (generated; autograder rides along)"]
+    team["students / auditors teams · PRIVATE"]
+  end
 
+  pub["&lt;course-org&gt;.github.io · PUBLIC (opt-in)<br/>open-courseware site — hosts shared lectures + readings"]
+
+  COURSE -->|"release / generate (bot token, cross-org)"| COHORT
+  gh -.->|"Publish course website (opt-in)"| pub
+
+  classDef public fill:#e6f4ea,stroke:#2e7d32,color:#1b5e20;
+  classDef private fill:#f3f3f3,stroke:#8a8a8a,color:#3c3c3c;
+  class gh,welcome,pub public;
+  class mat,tmpl,cfg,cmat,repos,team private;
 ```
-REPORT.md            your write-up - the primary deliverable (see the required sections)
-src/pipeline.py      the code, entry point `run_pipeline()`     (or src/pipeline.R)
-requirements.txt     pinned dependencies                        (or renv.lock)
-data/README.md       where the data came from and how to get it - NOT the raw data itself
-```
 
-Rules that are not negotiable:
+Each cohort gets an auto-deployed `<cohort>.github.io` site whose material links are private
+(enrolled students and auditors only). Optionally, a course can also publish a **public**
+`<course-org>.github.io` open-courseware site sharing its lectures + readings with the world -
+see [**Publish course website**](docs/faculty-and-instructors/actions-reference.md#optional-public-course-website).
 
-- **Every fitted transformation inside the split.** Use a `Pipeline` / `recipe`. Section 9 of
-  the course exists for this.
-- **A fixed seed**, stated in the report.
-- **Reproducible from a clean checkout** with one documented command.
-- **No raw personal data in the repository.** Link to the source; commit a script that
-  fetches it.
-- **A model card**, as a section of `REPORT.md`.
+## Deploying a course
 
-## Required sections of `REPORT.md`
+Three phases - **set up the course** (once), **add a cohort** (per year), then **run it**. The
+cohort's `schedule.yml` is the operating surface: fill it in up front and an hourly cron handles
+every materials release, assignment hand-out and autograde run for the whole term. The manual
+buttons are for anything ad hoc.
 
-Use these exact headings - a template is in the file, and the structural checks look for
-them.
+- **▶ Workflow runbooks — [`docs/faculty-and-instructors/`](docs/faculty-and-instructors/README.md) — start here.** One per workflow, each naming the exact button, inputs, and order.
+- **Worked example:** [`example-course/`](example-course/README.md) - a dummy course you can stand up end to end alongside the runbooks.
+- **Input schema + deployment checklist** (reference): [`required-input-schema.md`](docs/faculty-and-instructors/required-input-schema.md) - the what-goes-where data contract, and a [tickable deploy-ordered checklist](docs/faculty-and-instructors/required-input-schema.md#deployment-checklist).
 
-1. **Question** - what you are predicting or grouping, and for whom the answer matters.
-2. **Data** - source, period, unit of observation, `n`, and what is missing.
-3. **Method** - the model family, the split scheme (and why it matches the dependence
-   structure), and how hyperparameters were chosen.
-4. **Results** - your metric with an interval, next to a baseline. Disaggregated where it
-   matters.
-5. **Limitations** - what would break this, in specifics.
-6. **Model card** - intended use, out-of-scope use, data, performance by subgroup,
-   monitoring.
-7. **Contributions** - who did what, in two or three lines. Be accurate; adjustments depend
-   on it.
+The only manual steps are creating each org in the GitHub web UI
+([github.com/account/organizations/new](https://github.com/account/organizations/new) - there
+is no org-creation API) and inviting **`hertie-dsl-bot`** as **Owner** (Org → People →
+Invite; the DSL team must **accept** the pending invite before you bootstrap -
+[which account?](docs/admin/admin-setup.md#the-bot-account)); everything after that is a button.
 
-Aim for 2,000-2,500 words plus figures. Longer is not better.
+## Faculty actions
 
-## Marking (25 marks)
+Every faculty & instructors action is a GitHub Actions button in the course org's bootstrapped `.github`
+Actions tab. See the **[workflow runbooks](docs/faculty-and-instructors/README.md)** for the flows, or the
+**[actions reference](docs/faculty-and-instructors/actions-reference.md)** for a one-page summary of every button.
 
-| Component | Marks | What we look for |
-|---|---|---|
-| Question and framing | 4 | A real question; a metric that matches the decision |
-| Data handling | 4 | Provenance, missingness handled deliberately, no leakage |
-| Method | 5 | Defensible split, honest tuning, simplest model that works |
-| Evaluation | 5 | Baseline, interval, disaggregation, calibration where relevant |
-| Report and model card | 4 | Legible to a non-specialist; limitations that are specific |
-| Reproducibility | 3 | Runs from a clean checkout; seed fixed; deps pinned |
+---
 
-**7 of those marks come from automated structural checks** run after the deadline - the
-required files exist, the headings are present, the placeholders are gone, `run_pipeline` is
-defined, dependencies are pinned, and a seed is set. They are a floor, not a grade: they
-confirm the submission is complete and say nothing about whether it is good.
-
-## Individual adjustment
-
-The team mark is the starting point for everyone. Each member then receives a private
-adjustment (typically -5 to +5) based on the commit history, the contributions section, and
-the clinic conversation. Adjustments are visible only to the person concerned.
-
-## The clinic, 17 November
-
-Bring: your question, your split scheme, and the five-question leakage checklist from session
-9 answered for *your* data. Fifteen minutes per team. Teams that come with a design leave
-with a better one; teams that come with a finished model leave with a list.
-
-## Getting started
-
-1. Agree the question in week 1, not week 3. Write it down in `REPORT.md` first.
-2. Build the baseline before the model. Put its score in the report and keep it there.
-3. Split once, early, and do not look at the test set again until the report is written.
-4. Commit often, in everyone's name. The history is evidence.
+**Admin & developer reference** (faculty & instructors delivering a course don't need this):
+[`docs/admin/`](docs/admin/) - the [architecture](docs/admin/architecture.md) (system design,
+token propagation, who-can-run access, the code map) and [operational setup](docs/admin/admin-setup.md)
+(the bot credential, exact PAT scopes, the token/secret model).

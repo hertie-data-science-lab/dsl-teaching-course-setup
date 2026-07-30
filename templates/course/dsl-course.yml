@@ -1,0 +1,8 @@
+org: {org}
+org_name: {org_name}
+course_name: {course_name}
+course_code: {course_code}
+
+# This is the persistent COURSE org - it spans many cohorts (years). Cohorts are
+# registered separately in .github/cohort-courses-pages.yml.
+
