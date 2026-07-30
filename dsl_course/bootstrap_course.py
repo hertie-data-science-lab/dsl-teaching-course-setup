@@ -29,11 +29,13 @@ from .utils import (
     COURSE_TEAM_ACCESS,
     create_repo,
     create_team,
+    get_file_content,
     gh,
     grant_team_repo_access,
     log,
     log_err,
     log_ok,
+    log_skip,
     log_step,
     put_file,
     repo_exists,
@@ -42,6 +44,44 @@ from .utils import (
 )
 
 COURSE_HUB_TOPIC = "dsl-course-hub"
+
+
+# ---------------------------------------------------------------------------------------
+# Seeded content: USER-owned vs SYSTEM-owned
+#
+# Bootstrap (both "Bootstrap course" and "Bootstrap cohort") is re-run on EXISTING orgs as
+# the documented idempotent-repair path - e.g. to apply new team grants or refresh
+# workflows mid-semester. So every write it makes has to be re-run-safe. `create_repo` is
+# NOT a first-run guard: it treats an already-existing repo as success (utils.create_repo
+# returns True on the 422 "name already exists"), so an `if create_repo(...)` block runs on
+# every re-run. The guard has to be per FILE, and it depends on who owns the file:
+#
+#   USER-owned - content faculty edit, or that the running system writes live state into.
+#   In a cohort: classroom-config/{students.csv, schedule.yml, people.yml,
+#   teams.csv.sample, README.md, grades/**}. On a course org: .github/dsl-course.yml (the
+#   faculty/course_admins SSOT). Seed these ONLY when absent (_seed_user_file) - rewriting
+#   them on a re-run destroys live enrolment state (roster rows, enrol codes, onboarded
+#   handles) and the faculty's schedule.
+#
+#   SYSTEM-owned - machinery this repo generates and must be able to fix in place:
+#   everything under `.github/` in the seeded repos (welcome/onboard.yml,
+#   welcome/team-formation.yml, the ISSUE_TEMPLATE join forms those workflows parse - they
+#   must stay in lockstep with them - and classroom-config's dispatch-sync*.yml), plus a
+#   cohort's `.github/dsl-course.yml`, which is a wholly generated course pointer with no
+#   faculty-authored content. These are written unconditionally on every run so fixes
+#   propagate, exactly like seed.seed_github_workflows.
+# ---------------------------------------------------------------------------------------
+
+
+def _seed_user_file(org: str, repo: str, path: str, content: bytes, message: str) -> bool:
+    """Seed a USER-owned file - create-only, never an overwrite.
+
+    Returns True if the file was written, False if it was already present (logged as a
+    skip, so a re-run's output shows exactly what was left alone) or the write failed."""
+    if get_file_content(org, repo, path) is not None:
+        log_skip(f"{repo}/{path}")
+        return False
+    return put_file(org, repo, path, content, message)
 
 
 def set_org_secret(org: str, secret_name: str, secret_value: str) -> bool:
@@ -316,11 +356,13 @@ def create_profile_repo(
         return
 
     if not is_cohort:
-        # Course metadata - canonical machine-readable source for discovery tooling.
+        # Course metadata - canonical machine-readable source for discovery tooling, and
+        # the SSOT faculty edit (people.course_admins / instructor cards), so it is
+        # USER-owned: seeded once, never rewritten by a later repair run.
         # (The org-overview profile/README.md is generated at the end of bootstrap,
         # once all repos exist, by seed.update_profile_readme - see main.)
         metadata = _course_metadata(org, org_name, course_name, course_code, admins)
-        put_file(
+        _seed_user_file(
             org,
             ".github",
             "dsl-course.yml",
@@ -382,6 +424,10 @@ def setup_cohort_extras(org: str) -> None:
     - private `classroom-config` repo with a starter students.csv;
     - the faculty teams' standing grant on both of those repos.
     The `materials` repo is created on the first release, so it's not made here.
+
+    Safe to re-run on a LIVE cohort: the USER-owned classroom-config files (roster,
+    schedule, people, grades) are only ever created, never rewritten, while the
+    SYSTEM-owned workflows refresh. See the ownership note at the top of this file.
     """
     log_step("Cohort setup: tighten org + seed welcome/classroom-config")
 
@@ -404,12 +450,18 @@ def setup_cohort_extras(org: str) -> None:
     else:
         log_err(f"could not tighten org settings: {out[:120]}")
 
+    # NB: this block (and the classroom-config one below) runs on EVERY bootstrap, re-runs
+    # included - create_repo reports an existing repo as success. That is deliberate for
+    # SYSTEM-owned files (they refresh so fixes reach running cohorts); USER-owned files are
+    # protected per-file by _seed_user_file. See the ownership note at the top of this file.
     if create_repo(
         org,
         "welcome",
         private=False,
         description="Course front door - open a Join issue to enrol",
     ):
+        # All SYSTEM-owned: the onboarding workflows and the issue forms they parse (field
+        # ids must stay in lockstep with the workflow), so these refresh on every run.
         put_file(
             org,
             "welcome",
@@ -438,7 +490,7 @@ def setup_cohort_extras(org: str) -> None:
             _template("welcome/ISSUE_TEMPLATE/join-team.yml").encode(),
             "ci: seed Join team issue form",
         )
-        log_ok("welcome repo seeded (onboard + team-formation + Join forms)")
+        log_ok("welcome repo workflows + Join forms up to date")
 
     if create_repo(
         org,
@@ -446,10 +498,16 @@ def setup_cohort_extras(org: str) -> None:
         private=True,
         description="PRIVATE cohort config - roster (students.csv). No PII leaves here.",
     ):
+        # USER-owned, so every one of these is create-only: this repo holds the cohort's
+        # LIVE state - the roster with enrol codes and onboarded handles, the schedule the
+        # scheduler releases from, this cohort's people.yml, and returned grades. Re-running
+        # "Bootstrap cohort" mid-semester must leave all of it exactly as faculty (and the
+        # onboarding/enrol-code/grade flows) left it.
+        #
         # One example row carrying the full roster header (dsl_course.roster.FIELDS), so a
         # cohort discovers the real schema - `enrol_code` and `role` included - from its own
         # config repo. README.md documents each column.
-        put_file(
+        _seed_user_file(
             org,
             "classroom-config",
             "students.csv",
@@ -458,14 +516,14 @@ def setup_cohort_extras(org: str) -> None:
         )
         # The classroom-config contract: the roster/grades/teams/schedule schema, documented
         # next to the files faculty & instructors edit.
-        put_file(
+        _seed_user_file(
             org,
             "classroom-config",
             "README.md",
             _template("classroom-config/README.md").encode(),
             "docs: classroom-config schema + contract",
         )
-        put_file(
+        _seed_user_file(
             org,
             "classroom-config",
             "grades/.gitkeep",
@@ -474,7 +532,7 @@ def setup_cohort_extras(org: str) -> None:
         )
         # Samples keep the `.sample` suffix so the engine (sync_teams, scheduled-release,
         # grade sync) never ingests them - only the real names.
-        put_file(
+        _seed_user_file(
             org,
             "classroom-config",
             "teams.csv.sample",
@@ -485,20 +543,21 @@ def setup_cohort_extras(org: str) -> None:
         # so faculty & instructors uncomment what they want to pin rather than rename a
         # sample to activate it. schedule.yml's commented block is a MAXIMAL scaffold - every
         # action (deploy/assignment/grade) and field, to copy the shape from.
-        put_file(
+        _seed_user_file(
             org,
             "classroom-config",
             "schedule.yml",
             _template("classroom-config/schedule.yml").encode(),
             "docs: seed schedule.yml (release plan + due dates + exams)",
         )
-        put_file(
+        _seed_user_file(
             org,
             "classroom-config",
             "people.yml",
             _template("classroom-config/people.yml").encode(),
             "docs: seed people.yml (this cohort's instructors/TAs)",
         )
+        # SYSTEM-owned dispatchers: refreshed on every run so fixes reach running cohorts.
         put_file(
             org,
             "classroom-config",
@@ -513,7 +572,7 @@ def setup_cohort_extras(org: str) -> None:
             _template("classroom-config/dispatch-sync-site.yml").encode(),
             "ci: seed dispatch-sync-site workflow",
         )
-        log_ok("classroom-config seeded (roster + README + grades/ + samples)")
+        log_ok("classroom-config ready (config preserved, dispatchers refreshed)")
 
     # Faculty access on the two repos just seeded - unconditional (not inside the
     # create_repo blocks above), so a re-run repairs an org that predates this.
@@ -669,6 +728,13 @@ def main() -> int:
             # Pointer back to the course org, in this cohort's .github/dsl-course.yml -
             # the classroom-config dispatchers read its `course:` line to know where to
             # fire Sync membership / Sync site. Without it those auto-triggers fail.
+            #
+            # SYSTEM-owned (see the ownership note at the top of this file): the file is
+            # wholly generated from --org/--course and carries no faculty-authored content
+            # (a cohort's identity lives in the course org's dsl-course.yml, its schedule in
+            # classroom-config/schedule.yml), so refreshing it is what repairs a cohort
+            # bootstrapped before this pointer existed. Unlike the COURSE org's
+            # dsl-course.yml, which is the faculty SSOT and therefore create-only.
             put_file(
                 args.org,
                 ".github",

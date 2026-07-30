@@ -12,7 +12,7 @@ contract** (file layouts, CSV columns) see [`required-input-schema.md`](required
 
 | Action | Effect |
 | --- | --- |
-| **Bootstrap cohort** | Configure a pre-created cohort org: `welcome` + `classroom-config`, tighten permissions, scaffold the site, apply `course_admins`, register + refresh. |
+| **Bootstrap cohort** | Configure a pre-created cohort org: `welcome` + `classroom-config`, tighten permissions, scaffold the site, apply `course_admins`, register + refresh. Safe to re-run on a live cohort - your `classroom-config` files (`students.csv`, `schedule.yml`, `people.yml`, `teams.csv`, `grades/`) are never overwritten, only the seeded workflows refresh. |
 | **New materials repo** | Scaffold a `course-materials-<tag>` repo (session folders, `SYLLABUS.md`, the run-from-repo Release buttons). |
 | **New assignment** | Scaffold an `assignment-N-<tag>` template: brief + starter on `main`; a stub model solution, `grading.yml` and a hidden test on the `solution` branch. |
 | **Refresh actions** | Re-seed the run-from-repo buttons, propagate the repo secret, repopulate every dropdown, rebuild the profile READMEs. No inputs. _(All DSL orgs at once: [Refresh Course Orgs Inventory](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions/workflows/refresh-inventory.yml) in the central repo.)_ |
