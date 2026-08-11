@@ -6,6 +6,7 @@ renderer guard (the cron is hourly and has NO check-team gate - scheduled runs h
 
 from __future__ import annotations
 
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -399,6 +400,17 @@ def test_run_snapshots_before_firing_a_grade_release(monkeypatch):
     monkeypatch.setattr(scheduler.schedule, "load", lambda cohort: sched)
     assert scheduler.run("Course-Org", "Cohort-Org", datetime(2026, 10, 15, tzinfo=timezone.utc)) == 0
     assert order == ["snapshot", "collect"]
+
+
+def test_main_all_cohorts_with_none_registered_is_a_noop(monkeypatch):
+    # A freshly bootstrapped course org runs the hourly cron before any cohort is
+    # registered - that gap must be a quiet no-op, not a red run (and a failure
+    # email to the bot owner) every hour.
+    monkeypatch.setattr(seed, "discover_cohorts", lambda org: [])
+    monkeypatch.setattr(
+        sys, "argv", ["scheduler", "--course-org", "Course-Org", "--all-cohorts"]
+    )
+    assert scheduler.main() == 0
 
 
 def test_scheduler_workflow_hourly_and_ungated():

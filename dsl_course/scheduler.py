@@ -35,7 +35,7 @@ from datetime import datetime, timezone
 
 from . import schedule
 from .schedule import Deploy, Release
-from .utils import log, log_err, log_ok, log_step
+from .utils import log, log_err, log_ok, log_skip, log_step
 
 
 # --------------------------------------------------------------------------- pure core
@@ -239,8 +239,12 @@ def main() -> int:
 
         cohorts = discover_cohorts(args.course_org)
         if not cohorts:
-            log_err(f"no cohorts registered with {args.course_org}.")
-            return 1
+            # A freshly bootstrapped course org has this cron installed before any
+            # cohort is registered - that gap is normal, not an hourly failure.
+            log_skip(
+                f"no cohorts registered with {args.course_org}; nothing to release."
+            )
+            return 0
         rc = 0
         for cohort in cohorts:
             rc |= run(args.course_org, cohort, now, dry_run=args.dry_run)
