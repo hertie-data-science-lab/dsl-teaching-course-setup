@@ -9,17 +9,19 @@ Full input reference:
 [`required-input-schema.md`](../docs/faculty-and-instructors/required-input-schema.md).
 
 > **This deploys its own sandbox.** Following these steps stands up a **separate** org pair
-> (`Hertie-DSL-Demo` + a cohort org you create) that you own and can break freely. It is **not**
-> the live demo the runbooks link to (course org `DSL-Demo-Course-E1234`, cohort
-> `DSL-Demo-f2026`) - same dataset, different orgs. If that live cohort already exists, name your
-> cohort org something else below so you don't deploy into it.
+> that you own and can break freely. It is **not** the live demo the runbooks link to (course org
+> [`DSL-Demo-Course-E1234`](https://github.com/DSL-Demo-Course-E1234), cohort
+> [`DSL-Demo-f2026`](https://github.com/DSL-Demo-f2026)) - that one runs a fuller variant of the
+> same shape (10 sessions with labs, three assignments, two cohorts). Don't deploy into it.
 
 ## The demo orgs
+
+Names used below - create them yourself; nothing here writes to the live demo pair.
 
 | Tier | Org | Role |
 |------|-----|------|
 | Course | **`Hertie-DSL-Demo`** | persistent control panel - materials, assignment templates, the buttons |
-| Cohort | **`DSL-Demo-f2026`** | student-facing target - welcome, roster, released materials, the site |
+| Cohort | **`Hertie-DSL-Demo-f2026`** | student-facing target - welcome, roster, released materials, the site |
 
 ## What's in this dataset
 
@@ -52,7 +54,7 @@ example-course/
 Prereqs: the bot is an **owner** of both demo orgs and `DSL_BOT_TOKEN` (`repo` + `admin:org` +
 `workflow`) is set. See [Token](../docs/faculty-and-instructors/required-input-schema.md#token).
 
-1. **Create** `Hertie-DSL-Demo` and `DSL-Demo-f2026` in the web UI; add the bot as owner of
+1. **Create** `Hertie-DSL-Demo` and `Hertie-DSL-Demo-f2026` in the web UI; add the bot as owner of
    each. *(The only manual step - there is no org-creation API.)*
 2. This repo → Actions → **Bootstrap Course Org**: `org=Hertie-DSL-Demo`,
    `org_name=DSL Demo Course`, `course_code=GRAD-DEMO`, `set_secret=true`.
@@ -65,8 +67,8 @@ Prereqs: the bot is an **owner** of both demo orgs and `DSL_BOT_TOKEN` (`repo` +
 5. **New assignment** for `number=1`, `2` and `4-project` (`tag=f2026`), then push each
    `course-org/assignment-*-f2026/main/` and `/solution/` to the matching branches.
 6. **Refresh actions** (populates dropdowns + propagates the repo secret).
-7. **Bootstrap cohort**: `cohort_org=DSL-Demo-f2026`.
-8. Copy this dataset's `cohort-org/` files into `DSL-Demo-f2026/classroom-config/`:
+7. **Bootstrap cohort**: `cohort_org=Hertie-DSL-Demo-f2026`.
+8. Copy this dataset's `cohort-org/` files into `Hertie-DSL-Demo-f2026/classroom-config/`:
    [`schedule.yml`](cohort-org/schedule.yml), [`students.csv`](cohort-org/students.csv),
    [`people.yml`](cohort-org/people.yml), [`teams.csv`](cohort-org/teams.csv).
 9. **Send enrolment codes** for the cohort - untick `dry_run` to actually email them.
@@ -80,11 +82,11 @@ Prereqs: the bot is an **owner** of both demo orgs and `DSL_BOT_TOKEN` (`repo` +
 
 ## What this stands up
 
-- **The site:** `https://dsl-demo-f2026.github.io` - course name, semester, instructor/TA cards
+- **The site:** `https://hertie-dsl-demo-f2026.github.io` - course name, semester, instructor/TA cards
   from the cohort's `people.yml`, lecture entries linking the released files, the assignment
   briefs, and a schedule with the real dates (Assignment 1 due 13 Oct, MidTerm 3 Nov, Final
   15 Dec at 14:00).
 - **The control panel:** `Hertie-DSL-Demo/.github` Actions tab - every button.
-- **Onboarding:** open a **Join** issue in `DSL-Demo-f2026/welcome` and paste the `enrol_code`
+- **Onboarding:** open a **Join** issue in `Hertie-DSL-Demo-f2026/welcome` and paste the `enrol_code`
   that step 9 wrote onto a roster row. Try Eve Evans' code to see the **auditor** path: read
   access to the released materials, no assignment repo, no gradebook.
