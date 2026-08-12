@@ -286,11 +286,12 @@ def provision_all(
         log_err("master-org and cohort-org must differ.")
         return 1
     if group is None:
-        from .collect import template_is_group
+        from .collect import assignment_is_group
 
-        group = template_is_group(master_org, template)
+        # schedule.yml's assignments.<slug>.type wins; grading.yml is the fallback.
+        group = assignment_is_group(master_org, cohort_org, template)
         if group:
-            log("  (grading.yml declares `type: group` - provisioning per team)")
+            log("  (declared `type: group` - provisioning per team)")
 
     students = roster.load_path(roster_path) if roster_path else roster.load(cohort_org)
     if not students:
