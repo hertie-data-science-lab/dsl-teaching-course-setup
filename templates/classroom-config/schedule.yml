@@ -65,7 +65,6 @@
 #     due: 2026-10-13T23:59            # a bare date -> END of that day (23:59:59)
 #     grading_deadline: 2026-10-15      # OPTIONAL: when the submission snapshot freezes AND
 #                                       # the autograder fires (once). Not shown to students.
-#     grace_days: 2                     # LEGACY alternative: grading deadline = due + N days.
 #                                       # `grading_deadline` wins if you set both.
 #   assignment-2:
 #     due: 2026-11-10

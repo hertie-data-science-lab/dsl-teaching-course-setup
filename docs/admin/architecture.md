@@ -274,7 +274,7 @@ the course org (which installs the cron) and bootstrapping its first cohort.
 Each hourly tick:
 
 1. **Freezes passed deadlines** - for every assignment in `assignments:` whose grading deadline
-   (`grading_deadline`, else `due + grace_days`) has passed and has no snapshot yet, records the
+   (`grading_deadline`, else `due`) has passed and has no snapshot yet, records the
    commit each submission repo is at into `classroom-config/snapshots/<slug>.csv`
    (`repo,sha,recorded_at`).
 2. **Autogrades those same assignments, once each** - template `<slug>-<tag>` in the course org,

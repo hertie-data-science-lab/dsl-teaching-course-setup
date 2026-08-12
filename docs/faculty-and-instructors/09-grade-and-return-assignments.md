@@ -31,7 +31,7 @@ and `dry_run` (both default **off**). It runs the hidden tests and writes into
   again. Delete it to let the next hourly tick re-grade.
 
 There is **no deadline input**: the deadline is the cohort schedule's
-`assignments.<slug>.grading_deadline` (else `due + grace_days`), and the graded commit is the one frozen into
+`assignments.<slug>.grading_deadline` (default: the `due` date), and the graded commit is the one frozen into
 `classroom-config/snapshots/<slug>.csv` (see
 [Release assignment → Deadlines](08-release-assignment-to-cohort.md#deadlines)). A blank sha
 there means nothing was pushed by the deadline, and that scores zero.

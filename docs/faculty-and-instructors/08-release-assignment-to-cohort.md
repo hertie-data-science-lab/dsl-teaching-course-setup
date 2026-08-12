@@ -65,12 +65,11 @@ assignments:
   assignment-1:
     due: 2026-10-13               # the due date students see
     grading_deadline: 2026-10-15  # OPTIONAL, grading-only - snapshot + autograde fire here
-    grace_days: 2                 # LEGACY alternative: grading deadline = due + N days
 ```
 
 - **The date students see** (cohort site + the brief's "due" event) is `assignments[slug].due`
   (23:59 that day). Edit → commit → **Sync site**.
-- **The grading deadline** is `grading_deadline` if set, else `due + grace_days`, else `due` -
+- **The grading deadline** is `grading_deadline` if set, else `due` -
   there is **no deadline input** on the Grade assignment button. Set it to grade later than
   the date students were told, without changing that date.
 - **Autograding fires there, once.** At that moment the hourly cron freezes the snapshot and

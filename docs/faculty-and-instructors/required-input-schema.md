@@ -204,7 +204,6 @@ assignments:                          # keyed by slug (template name minus -fYYY
     due: 2026-10-13                   # what students see
     grading_deadline: 2026-10-15      # optional: the grading pin - snapshot freezes and the
                                       # autograder fires (once). Default = due.
-    grace_days: 2                     # legacy alternative: due + N days. grading_deadline wins.
 exams:
   - {name: MidTerm Exam, date: 2026-11-03}
   - {name: Final Exam, date: 2026-12-15T14:00}
@@ -216,8 +215,7 @@ exams:
 |---------|--------------|
 | `when:` missing/unparseable | that release is silently dropped |
 | `due:` missing/unparseable | the whole `assignments:` entry is dropped - no grading pin, no site date |
-| `grading_deadline:` unparseable | silently ignored - falls back to `due + grace_days` |
-| `grace_days:` not an integer | silently treated as `0` |
+| `grading_deadline:` unparseable | silently ignored - the grading deadline falls back to `due` |
 | unknown `timezone:` | silent fallback to `Europe/Berlin` |
 | `deploy` missing `source_repo`/`source_path` | that copy is silently skipped |
 
