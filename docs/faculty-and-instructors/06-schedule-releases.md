@@ -52,7 +52,7 @@ Full schema: [the schedule](required-input-schema.md#the-schedule).
 
 ## Silent failures
 
-> ⚠️ **The schedule never errors - it drops.** Nothing below fails a run:
+ **The schedule never errors - it drops.** Nothing below fails a run:
 > - a malformed or missing **`when`** → that whole release is dropped;
 > - a malformed or missing **`due`** → the whole `assignments:` entry is dropped, and the
 >   grading deadline then falls back to *today* at grading time;
@@ -75,9 +75,6 @@ Shortly after `due + grace_days` passes, the same hourly run records each submis
 If grading runs with **no snapshot at all**, it falls back to a date-based pin over
 student-supplied committer dates and says so loudly in the run log. Full flow:
 [Grade and return assignments](09-grade-and-return-assignments.md).
-
-## When to use the manual buttons
-
 
 ## What happens on each tick
 
