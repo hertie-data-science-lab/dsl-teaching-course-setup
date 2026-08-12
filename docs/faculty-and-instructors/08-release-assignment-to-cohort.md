@@ -34,8 +34,9 @@ collaborator.
 Other inputs, all default **off**: 
 - `include_solution` (also push the template's `solution`
 branch into each student repo)
-- `group` (one shared repo per **team** from `teams.csv` instead
-of one per student - see [Enrol students → groups](05-enrol-students-to-cohort.md#group-assignments))
+- `group` (**force** one shared repo per **team** from `teams.csv`. A template scaffolded with
+`type` = `group` - i.e. its `grading.yml` says so - provisions per team without the tick;
+see [Enrol students → groups](05-enrol-students-to-cohort.md#group-assignments))
 - `dry_run` (list the repos that *would* be created).
 
 Auditors (`role=auditor`) are skipped. The assignment brief appears on the cohort site automatically.
@@ -44,7 +45,7 @@ Auditors (`role=auditor`) are skipped. The assignment brief appears on the cohor
 
 Live example: [`example-course/cohort-org/teams.csv`](../../example-course/cohort-org/teams.csv).
 
-Teams must exist **before** you release with `group` ticked. Two ways to form them - both end
+Teams must exist **before** you release a group assignment. Two ways to form them - both end
 up in `classroom-config/teams.csv` (`assignment, team, github_handle`), and **Sync membership**
 turns each into a GitHub team on push:
 

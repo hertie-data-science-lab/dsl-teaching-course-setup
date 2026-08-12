@@ -64,8 +64,10 @@ Prereqs: the bot is an **owner** of both demo orgs and `DSL_BOT_TOKEN` (`repo` +
    display-only cards; real instructor/TA push access comes from the cohort's `people.yml`
    (step 8).
 4. **New materials repo** (`tag=f2026`), then push `course-org/course-materials-f2026/` into it.
-5. **New assignment** for `number=1`, `2` and `4-project` (`tag=f2026`), then push each
-   `course-org/assignment-*-f2026/main/` and `/solution/` to the matching branches.
+5. **New assignment** for `number=1` (`format=py`), `2` (`format=notebook`) and `4-project`
+   (`type=group`), all `tag=f2026`, then push each `course-org/assignment-*-f2026/main/` and
+   `/solution/` to the matching branches (each `grading.yml` already declares the matching
+   type/format).
 6. **Refresh actions** (populates dropdowns + propagates the repo secret).
 7. **Bootstrap cohort**: `cohort_org=Hertie-DSL-Demo-f2026`.
 8. Copy this dataset's `cohort-org/` files into `Hertie-DSL-Demo-f2026/classroom-config/`:

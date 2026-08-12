@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -70,21 +71,35 @@ def _profile_topics(is_cohort: bool, course_code: str = "") -> list[str]:
 # every re-run. The guard has to be per FILE, and it depends on who owns the file:
 #
 #   USER-owned - content faculty edit, or that the running system writes live state into.
-#   In a cohort: classroom-config/{students.csv, schedule.yml, people.yml,
-#   teams.csv.sample, README.md, grades/**} and welcome/README.md (the student landing
-#   page). On a course org: .github/dsl-course.yml (the
-#   faculty/course_admins SSOT). Seed these ONLY when absent (_seed_user_file) - rewriting
-#   them on a re-run destroys live enrolment state (roster rows, enrol codes, onboarded
-#   handles) and the faculty's schedule.
+#   In a cohort: classroom-config/{students.csv, schedule.yml, people.yml, grades/**
+#   (except *.sample)} and welcome/README.md (the student landing page). On a course org:
+#   .github/dsl-course.yml (the faculty/course_admins SSOT). Seed these ONLY when absent
+#   (_seed_user_file) - rewriting them on a re-run destroys live enrolment state (roster
+#   rows, enrol codes, onboarded handles) and the faculty's schedule.
 #
-#   SYSTEM-owned - machinery this repo generates and must be able to fix in place:
-#   everything under `.github/` in the seeded repos (welcome/onboard.yml,
+#   SYSTEM-owned - machinery and documentation this repo generates and must be able to fix
+#   in place: everything under `.github/` in the seeded repos (welcome/onboard.yml,
 #   welcome/team-formation.yml, the ISSUE_TEMPLATE join forms those workflows parse - they
-#   must stay in lockstep with them - and classroom-config's dispatch-sync*.yml), plus a
-#   cohort's `.github/dsl-course.yml`, which is a wholly generated course pointer with no
-#   faculty-authored content. These are written unconditionally on every run so fixes
-#   propagate, exactly like seed.seed_github_workflows.
+#   must stay in lockstep with them - and classroom-config's dispatch-sync*.yml), a
+#   cohort's `.github/dsl-course.yml` (a wholly generated course pointer with no
+#   faculty-authored content), classroom-config's README.md (the schema contract - it went
+#   stale as USER-owned), and every `*.csv.sample` (worked examples the engine never
+#   ingests; activation = copying rows into the real file, so refreshing them is safe).
+#   These are written unconditionally on every run so fixes propagate, exactly like
+#   seed.seed_github_workflows.
 # ---------------------------------------------------------------------------------------
+
+
+def _cohort_tag(org: str) -> tuple[str, int]:
+    """This cohort's year tag (fYYYY/sYYYY) and year, derived from the org-name suffix.
+
+    Renders the seeded scaffolds' examples (schedule.yml repo names/dates, people.yml
+    dates) copy-paste-correct for THIS cohort. A name with no tag suffix falls back to
+    f2026-shaped examples - purely cosmetic, everything rendered from this is commented."""
+    m = re.search(r"[-_]([fs])(\d{4})$", org, re.IGNORECASE)
+    if not m:
+        return "f2026", 2026
+    return f"{m.group(1).lower()}{m.group(2)}", int(m.group(2))
 
 
 def _seed_user_file(org: str, repo: str, path: str, content: bytes, message: str) -> bool:
@@ -520,30 +535,21 @@ def setup_cohort_extras(org: str) -> None:
         private=True,
         description="PRIVATE cohort config - roster (students.csv). No PII leaves here.",
     ):
-        # USER-owned, so every one of these is create-only: this repo holds the cohort's
-        # LIVE state - the roster with enrol codes and onboarded handles, the schedule the
-        # scheduler releases from, this cohort's people.yml, and returned grades. Re-running
+        # USER-owned files are create-only: this repo holds the cohort's LIVE state - the
+        # roster with enrol codes and onboarded handles, the schedule the scheduler
+        # releases from, this cohort's people.yml, and returned grades. Re-running
         # "Bootstrap cohort" mid-semester must leave all of it exactly as faculty (and the
-        # onboarding/enrol-code/grade flows) left it.
-        #
-        # One example row carrying the full roster header (dsl_course.roster.FIELDS), so a
-        # cohort discovers the real schema - `enrol_code` and `role` included - from its own
-        # config repo. README.md documents each column.
+        # onboarding/enrol-code/grade flows) left it. The examples the seeds render are
+        # tag-aware (this cohort's fYYYY/sYYYY), so they are copy-paste-correct.
+        tag, year = _cohort_tag(org)
+        # Header-only roster carrying the full schema (dsl_course.roster.FIELDS) -
+        # `enrol_code` and `role` included; the example rows live in students.csv.sample.
         _seed_user_file(
             org,
             "classroom-config",
             "students.csv",
             _template("classroom-config/students.csv").encode(),
-            "init: starter roster (replace the example row with registrar data)",
-        )
-        # The classroom-config contract: the roster/grades/teams/schedule schema, documented
-        # next to the files faculty & instructors edit.
-        _seed_user_file(
-            org,
-            "classroom-config",
-            "README.md",
-            _template("classroom-config/README.md").encode(),
-            "docs: classroom-config schema + contract",
+            "init: starter roster (fill with registrar data - see students.csv.sample)",
         )
         _seed_user_file(
             org,
@@ -552,32 +558,57 @@ def setup_cohort_extras(org: str) -> None:
             b"",
             "init: grades/ (add one <assignment>.csv per assignment to return marks)",
         )
-        # Samples keep the `.sample` suffix so the engine (sync_teams, scheduled-release,
-        # grade sync) never ingests them - only the real names.
-        _seed_user_file(
-            org,
-            "classroom-config",
-            "teams.csv.sample",
-            _template("classroom-config/teams.csv.sample").encode(),
-            "docs: sample teams.csv (group assignments)",
-        )
         # schedule.yml and people.yml are seeded LIVE (not a .sample) but mostly commented,
         # so faculty & instructors uncomment what they want to pin rather than rename a
-        # sample to activate it. schedule.yml's commented block is a MAXIMAL scaffold - every
-        # action (deploy/assignment/grade) and field, to copy the shape from.
+        # sample to activate it. schedule.yml's commented block is a MAXIMAL scaffold -
+        # every action and field, to copy the shape from.
         _seed_user_file(
             org,
             "classroom-config",
             "schedule.yml",
-            _template("classroom-config/schedule.yml").encode(),
+            _template("classroom-config/schedule.yml").format(tag=tag, year=year).encode(),
             "docs: seed schedule.yml (release plan + due dates + exams)",
         )
         _seed_user_file(
             org,
             "classroom-config",
             "people.yml",
-            _template("classroom-config/people.yml").encode(),
+            _template("classroom-config/people.yml")
+            .format(year=year, year_next=year + 1)
+            .encode(),
             "docs: seed people.yml (this cohort's instructors/TAs)",
+        )
+        # SYSTEM-owned documentation, refreshed on every run so it never goes stale: the
+        # schema contract README and the `.sample` worked examples. Samples keep the
+        # `.sample` suffix so the engine (sync_membership, sync_teams, grade sync) never
+        # ingests them - only the real names; activation = copying rows into the real file.
+        put_file(
+            org,
+            "classroom-config",
+            "README.md",
+            _template("classroom-config/README.md").encode(),
+            "docs: classroom-config schema + contract",
+        )
+        put_file(
+            org,
+            "classroom-config",
+            "students.csv.sample",
+            _template("classroom-config/students.csv.sample").encode(),
+            "docs: sample students.csv (an enrolled student + an auditor)",
+        )
+        put_file(
+            org,
+            "classroom-config",
+            "teams.csv.sample",
+            _template("classroom-config/teams.csv.sample").encode(),
+            "docs: sample teams.csv (group assignments)",
+        )
+        put_file(
+            org,
+            "classroom-config",
+            "grades/assignment-1.csv.sample",
+            _template("classroom-config/grades/assignment-1.csv.sample").encode(),
+            "docs: sample grade table (individual + team-graded rows)",
         )
         # SYSTEM-owned dispatchers: refreshed on every run so fixes reach running cohorts.
         put_file(

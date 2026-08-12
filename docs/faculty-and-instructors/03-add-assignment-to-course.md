@@ -14,8 +14,9 @@ Live example: [`example-course/course-org/assignment-1-f2026/`](../../example-co
 
 1. **Scaffold the template.** Course org → `.github` → **Actions** →
    [New assignment](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/new-assignment.yml),
-   inputs `number` = `1`, `tag` = `f2026` → creates **`assignment-1-f2026`** with two branches
-   of stubs for you to replace:
+   inputs `number` = `1`, `tag` = `f2026`, plus `format` (`py` starter script or `notebook`)
+   and `type` (`individual` or `group` - one repo per student vs per team) → creates
+   **`assignment-1-f2026`** with two branches of stubs for you to replace:
 
    | Branch | Holds | Who sees it |
    |--------|-------|-------------|
@@ -29,8 +30,11 @@ Live example: [`example-course/course-org/assignment-1-f2026/`](../../example-co
 
 3. **Run Refresh actions** so the assignment dropdowns update.
 
-Repeat for each assignment (`number` = 2, 3, …). A group project uses the same flow - per-team
-or per-student is decided at **release** time (the `group` checkbox), not here.
+Repeat for each assignment (`number` = 2, 3, …). A group project is the same flow with
+`type` = `group`: the choice is recorded in the solution branch's `grading.yml`, and both
+handout and grading then run per team automatically (the release/grade buttons' `group`
+checkbox only force-overrides a template that doesn't declare it). Change your mind later by
+editing `grading.yml`.
 
 > **Deadlines aren't set here.** The due date students see is **per cohort**, in that cohort's `schedule.yml` - see [Release assignment → Deadlines](08-release-assignment-to-cohort.md#deadlines).
 

@@ -11,7 +11,7 @@ output, then [every input file with a copyable example](#inputs-by-file). Worked
 | `[required]` | 1. Create the course org | course | GitHub [web UI](https://github.com/account/organizations/new) | name `<course-name>-<CODE>` (no year); invite **`hertie-dsl-bot`** as **Owner** (must accept) | an empty org the bot can bootstrap |
 | `[required]` | 2. Bootstrap | course | [central repo → Actions → **Bootstrap Course Org**](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions/workflows/bootstrap-org.yml) | `org`, `org_name`, `course_code`; optional `admin` (your handle) | the `.github` control panel with every button, the `course-admin` team, [`dsl-course.yml`](#dsl-courseyml), `DSL_BOT_TOKEN` set for you |
 | `[required]` | 3. Materials | course | course `.github` → **New materials repo**, then `git push` | `tag` (e.g. `f2026`); then your content ([layout](#materials-repo)) | `course-materials-<tag>` with run-from-repo Release buttons |
-| `[required]` | 4. Assignment(s) | course | course `.github` → **New assignment**, then `git push` | `number` + `tag`; brief + starter on `main`, optional autograding on `solution` ([layout](#assignment-template)) | one `assignment-N-<tag>` template each |
+| `[required]` | 4. Assignment(s) | course | course `.github` → **New assignment**, then `git push` | `number` + `tag` + `format` (py/notebook) + `type` (individual/group); brief + starter on `main`, optional autograding on `solution` ([layout](#assignment-template)) | one `assignment-N-<tag>` template each |
 | *(optional)* | 5. Course admins | course | edit [`dsl-course.yml`](#dsl-courseyml), commit to `main` | GitHub handles | admin on the course org + every cohort, reconciled |
 | `[required]` | 6. Refresh | course | course `.github` → **Refresh actions** | none | dropdowns populated, secrets on content repos |
 
@@ -59,8 +59,9 @@ people:
 
 Live example: [`example-course/cohort-org/students.csv`](../../example-course/cohort-org/students.csv).
 
-`classroom-config/students.csv` - one row per student, straight from the registrar. Leave the
-onboarding-owned columns blank. Deleting a row off-boards that student on the push.
+`classroom-config/students.csv` - one row per student, straight from the registrar (seeded
+header-only, with a filled `students.csv.sample` next to it). Leave the onboarding-owned
+columns blank. Deleting a row off-boards that student on the push.
 
 ```csv
 student_id,hertie_email,name,github_handle,github_id,section,enrol_code,role
@@ -119,8 +120,9 @@ assignment-4-project,team-x,ben-baker
 
 Live example: [`example-course/cohort-org/grades/assignment-1.csv`](../../example-course/cohort-org/grades/assignment-1.csv).
 
-`classroom-config/grades/<slug>.csv` - one per assignment. **Grade assignment** creates it and
-fills the machine columns (write-once); for hand-marked work create it yourself. `final` +
+`classroom-config/grades/<slug>.csv` - one per assignment. The autograder creates it and
+fills the machine columns (write-once); for hand-marked work copy the header from the seeded
+`grades/assignment-1.csv.sample`. `final` +
 `comments` are what the student sees; full column-by-column reference:
 [the grading runbook](09-grade-and-return-assignments.md#2-add-your-marks-on-top-of--instead-of-autograde).
 
@@ -149,7 +151,9 @@ course-materials-f2026/
 Live example: [`example-course/course-org/assignment-1-f2026`](../../example-course/course-org/assignment-1-f2026).
 
 `assignment-N-<tag>` - a template repo with two branches. Student repos are generated from
-`main` only.
+`main` only. The **New assignment** button's `format` (py/notebook) and `type`
+(individual/group) shape the stubs and are recorded in `grading.yml` - handout and grading
+obey `type: group` automatically.
 
 ```
 main branch      README.md (the brief) + starter.*      -> what students get
@@ -174,8 +178,10 @@ repos, never orgs. Every release is idempotent - re-runs are no-ops.
 | Action | Does | Fields |
 |--------|------|--------|
 | `deploy` | copy a source path → a cohort repo | `source_repo`, `source_path`, `dest_repo` (default `materials`), `dest_path` (default: mirror). A list, or a single mapping for one copy |
-| `assignment` | one private repo per onboarded student | the template repo name |
-| `grade` | *legacy* - autograding now fires automatically at each assignment's grading deadline | `template`; optional `deadline`, `group` |
+| `assignment` | one private repo per onboarded student - or per team, when the template's `grading.yml` says `type: group` | the template repo name |
+
+(Grading takes no action here - each assignment is autograded automatically, once, at its
+`grading_deadline` under `assignments:`.)
 
 ```yaml
 timezone: Europe/Berlin

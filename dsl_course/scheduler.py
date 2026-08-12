@@ -109,6 +109,9 @@ def _execute_nondeploy(
     if release.assignment:
         from .assign import provision_all
 
+        # provision_all's default (group=None) reads the template's own grading.yml
+        # `type:` declaration - so a scheduled group handout provisions per TEAM, not
+        # one repo per student.
         if provision_all(course_org, release.assignment, cohort_org) != 0:
             errors += 1
     if release.grade:

@@ -282,8 +282,8 @@ Each hourly tick:
    The fire-once marker is the `autograde/<slug>/` results directory: present means graded, so
    never again (a re-grade means deleting it). No `grade:` entry is needed.
 3. **Fires every release whose `when` has arrived** - `deploy` (copy a course-org path into a
-   cohort repo), `assignment` (provision student repos), `grade` (legacy autograde, sharing the
-   same marker so it cannot double-fire).
+   cohort repo), `assignment` (provision student repos - per team when the template's
+   grading.yml says `type: group`).
 
 Phases 1-2 run before the releases and run whether or not the cohort uses `materials_releases`
 at all.
@@ -431,8 +431,9 @@ Self-contained - workflows and their Python implementation both live in this rep
 - `templates/` - the files bootstrap seeds into a fresh org, verbatim from disk
   (`bootstrap_course._template`), one subdirectory per destination:
   - `welcome/` - the cohort onboarding + team-formation workflows and their issue forms.
-  - `classroom-config/` - that repo's starter roster, README contract, `schedule.yml` /
-    `people.yml` scaffolds, `teams.csv.sample`, and its two dispatch workflows.
+  - `classroom-config/` - that repo's starter roster, README contract, tag-rendered
+    `schedule.yml` / `people.yml` scaffolds, the `*.csv.sample` worked examples
+    (roster, teams, grades), and its two dispatch workflows.
   - `course/` - the course org's `.github/dsl-course.yml` (identity + the `people:` block,
     assembled from the `people-*.yml` fragments).
   - `cohort/` - a cohort org's `.github/dsl-course.yml` pointer back to its course org.

@@ -70,10 +70,11 @@ Live example of every file below: [`example-course/cohort-org/`](../../example-c
          end: "2027-01-31"
    ```
 
-6. **Load the roster.** Replace the example row in `classroom-config/students.csv` with
+6. **Load the roster.** Fill `classroom-config/students.csv` (seeded header-only) with
    registrar data (`student_id, hertie_email, name, section`; leave `github_handle, github_id`
    blank - onboarding fills them). Add `role: auditor` for anyone who should get the released
-   materials but no assignments and no grades. That repo's `README.md` documents every column.
+   materials but no assignments and no grades. `students.csv.sample` next to it shows a filled
+   row of each kind, and that repo's `README.md` documents every column.
 
 ## Next
 

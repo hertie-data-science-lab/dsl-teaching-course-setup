@@ -6,17 +6,18 @@ code, so a new repo is always laid out the way the Release actions expect.
     scaffold materials   --org X --tag f2026                 -> course-materials-f2026
     scaffold assignment  --org X --number 1 --tag f2026      -> assignment-1-f2026
 
-Materials repos get `lectures/01_session-1/` + `readings/01_session-1/` skeletons (any
+Materials repos get `lectures/`, `readings/` and `labs/` `01_session-1/` skeletons (any
 top-level directory with an ordinal-prefixed subdirectory is a releasable section - add
-more, e.g. `labs/`, freely) and the run-from-repo Release buttons. Assignment repos get
-a starter on `main` (no tests - grading is faculty-side) and a `solution` branch
-carrying the model solution, `grading.yml`, and the HIDDEN tests, so generate never
-ships any of them to students.
+more, e.g. `datasets/`, freely; delete `labs/` if unused) and the run-from-repo Release
+buttons. Assignment repos get a starter on `main` (no tests - grading is faculty-side)
+and a `solution` branch carrying the model solution, `grading.yml`, and the HIDDEN
+tests, so generate never ships any of them to students.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import tempfile
 import time
@@ -49,14 +50,14 @@ _GIT_ENV = GIT_ENV
 _GRADING_YML = """\
 # How the Grade assignment button autogrades this assignment (faculty-side, after the
 # deadline). Delete this file (or set autograde: false) for a purely manually-graded one.
-type: individual      # or group
-format: py            # or notebook
+type: {kind}      # individual (one repo per student) or group (one repo per team)
+format: {fmt}      # py or notebook
 autograde: true       # false -> skip autograding (all-manual)
 max_auto: 0           # points the hidden tests are worth (0 = informational)
 tests: tests          # path (on THIS solution branch) holding the hidden tests
 """
 
-_HIDDEN_TEST = """\
+_HIDDEN_TEST_PY = """\
 # HIDDEN tests - run faculty-side by the Grade assignment button, never shipped to
 # students. They import the student's submission (the repo root) and check it. Replace
 # this placeholder with the real grading tests.
@@ -66,6 +67,49 @@ from starter import solve
 def test_solve_runs():
     assert solve() is not None
 """
+
+_HIDDEN_TEST_NOTEBOOK = """\
+# HIDDEN tests - run faculty-side by the Grade assignment button, never shipped to
+# students. The submitted notebook is nbconvert'd to starter.py first; this imports it
+# and checks it. Replace this placeholder with the real grading tests.
+from starter import solve
+
+
+def test_solve_runs():
+    assert solve() is not None
+"""
+
+
+def _notebook(title_lines: list[str], code: str) -> str:
+    """A minimal valid .ipynb: one markdown cell + one code cell. language_info carries
+    `.py` so the grader's nbconvert names its output starter.py (see collect)."""
+    nb = {
+        "cells": [
+            {
+                "cell_type": "markdown",
+                "metadata": {},
+                "source": [line + "\n" for line in title_lines],
+            },
+            {
+                "cell_type": "code",
+                "execution_count": None,
+                "metadata": {},
+                "outputs": [],
+                "source": [line + "\n" for line in code.splitlines()],
+            },
+        ],
+        "metadata": {
+            "kernelspec": {
+                "display_name": "Python 3",
+                "language": "python",
+                "name": "python3",
+            },
+            "language_info": {"name": "python", "file_extension": ".py"},
+        },
+        "nbformat": 4,
+        "nbformat_minor": 5,
+    }
+    return json.dumps(nb, indent=1) + "\n"
 
 
 def scaffold_materials(org: str, tag: str) -> int:
@@ -149,10 +193,12 @@ def scaffold_materials(org: str, tag: str) -> int:
         "(`01_`, `02_`, `03_`, ...) is a releasable section - no config to declare it:\n\n"
         "- `lectures/01_session-1/` - one folder per session's lecture files\n"
         "- `readings/01_session-1/` - one folder per session's readings\n"
+        "- `labs/01_session-1/` - one folder per session's lab (delete the `labs/` folder "
+        "if your course has none)\n"
         "- `*syllabus*`, `README.md` (root) - released via the syllabus / README toggles\n\n"
         "Add more sessions by creating `lectures/02_session-2/`, `readings/02_session-2/`, ... "
         "(only the ordinal prefix matters - name the rest whatever you like), or add a whole "
-        "new section (e.g. `labs/01_intro/`) - then run **Refresh actions** so the session "
+        "new section (e.g. `datasets/01_intro/`) - then run **Refresh actions** so the session "
         "dropdown and Release button's section toggles pick it up.\n\n"
         "## Available actions\n\n" + actions_table + "\n"
         "## Public course website (optional)\n\n"
@@ -167,6 +213,7 @@ def scaffold_materials(org: str, tag: str) -> int:
         "MAINTAINING.md": maintaining.encode(),
         "lectures/01_session-1/.gitkeep": b"",
         "readings/01_session-1/.gitkeep": b"",
+        "labs/01_session-1/.gitkeep": b"",
         "SYLLABUS.md": f"# {tag} syllabus\n\nReplace with the real syllabus.\n".encode(),
     }
     for path, content in files.items():
@@ -184,9 +231,15 @@ def scaffold_materials(org: str, tag: str) -> int:
     return 0
 
 
-def scaffold_assignment(org: str, number: str, tag: str) -> int:
+def scaffold_assignment(
+    org: str, number: str, tag: str, fmt: str = "py", kind: str = "individual"
+) -> int:
+    """fmt: 'py' (starter.py) or 'notebook' (starter.ipynb, nbconvert'd at grading time);
+    kind: 'individual' (one repo per student) or 'group' (one repo per team, graded
+    per team from classroom-config/teams.csv). Both land verbatim in the solution
+    branch's grading.yml, so the scaffold and the grader can never disagree."""
     repo = f"assignment-{number}-{tag}"
-    log_step(f"Scaffolding {org}/{repo} (template + solution branch)")
+    log_step(f"Scaffolding {org}/{repo} ({kind}, {fmt}; template + solution branch)")
     if not create_repo(
         org,
         repo,
@@ -197,23 +250,29 @@ def scaffold_assignment(org: str, number: str, tag: str) -> int:
         return 1
     grant_course_team_access(org, repo)
     grant_tagged_team_access(org, repo, tag)
+    starter_name = "starter.ipynb" if fmt == "notebook" else "starter.py"
+    submission = (
+        "any team member's push to `main` counts as the team's submission"
+        if kind == "group"
+        else "that push is your submission"
+    )
     # main: starter only (what students receive on generate). No tests, no autograder -
     # grading runs faculty-side from the solution branch (see Grade assignment).
     put_file(
         org,
         repo,
         "README.md",
-        f"# Assignment {number}\n\nComplete the TODOs in `starter.py` and push to `main` "
-        "(that push is your submission).\n".encode(),
+        f"# Assignment {number}\n\nComplete the TODOs in `{starter_name}` and push to "
+        f"`main` ({submission}).\n".encode(),
         "init: assignment starter",
     )
-    put_file(
-        org,
-        repo,
-        "starter.py",
-        f'"""Assignment {number}."""\n\n\ndef solve():\n    raise NotImplementedError  # TODO\n'.encode(),
-        "init: starter",
+    starter_code = "def solve():\n    raise NotImplementedError  # TODO"
+    starter = (
+        _notebook([f"# Assignment {number}"], starter_code)
+        if fmt == "notebook"
+        else f'"""Assignment {number}."""\n\n\n{starter_code}\n'
     )
+    put_file(org, repo, starter_name, starter.encode(), "init: starter")
     set_repo_topics(org, repo, [f"assignment-{number}", "assignment"])
 
     # solution branch: the model solution, grading.yml, and the HIDDEN tests - all kept OFF
@@ -226,19 +285,31 @@ def scaffold_assignment(org: str, number: str, tag: str) -> int:
         git("-C", str(wd), *_GIT_ENV, "checkout", "-q", "-b", "solution")
         sol = wd / "solution"
         sol.mkdir()
-        (sol / "solution.py").write_text(
-            f'"""Model solution for assignment {number} (stub)."""\n\n\ndef solve():\n    return 42  # TODO\n'
-        )
+        solution_code = "def solve():\n    return 42  # TODO"
+        if fmt == "notebook":
+            (sol / "solution.ipynb").write_text(
+                _notebook(
+                    [f"# Assignment {number} - model solution (stub)"], solution_code
+                )
+            )
+        else:
+            (sol / "solution.py").write_text(
+                f'"""Model solution for assignment {number} (stub)."""\n\n\n{solution_code}\n'
+            )
         (sol / "README.md").write_text(
             f"# Assignment {number} - model solution\n\n"
             "Released to students after the deadline via Release assignment with "
             "**include_solution** ticked.\n"
         )
-        # grading.yml + hidden tests for the faculty-side Grade assignment button.
-        (wd / "grading.yml").write_text(_GRADING_YML)
+        # grading.yml + hidden tests for the faculty-side Grade assignment button. The
+        # type/format chosen at scaffold time are recorded here - edit this file to
+        # change them later.
+        (wd / "grading.yml").write_text(_GRADING_YML.format(kind=kind, fmt=fmt))
         tests = wd / "tests"
         tests.mkdir()
-        (tests / "test_solution.py").write_text(_HIDDEN_TEST)
+        (tests / "test_solution.py").write_text(
+            _HIDDEN_TEST_NOTEBOOK if fmt == "notebook" else _HIDDEN_TEST_PY
+        )
         git("-C", str(wd), *_GIT_ENV, "add", "-A")
         git(
             "-C",
@@ -398,6 +469,20 @@ def main() -> int:
     pa.add_argument("--org", required=True)
     pa.add_argument("--number", required=True)
     pa.add_argument("--tag", required=True, help="Year tag, e.g. f2026 or s2026")
+    pa.add_argument(
+        "--format",
+        dest="fmt",
+        choices=["py", "notebook"],
+        default="py",
+        help="Starter/solution format: a .py script or a Jupyter notebook",
+    )
+    pa.add_argument(
+        "--type",
+        dest="kind",
+        choices=["individual", "group"],
+        default="individual",
+        help="individual = one repo per student; group = one repo per team (teams.csv)",
+    )
     ps = sub.add_parser("site")
     ps.add_argument("--org", required=True)
     args = parser.parse_args()
@@ -405,7 +490,7 @@ def main() -> int:
         return scaffold_materials(args.org, args.tag)
     if args.cmd == "site":
         return scaffold_site(args.org)
-    return scaffold_assignment(args.org, args.number, args.tag)
+    return scaffold_assignment(args.org, args.number, args.tag, args.fmt, args.kind)
 
 
 if __name__ == "__main__":

@@ -15,13 +15,16 @@ autograde run.
 
 Live example (a full term): [`example-course/cohort-org/schedule.yml`](../../example-course/cohort-org/schedule.yml).
 
-`materials_releases:` maps a free-form label to a `when` plus any mix of three actions:
+`materials_releases:` maps a free-form label to a `when` plus any mix of two actions:
 
 | Action | Does |
 |--------|------|
 | `deploy` | copy a source path from a course repo → a cohort repo (materials, code, datasets) |
-| `assignment` | provision one private repo per onboarded student from a template |
-| `grade` | **legacy** - autograding now happens automatically at each assignment's grading deadline (see [below](#deadline-snapshots-and-autograding)). Keep an entry only to grade at a `when` of your own choosing; it shares the same fire-once marker, so it can never double-grade |
+| `assignment` | provision one private repo per onboarded student from a template - or per **team**, when the template's `grading.yml` says `type: group` |
+
+Grading never appears in this plan: each assignment is snapshotted and autograded
+automatically, once, at its `grading_deadline`
+(see [below](#deadline-snapshots-and-autograding)).
 
 ```yaml
 timezone: Europe/Berlin
@@ -119,8 +122,6 @@ on every tick, forever - no released state`"]
 nothing changed, nothing pushed`"]
   p3 --> asg["`assignment → useful
 a late onboarder gets their repo next tick`"]
-  p3 --> grd["`grade (legacy) → shares the marker
-so it never grades twice`"]
 ```
 
 ---

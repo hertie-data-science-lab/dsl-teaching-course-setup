@@ -373,7 +373,7 @@ on:
         type: boolean
         default: false
       group:
-        description: "Group assignment - one repo per team (from teams.csv), all members as collaborators"
+        description: "FORCE group - one repo per team (from teams.csv). Leave unticked: a template whose grading.yml says `type: group` is already provisioned per team"
         type: boolean
         default: false
       dry_run:
@@ -821,7 +821,11 @@ jobs:
 
 
 def render_new_assignment() -> str:
-    """Scaffold an assignment-N-<tag> template repo (main + solution branch), then refresh."""
+    """Scaffold an assignment-N-<tag> template repo (main + solution branch), then refresh.
+
+    format/type land in the solution branch's grading.yml (and shape the starter/hidden
+    tests), so the choice made on this button is the one the grader later obeys - the
+    grading.yml vocabulary is picked here, not hand-edited in afterwards."""
     return f"""name: New assignment
 
 on:
@@ -833,6 +837,22 @@ on:
       tag:
         description: "Year tag, e.g. f2026 or s2026 - creates assignment-<number>-<tag>"
         required: true
+      format:
+        description: "Starter format - a .py script or a Jupyter notebook"
+        required: true
+        type: choice
+        default: py
+        options:
+          - py
+          - notebook
+      type:
+        description: "individual = one repo per student; group = one repo per team (teams.csv)"
+        required: true
+        type: choice
+        default: individual
+        options:
+          - individual
+          - group
 
 jobs:
 {_CHECK_TEAM}
@@ -843,9 +863,12 @@ jobs:
           ORG: ${{{{ github.repository_owner }}}}
           NUMBER: ${{{{ inputs.number }}}}
           TAG: ${{{{ inputs.tag }}}}
+          FORMAT: ${{{{ inputs.format }}}}
+          TYPE: ${{{{ inputs.type }}}}
         run: |
           gh auth setup-git
-          python3 -m dsl_course.scaffold assignment --org "$ORG" --number "$NUMBER" --tag "$TAG"
+          python3 -m dsl_course.scaffold assignment --org "$ORG" --number "$NUMBER" \\
+            --tag "$TAG" --format "$FORMAT" --type "$TYPE"
           python3 -m dsl_course.seed refresh --course-org "$ORG"
 """
 
