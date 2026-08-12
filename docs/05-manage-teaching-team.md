@@ -3,12 +3,12 @@
 Give an instructor, TA, faculty assistant or guest lecturer access to a course - permanently or
 **for a fixed window** - and take it away again.
 
-Access is **declared in a config file and reconciled**, never clicked: you edit a file, push, and
-**Sync membership** materialises the GitHub teams. Revisit this page whenever the teaching team
+Access is **declared in a config file and reconciled**: you edit a file, commit & push, then the
+**Sync membership** action in the cohort's `.github` materialises the GitHub teams. Revisit this page whenever the teaching team
 changes; it is not a one-off step.
 
-> Central `hertie-data-science-lab` membership grants **nothing** here. It gates only
-> [**Bootstrap Course Org**](01-new-course-org.md). Someone who is DSL faculty centrally must
+> NB: membership of the central `hertie-data-science-lab` org grants **nothing** here. It gates only
+> [**Bootstrap Course Org**](01-new-course-org.md). All those involved in a course's delivery must
 > still be declared in one of the two files below before they can push to a course or release
 > anything from it.
 
@@ -19,17 +19,16 @@ changes; it is not a one-off step.
 | administer the **whole course**, every cohort, indefinitely | course org `.github/dsl-course.yml` → `people:` `course_admins` | **course** - once, for all years | `course-admin` (admin) on the course org **and** every cohort org |
 | push materials/assignments for **one year** and run the release buttons | that cohort's `classroom-config/people.yml` → `instructors` / `teaching_assistants` | **cohort** - per year | cohort org `instructors` team + course org `instructors-<tag>`: push on `.github` and on every course-org repo named `*-<tag>` |
 
-`course_admins` is deliberately **course-level**: a course director shouldn't be re-declared every
-September, and their rights need to span every cohort. Instructors and TAs are deliberately
-**cohort-level**: they change most years, so each cohort's list stands alone - no merge across
-years, no list that only ever grows.
+`course_admins` is deliberately **course-level**: a course director isn't to be re-declared every
+year, and their rights need to span every cohort. Instructors and TAs are deliberately
+**cohort-level**: they change most years, so each cohort's list stands alone.
 
-**Prefer the cohort file** for anyone who isn't running the course. It is per-year, self-retiring,
-and it also supplies the cohort site's staff cards.
+**Prefer the cohort file** for anyone who isn't running the course across multiple years. It is per-year, self-retiring,
+and it also supplies the deployed site's staff cards with rich display and information.
 
-> The **course** org's `dsl-course.yml` *also* accepts `instructors:` / `teaching_assistants:`,
-> but there they are **display-only** cards for the optional public course site and grant no
-> access at all. TAs go in the cohort's `people.yml`.
+> While the **course** org's `dsl-course.yml` *does* accepts `instructors:` / `teaching_assistants:`,
+> these they are **display-only** cards for the optional public course site and grant no
+> access at all. In general TAs go in the **cohort org's** `classroom-config/people.yml`.
 
 Full model - every team and what it reaches: [`access-reference.md`](access-reference.md).
 
@@ -88,13 +87,9 @@ people:
       end: "2027-01-31"        # optional - omit for "indefinite"
 ```
 
-Access is granted from `start` and revoked after `end`, both inclusive. Because every sync is a
-full reconcile, a lapsed `end` prunes them exactly as a deleted entry would - **no manual removal
-step, and no way to forget**. Leave the entry in the file afterwards: it doubles as the record of
-who taught what, and re-granting next year is a date edit.
+Access is granted from `start` and revoked after `end`, both inclusive. 
 
-Dates are plain calendar dates, evaluated once per sync - right for term boundaries, not for
-anything hour-sensitive.
+>Because every sync is a full reconcile, a lapsed `end` prunes them exactly as a deleted entry would - **no manual removal step needed, and no way to forget**. Leave the entry in the file afterwards: it doubles as the record of who taught what, and re-granting next year is a date edit.
 
 Worked example: [`example-course/cohort-org/people.yml`](../example-course/cohort-org/people.yml)
 declares two TAs for the September-to-January window.
@@ -122,15 +117,14 @@ declares two TAs for the September-to-January window.
 
 ## What the access actually reaches
 
-`instructors-<tag>` gets **push** on the course org's **`.github`** - which is what makes the
-central buttons (Release materials, Release assignment, Refresh actions, Show status…) visible and
-runnable for them - plus every course-org repo whose **name ends `-<tag>`**
-(`course-materials-f2026`, `assignment-1-f2026`, `lecture-code-f2026`).
+`instructors-<tag>` gets:
+1. **push** on the course org's **`.github`** - which is what makes the central buttons (Release materials, Release assignment, Refresh actions, Show status…) visible and runnable for them
+2. every course-org repo whose **name ends their associated `-<tag>`** (`course-materials-f2026`, `assignment-1-f2026`, `lecture-code-f2026`).
 
-So a TA on f2026 can `git push` labs into `course-materials-f2026`
-([02](02-add-materials-to-course.md)) and then release them to the cohort
-([08](08-release-materials-to-cohort.md)) themselves. The release runs server-side as the bot, so
-they need no cohort-org rights for it.
+So a TA on f2026 can `git push` labs into the course org level `course-materials-f2026`
+([02](02-add-materials-to-course.md)) and then release them to the cohort org
+([08](08-release-materials-to-cohort.md)) themselves.
+>The release runs server-side as the bot, so they need no cohort-org rights for it.
 
 The suffix match is the whole rule: a course-org repo **without** the year tag in its name is not
 covered. Name per-year content repos `<thing>-<tag>`. A repo scaffolded today is picked up by the
