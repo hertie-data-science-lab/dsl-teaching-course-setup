@@ -13,10 +13,10 @@ Central registry of the workflows that deliver courses at the Hertie Data Scienc
 
 | Reference Materials | Go to |
 |---------|-------|
-| Chronological index of e2e worksflow| [workflpws](docs/faculty-and-instructors#the-workflows)
+| Chronological index of the e2e workflow | [the workflows](docs/faculty-and-instructors/README.md#the-workflows) |
 | An example course setup | [`example course`](example-course/README.md) |
 | Template artefacts | [`templates`](templates/classroom-config/README.md) |
-| All available `.github` Actions tab bottons (course org) | [`actions reference`](docs/faculty-and-instructors/actions-reference.md) |
+| All available `.github` Actions tab buttons (course org) | [`actions reference`](docs/faculty-and-instructors/actions-reference.md) |
 | **Deployment checklist** | [`required-input-schema.md`](docs/faculty-and-instructors/required-input-schema.md) |
 
 ## Deploying a course
@@ -87,9 +87,9 @@ student (& auditor) groups`"]
 auto-deployed cohort website (material links: enrolled + auditors only)`"]
   end
 
-  pub["**`\<course-org\>.github.io**
+  pub["`**<course-org>.github.io**
 
- open-courseware site - hosts shared lectures + readings`"]
+open-courseware site - hosts shared lectures + readings`"]
 
   COURSE -->|"release"| COHORT
   gh -.->|"Publish course website (opt-in)"| pub
