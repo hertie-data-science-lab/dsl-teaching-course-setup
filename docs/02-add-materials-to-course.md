@@ -8,7 +8,11 @@ later copies session folders from here into a cohort. One repo per year: `course
 - A bootstrapped [course org](01-new-course-org.md).
 - Push access on its content repos: `course-admin` membership, or being declared an
   instructor/TA in a cohort's `classroom-config/people.yml`
-  ([step 5](04-new-cohort-org.md)), which puts you in that year's `instructors-<tag>` team.
+  ([step 5](04-new-cohort-org.md)), which puts you in that year's `instructors-<tag>` team -
+  push on `.github` plus every course-org repo named `*-<tag>`, so a TA can push labs here and
+  release them without any further grant. Declaring people (incl. **fixed-term** access that
+  lapses on a date): [11 Manage the teaching team](05-manage-teaching-team.md).
+  Central `hertie-data-science-lab` membership alone grants none of this.
 
 ## Steps
 
@@ -43,8 +47,8 @@ Live example: [`example-course/course-org/course-materials-f2026/`](../example-c
 ## Next
 
 - [Add an assignment](03-add-assignment-to-course.md).
-- [Schedule releases](06-schedule-releases.md) - plan the term, and never click a release button.
-- [Release to a cohort](07-release-materials-to-cohort.md) - open sessions up to students by hand.
+- [Schedule releases](07-schedule-releases.md) - plan the term, and never click a release button.
+- [Release to a cohort](08-release-materials-to-cohort.md) - open sessions up to students by hand.
 
 ---
 **Demo:** [`DSL-Demo-Course-E1234`](https://github.com/DSL-Demo-Course-E1234) → New materials repo.

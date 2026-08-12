@@ -47,12 +47,12 @@ assignments:
     type: group
 ```
 
-> **Deadlines aren't set here.** The due date students see is **per cohort**, in that cohort's `schedule.yml` - see [Release assignment → Deadlines](08-release-assignment-to-cohort.md#deadlines).
+> **Deadlines aren't set here.** The due date students see is **per cohort**, in that cohort's `schedule.yml` - see [Release assignment → Deadlines](09-release-assignment-to-cohort.md#deadlines).
 
 ## Next
 
-- [Schedule the hand-out](06-schedule-releases.md) - the normal way to get it to students.
-- [Release to a cohort](08-release-assignment-to-cohort.md) - freeze + hand out per-student repos by hand.
+- [Schedule the hand-out](07-schedule-releases.md) - the normal way to get it to students.
+- [Release to a cohort](09-release-assignment-to-cohort.md) - freeze + hand out per-student repos by hand.
 
 ---
 **Demo:** [`DSL-Demo-Course-E1234`](https://github.com/DSL-Demo-Course-E1234) → New assignment.

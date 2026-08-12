@@ -152,7 +152,13 @@ faculty / admin teams`"] -->|"write/admin on"| cr["central repo"] --> ba["run Bo
   org AND every cohort; each cohort's people.yml reconciles into that cohort's `instructors` team
   AND a **parallel**, tag-scoped `instructors-<tag>` team on the course org - no merge across
   cohorts. Who-to-declare-where:
-  [ADMIN-SETUP](admin-setup.md#who-can-run-which-action).
+  [access-reference](../docs/access-reference.md); the runbook for changing it:
+  [05 Manage the teaching team](../docs/05-manage-teaching-team.md).
+- Each person entry takes optional `start`/`end` ISO dates (`utils.active_today`), applied by
+  `desired_team_members` to **both** flows. Since every reconcile is a full add-and-remove, a
+  lapsed `end` prunes the member with no manual step. An *edit* to `people.yml` /
+  `students.csv` / `teams.csv` dispatches Sync membership on the push; a *date* rolling over
+  pushes nothing, so it lands on the daily cron.
 
 Cohort-side, students land on `students` or `auditors` per their roster `role`. Both get read on
 released materials; only `students` gets assignment repos and a gradebook.

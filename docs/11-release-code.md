@@ -2,7 +2,7 @@
 
 Publish a **growing package** to students one piece at a time - a subpackage folder
 (`mlpkg/simulation`) or a single module (`mlpkg/train/warmup.py`) - copied out of a course code
-repo into a cohort repo. Use [Release materials](07-release-materials-to-cohort.md) instead for
+repo into a cohort repo. Use [Release materials](08-release-materials-to-cohort.md) instead for
 ordinal-prefixed session folders.
 
 ## Prerequisites
@@ -16,7 +16,7 @@ ordinal-prefixed session folders.
 ## The schedule normally does this (recommended)
 
 A code release is a `deploy` entry with `source_repo` pointing at the code repo - see
-[Schedule releases](06-schedule-releases.md):
+[Schedule releases](07-schedule-releases.md):
 
 ```yaml
 materials_releases:
@@ -49,8 +49,8 @@ code repo itself** - go to that repo → **Actions** → **Release code**:
 
 ## Next
 
-- [Release materials](07-release-materials-to-cohort.md) for session folders.
-- [Schedule releases](06-schedule-releases.md) to plan the whole term's disclosure up front.
+- [Release materials](08-release-materials-to-cohort.md) for session folders.
+- [Schedule releases](07-schedule-releases.md) to plan the whole term's disclosure up front.
 
 ---
 **Demo:** `lecture-code-f2026/mlpkg` in [`DSL-Demo-Course-E1234`](https://github.com/DSL-Demo-Course-E1234),

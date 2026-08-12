@@ -22,7 +22,7 @@ private `grades-<handle>` repo, never in their assignment repo.
 
 ## Prerequisites
 
-- An assignment [released](08-release-assignment-to-cohort.md) to the cohort.
+- An assignment [released](09-release-assignment-to-cohort.md) to the cohort.
 - *(autograding only)* hidden tests + `grading.yml` on the template's `solution` branch. Without
   them (or with `autograde: false`), skip step 1 and grade entirely by hand.
 
@@ -46,7 +46,7 @@ and `dry_run` (both default **off**). It runs the hidden tests and writes into
 There is **no deadline input**: the deadline is the cohort schedule's
 `assignments.<slug>.grading_datetime` (default: the `due_datetime`), and the graded commit is the one frozen into
 `classroom-config/snapshots/<slug>.csv` (see
-[Release assignment → Deadlines](08-release-assignment-to-cohort.md#deadlines)). A blank sha
+[Release assignment → Deadlines](09-release-assignment-to-cohort.md#deadlines)). A blank sha
 there means nothing was pushed by the deadline, and that scores zero.
 
 Nothing is written to any student repo. Auditors are never graded.
@@ -126,7 +126,7 @@ Copies each merged gradebook to `grades-<handle>/grades.yml` and emails the stud
 ## Next
 
 - Repeat 2-5 per assignment as deadlines pass. Step 1 has already run itself -
-  [Schedule releases](06-schedule-releases.md).
+  [Schedule releases](07-schedule-releases.md).
 
   > ℹ️ **Autograding fires once**, at each assignment's grading deadline, and never again -
   > the `autograde/<slug>/` folder is the marker. To re-grade: delete that folder (the next

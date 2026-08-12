@@ -9,7 +9,7 @@ autograde run.
 - A bootstrapped [cohort](04-new-cohort-org.md) - *Bootstrap cohort* seeds both
   `classroom-config/schedule.yml` and the cron.
 - The course-org repos you'll name as sources: [materials](02-add-materials-to-course.md),
-  [assignment templates](03-add-assignment-to-course.md), [code](10-release-code.md).
+  [assignment templates](03-add-assignment-to-course.md), [code](11-release-code.md).
 
 ## Write your term's plan
 
@@ -165,7 +165,7 @@ re-runs only if you delete its marker (`snapshots/<slug>.csv` / `autograde/<slug
 > **Autograded ≠ released to students.** The scores land only in the private
 > `classroom-config` - faculty review them (and the whole-class `cohort-gradebook.csv`)
 > and nothing reaches a student until the separate **Distribute grades** button:
-> [three gates](09-grade-and-return-assignments.md).
+> [three gates](10-grade-and-return-assignments.md).
 
 Each assignment's **grading deadline** is `grading_datetime` if you set it, else `due_datetime`.
 Shortly after it passes, the hourly run does two things,
@@ -181,7 +181,7 @@ once each:
 
 If grading runs with **no snapshot at all**, it falls back to a date-based pin over
 student-supplied committer dates and says so loudly in the run log. Full flow:
-[Grade and return assignments](09-grade-and-return-assignments.md).
+[Grade and return assignments](10-grade-and-return-assignments.md).
 
 ## What happens on each tick
 
@@ -216,10 +216,10 @@ a late onboarder gets their repo next tick`"]
 ---
 ## Next
 
-- [Release materials](07-release-materials-to-cohort.md) /
-  [an assignment](08-release-assignment-to-cohort.md) /
-  [code](10-release-code.md) by hand, when you need the fallback.
-- [Grade and return assignments](09-grade-and-return-assignments.md).
+- [Release materials](08-release-materials-to-cohort.md) /
+  [an assignment](09-release-assignment-to-cohort.md) /
+  [code](11-release-code.md) by hand, when you need the fallback.
+- [Grade and return assignments](10-grade-and-return-assignments.md).
 
 ---
 **Demo:** `classroom-config/schedule.yml` in [`DSL-Demo-f2026`](https://github.com/DSL-Demo-f2026),

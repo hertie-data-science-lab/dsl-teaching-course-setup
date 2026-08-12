@@ -29,7 +29,7 @@ Live example of every file below: [`example-course/cohort-org/`](../example-cour
 
 4. **Fill in `classroom-config/schedule.yml` for the whole term** (edit locally or in the web UI
    → commit to `main`). Its dates drive every release, the grading deadlines and the website.
-   Full guide: [Schedule releases](06-schedule-releases.md); full schema:
+   Full guide: [Schedule releases](07-schedule-releases.md); full schema:
    [the schedule](DEPLOYMENT-CHECKLIST.md#scheduleyml).
 
    ```yaml
@@ -63,9 +63,16 @@ Live example of every file below: [`example-course/cohort-org/`](../example-cour
        - github_handle: "janedoe"
      teaching_assistants:
        - github_handle: "anOther"
-         start: "2026-09-01"
-         end: "2027-01-31"
+         start: "2026-09-01"     # optional - omit for "active immediately"
+         end: "2027-01-31"       # optional - omit for "indefinite"
    ```
+
+   `github_handle` is the only required field. The optional `start`/`end` dates **bound when the
+   access is live**: it is granted from `start` and revoked after `end`, automatically, with no
+   removal step to remember - which is how you hand a guest lecturer or a fixed-term TA push
+   access for one term. Course-wide admins are declared at the **course** level instead
+   (`.github/dsl-course.yml` → `course_admins`), not here. Full guide, including removing people
+   and how quickly changes land: [05 Manage the teaching team](05-manage-teaching-team.md).
 
 6. **Load the roster.** Fill `classroom-config/students.csv` (seeded header-only) with
    registrar data (`student_id, hertie_email, name, section`; leave `github_handle, github_id`
@@ -75,9 +82,11 @@ Live example of every file below: [`example-course/cohort-org/`](../example-cour
 
 ## Next
 
-- [Enrol students](05-enrol-students-to-cohort.md).
-- [Schedule releases](06-schedule-releases.md) - the full guide to the plan you started in step 4.
-- [Release ad hoc](07-release-materials-to-cohort.md), if you want something out before the
+- [Manage the teaching team](05-manage-teaching-team.md) - the full version of step 5, incl.
+  fixed-term access and how to revoke it.
+- [Enrol students](06-enrol-students-to-cohort.md).
+- [Schedule releases](07-schedule-releases.md) - the full guide to the plan you started in step 4.
+- [Release ad hoc](08-release-materials-to-cohort.md), if you want something out before the
   schedule says so.
 
 ---

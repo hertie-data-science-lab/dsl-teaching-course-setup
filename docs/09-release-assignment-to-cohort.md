@@ -7,13 +7,13 @@ Hand out one **private repo per student** from an assignment template, optional 
 ## Prerequisites
 
 - A course org level [assignment template](03-add-assignment-to-course.md) with the brief + starter on `main`.
-- A bootstrapped [cohort org](04-new-cohort-org.md) with [students onboarded](05-enrol-students-to-cohort.md) - one repo is generated per onboarded student/group.
+- A bootstrapped [cohort org](04-new-cohort-org.md) with [students onboarded](06-enrol-students-to-cohort.md) - one repo is generated per onboarded student/group.
 
 ## The schedule normally does this (recommended)
 
 A `handout_datetime:` datetime under `assignments.<slug>` in the cohort's `schedule.yml` hands out the
 same repos automatically - the assignment's whole lifecycle (handout, due date, grading
-deadline, team-size cap) sits in one block: [Schedule releases](06-schedule-releases.md).
+deadline, team-size cap) sits in one block: [Schedule releases](07-schedule-releases.md).
 This is the recommended method for releasing assignments, as the assignment also appears on
 the deployed `<course>.github.io` site, so students can clearly understand the course plan in
 advance.
@@ -88,7 +88,7 @@ turns each into a GitHub team on push:
   and name their team; the workflow writes the row for them (team size is capped).
 
 The release then grants each team its one shared repo. Full flow:
-[Enrol students → groups](05-enrol-students-to-cohort.md#group-assignments).
+[Enrol students → groups](06-enrol-students-to-cohort.md#group-assignments).
 
 ## Deadlines
 
@@ -117,7 +117,7 @@ assignments:
 
 ## Next
 
-- [Grade and return the assignment](09-grade-and-return-assignments.md).
+- [Grade and return the assignment](10-grade-and-return-assignments.md).
 
 ---
 **Demo:** per-student repos in [`DSL-Demo-f2026`](https://github.com/DSL-Demo-f2026).

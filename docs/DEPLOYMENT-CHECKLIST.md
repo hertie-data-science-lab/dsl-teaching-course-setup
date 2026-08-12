@@ -12,7 +12,7 @@ Accompanies the e2e [worked example](../example-course/).
 | `[required]` | 2. Bootstrap | course | [central repo → Actions → **Bootstrap Course Org**](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions/workflows/bootstrap-org.yml) | `org`, `org_name`, `course_code`; optional `admin` (your handle) | the `.github` control panel with every button, the `course-admin` team, [`dsl-course.yml`](#dsl-courseyml), `DSL_BOT_TOKEN` set for you |
 | `[required]` | 3. Materials | course | course `.github` → **New materials repo**, then `git push` | `tag` (e.g. `f2026`); then your content ([layout](#materials-repo)) | `course-materials-<tag>` with run-from-repo Release buttons |
 | `[required]` | 4. Assignment(s) | course | course `.github` → **New assignment**, then `git push` | `number` + `tag` + `format` (py/notebook) + `type` (individual/group); brief + starter on `main`, optional autograding on `solution` ([layout](#assignment-template)) | one `assignment-N-<tag>` template each |
-| *(optional)* | 5. Course admins | course | edit [`dsl-course.yml`](#dsl-courseyml), commit to `main` | GitHub handles | admin on the course org + every cohort, reconciled |
+| *(optional)* | 5. Course admins | course | edit [`dsl-course.yml`](#dsl-courseyml), commit to `main` ([05](05-manage-teaching-team.md)) | GitHub handles, optional `start`/`end` | admin on the course org + every cohort, reconciled |
 | `[required]` | 6. Refresh | course | course `.github` → **Refresh actions** | none | dropdowns populated, secrets on content repos |
 
 > Enrolment-code + grade emails send through a centrally configured mailbox ([details](../docs-admin-arch/central-admin.md#email)). Where it isn't live yet, enrolment codes still land in `students.csv` (from which they need to be manually emailed), and grades are still sent to students' grades repos (just the notification email is not sent).
@@ -25,10 +25,10 @@ Accompanies the e2e [worked example](../example-course/).
 | `[required]` | 2. Bootstrap | course → cohort | course `.github` → **Bootstrap cohort** | `cohort_org` | `welcome` (Join course / Join team issues) + `classroom-config` (all the files below), `students`/`auditors` teams, the cohort site, cohort registered with the cron |
 | `[do this first]` | 3. The term plan | cohort | edit [`classroom-config/schedule.yml`](#scheduleyml) | releases, due dates, exams | the hourly cron runs the whole term; site dates; grading deadlines |
 | `[required]` | 4. Roster | cohort | edit [`classroom-config/students.csv`](#studentscsv) | registrar rows | the enrolment + provisioning source of truth |
-| *(optional)* | 5. Teaching team | cohort | edit [`classroom-config/people.yml`](#peopleyml) | handles (+ card fields) | push access for this cohort's instructors/TAs + site cards |
+| *(optional)* | 5. Teaching team | cohort | edit [`classroom-config/people.yml`](#peopleyml) ([05](05-manage-teaching-team.md)) | handles (+ card fields), optional `start`/`end` | push access for this cohort's instructors/TAs + site cards; time-boxed if dated |
 | `[required]` | 6. Enrol | course button, per cohort | course `.github` → **Send enrolment codes** (untick `dry_run`) | `cohort_org` | codes written to the roster + emailed; students join via the `welcome` **Join course** issue |
-| *(optional)* | 7. Ad-hoc release | course button, per cohort | **Release materials** / **Release assignment** | see [07](07-release-materials-to-cohort.md)/[08](08-release-assignment-to-cohort.md) | anything out earlier/differently than the schedule says |
-| *(optional)* | 8. Return marks | course buttons + [`grades/<slug>.csv`](#gradesslugcsv) | the [grading runbook](09-grade-and-return-assignments.md) | your marks | private per-student gradebooks |
+| *(optional)* | 7. Ad-hoc release | course button, per cohort | **Release materials** / **Release assignment** | see [08](08-release-materials-to-cohort.md)/[09](09-release-assignment-to-cohort.md) | anything out earlier/differently than the schedule says |
+| *(optional)* | 8. Return marks | course buttons + [`grades/<slug>.csv`](#gradesslugcsv) | the [grading runbook](10-grade-and-return-assignments.md) | your marks | private per-student gradebooks |
 | *(optional)* | 9. Show status | course button, per cohort | course `.github` → **Show status** | `cohort_org` | what's configured, what's missing, an edit link per gap |
 
 ## Inputs by file
@@ -49,7 +49,16 @@ course_code: E1234
 people:
   course_admins:
     - github_handle: "janedoe"   # admin on the course org + every cohort
+    - github_handle: "visiting"
+      start: "2026-09-01"        # optional - access auto-starts/lapses on these dates
+      end: "2027-06-30"
 ```
+
+`course_admins` is the **course-level** grant - declared once here, mirrored into every cohort's
+own `course-admin` team, and never re-declared per year. Deleting an entry, or an `end` date
+passing, revokes on the next sync. This org's `instructors`/`teaching_assistants` keys are
+display-only cards; TAs are declared per cohort in [`people.yml`](#peopleyml).
+Runbook: [05](05-manage-teaching-team.md).
 
 ### `students.csv`
 
@@ -94,7 +103,15 @@ people:
 ```
 
 The **course** org's `dsl-course.yml` accepts the same `instructors`/`teaching_assistants`
-shape, but there it is **display-only** (public-site cards, no access).
+shape, but there it is **display-only** (public-site cards, no access) - course-wide admin is
+[`course_admins`](#dsl-courseyml).
+
+`start`/`end` are inclusive ISO dates, both optional (no `start` = active immediately, no `end` =
+indefinite). Access is revoked automatically once `end` passes - a full reconcile runs every sync,
+so a lapsed date prunes the member exactly as deleting the entry would. **An edit here dispatches
+Sync membership on the push (immediate); a date rolling over with no edit waits for the daily
+cron (~24h)** - run **Sync membership** by hand if you need it sooner. Runbook:
+[05](05-manage-teaching-team.md).
 
 ### `teams.csv`
 
@@ -120,7 +137,7 @@ Live example: [`example-course/cohort-org/grades/assignment-1.csv`](../example-c
 fills the machine columns (write-once); for hand-marked work copy the header from the seeded
 `grades/assignment-1.csv.sample`. `final` +
 `comments` are what the student sees; full column-by-column reference:
-[the grading runbook](09-grade-and-return-assignments.md#2-add-your-marks-on-top-of--instead-of-autograde).
+[the grading runbook](10-grade-and-return-assignments.md#2-add-your-marks-on-top-of--instead-of-autograde).
 
 ```csv
 github_handle,team,auto,manual,team_grade,adjustment,final,comments,team_comments
@@ -280,7 +297,7 @@ exams:
 | `deploy` missing `source_repo`/`source_path` | that copy is silently skipped |
 
 Verify with `python3 -m dsl_course.schedule --cohort-org <COHORT>` - anything dropped is
-simply absent from the dump. Workflow: [Schedule releases](06-schedule-releases.md).
+simply absent from the dump. Workflow: [Schedule releases](07-schedule-releases.md).
 
 **What happens at the grading deadline.** The hourly cron freezes each submission repo's
 commit into `classroom-config/snapshots/<slug>.csv` (write-once - delete it to re-freeze),

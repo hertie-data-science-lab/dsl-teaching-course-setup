@@ -75,8 +75,8 @@ Prereqs: the bot is an **owner** of both demo orgs and `DSL_BOT_TOKEN` (`repo` +
     its template's `grading.yml`), and each assignment autogrades once at its grading
     deadline. The display-only `project-clinic` entry deploys nothing - it just appears on
     the site's schedule. Use
-    **[Release materials](../docs/07-release-materials-to-cohort.md)** /
-    **[Release assignment](../docs/08-release-assignment-to-cohort.md)**
+    **[Release materials](../docs/08-release-materials-to-cohort.md)** /
+    **[Release assignment](../docs/09-release-assignment-to-cohort.md)**
     only to jump ahead of it for a demo.
 
 ## What this stands up
