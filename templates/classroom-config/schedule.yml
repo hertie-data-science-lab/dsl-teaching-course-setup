@@ -92,6 +92,8 @@
 #   assignment-4-project:
 #     handout: {year}-10-20T14:00
 #     due: {year}-11-27
+#     type: group                       # OPTIONAL: group | individual (can also be set
+#                                       # in the template's grading.yml; default: individual)
 #     max_team_size: 4                  # OPTIONAL, group assignments: the welcome repo's
 #                                       # "Join team" flow refuses a member beyond this
 #                                       # (default when unset: 5)

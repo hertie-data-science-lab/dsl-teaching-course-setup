@@ -199,11 +199,15 @@ class AssignmentEntry:
     due: datetime
     grace_days: int = 0  # legacy grading-only pin extension, never shown to students
     grading_deadline: datetime | None = None  # explicit pin; wins over due + grace_days
-    # When to provision one repo per student (or per team - the template's grading.yml
-    # decides) from the `<slug>-<tag>` template. The scheduler synthesises a release from
-    # this, so it fires exactly like a `materials_releases` handout entry. None = hand
-    # out manually (or via a legacy release entry).
+    # When to provision one repo per student (or per team - see `type`) from the
+    # `<slug>-<tag>` template. The scheduler synthesises a release from this, so it fires
+    # exactly like a `materials_releases` handout entry. None = hand out manually (or via
+    # a legacy release entry).
     handout: datetime | None = None
+    # 'group' | 'individual' | None. The COHORT-level declaration of how this assignment
+    # fans out; when set it wins over the template's own grading.yml `type:` (the
+    # design-time fallback). None = defer to grading.yml (then individual).
+    type: str | None = None
     # Group assignments: the team-size cap the welcome repo's "Join team" flow enforces
     # (templates/welcome/team-formation.yml reads it straight from schedule.yml; its
     # default when unset lives there). None = not set here.
@@ -331,6 +335,7 @@ def _parse_assignments(raw: object, tz: ZoneInfo) -> dict[str, AssignmentEntry]:
             cap = int(entry["max_team_size"])
         except (KeyError, TypeError, ValueError):
             cap = None
+        kind = str(entry.get("type") or "").strip().lower()
         out[str(slug)] = AssignmentEntry(
             due=due,
             grace_days=grace,
@@ -338,6 +343,8 @@ def _parse_assignments(raw: object, tz: ZoneInfo) -> dict[str, AssignmentEntry]:
                 entry.get("grading_deadline"), tz, end_of_day=True
             ),
             handout=_coerce_datetime(entry.get("handout"), tz),
+            # anything other than the two known values -> None (silent-drop style)
+            type=kind if kind in ("group", "individual") else None,
             max_team_size=cap,
         )
     return out

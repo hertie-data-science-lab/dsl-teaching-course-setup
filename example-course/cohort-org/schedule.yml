@@ -100,7 +100,9 @@ assignments:                    # each assignment's whole lifecycle in one block
     handout: 2026-09-29T14:00
     due: 2026-10-27T23:59
   assignment-4-project:
-    handout: 2026-10-13T14:00     # per TEAM - the template's grading.yml says type: group
+    handout: 2026-10-13T14:00
+    type: group                   # per-team handout + grading (also set in the
+                                  # template's grading.yml)
     due: 2026-11-15T23:59
     max_team_size: 3              # the welcome "Join team" flow refuses a 4th member
 

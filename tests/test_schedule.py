@@ -340,3 +340,19 @@ def test_tbc_flag_keeps_a_provisional_date_firing():
     midterm, resit = sched.exams
     assert midterm.tbc and midterm.date is not None
     assert resit.tbc and resit.date is None
+
+
+def test_assignment_type_parses_and_rejects_unknown_values():
+    meta = {
+        "assignments": {
+            "assignment-4-project": {"due": "2026-11-15", "type": "group"},
+            "assignment-1": {"due": "2026-10-13", "type": "Individual"},
+            "assignment-2": {"due": "2026-10-27"},
+            "typo": {"due": "2026-11-01", "type": "grp"},
+        }
+    }
+    entries = parse(meta).assignments
+    assert entries["assignment-4-project"].type == "group"
+    assert entries["assignment-1"].type == "individual"  # case-normalised
+    assert entries["assignment-2"].type is None
+    assert entries["typo"].type is None  # unknown value -> silently dropped
