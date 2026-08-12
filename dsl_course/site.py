@@ -248,7 +248,16 @@ def _people_yaml(org: str, meta: dict | None = None, *, include_tas: bool = True
             return " []"
         rows = []
         for card in items:
-            fields = [f'{k}: "{_q(v)}"' for k, v in card.items() if v != ""]
+            # The theme's three core keys are always emitted, empty or not (a card the
+            # theme can't find `profile_pic` on renders differently from one where it is
+            # blank); optional fields appear only when they carry something.
+            fields = [
+                f'{k}: "{_q(card.get(k, ""))}"' for k in ("name", "profile_pic", "webpage")
+            ] + [
+                f'{k}: "{_q(v)}"'
+                for k, v in card.items()
+                if k not in ("name", "profile_pic", "webpage") and v != ""
+            ]
             rows.append("  - " + "\n    ".join(fields))
         return "\n" + "\n".join(rows)
 
