@@ -1,35 +1,44 @@
 # Release an assignment to a cohort
 
-Hand out one **private repo per student** from an assignment template, autograder included.
+> Releases assignments templates from the course org (hidden historical registry of course assignments) -> cohort org (a private repo, assigned to students/groups to complete and submit)
+
+Hand out one **private repo per student** from an assignment template, optional autograder included.
 
 ## Prerequisites
 
-- A course [assignment template](03-add-assignment-to-course.md) with the brief + starter on `main`.
-- A bootstrapped [cohort](04-new-cohort-org.md) with [students onboarded](05-enrol-students-to-cohort.md) -
-  one repo is generated per onboarded student.
+- A course org level [assignment template](03-add-assignment-to-course.md) with the brief + starter on `main`.
+- A bootstrapped [cohort org](04-new-cohort-org.md) with [students onboarded](05-enrol-students-to-cohort.md) - one repo is generated per onboarded student/group.
 
-## The schedule normally does this
+## The schedule normally does this (recommended)
 
 An `assignment:` entry in the cohort's `schedule.yml` hands out the same repos at the datetime
-you give it, and keeps doing it - so a student who onboards late still gets their repo:
-[Schedule releases](06-schedule-releases.md). Use the button for a demo, an ad-hoc hand-out, or
-recovery while you fix the YAML.
+you give it [Schedule releases](06-schedule-releases.md). 
+This is the recommended method for releasing assignments, as it also creates an entry in the deployed `<course>.github.io` site, so students can clearly understand the course plan in advance.
 
-## Release assignment (manual)
 
-Course `.github` → **Actions** →
-[Release assignment](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/release-assignment.yml).
-It freezes a cohort-level copy `<slug>` of the chosen `assignment-*-fYYYY` template, then
-creates one **private** `<slug>-<handle>` repo per onboarded student, with that student as
+## Release assignment via manual dispatch
+
+
+In the course org, use either (1) the **materials repo's own** `Release materials` button (it knows that repo's sections and
+sessions), or (2) the **course org's`.github` repo's** `release materials` button 
+
+e.g. → [Release materials](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/release-materials.yml):
+
+
+
+In the course org's `.github` → **Actions** → **Release assignment** (e.g. ([Release assignment](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/release-assignment.yml)).
+- It freezes a cohort-level copy `<slug>` of the chosen `assignment-*-fYYYY` template
+- then it creates one **private** `<slug>-<handle>` repo per onboarded student/group, with that student as
 collaborator.
 
-Other inputs, all default **off**: `include_solution` (also push the template's `solution`
-branch into each student repo), `group` (one shared repo per **team** from `teams.csv` instead
-of one per student - see [Enrol students → groups](05-enrol-students-to-cohort.md#group-assignments-optional)),
-`dry_run` (list the repos that *would* be created).
+Other inputs, all default **off**: 
+- `include_solution` (also push the template's `solution`
+branch into each student repo)
+- `group` (one shared repo per **team** from `teams.csv` instead
+of one per student - see [Enrol students → groups](05-enrol-students-to-cohort.md#group-assignments-optional))
+- `dry_run` (list the repos that *would* be created).
 
-Auditors (`role=auditor`) are skipped. The assignment brief appears on the cohort site
-automatically.
+Auditors (`role=auditor`) are skipped. The assignment brief appears on the cohort site automatically.
 
 ## Deadlines
 
@@ -45,12 +54,11 @@ assignments:
 ```
 
 - **The date students see** (cohort site + the brief's "due" event) is `assignments[slug].due`
-  (23:59 that day). Edit → commit → **Sync site**. Omit it and a date is synthesised
-  (fortnightly).
+  (23:59 that day). Edit → commit → **Sync site**.
 - **The grading deadline** is that same date + `grace_days` - there is **no deadline input** on
   the Grade assignment button. Use `grace_days` to grade later without changing what students
   were told.
-- **The commit graded** is frozen for you shortly after the grading deadline passes, into
+- **The commit that is considered submitted for grading** is frozen right after the grading deadline passes, into
   `classroom-config/snapshots/<slug>.csv`. It is **write-once** - later pushes can't move the
   pin. To deliberately re-freeze (e.g. repos provisioned late), delete the CSV and the next
   hourly tick rebuilds it.
