@@ -4,8 +4,10 @@ Give an instructor, TA, faculty assistant or guest lecturer access to a course -
 **for a fixed window** - and take it away again.
 
 Access is **declared in a config file and reconciled**: you edit a file, commit & push, then the
-**Sync membership** action in the cohort's `.github` materialises the GitHub teams. Revisit this page whenever the teaching team
-changes; it is not a one-off step.
+**Sync membership** action in the **course** org's `.github` materialises the GitHub teams. (The
+cohort's `classroom-config` holds only a small dispatcher that fires it cross-org on your push -
+every button lives in the course org.) Revisit this page whenever the teaching team changes; it
+is not a one-off step.
 
 > NB: membership of the central `hertie-data-science-lab` org grants **nothing** here. It gates only
 > [**Bootstrap Course Org**](01-new-course-org.md). All those involved in a course's delivery must
