@@ -16,6 +16,7 @@ self-onboard via a Join issue - no by-hand invites.
    - **Leave `github_handle, github_id, enrol_code` blank** - onboarding and step 2 fill them automatically
    - Set `role: auditor` for anyone who should get the materials but no assignments or grades.
 
+
    >Someone joins late? Add their row, commit & push - then re-run step 2 for their code.
    >Someone drops? Delete their row - the commit & push off-boards them.
 
