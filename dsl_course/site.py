@@ -577,6 +577,10 @@ def sync_site(course_org: str, cohort_org: str) -> int:
             config["course_semester"] = _semester_label(cohort_org)
         if meta.get("course_code"):
             config["course_code"] = str(meta["course_code"])
+        # The footer's GitHub link (the site's only click-back). This is the COHORT site,
+        # so it links the cohort org - where this year's materials and the students' own
+        # repos live - never the course org (faculty-side) or the template's default.
+        config["github_org"] = cohort_org
 
         # Exam rows render red via the template's schedule_row_exam.html. Use faculty
         # dates from schedule.yml; else stub mid/end dates of a ~15-week semester
@@ -804,6 +808,9 @@ def sync_public_site(
         if meta.get("course_code"):
             config["course_code"] = str(meta["course_code"])
         config["course_semester"] = "Open Courseware"  # neutral: the site is multi-year
+        # The public open-courseware site belongs to the COURSE org (multi-year), so its
+        # footer links there - unlike a cohort site, which links its cohort org.
+        config["github_org"] = course_org
 
         return _SitePlan(
             config=config,

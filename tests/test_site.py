@@ -104,3 +104,20 @@ def test_raw_event_entry_renders_a_display_only_schedule_row():
         "project-clinic", datetime(2026, 11, 17, 10, 0, tzinfo=BERLIN), title="Bring your data"
     )
     assert 'name: "Bring your data"' in site._raw_event_entry(titled)
+
+
+def test_cohort_site_links_back_to_the_cohort_org(monkeypatch, tmp_path):
+    # The footer's GitHub link (site.github_org) is the cohort site's only click-back; it
+    # must point at THIS cohort org, not the template default or the course org.
+    captured = {}
+    monkeypatch.setattr(
+        site, "_sync_site_repo", lambda org, build: captured.update(plan=build(tmp_path)) or 0
+    )
+    monkeypatch.setattr(site.seed, "discover_cohort_repos", lambda orgs: [])
+    monkeypatch.setattr(site.seed, "discover_release_sources", lambda org, repos: [])
+    monkeypatch.setattr(site.seed, "discover_assignments", lambda org: [])
+    monkeypatch.setattr(site, "_yaml_file", lambda *a: {})
+    monkeypatch.setattr(site.schedule, "load", lambda org: Schedule())
+    monkeypatch.setattr(site, "_people_yaml", lambda *a, **k: "people: []\n")
+    assert site.sync_site("Course-Org", "Cohort-f2026") == 0
+    assert captured["plan"].config["github_org"] == "Cohort-f2026"
