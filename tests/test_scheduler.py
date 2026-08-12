@@ -32,9 +32,9 @@ def _sched_with(releases: list[Release]) -> Schedule:
 def test_due_releases_in_when_order():
     releases = sorted(
         [
-            _r("b", datetime(2026, 9, 15, 14, 0, tzinfo=BERLIN)),
-            _r("a", datetime(2026, 9, 1, 9, 0, tzinfo=BERLIN)),
-            _r("c", datetime(2026, 9, 29, 9, 0, tzinfo=BERLIN)),
+            _r("b", datetime(2026, 9, 15, 14, 0, tzinfo=BERLIN), assignment="x"),
+            _r("a", datetime(2026, 9, 1, 9, 0, tzinfo=BERLIN), assignment="x"),
+            _r("c", datetime(2026, 9, 29, 9, 0, tzinfo=BERLIN), assignment="x"),
         ],
         key=lambda r: r.when,
     )
@@ -46,9 +46,60 @@ def test_due_releases_in_when_order():
 
 def test_due_releases_honours_time_of_day_across_timezones():
     # 14:00 Europe/Berlin (CEST) == 12:00 UTC. At 11:00 UTC not yet due; at 13:00 UTC due.
-    r = _r("s", datetime(2026, 9, 15, 14, 0, tzinfo=BERLIN))
+    r = _r("s", datetime(2026, 9, 15, 14, 0, tzinfo=BERLIN), assignment="x")
     assert scheduler.due_releases([r], datetime(2026, 9, 15, 11, 0, tzinfo=timezone.utc)) == []
     assert scheduler.due_releases([r], datetime(2026, 9, 15, 13, 0, tzinfo=timezone.utc)) == [r]
+
+
+def test_display_only_entries_are_never_due():
+    # A calendar_event with no actions is a site schedule row, not work - the scheduler
+    # must never consider it due, no matter how far past its datetime we are.
+    r = _r("project-clinic", datetime(2026, 9, 15, 10, 0, tzinfo=BERLIN))
+    assert r.is_event_only
+    assert scheduler.due_releases([r], datetime(2026, 12, 1, tzinfo=timezone.utc)) == []
+
+
+def test_deploy_datetime_fires_on_its_own_clock():
+    # The class is announced for 10:00 (calendar_event); its materials carry a
+    # deploy_datetime an hour earlier. The deploy is due at 09:00, before the entry's
+    # own datetime - and a second copy without an override still waits for 10:00.
+    early = Deploy(
+        "cm-f2026",
+        "lectures/02_intro",
+        "materials",
+        None,
+        deploy_datetime=datetime(2026, 9, 15, 9, 0, tzinfo=BERLIN),
+    )
+    at_class = Deploy("cm-f2026", "readings/02_intro", "materials", None)
+    r = _r("session-2", datetime(2026, 9, 15, 10, 0, tzinfo=BERLIN), deploy=[early, at_class])
+    between = datetime(2026, 9, 15, 7, 30, tzinfo=timezone.utc)  # 09:30 Berlin
+    assert scheduler.due_releases([r], between) == [r]
+    assert r.due_deploys(between) == [early]
+    after = datetime(2026, 9, 15, 9, 0, tzinfo=timezone.utc)  # 11:00 Berlin
+    assert r.due_deploys(after) == [early, at_class]
+
+
+def test_describe_marks_not_yet_due_actions():
+    # Dry-run legibility: an entry due only for its early deploy must not read as if the
+    # handout (or a later deploy) were firing now.
+    early = Deploy(
+        "cm-f2026",
+        "lectures/02_intro",
+        "materials",
+        None,
+        deploy_datetime=datetime(2026, 9, 15, 9, 0, tzinfo=BERLIN),
+    )
+    r = _r(
+        "session-2",
+        datetime(2026, 9, 15, 10, 0, tzinfo=BERLIN),
+        deploy=[early],
+        assignment="assignment-1-f2026",
+    )
+    lines = scheduler.describe(r, datetime(2026, 9, 15, 7, 30, tzinfo=timezone.utc))
+    deploy_line = next(ln for ln in lines if ln.startswith("deploy "))
+    assert "not yet due" not in deploy_line  # the early deploy IS firing
+    assignment_line = next(ln for ln in lines if ln.startswith("assignment "))
+    assert "not yet due" in assignment_line
 
 
 def test_describe_lists_every_action():

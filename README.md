@@ -17,7 +17,7 @@ Central registry of the workflows that deliver courses at the Hertie Data Scienc
 | An example course setup | [`example course`](example-course/README.md) |
 | Template artefacts | [`templates`](templates/classroom-config/README.md) |
 | All available `.github` Actions tab buttons (course org) | [`actions reference`](docs/faculty-and-instructors/actions-reference.md) |
-| **Deployment checklist** | [`required-input-schema.md`](docs/faculty-and-instructors/required-input-schema.md) |
+| **Deployment checklist** | [`DEPLOYMENT-CHECKLIST.md`](docs/faculty-and-instructors/DEPLOYMENT-CHECKLIST.md) |
 
 ## Deploying a course
 

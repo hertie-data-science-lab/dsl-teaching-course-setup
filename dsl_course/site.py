@@ -398,10 +398,12 @@ def _due_date(sched: schedule.Schedule, repo: str, fallback: date) -> date | dat
 
 
 def _session_dates(sched: schedule.Schedule) -> dict[str, datetime]:
-    """Map a session ordinal (e.g. '2') to its real release datetime from schedule.yml's
-    `materials_releases`, keyed by the ordinal of each deploy's destination folder (so the
-    site can date a released session from the plan that released it). Earliest wins when
-    several releases touch the same ordinal."""
+    """Map a session ordinal (e.g. '2') to when that session HAPPENS - the entry's
+    `calendar_event` from schedule.yml's `materials_releases`, keyed by the ordinal of
+    each deploy's destination folder (so the site can date a released session from the
+    plan that released it). Deploys may ship on their own `deploy_datetime` clocks; the
+    site announces the class, not the copy. Earliest wins when several releases touch
+    the same ordinal."""
     out: dict[str, datetime] = {}
     for release in sched.releases:
         for d in release.deploy:
@@ -413,6 +415,22 @@ def _session_dates(sched: schedule.Schedule) -> dict[str, datetime]:
             if key not in out or release.when < out[key]:
                 out[key] = release.when
     return out
+
+
+def _raw_event_entry(release: schedule.Release) -> str:
+    """A generic schedule row (the theme's schedule_row_raw_event.html) for a display-only
+    entry - a `calendar_event` with no actions: a clinic, a guest lecture, a review
+    session. Nothing is released; the site simply shows it."""
+    title = (release.title or release.label.replace("-", " ").replace("_", " ").title())
+    title = title.replace('"', "'")
+    return (
+        f"---\n"
+        f"type: raw_event\n"
+        f'name: "{title}"\n'
+        f"date: {_iso_when(release.when, '09:00:00')}\n"
+        f'description: ""\n'
+        f"---\n"
+    )
 
 
 @dataclass
@@ -574,6 +592,13 @@ def sync_site(course_org: str, cohort_org: str) -> int:
                 "midterm.md": _exam_entry("MidTerm Exam", start + timedelta(weeks=8)),
                 "final.md": _exam_entry("Final Exam", end),
             }
+        # Display-only schedule rows: materials_releases entries with a when/event but no
+        # actions (a clinic, a guest lecture). Nothing deploys; the site just shows them.
+        exam_entries |= {
+            f"ev-{_slug(r.label)}.md": _raw_event_entry(r)
+            for r in sched.releases
+            if r.is_event_only
+        }
 
         return _SitePlan(
             config=config,

@@ -39,7 +39,8 @@ create + bootstrap`"]
     F["`**05 Enrol students**
 Send enrolment codes + Join issue`"]
     S["`**06 Schedule releases**
-fill schedule.yml, the whole term, up front`"]
+fill schedule.yml, the whole term, up front
+(or manual release from course org's .github repo)`"]
     G["`**Releases fire**
 materials · assignments · autograde runs`"]
     I["Sync site (automatic)"]
@@ -56,8 +57,6 @@ autograde → marks → preview → distribute`"]
   B --> E
   C --> G
   D --> G
-  M["`**Manual buttons (07 · 08 · 10)**
-fallback: demos, one-offs, recovery`"] -.-> G
 ```
 
 ## The workflows
@@ -102,14 +101,14 @@ from or deploy wholesale ([how](../../example-course/README.md#deploy-it-20-min)
 | Runbook | Worked example |
 |---------|----------------|
 | [01](01-new-course-org.md) course identity, `course_admins`, staff cards | [`course-org/dsl-course.yml`](../../example-course/course-org/dsl-course.yml) |
-| [02](02-add-materials-to-course.md) materials tree | [`course-materials-f2026/`](../../example-course/course-org/course-materials-f2026/) - `lectures/`, `readings/`, `syllabus.md` |
+| [02](02-add-materials-to-course.md) materials tree | [`course-materials-f2026/`](../../example-course/course-org/course-materials-f2026/) - `lectures/`, `readings/`, `labs/`, `syllabus.md` |
 | [03](03-add-assignment-to-course.md) assignment `main/` + `solution/` | [`assignment-1`](../../example-course/course-org/assignment-1-f2026/) (`.py`), [`assignment-2`](../../example-course/course-org/assignment-2-f2026/) (notebook), [`assignment-4-project`](../../example-course/course-org/assignment-4-project-f2026/) (**group**) - each with `grading.yml` + hidden `tests/` |
 | [05](05-enrol-students-to-cohort.md) roster, teams, staff | [`students.csv`](../../example-course/cohort-org/students.csv) (incl. an auditor), [`teams.csv`](../../example-course/cohort-org/teams.csv), [`people.yml`](../../example-course/cohort-org/people.yml) |
-| [06](06-schedule-releases.md) the whole term's plan | [`schedule.yml`](../../example-course/cohort-org/schedule.yml) - `materials_releases`, `assignments` + `grading_deadline`, `exams` |
+| [06](06-schedule-releases.md) the whole term's plan | [`schedule.yml`](../../example-course/cohort-org/schedule.yml) - `calendar_event`s + `deploy_datetime`s, a display-only clinic, `assignments` + `grading_deadline`, `exams` |
 | [09](09-grade-and-return-assignments.md) grade tables | [`grades/assignment-1.csv`](../../example-course/cohort-org/grades/assignment-1.csv), [`grades/assignment-4-project.csv`](../../example-course/cohort-org/grades/assignment-4-project.csv) (team grades) |
 | [10](10-release-code.md) a growing package | [`lecture-code-f2026/mlpkg/`](../../example-course/course-org/lecture-code-f2026/) - disclosed module by module |
 
-Field-by-field rules for all of these: [`required-input-schema.md`](required-input-schema.md).
+Field-by-field rules for all of these: [`DEPLOYMENT-CHECKLIST.md`](DEPLOYMENT-CHECKLIST.md).
 
 ## Demo orgs (live reference)
 

@@ -5,7 +5,7 @@ Every button, one line each. They all live in the **course org's `.github` Actio
 **Release code** lives there **only**.
 
 Step-by-step flows: [workflow runbooks](README.md). File layouts and CSV columns:
-[`required-input-schema.md`](required-input-schema.md).
+[`DEPLOYMENT-CHECKLIST.md`](DEPLOYMENT-CHECKLIST.md).
 
 ## Setup
 

@@ -1,4 +1,4 @@
-# Required input schema
+# Deployment checklist
 
 Every input needed to stand up a working course + cohort: each step's workflow, inputs and
 output, then [every input file with a copyable example](#inputs-by-file). Worked example:
@@ -168,10 +168,11 @@ Live example: [`example-course/cohort-org/schedule.yml`](../../example-course/co
 `classroom-config/schedule.yml` - the term plan: the **auto-release plan** the hourly cron
 runs, and the **dates** that drive the website and grading. Times are read in `timezone`
 (default `Europe/Berlin`) unless given an offset; a bare **release** date = 00:00, a bare
-**due**/`grading_deadline` date = 23:59:59, a bare **exam** date shows as 09:00. `when:` is
+**due**/`grading_deadline` date = 23:59:59, a bare **exam** date shows as 09:00. Times are
 honoured to the hour.
 
-**`materials_releases`** - each entry: a label you choose, a `when:`, and one or more actions.
+**`materials_releases`** - the term calendar and release plan in one block: each entry is a
+label you choose, a `calendar_event:`, and optionally actions.
 Sources are read from the course org, destinations written to this cohort, so entries name
 repos, never orgs. Every release is idempotent - re-runs are no-ops.
 
@@ -183,20 +184,30 @@ repos, never orgs. Every release is idempotent - re-runs are no-ops.
 (Grading takes no action here - each assignment is autograded automatically, once, at its
 `grading_deadline` under `assignments:`.)
 
+Per entry: `calendar_event` (required - when the thing happens; the site schedule shows it,
+and it is the default fire time; `when` is accepted as a legacy alias), `title` (optional
+row label), and the actions. A deploy item may carry its own `deploy_datetime` to ship
+earlier or later than the calendar event. An entry with no actions is a **display-only
+calendar event** - nothing deploys, the site shows the row.
+
 ```yaml
 timezone: Europe/Berlin
 materials_releases:
   session_2:
-    when: 2026-09-15T14:00
+    calendar_event: 2026-09-15T10:00  # the class - what the site announces
     deploy:
-      - {source_repo: course-materials-f2026, source_path: lectures/02_intro, dest_repo: materials}
+      - {source_repo: course-materials-f2026, source_path: lectures/02_intro,
+         dest_repo: materials, deploy_datetime: 2026-09-15T09:00}    # ships 1h early
       - {source_repo: course-materials-f2026, source_path: readings/02_intro, dest_repo: materials}
   bonus-dataset:
-    when: 2026-10-20T09:30            # single copy - no list needed
+    calendar_event: 2026-10-20T09:30  # single copy - no list needed
     deploy: {source_repo: course-datasets-f2026, source_path: week7/housing.csv, dest_repo: materials, dest_path: datasets/housing.csv}
   assignment-1-handout:
-    when: 2026-09-22T09:00
+    calendar_event: 2026-09-22T09:00
     assignment: assignment-1-f2026
+  project-clinic:
+    calendar_event: 2026-11-17T10:00  # no actions -> display-only row on the site schedule
+    title: Project clinic
 ```
 
 **Dates** - the website schedule and the grading deadlines. Absent values are synthesised
@@ -219,7 +230,8 @@ exams:
 
 | Mistake | What happens |
 |---------|--------------|
-| `when:` missing/unparseable | that release is silently dropped |
+| `calendar_event:` (or legacy `when:`) missing/unparseable | that entry is silently dropped |
+| `deploy_datetime:` unparseable | silently ignored - that copy ships at the `calendar_event` |
 | `due:` missing/unparseable | the whole `assignments:` entry is dropped - no grading pin, no site date |
 | `grading_deadline:` unparseable | silently ignored - the grading deadline falls back to `due` |
 | unknown `timezone:` | silent fallback to `Europe/Berlin` |

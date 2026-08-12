@@ -11,7 +11,7 @@ this repo. Course admins are managed at the **course org** level instead - see t
 org's `.github/dsl-course.yml`; that access is kept current automatically. Faculty & instructors/FAs
 edit these files; the buttons in the **course org's** Actions tab read them.
 Canonical, engine-wide schema:
-<https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/blob/main/docs/faculty-and-instructors/required-input-schema.md>.
+<https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/blob/main/docs/faculty-and-instructors/DEPLOYMENT-CHECKLIST.md>.
 
 **The `.sample` pattern:** every CSV the engine ingests sits next to a `*.csv.sample`
 showing filled-out example rows (`students.csv.sample`, `teams.csv.sample`,
@@ -66,11 +66,15 @@ above) are refused by that issue: no assignment repos means no project teams. Se
 
 ## schedule.yml - the release plan + due dates + exams (optional)
 
-This cohort's whole schedule in one file. `materials_releases:` is the **auto-release
-plan** - labelled entries (`session_2`, `lab_1`, `bonus-dataset`, ...), each with a
-`when:` datetime and one or more actions (`deploy` a source path -> a cohort repo,
-`assignment` provision student repos). The hourly **Scheduled release** cron fires each
-entry once its `when` has arrived (honoured to the hour). Also holds
+This cohort's whole schedule in one file. `materials_releases:` is the term **calendar
+and auto-release plan** - labelled entries (`session_2`, `lab_1`, `bonus-dataset`, ...),
+each with a `calendar_event:` datetime (when the thing happens - what the site's schedule
+shows) and, optionally, actions (`deploy` a source path -> a cohort repo, `assignment`
+provision student repos). The hourly **Scheduled release** cron fires each action once its
+time has arrived (honoured to the hour): actions fire at the `calendar_event`, except a
+deploy carrying its own `deploy_datetime:` - so materials can ship an hour (or a week)
+before the class they belong to. An entry with **no actions** is a display-only calendar
+event (a clinic, a guest lecture): nothing deploys, the site shows the row. Also holds
 `semester_start`/`semester_end`, `assignments` (due dates for the website, plus each
 assignment's `grading_deadline` - the moment its snapshot freezes and it is autograded,
 once; grading needs no release entry), and `exams`. Seeded mostly-commented - uncomment and

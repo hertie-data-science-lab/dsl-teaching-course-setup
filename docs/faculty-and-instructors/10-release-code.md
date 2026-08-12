@@ -21,12 +21,12 @@ A code release is a `deploy` entry with `source_repo` pointing at the code repo 
 ```yaml
 materials_releases:
   week-1:
-    when: 2026-09-01T09:00
+    calendar_event: 2026-09-01T09:00
     deploy:
       # the package base, early - so later partial releases still import
       - {source_repo: lecture-code-f2026, source_path: mlpkg/core, dest_repo: materials}
   week-3:
-    when: 2026-09-15T09:00
+    calendar_event: 2026-09-15T09:00
     deploy:
       - {source_repo: lecture-code-f2026, source_path: mlpkg/simulation, dest_repo: materials}
 ```

@@ -1,47 +1,66 @@
 # Worked example - the DSL-Demo-f2026 cohort's schedule + auto-release plan, in one file
-# (classroom-config/schedule.yml). The hourly Scheduled release cron fires each entry under
-# materials_releases once its `when` has arrived. Sources are read from the COURSE org;
+# (classroom-config/schedule.yml). Each materials_releases entry is a `calendar_event` (when
+# the thing happens - what the site's schedule shows); the hourly cron fires its actions at
+# that moment, except deploys carrying their own `deploy_datetime`. Sources are read from the COURSE org;
 # destinations written to this COHORT org. Full schema:
-# docs/faculty-and-instructors/required-input-schema.md#the-schedule
+# docs/faculty-and-instructors/DEPLOYMENT-CHECKLIST.md#scheduleyml
 timezone: Europe/Berlin
 
 materials_releases:
   week-1:
-    when: 2026-09-01T09:00
+    calendar_event: 2026-09-01T10:00
     deploy:
-      - {source_repo: course-materials-f2026, source_path: lectures/01_week-1, dest_repo: materials}
+      # the lecture ships an hour before the class; everything else at class time
+      - {source_repo: course-materials-f2026, source_path: lectures/01_week-1, dest_repo: materials,
+         deploy_datetime: 2026-09-01T09:00}
       - {source_repo: course-materials-f2026, source_path: readings/01_week-1, dest_repo: materials}
+      - {source_repo: course-materials-f2026, source_path: labs/01_week-1, dest_repo: materials}
       # release the package base early so later partial releases still import:
       - {source_repo: lecture-code-f2026, source_path: mlpkg/core, dest_repo: materials}
   week-2:
-    when: 2026-09-08T09:00
+    calendar_event: 2026-09-08T10:00
     deploy:
-      - {source_repo: course-materials-f2026, source_path: lectures/02_week-2, dest_repo: materials}
+      - {source_repo: course-materials-f2026, source_path: lectures/02_week-2, dest_repo: materials,
+         deploy_datetime: 2026-09-08T09:00}
       - {source_repo: course-materials-f2026, source_path: readings/02_week-2, dest_repo: materials}
+      - {source_repo: course-materials-f2026, source_path: labs/02_week-2, dest_repo: materials}
   week-3:
-    when: 2026-09-15T09:00
+    calendar_event: 2026-09-15T10:00
     deploy:
-      - {source_repo: course-materials-f2026, source_path: lectures/03_week-3, dest_repo: materials}
+      - {source_repo: course-materials-f2026, source_path: lectures/03_week-3, dest_repo: materials,
+         deploy_datetime: 2026-09-15T09:00}
       - {source_repo: course-materials-f2026, source_path: readings/03_week-3, dest_repo: materials}
+      - {source_repo: course-materials-f2026, source_path: labs/03_week-3, dest_repo: materials}
       # phased disclosure: reveal a topic-subpackage when you teach it
       - {source_repo: lecture-code-f2026, source_path: mlpkg/simulation, dest_repo: materials}
   assignment-1-handout:
-    when: 2026-09-15T14:00
+    calendar_event: 2026-09-15T14:00
     assignment: assignment-1-f2026
   week-4:
-    when: 2026-09-22T09:00
+    calendar_event: 2026-09-22T10:00
     deploy:
-      - {source_repo: course-materials-f2026, source_path: lectures/04_week-4, dest_repo: materials}
+      - {source_repo: course-materials-f2026, source_path: lectures/04_week-4, dest_repo: materials,
+         deploy_datetime: 2026-09-22T09:00}
       - {source_repo: course-materials-f2026, source_path: readings/04_week-4, dest_repo: materials}
+      - {source_repo: course-materials-f2026, source_path: labs/04_week-4, dest_repo: materials}
   week-5:
-    when: 2026-09-29T09:00
+    calendar_event: 2026-09-29T10:00
     deploy:
-      - {source_repo: course-materials-f2026, source_path: lectures/05_week-5, dest_repo: materials}
+      - {source_repo: course-materials-f2026, source_path: lectures/05_week-5, dest_repo: materials,
+         deploy_datetime: 2026-09-29T09:00}
       - {source_repo: course-materials-f2026, source_path: readings/05_week-5, dest_repo: materials}
+      - {source_repo: course-materials-f2026, source_path: labs/05_week-5, dest_repo: materials}
       - {source_repo: lecture-code-f2026, source_path: mlpkg/training, dest_repo: materials}
   assignment-2-handout:
-    when: 2026-09-29T14:00
+    calendar_event: 2026-09-29T14:00
     assignment: assignment-2-f2026
+  # No actions -> a DISPLAY-ONLY event: nothing is released, the site's schedule simply
+  # shows the row. (Use `event:` on a deploy entry, as the week-N sessions above do, when
+  # materials should go out before the class they belong to - or leave a session with no
+  # deploy at all if its materials are never released.)
+  project-clinic:
+    calendar_event: 2026-11-10T10:00
+    title: Project clinic
 semester_start: 2026-09-07
 semester_end: 2026-12-18
 

@@ -6,7 +6,7 @@ auto-release schedule. Deploy it as a live reference demo, or follow the same st
 your own course.
 
 Full input reference:
-[`required-input-schema.md`](../docs/faculty-and-instructors/required-input-schema.md).
+[`DEPLOYMENT-CHECKLIST.md`](../docs/faculty-and-instructors/DEPLOYMENT-CHECKLIST.md).
 
 > **This deploys its own sandbox.** Following these steps stands up a **separate** org pair
 > that you own and can break freely. It is **not** the live demo the runbooks link to (course org
@@ -32,6 +32,7 @@ example-course/
     course-materials-f2026/
       lectures/01_week-1../05_week-5/  # 5 sessions (slides.md + a code demo each)
       readings/01_week-1../05_week-5/  # 5 sessions of placeholder readings
+      labs/01_week-1../05_week-5/      # 5 sessions of labs (lab.py + lab.ipynb each)
       syllabus.md
     lecture-code-f2026/mlpkg/       # a growing package, disclosed module-by-module
     assignment-1-f2026/             # individual (.py)      main/ + solution/
@@ -52,7 +53,7 @@ example-course/
 ## Deploy it (≈20 min)
 
 Prereqs: the bot is an **owner** of both demo orgs and `DSL_BOT_TOKEN` (`repo` + `admin:org` +
-`workflow`) is set. See [Token](../docs/faculty-and-instructors/required-input-schema.md#token).
+`workflow`) is set. See [Token](../docs/faculty-and-instructors/DEPLOYMENT-CHECKLIST.md#token).
 
 1. **Create** `Hertie-DSL-Demo` and `Hertie-DSL-Demo-f2026` in the web UI; add the bot as owner of
    each. *(The only manual step - there is no org-creation API.)*
@@ -75,9 +76,11 @@ Prereqs: the bot is an **owner** of both demo orgs and `DSL_BOT_TOKEN` (`repo` +
    [`people.yml`](cohort-org/people.yml), [`teams.csv`](cohort-org/teams.csv).
 9. **Send enrolment codes** for the cohort - untick `dry_run` to actually email them.
 10. Nothing else. The hourly **Scheduled release** cron works through `schedule.yml`: weeks 1-5
-    of lectures + readings, the `mlpkg` subpackages, and assignments 1 and 2 - and autogrades
-    each assignment once, automatically, at its grading deadline (the project grades per-team;
-    its template's `grading.yml` says `type: group`). Use
+    of lectures + readings + labs (each week's lecture carries a `deploy_datetime` an hour
+    before its 10:00 `calendar_event`), the `mlpkg` subpackages, and assignments 1 and 2 - and
+    autogrades each assignment once, automatically, at its grading deadline (the project grades
+    per-team; its template's `grading.yml` says `type: group`). The display-only
+    `project-clinic` entry deploys nothing - it just appears on the site's schedule. Use
     **[Release materials](../docs/faculty-and-instructors/07-release-materials-to-cohort.md)** /
     **[Release assignment](../docs/faculty-and-instructors/08-release-assignment-to-cohort.md)**
     only to jump ahead of it for a demo.

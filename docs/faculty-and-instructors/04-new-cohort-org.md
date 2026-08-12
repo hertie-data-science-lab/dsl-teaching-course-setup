@@ -30,21 +30,19 @@ Live example of every file below: [`example-course/cohort-org/`](../../example-c
 4. **Fill in `classroom-config/schedule.yml` for the whole term** (edit locally or in the web UI
    → commit to `main`). Its dates drive every release, the grading deadlines and the website.
    Full guide: [Schedule releases](06-schedule-releases.md); full schema:
-   [the schedule](required-input-schema.md#scheduleyml).
+   [the schedule](DEPLOYMENT-CHECKLIST.md#scheduleyml).
 
    ```yaml
    timezone: Europe/Berlin
    materials_releases:
      session_1:
-       when: 2026-09-07T14:00       # bare date -> 00:00 that day
+       calendar_event: 2026-09-07T14:00   # when the class happens - shown on the site
        deploy:
-         - {source_repo: course-materials-f2026, source_path: lectures/01_intro, dest_repo: materials}
+         - {source_repo: course-materials-f2026, source_path: lectures/01_intro, dest_repo: materials,
+            deploy_datetime: 2026-09-07T13:00}   # optional: ship this copy 1h early
      assignment-1-handout:
-       when: 2026-09-22T09:00
+       calendar_event: 2026-09-22T09:00
        assignment: assignment-1-f2026
-     assignment-1-grade:
-       when: 2026-10-15T00:00
-       grade: {template: assignment-1-f2026}
    semester_start: 2026-09-07
    semester_end: 2026-12-18
    assignments:
