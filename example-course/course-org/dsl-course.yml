@@ -17,15 +17,20 @@ course_code: GRAD-DEMO
 # Many institutional sites, hertie-school.org among them, return 403 to requests
 # from outside the site, which renders as a broken image; host those locally.
 # One of each mechanism is shown below.
+# DEMO DATA: the `demo-*-placeholder` handles are deliberately NON-EXISTENT GitHub
+# accounts, so copying this dataset never sends anyone an org invitation. The cards
+# still carry real names/photos/links - a card is built from this file, not from
+# GitHub. Swap in real handles to actually grant access (a handle that does not
+# exist is logged as a warning and skipped, so the sync still completes).
 people:
   course_admins:
     # Course-wide admin, mirrored into every cohort. Optional start/end bound it -
     # here, the course director's tenure running this course.
-    - github_handle: "LynnKaack"
+    - github_handle: "demo-lkaack-placeholder"
       start: "2026-08-01"
       end: "2027-07-31"
   instructors:
-    - github_handle: "LynnKaack"
+    - github_handle: "demo-lkaack-placeholder"
       name: "Prof. Lynn Kaack, PhD"
       title: "Assistant Professor of Computer Science and Public Policy"
       photo: "https://github.com/LynnKaack.png"   # remote URL (GitHub avatars always hotlink)
@@ -38,7 +43,7 @@ people:
   # entries below are therefore inert here; they are kept only to show the key is
   # accepted and to keep the two files' shapes comparable.
   teaching_assistants:
-    - github_handle: "chiara-fb"
+    - github_handle: "demo-cfusarbassini-placeholder"
       start: "2026-08-01"
       end: "2027-01-31"
       name: "Chiara Fusar Bassini"

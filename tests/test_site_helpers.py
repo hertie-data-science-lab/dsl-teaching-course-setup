@@ -66,6 +66,35 @@ def test_people_yaml_course_site_drops_tas():
     assert "teaching_assistants:" in out  # the (now empty) key is still emitted
 
 
+def test_people_yaml_passes_every_declared_display_field_through():
+    # `title` used to be the only optional field and was special-cased; anything else a
+    # course declared was silently dropped. Every display field must now reach the card,
+    # so adding one is a theme change only.
+    meta = {
+        "people": {
+            "instructors": [
+                {
+                    "github_handle": "jane",  # access-only - must NOT reach the card
+                    "start": "2020-01-01",
+                    "end": "2999-12-31",
+                    "name": "Prof. Jane",
+                    "photo": "j.jpg",
+                    "url": "u/jane",
+                    "title": "Professor of Things",
+                    "office_hours": "Tue 14:00, Room 3.21",
+                }
+            ]
+        }
+    }
+    out = site._people_yaml("Some-Cohort-f2026", meta)
+    assert 'title: "Professor of Things"' in out
+    assert 'office_hours: "Tue 14:00, Room 3.21"' in out
+    assert 'profile_pic: "j.jpg"' in out  # `photo` renamed to the theme's key
+    assert 'webpage: "u/jane"' in out  # `url` renamed to the theme's key
+    for access_only in ("github_handle", "start:", "end:"):
+        assert access_only not in out
+
+
 def test_set_config_replaces_only_the_named_key():
     cfg = 'course_name: "old"\ncourse_code: "X"\n'
     out = site._set_config(cfg, "course_name", "Deep Learning")

@@ -152,16 +152,40 @@ def _team_people(course_org: str, team: str) -> list[tuple[str, str, str]]:
     return people
 
 
-def _people_from_meta(meta: dict) -> tuple[list[tuple], list[tuple]] | None:
+# A person entry mixes two concerns: who gets the GitHub grant, and what the website
+# card shows. These keys drive the grant and are never rendered; everything else is
+# display and is passed through to `_data/people.yml` as-is.
+ACCESS_ONLY = ("github_handle", "start", "end")
+# Our config spelling -> the key the Jekyll theme reads.
+CARD_ALIASES = {"photo": "profile_pic", "url": "webpage"}
+# Leading keys, so a generated file has a stable, readable order.
+CARD_ORDER = ("name", "profile_pic", "webpage", "title")
+
+
+def _card(entry: dict) -> dict:
+    """One person entry -> the card dict written into `_data/people.yml`: drop the
+    access-only keys, rename `photo`/`url` to the theme's names, keep everything else
+    the course declared. Ordered by CARD_ORDER first, then the extras alphabetically."""
+    card = {
+        CARD_ALIASES.get(k, k): "" if v is None else str(v)
+        for k, v in entry.items()
+        if k not in ACCESS_ONLY
+    }
+    ordered = {k: card[k] for k in CARD_ORDER if k in card}
+    ordered.update({k: card[k] for k in sorted(card) if k not in ordered})
+    return ordered
+
+
+def _people_from_meta(meta: dict) -> tuple[list[dict], list[dict]] | None:
     """Declared people from a `people:` block - either the COURSE org's
     `.github/dsl-course.yml` (course site: instructors only, TAs are never declared
     there) or a cohort's own `classroom-config/people.yml` (cohort site: instructors
     AND TAs). Same schema either way.
 
-    Returns `(instructors, teaching_assistants)` as lists of `(name, photo, url,
-    title)` for entries active today (per optional start/end dates) that also declare
-    a display `name`, or None when there is no `people:` block at all (then fall back
-    to the GitHub teams). Schema (templates/course/people-header.yml +
+    Returns `(instructors, teaching_assistants)` as lists of **card dicts** keyed the way
+    the Jekyll theme reads them, for entries active today (per optional start/end dates)
+    that also declare a display `name`; or None when there is no `people:` block at all
+    (then fall back to the GitHub teams). Schema (templates/course/people-header.yml +
     people-cards.yml for the course org's block, templates/classroom-config/people.yml
     for a cohort's):
 
@@ -170,27 +194,25 @@ def _people_from_meta(meta: dict) -> tuple[list[tuple], list[tuple]] | None:
             - {github_handle: ..., start: ..., end: ..., name: ..., photo: <img-url>, url: <bio-link>, title: ...}
           teaching_assistants:
             - {github_handle: ..., name: ..., photo: ..., url: ..., title: ...}
+
+    Every declared field is passed through to the card: `photo`/`url` are renamed to the
+    theme's `profile_pic`/`webpage`, ACCESS_ONLY keys are dropped (they govern the GitHub
+    grant, not the display), and anything else a course chooses to add rides along
+    verbatim, so a new field needs a theme change but no change here.
     """
     people = meta.get("people") if isinstance(meta, dict) else None
     if not isinstance(people, dict):
         return None
     today = date.today().isoformat()
 
-    def rows(key: str) -> list[tuple]:
+    def rows(key: str) -> list[dict]:
         out = []
         for p in people.get(key) or []:
             if not isinstance(p, dict) or not p.get("name"):
                 continue
             if not active_today(p.get("start"), p.get("end"), today):
                 continue
-            out.append(
-                (
-                    str(p["name"]),
-                    str(p.get("photo", "")),
-                    str(p.get("url", "")),
-                    str(p.get("title", "")),
-                )
-            )
+            out.append(_card(p))
         return out
 
     return rows("instructors"), rows("teaching_assistants")
@@ -212,28 +234,30 @@ def _people_yaml(org: str, meta: dict | None = None, *, include_tas: bool = True
         instructors, tas = override
         note = "declared in the `people:` block"
     else:
-        instructors = [(*t, "") for t in _team_people(org, "instructors")]
+        instructors = [
+            {"name": n, "profile_pic": p, "webpage": w}
+            for n, p, w in _team_people(org, "instructors")
+        ]
         tas = []
         note = "auto-generated from the org's instructors team"
     if not include_tas:
         tas = []
 
-    def block(items: list[tuple]) -> str:
+    def block(items: list[dict]) -> str:
         if not items:
             return " []"
         rows = []
-        for n, p, w, t in items:
-            row = f'  - name: "{_q(n)}"\n    profile_pic: "{_q(p)}"\n    webpage: "{_q(w)}"'
-            if t:
-                row += f'\n    title: "{_q(t)}"'
-            rows.append(row)
+        for card in items:
+            fields = [f'{k}: "{_q(v)}"' for k, v in card.items() if v != ""]
+            rows.append("  - " + "\n    ".join(fields))
         return "\n" + "\n".join(rows)
 
-    featured = instructors[0] if instructors else ("Course staff", "", "", "")
+    featured = instructors[0] if instructors else {"name": "Course staff"}
     return (
         f"# {note}.\n\n"
-        f'instructor:\n  name: "{_q(featured[0])}"\n'
-        f'  profile_pic: "{_q(featured[1])}"\n  webpage: "{_q(featured[2])}"\n\n'
+        f'instructor:\n  name: "{_q(featured.get("name", ""))}"\n'
+        f'  profile_pic: "{_q(featured.get("profile_pic", ""))}"\n'
+        f'  webpage: "{_q(featured.get("webpage", ""))}"\n\n'
         f"instructors:{block(instructors)}\n\n"
         f"teaching_assistants:{block(tas)}\n"
     )
