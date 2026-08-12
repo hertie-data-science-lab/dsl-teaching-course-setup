@@ -15,16 +15,19 @@ autograde run.
 
 Live example (a full term): [`example-course/cohort-org/schedule.yml`](../../example-course/cohort-org/schedule.yml).
 
-`materials_releases:` maps a free-form label to a `calendar_event` plus any mix of two actions:
+Two blocks carry the whole term:
 
-| Action | Does |
-|--------|------|
-| `deploy` | copy a source path from a course repo → a cohort repo (materials, code, datasets) |
-| `assignment` | provision one private repo per onboarded student from a template - or per **team**, when the template's `grading.yml` says `type: group` |
+- **`materials_releases:`** - teaching materials and calendar events. A free-form label maps
+  to a `calendar_event` plus, optionally, `deploy` actions (copy a source path from a course
+  repo → a cohort repo: materials, code, datasets).
+- **`assignments:`** - each assignment's **whole lifecycle in one block**, keyed by slug:
+  `handout` (when repos are provisioned - one per student, or per **team** when the
+  template's `grading.yml` says `type: group`), `due` (what students see),
+  `grading_deadline` (when it is snapshotted and autograded, once - see
+  [below](#deadline-snapshots-and-autograding)), and `max_team_size` (group assignments).
 
-Grading never appears in this plan: each assignment is snapshotted and autograded
-automatically, once, at its `grading_deadline`
-(see [below](#deadline-snapshots-and-autograding)).
+Nothing assignment-related needs a `materials_releases` entry (a legacy `assignment:` action
+there is still honoured).
 
 **The calendar event is not the release.** Each entry's `calendar_event:` is when the thing
 *happens* - that is what the cohort's `.github.io` site's deployed schedule shows (and  is the default fire time for the
@@ -36,33 +39,44 @@ simply appears on the cohort site (optionally with a `title:`).
 > Exams work the same way, viathe dedicated `exams:` block below.
 
 ```yaml
-  session-02:
+  lecture_02:
     calendar_event: 2026-09-15T10:00   # the class - what the site announces
     deploy:
       - {source_repo: course-materials-f2026, source_path: lectures/02_intro,
-         dest_repo: materials, deploy_datetime: 2026-09-15T09:00}   # slides out 1h early
+         dest_repo: lecture_materials, deploy_datetime: 2026-09-15T09:00}  # slides out 1h early
       - {source_repo: course-materials-f2026, source_path: readings/02_intro,
-         dest_repo: materials}                                      # out at class time
+         dest_repo: lecture_materials}                                     # out at class time
+
+  lab_02:
+    calendar_event: 2026-09-17T14:00   # the lab session
+    deploy:
+      - {source_repo: course-materials-f2026, source_path: labs/02_intro,
+         dest_repo: lab_materials}
 
   project-clinic:                      # no actions -> display-only site row
     calendar_event: 2026-11-17T10:00
     title: Project clinic
 ```
 
+(`dest_repo` is yours to choose - one shared `materials` repo, or one per section as here;
+the repo is created on first release.)
+
 ```yaml
 timezone: Europe/Berlin
 materials_releases:
-  week-2:
+  lecture_02:
     calendar_event: 2026-09-15T10:00
     deploy:
-      - {source_repo: course-materials-f2026, source_path: lectures/02_week-2, dest_repo: materials}
-      - {source_repo: lecture-code-f2026, source_path: mlpkg/simulation, dest_repo: materials}
-  assignment-1-handout:
-    calendar_event: 2026-09-22T09:00
-    assignment: assignment-1-f2026
+      - {source_repo: course-materials-f2026, source_path: lectures/02_week-2, dest_repo: lecture_materials}
+      - {source_repo: lecture-code-f2026, source_path: mlpkg/simulation, dest_repo: lecture_materials}
+  lab_02:
+    calendar_event: 2026-09-17T14:00
+    deploy:
+      - {source_repo: course-materials-f2026, source_path: labs/02_week-2, dest_repo: lab_materials}
 
 assignments:
   assignment-1:
+    handout: 2026-09-22T09:00       # one repo per student from assignment-1-<tag>, automatic
     due: 2026-10-13                 # what students see
     grading_deadline: 2026-10-15    # optional - when the snapshot freezes and it is autograded
 ```

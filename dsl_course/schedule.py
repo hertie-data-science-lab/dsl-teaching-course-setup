@@ -181,9 +181,18 @@ class Release:
 
 @dataclass
 class AssignmentEntry:
+    """One assignment's whole lifecycle, in one place: `handout` (when student/team repos
+    are provisioned), `due` (what students see), `grading_deadline` (when the snapshot
+    freezes and the autograder fires), `max_team_size` (group assignments)."""
+
     due: datetime
     grace_days: int = 0  # legacy grading-only pin extension, never shown to students
     grading_deadline: datetime | None = None  # explicit pin; wins over due + grace_days
+    # When to provision one repo per student (or per team - the template's grading.yml
+    # decides) from the `<slug>-<tag>` template. The scheduler synthesises a release from
+    # this, so it fires exactly like a `materials_releases` handout entry. None = hand
+    # out manually (or via a legacy release entry).
+    handout: datetime | None = None
     # Group assignments: the team-size cap the welcome repo's "Join team" flow enforces
     # (templates/welcome/team-formation.yml reads it straight from schedule.yml; its
     # default when unset lives there). None = not set here.
@@ -301,6 +310,7 @@ def _parse_assignments(raw: object, tz: ZoneInfo) -> dict[str, AssignmentEntry]:
             grading_deadline=_coerce_datetime(
                 entry.get("grading_deadline"), tz, end_of_day=True
             ),
+            handout=_coerce_datetime(entry.get("handout"), tz),
             max_team_size=cap,
         )
     return out

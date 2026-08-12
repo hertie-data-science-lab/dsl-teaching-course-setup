@@ -9,6 +9,11 @@ actions - `deploy` (copy a source path from a COURSE-org repo into a COHORT-org 
 `when` has arrived. Because every release is idempotent, re-runs are no-ops and there is
 no "already released" state to track. Grading is the exception - see AUTOGRADE below.
 
+Assignment handouts are declared with the rest of the assignment's lifecycle -
+`assignments.<slug>.handout` - and synthesised into releases here (_handout_releases), so
+they fire through the same machinery; a `materials_releases` entry with an `assignment:`
+action is the legacy spelling and still works.
+
 The same hourly run also drives each assignment's grading deadline (`grading_deadline`, else
 `due + grace_days`), whether or not the cohort uses `materials_releases` at all:
 
@@ -275,12 +280,37 @@ def _run_releases(
     return errors
 
 
+def _handout_releases(
+    course_org: str, cohort_org: str, sched: schedule.Schedule
+) -> list[Release]:
+    """Synthetic releases for `assignments.<slug>.handout` - the whole assignment
+    lifecycle (handout/due/grading_deadline/max_team_size) is declared in ONE block, and
+    the handout still fires through the exact machinery a `materials_releases` entry
+    would: due at its datetime, re-checked every tick (idempotent - a late onboarder gets
+    their repo on the next one), per-team when the template's grading.yml says so. An
+    assignment with no `<slug>-<tag>` template repo is skipped - it may be pinned for its
+    website date alone."""
+    out = []
+    for slug, entry in sched.assignments.items():
+        if entry.handout is None:
+            continue
+        template = _assignment_template(course_org, cohort_org, slug)
+        if template is None:
+            log(f"  [skip] handout {slug} - no template repo for it in {course_org}")
+            continue
+        out.append(
+            Release(label=f"{slug}-handout", when=entry.handout, assignment=template)
+        )
+    return out
+
+
 def run(course_org: str, cohort_org: str, now: datetime, dry_run: bool = False) -> int:
     sched = schedule.load(cohort_org)
-    due = due_releases(sched.releases, now)
+    releases = sched.releases + _handout_releases(course_org, cohort_org, sched)
+    due = due_releases(releases, now)
     log_step(
         f"Scheduler {course_org} -> {cohort_org} as of {now.isoformat()}: "
-        f"{len(due)}/{len(sched.releases)} release(s) due"
+        f"{len(due)}/{len(releases)} release(s) due"
     )
 
     # Freeze passed deadlines FIRST: server-timed, and before anything grades against the
@@ -298,10 +328,11 @@ def run(course_org: str, cohort_org: str, now: datetime, dry_run: bool = False) 
                 log(f"    DRY-RUN  [{release.label}] {line}")
         return 0
 
-    if not sched.releases:
+    if not releases:
         log(
-            f"  (no materials_releases in {cohort_org}/{schedule.CONFIG_REPO}/"
-            f"{schedule.SCHEDULE_PATH} - {cohort_org} not using scheduled release)"
+            f"  (no materials_releases or assignment handouts in {cohort_org}/"
+            f"{schedule.CONFIG_REPO}/{schedule.SCHEDULE_PATH} - {cohort_org} not using "
+            f"scheduled release)"
         )
     elif not due:
         log_ok("nothing due.")

@@ -284,9 +284,10 @@ Each hourly tick:
    The fire-once marker is the `autograde/<slug>/` results directory: present means graded, so
    never again (a re-grade means deleting it). No `grade:` entry is needed.
 3. **Fires every action whose time has arrived** (a deploy's `deploy_datetime`, else its
-   entry's `calendar_event`) - `deploy` (copy a course-org path into a cohort repo),
-   `assignment` (provision student repos - per team when the template's grading.yml says
-   `type: group`). An entry with no actions is a display-only calendar event for the site.
+   entry's `calendar_event`) - `deploy` (copy a course-org path into a cohort repo) and
+   assignment handouts (`assignments.<slug>.handout`, synthesised into releases; per team
+   when the template's grading.yml says `type: group`). An entry with no actions is a
+   display-only calendar event for the site.
 
 Phases 1-2 run before the releases and run whether or not the cohort uses `materials_releases`
 at all.

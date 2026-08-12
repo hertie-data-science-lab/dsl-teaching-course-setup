@@ -187,9 +187,11 @@ repos, never orgs. Every release is idempotent - re-runs are no-ops.
 
 Per entry: `calendar_event` (required - when the thing happens; the site schedule shows it,
 and it is the default fire time; `when` is accepted as a legacy alias), `title` (optional
-row label), and the actions. A deploy item may carry its own `deploy_datetime` to ship
-earlier or later than the calendar event. An entry with no actions is a **display-only
-calendar event** - nothing deploys, the site shows the row.
+row label), and optionally `deploy` actions. A deploy item may carry its own
+`deploy_datetime` to ship earlier or later than the calendar event. An entry with no
+actions is a **display-only calendar event** - nothing deploys, the site shows the row.
+Assignments take no entry here: their whole lifecycle (handout/due/grading) lives under
+`assignments:` below (a legacy `assignment:` action is still honoured).
 
 ```yaml
 timezone: Europe/Berlin
@@ -203,9 +205,6 @@ materials_releases:
   bonus-dataset:
     calendar_event: 2026-10-20T09:30  # single copy - no list needed
     deploy: {source_repo: course-datasets-f2026, source_path: week7/housing.csv, dest_repo: materials, dest_path: datasets/housing.csv}
-  assignment-1-handout:
-    calendar_event: 2026-09-22T09:00
-    assignment: assignment-1-f2026
   project-clinic:
     calendar_event: 2026-11-17T10:00  # no actions -> display-only row on the site schedule
     title: Project clinic
@@ -217,8 +216,10 @@ materials_releases:
 ```yaml
 semester_start: 2026-09-07
 semester_end: 2026-12-18
-assignments:                          # keyed by slug (template name minus -fYYYY)
-  assignment-1:
+assignments:                          # each assignment's WHOLE lifecycle, keyed by slug
+  assignment-1:                       # (template name minus -fYYYY)
+    handout: 2026-09-22T09:00         # optional: provision one repo per student (or per
+                                      # team - the template's grading.yml decides), automatic
     due: 2026-10-13                   # what students see
     grading_deadline: 2026-10-15      # optional: the grading pin - snapshot freezes and the
                                       # autograder fires (once). Default = due.

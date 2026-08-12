@@ -293,3 +293,15 @@ def test_max_team_size_parses_and_defaults_to_none():
     assert entries["assignment-4-project"].max_team_size == 3
     assert entries["assignment-1"].max_team_size is None
     assert entries["bad"].max_team_size is None  # malformed -> silently dropped
+
+
+def test_assignment_handout_parses():
+    meta = {
+        "assignments": {
+            "assignment-1": {"due": "2026-10-13", "handout": "2026-09-22T09:00"},
+            "assignment-2": {"due": "2026-11-10"},
+        }
+    }
+    entries = parse(meta).assignments
+    assert entries["assignment-1"].handout.isoformat().startswith("2026-09-22T09:00")
+    assert entries["assignment-2"].handout is None
