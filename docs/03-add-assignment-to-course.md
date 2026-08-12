@@ -30,22 +30,21 @@ Live example: [`example-course/course-org/assignment-1-f2026/`](../example-cours
 
 3. **Run Refresh actions** so the assignment dropdowns update.
 
-Repeat for each assignment (`number` = 2, 3, …). A group project is the same flow with
-`type` = `group` - recorded in the solution branch's `grading.yml`, and both handout and
-grading then run per team automatically:
+Repeat for each assignment (`number` = 2, 3, …). 
 
-```yaml
-# grading.yml (solution branch) - written by the New assignment button
-type: group
-```
+### Group vs individual assignments
 
-It can equally be set per cohort, in that cohort's `classroom-config/schedule.yml`:
+If not defined, an assignment is default `type` = `individual`; it is individually assessed and returned to students. A group project is the same flow with
+`type` = `group` - recorded in the solution branch's `grading.yml`, and both handout and grading then run per team automatically (i.e one repo per team is created, and the grading run assesses at the team-level with individual carve outs for comments / grade adjustments):
 
-```yaml
-assignments:
-  assignment-4-project:
-    type: group
-```
+> The type is determined in the assignment's solution branch in the `grading.yml`'s field `type: individual | group`. This fiels is either set (1) at the course-level when the assignment itself is created using the ` New assignment` workflow button (see course-level's `.github`'s Actions tab), or (2) can be overriden in the cohort's `classroom-config/schedule.yml`:
+>
+>```yaml
+>assignments:
+>  assignment-4-project:
+>    type: group
+>```
+> (2) here flips the initial course-level template assignment type when it is deployed to the cohort-level as individual private repos for students to complete.
 
 > **Deadlines aren't set here.** The due date students see is **per cohort**, in that cohort's `schedule.yml` - see [Release assignment → Deadlines](09-release-assignment-to-cohort.md#deadlines).
 
