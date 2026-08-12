@@ -7,8 +7,8 @@ cohort website - and the schedule that runs the whole term. Do this each year; t
 ## Prerequisites
 
 - **You're in the course org's `course-admin` team** (or a prior cohort's `instructors-<tag>`
-  team). The *Bootstrap cohort* button lives in the **course** org's console and runs as the
-  bot, so you need no membership in the cohort org itself.
+  team). The *Bootstrap cohort* button lives in the **course** org's control panel and runs as
+  the bot, so you need no membership in the cohort org itself.
 
 ## Steps
 
@@ -35,7 +35,8 @@ cohort website - and the schedule that runs the whole term. Do this each year; t
    Its `materials_releases` plan is what the hourly **Scheduled release** cron runs - every
    materials release, every assignment hand-out, every autograde run - and its dates drive the
    website and the grading deadlines. Fill it now and you never click a release button. Edit
-   locally or in the web UI → commit to `main`. Full schema:
+   locally or in the web UI → commit to `main`. Full guide:
+   [Schedule releases](06-schedule-releases.md); full schema:
    [the schedule](required-input-schema.md#the-schedule).
 
    ```yaml
@@ -85,7 +86,8 @@ cohort website - and the schedule that runs the whole term. Do this each year; t
 ## Next
 
 - [Enrol students](05-enrol-students-to-cohort.md).
-- [Release ad hoc](06-release-materials-to-cohort.md), if you want something out before the
+- [Schedule releases](06-schedule-releases.md) - the full guide to the plan you started in step 4.
+- [Release ad hoc](07-release-materials-to-cohort.md), if you want something out before the
   schedule says so.
 
 ---

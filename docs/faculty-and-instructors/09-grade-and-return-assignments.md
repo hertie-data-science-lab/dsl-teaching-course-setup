@@ -6,7 +6,7 @@ home for every mark they get all course.
 
 ## Prerequisites
 
-- An assignment [released](07-release-assignment-to-cohort.md) to the cohort.
+- An assignment [released](08-release-assignment-to-cohort.md) to the cohort.
 - *(autograding only)* hidden tests + a `grading.yml` on the template's `solution` branch (both
   scaffolded for you). With no `solution` branch, no `grading.yml`, or `autograde: false`, step 1
   is a no-op - grade entirely by hand.
@@ -20,8 +20,15 @@ Course `.github` → **Actions** → **Grade assignment**: `cohort_org`, `assign
 There is **no deadline input** - the grading deadline is the cohort schedule's
 `assignments.<slug>.due + grace_days`, and the commit graded is the one the hourly cron froze
 into `classroom-config/snapshots/<slug>.csv` (see
-[Release assignment → Deadlines](07-release-assignment-to-cohort.md#deadlines)). A blank sha
+[Release assignment → Deadlines](08-release-assignment-to-cohort.md#deadlines)). A blank sha
 there means nothing was pushed by the deadline, and that scores zero.
+
+> ⚠️ **No snapshot = a spoofable pin.** With no `snapshots/<slug>.csv` at all, grading falls
+> back to pinning on git **committer dates**, which students control - late work backdated to
+> before the deadline passes. The run log says so loudly (`! no ... snapshots/<slug>.csv`).
+> Fixes: check the cohort schedule's `assignments:` block actually has a `due` for this slug (a
+> malformed one is [silently dropped](06-schedule-releases.md#silent-failures),
+> and the deadline then defaults to *today*), then let the hourly cron freeze it before you grade.
 
 It runs the hidden tests faculty-side, then writes into `classroom-config`:
 
@@ -72,7 +79,10 @@ Copies each merged gradebook to `grades-<handle>/grades.yml` and emails the stud
 
 - Repeat 1-5 per assignment as deadlines pass. A `grade:` entry in the schedule's
   `materials_releases` plan runs step 1 for you -
-  [the schedule does the work](06-release-materials-to-cohort.md#the-schedule-does-the-work).
+  [Schedule releases](06-schedule-releases.md).
+
+  > ⚠️ A `grade:` entry re-runs **every hour** once its `when` has passed - the full autograder,
+  > every student, every tick. Remove it from the plan once the assignment is marked.
 
 ---
 **Demo:** per-student `grades-<handle>` repos in [`DSL-Demo-f2026`](https://github.com/DSL-Demo-f2026).

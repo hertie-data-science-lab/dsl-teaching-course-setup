@@ -9,12 +9,17 @@ student**, autograder included.
 - A bootstrapped [cohort](04-new-cohort-org.md) with [students onboarded](05-enrol-students-to-cohort.md) -
   one repo is generated per onboarded student.
 
-**Schedule it instead of clicking it.** An `assignment:` entry in the cohort's
-`schedule.yml` `materials_releases` plan does exactly what the button does, at the datetime
-you gave it - see [Release materials → the schedule does the work](06-release-materials-to-cohort.md#the-schedule-does-the-work).
-Use the button for an early or ad-hoc hand-out.
+## The schedule normally does this
 
-## Release assignment
+An `assignment:` entry in the cohort's `schedule.yml` `materials_releases:` plan does exactly
+what the button below does, at the datetime you gave it - and keeps doing it, so a student who
+onboards late gets their repo on the next hourly tick. Write the plan once:
+[Schedule releases](06-schedule-releases.md).
+
+**The button below is the manual override** - for a demo, an early or ad-hoc hand-out, or
+recovery while you fix the YAML.
+
+## Release assignment (manual)
 
 Course `.github` → **Actions** →
 [Release assignment](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/release-assignment.yml).
@@ -63,7 +68,7 @@ Releases call **Sync site** automatically (the assignment brief appears on the c
 
 ## Next
 
-- [Grade and return the assignment](08-grade-and-return-assignments.md).
+- [Grade and return the assignment](09-grade-and-return-assignments.md).
 
 ---
 **Demo:** per-student repos in [`DSL-Demo-f2026`](https://github.com/DSL-Demo-f2026).

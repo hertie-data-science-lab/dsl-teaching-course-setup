@@ -1,9 +1,10 @@
 # Faculty & instructors actions reference
 
 Every button, one line each. They all live in the **course org's `.github` Actions tab**
-(seeded at bootstrap); **Release materials**, **Release assignment** and **Release code**
-*also* live inside each content repo ("run-from-repo"), where the inputs know that repo's own
-sections and sessions.
+(seeded at bootstrap); **Release materials** and **Release assignment** *also* live inside each
+content repo ("run-from-repo"), where the inputs know that repo's own sections and sessions.
+**Release code** is run-from-repo **only** - it is never seeded centrally, because it always
+publishes from the repo you run it in.
 
 For the **step-by-step flows** see the [workflow runbooks](README.md); for the **data
 contract** (file layouts, CSV columns) see [`required-input-schema.md`](required-input-schema.md).
@@ -21,18 +22,21 @@ contract** (file layouts, CSV columns) see [`required-input-schema.md`](required
 
 ## Release
 
+The schedule (`materials_releases` in `schedule.yml`) is the primary release mechanism; the
+manual release buttons are the fallback - for demos, one-offs, and recovery.
+
 | Action | Effect |
 | --- | --- |
-| **Scheduled release** | The hourly cron that fires the cohort's `schedule.yml` `materials_releases` plan and freezes passed deadlines. Manual runs default to `dry_run=true`. |
-| **Release materials** | Copy whole `<section>/<NN>_.../` folders for the chosen `sessions` into the cohort (private, `students` + `auditors` read). Per-section checkbox + path; `include_root_files` (default off) adds syllabus + README. |
-| **Release assignment** | Freeze a cohort template from the chosen `assignment-*`, then generate one private `<slug>-<handle>` repo per onboarded student. `include_solution` / `group` / `dry_run`, all default off. |
-| **Release code** | Run from the repo holding your package: copy one path (subpackage folder or module file) into a cohort repo, additively - phased disclosure of a growing package. |
+| **Scheduled release** | **Primary** - fill [`schedule.yml`](06-schedule-releases.md) and this does the rest: the hourly cron fires the cohort's `materials_releases` plan and freezes passed deadlines. Manual runs default to `dry_run=true`. |
+| **Release materials** | Copy whole `<section>/<NN>_.../` folders for the chosen `sessions` into the cohort (private, `students` + `auditors` read). Per-section checkbox + path; `include_root_files` (default off) adds syllabus + README. _Fallback for one-offs; normally the schedule does this ([06](06-schedule-releases.md), [07](07-release-materials-to-cohort.md))._ |
+| **Release assignment** | Freeze a cohort template from the chosen `assignment-*`, then generate one private `<slug>-<handle>` repo per onboarded student. `include_solution` / `group` / `dry_run`, all default off. _Fallback for one-offs; normally the schedule does this ([06](06-schedule-releases.md), [08](08-release-assignment-to-cohort.md))._ |
+| **Release code** | Run from the repo holding your package: copy one path (subpackage folder or module file) into a cohort repo, additively - phased disclosure of a growing package. _Fallback for one-offs; normally the schedule's `deploy:` does this ([06](06-schedule-releases.md), [10](10-release-code.md))._ |
 | **Send enrolment codes** | Generate an `enrol_code` per roster row, write it back to `students.csv`, email each not-yet-onboarded student theirs. **`dry_run` defaults to `true` - nothing is written or sent until you untick it.** |
 | **Sync site** | Regenerate a cohort's website from the live org structure. Releases, a push to `schedule.yml`, and a daily cron all do this for you. |
 
 ## Grades
 
-Full flow: [Grade and return assignments](08-grade-and-return-assignments.md).
+Full flow: [Grade and return assignments](09-grade-and-return-assignments.md).
 
 | Action | Effect |
 | --- | --- |

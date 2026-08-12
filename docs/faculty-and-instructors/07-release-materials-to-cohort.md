@@ -9,34 +9,14 @@ website stays current automatically.
 - A course [materials repo](02-add-materials-to-course.md) with the sessions you want to release.
 - A bootstrapped [cohort](04-new-cohort-org.md).
 
-## The schedule does the work
+## The schedule normally does this
 
-**Fill in the cohort's `classroom-config/schedule.yml` `materials_releases:` plan up front,
-once, and the hourly **Scheduled release** cron runs the whole term for you** - each labelled
-entry fires when its `when` datetime arrives:
+A `deploy` entry in the cohort's `schedule.yml` `materials_releases:` plan copies exactly what
+the button below copies, at the datetime you gave it - and the hourly cron runs the whole term
+that way. Write the plan once: [Schedule releases](06-schedule-releases.md).
 
-| Action | Does |
-|--------|------|
-| `deploy` | copy a source path from a course repo → a cohort repo (materials, code, datasets) |
-| `assignment` | provision one private repo per enrolled student from a template |
-| `grade` | run the faculty-side autograder |
-
-```yaml
-timezone: Europe/Berlin
-materials_releases:
-  session_2:
-    when: 2026-09-15T14:00
-    deploy:
-      - {source_repo: course-materials-f2026, source_path: lectures/02_intro, dest_repo: materials}
-  assignment-1-handout:
-    when: 2026-09-22T09:00
-    assignment: assignment-1-f2026
-```
-
-Full schema: [the schedule](required-input-schema.md#the-schedule).
-
-**Fill the schedule early and you never click a release button.** Everything below is the
-manual override, for releasing something early or ad hoc.
+**Everything below is the manual override** - for a demo, an early or ad-hoc release, or
+recovery while you fix the YAML.
 
 ## Release materials (manual)
 
@@ -78,7 +58,8 @@ by hand only when you don't want to wait for that - e.g. after editing
 
 ## Next
 
-- [Add an assignment](03-add-assignment-to-course.md), then [release it](07-release-assignment-to-cohort.md).
+- [Add an assignment](03-add-assignment-to-course.md), then [release it](08-release-assignment-to-cohort.md).
+- [Release code](10-release-code.md) - a growing package, disclosed in phases (not session folders).
 
 ---
 **Demo:** released into [`DSL-Demo-f2026`](https://github.com/DSL-Demo-f2026); site at

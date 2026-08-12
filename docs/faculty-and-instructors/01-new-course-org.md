@@ -1,7 +1,7 @@
 # New course org (one-time setup)
 
-Stand up the **persistent** control plane for a course: its teams, the faculty & instructors console
-(`.github` with all the buttons), and its identity card. Do this **once** per course - it
+Stand up the **persistent** control panel for a course: its teams, the faculty & instructors
+buttons (`.github` with all the actions), and its identity card. Do this **once** per course - it
 serves every future cohort (year). Per-year setup is [New cohort org](04-new-cohort-org.md).
 
 ## Prerequisites
@@ -38,8 +38,10 @@ serves every future cohort (year). Per-year setup is [New cohort org](04-new-coh
 
 4. **Confirm admin access.** Membership is **not** automatic. Handles passed as `admin` in
    step 3 are added to `course-admin` **and** declared in `.github/dsl-course.yml`'s
-   `people.course_admins`, so a later sync keeps them. To add more later, edit that block and
-   run **Sync membership**.
+   `people.course_admins` - the single source of truth (SSOT) a later sync reconciles from. To
+   add more later, edit that block and commit: **Sync membership** fires automatically on any
+   push to `dsl-course.yml` (and on a daily cron). Running the button by hand is the escape
+   hatch, not the normal path.
 
    > ⚠️ **Each admin handle gets an org invite that stays `pending` until that person accepts**,
    > and GitHub's member list only shows *accepted* members - check *People → Pending
@@ -85,4 +87,4 @@ flowchart LR
 
 ---
 **Demo:** course org [`DSL-Demo-Course-E1234`](https://github.com/DSL-Demo-Course-E1234) ·
-console [`.github` Actions](https://github.com/DSL-Demo-Course-E1234/.github/actions).
+control panel [`.github` Actions](https://github.com/DSL-Demo-Course-E1234/.github/actions).

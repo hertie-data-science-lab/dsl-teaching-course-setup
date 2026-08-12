@@ -5,8 +5,12 @@ later copies session folders from here into a cohort. One repo per year: `course
 
 ## Prerequisites
 
-- A bootstrapped [course org](01-new-course-org.md), and you're in its `instructors` /
-  `course-admin` team.
+- A bootstrapped [course org](01-new-course-org.md), and **push access on its content repos**.
+  Normally that comes from the tag-scoped **`instructors-<tag>`** team, which **Sync membership**
+  reconciles from the cohort's `classroom-config/people.yml` - so declaring yourself there
+  ([step 5](04-new-cohort-org.md)) is what grants it. Course admins (`course-admin`) have it
+  course-wide. The course org's generic `instructors` team also carries push, but nothing
+  reconciles its membership - it's a rare manual escape hatch, not the normal path.
 
 ## Steps
 
@@ -17,8 +21,8 @@ later copies session folders from here into a cohort. One repo per year: `course
    `README.md` + `MAINTAINING.md`, a placeholder `SYLLABUS.md`, and the three run-from-repo
    Release buttons (Release materials / assignment / code).
 
-   Your `instructors` team is granted **write** on the new repo automatically, so you can
-   push straight away.
+   That tag's `instructors-<tag>` team (plus `course-admin`) is granted **push** on the new repo
+   automatically, so you can push straight away.
 
 2. **Push your content** to `main` (git push or the web uploader), following the schema. Any
    top-level directory containing at least one ordinal-prefixed subdirectory is a releasable
@@ -43,7 +47,8 @@ later copies session folders from here into a cohort. One repo per year: `course
 ## Next
 
 - [Add an assignment](03-add-assignment-to-course.md).
-- [Release to a cohort](06-release-materials-to-cohort.md) - open sessions up to students.
+- [Schedule releases](06-schedule-releases.md) - plan the term, and never click a release button.
+- [Release to a cohort](07-release-materials-to-cohort.md) - open sessions up to students by hand.
 
 ---
 **Demo:** [`DSL-Demo-Course-E1234`](https://github.com/DSL-Demo-Course-E1234) → New materials repo.

@@ -78,6 +78,13 @@ _MAIL_ENV = """\
           SMTP_FROM: ${{ secrets.SMTP_FROM }}"""
 
 
+# Rendered into the header comment of every MANUAL release button: the schedule is the
+# primary release path, these buttons are the fallback (demos, one-offs, recovery).
+_SCHEDULE_NUDGE = """\
+# Prefer scheduling: a `materials_releases` entry in classroom-config/schedule.yml releases this
+# automatically - this button is the manual fallback."""
+
+
 def _choice(options: list[str]) -> str:
     opts = options or ["(none-yet)"]
     return "\n".join(f"          - {o}" for o in opts)
@@ -156,10 +163,9 @@ def _section_release_inputs(sections: list[str]) -> str:
     (optional, no default - where it lands). Leaving the path blank creates/uses a
     repo named after the section, at its root; "repo/sub/..." routes it into "repo"
     under a nested folder path instead - letting several sections share one repo, or
-    each get its own. The repo is created if it doesn't exist yet. Only usable when
-    the source repo is known at render time (run-from-repo); the central button can
-    target any repo at RUN time, so it gets a single cohort_repo field + --exclude
-    instead (see render_central_release)."""
+    each get its own. The repo is created if it doesn't exist yet. Used by both the
+    run-from-repo button (this repo's own sections, known at render time) and the
+    central button (the capped org-wide union - see render_central_release)."""
     if not sections:
         return ""
     lines = "\n".join(
@@ -207,6 +213,8 @@ def _render_release(
 
     return f"""name: Release materials
 {header}
+{_SCHEDULE_NUDGE}
+
 on:
   workflow_dispatch:
     inputs:
@@ -271,6 +279,8 @@ def render_release_code(cohort_orgs: list[str], cohort_repos: list[str]) -> str:
 # - a subpackage folder (e.g. mlpkg/simulation) or a single module (mlpkg/train/warmup.py)
 # - into the cohort repo's tree, additively. Release a topic when you teach it; the
 # package must tolerate not-yet-released submodules so partial release still imports.
+
+{_SCHEDULE_NUDGE}
 
 on:
   workflow_dispatch:
@@ -345,6 +355,8 @@ def render_provision(
 # Generates one private repo per onboarded student from the chosen assignment template
 # repo (native template-generate). The assignment dropdown lists the course org's
 # assignment-* template repos; refresh repopulates it.
+
+{_SCHEDULE_NUDGE}
 
 on:
   workflow_dispatch:

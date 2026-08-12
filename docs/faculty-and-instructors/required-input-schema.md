@@ -26,12 +26,13 @@ cohort's `schedule.yml` - fill it in up front and the hourly cron runs your whol
 
 - [ ] `[required]` Create the **cohort org** in the web UI; add **`hertie-dsl-bot`** as **Owner**.
 - [ ] `[required]` From the **course org's** Actions tab, run **Bootstrap cohort** with the empty cohort org's name. Seeds `welcome` + `classroom-config`, scaffolds the site, registers the cohort, propagates the token, applies the course's current `course_admins`.
-- [ ] `[do this first]` **Fill in `classroom-config/schedule.yml`, for the whole term.** Its `materials_releases` plan is what the hourly **Scheduled release** cron runs: every materials release, every assignment hand-out, every autograde run. Its `assignments`/`exams` dates drive the website and the grading deadlines. **Fill the schedule early and you never click a release button.** See [The schedule](#the-schedule).
+- [ ] `[do this first]` **Fill in `classroom-config/schedule.yml`, for the whole term.** Its `materials_releases` plan is what the hourly **Scheduled release** cron runs: every materials release, every assignment hand-out, every autograde run. Its `assignments`/`exams` dates drive the website and the grading deadlines. **Fill the schedule early and you never click a release button.** See [The schedule](#the-schedule)
+and the [Schedule releases](06-schedule-releases.md) runbook.
 - [ ] `[required]` **Roster**: put registrar data in `classroom-config/students.csv` - `student_id, hertie_email, name, section` (+ `role: auditor` for read-only auditors). Leave `github_handle, github_id` blank; onboarding fills them.
 - [ ] *(optional)* **Instructors/TAs**: `classroom-config/people.yml`. Declared per cohort because most cohorts have different lecturers/TAs. See [People](#people).
 - [ ] `[required]` **Enrol**: run **Send enrolment codes** (untick `dry_run` to actually send). Students self-onboard via the **Join** issue in `welcome`.
 - [ ] *(optional)* **Ad-hoc release**: **Release materials** / **Release assignment** for anything you want out earlier or differently than the schedule says.
-- [ ] *(optional)* **Return marks**: **Grade assignment** → fill `classroom-config/grades/<slug>.csv` → **Sync gradebooks** → **Render grades (preview)** → **Distribute grades**. See [the grading runbook](08-grade-and-return-assignments.md).
+- [ ] *(optional)* **Return marks**: **Grade assignment** → fill `classroom-config/grades/<slug>.csv` → **Sync gradebooks** → **Render grades (preview)** → **Distribute grades**. See [the grading runbook](09-grade-and-return-assignments.md).
 - [ ] *(optional)* **Show status** any time: a per-cohort view of what's configured, what's missing, and an edit link for each gap.
 
 ## What you end up with
@@ -159,7 +160,7 @@ tests + a `grading.yml`, **Grade assignment** runs them faculty-side after the d
 fills `auto` (individual) / `team_grade` (group). Student repos get no tests, no workflow and
 no score.
 
-Step-by-step: [Grade and return assignments](08-grade-and-return-assignments.md).
+Step-by-step: [Grade and return assignments](09-grade-and-return-assignments.md).
 
 ## Teams (group assignments)
 
@@ -174,8 +175,8 @@ its shared repo. See [ARCHITECTURE → Project teams](../admin/architecture.md#p
 Access and website display are **separate inputs**:
 
 - **`course_admins`** (course-wide admin) live in the **course org's** `.github/dsl-course.yml`
-  `people:` block - the SSOT, reconciled into the course org's `course-admin` team and mirrored
-  into every cohort's.
+  `people:` block - the single source of truth (SSOT), reconciled into the course org's
+  `course-admin` team and mirrored into every cohort's.
 - **`instructors`/`teaching_assistants`** (push access, and the cohort site's cards) live in
   **each cohort's** `classroom-config/people.yml`, because most cohorts have different
   lecturers/TAs. Reconciled into that cohort's `instructors` team AND a course-org
@@ -225,9 +226,9 @@ never orgs.
 
 | Action | Does | Fields |
 |--------|------|--------|
-| `deploy` | Copy a source path → a cohort repo (materials, code, datasets). A list, one entry per copy. | `source_repo`, `source_path`, `dest_repo` (default `materials`), `dest_path` (default: mirror `source_path`) |
+| `deploy` | Copy a source path → a cohort repo (materials, code, datasets). A list, one entry per copy - or a single mapping when there's only one. | `source_repo`, `source_path`, `dest_repo` (default `materials`), `dest_path` (default: mirror `source_path`) |
 | `assignment` | Provision one private repo per enrolled student from a template | the `assignment-*-<tag>` template repo name |
-| `grade` | Run the faculty-side autograder | `template`, optional `deadline` (default: the assignment's `due` below), optional `group` |
+| `grade` | Run the faculty-side autograder | `template`, optional `deadline` (default: the assignment's `due` below), optional `group`. Shorthand: `grade: <template-name>` for the defaults. |
 
 ```yaml
 timezone: Europe/Berlin                # optional (default Europe/Berlin)
@@ -239,19 +240,37 @@ materials_releases:
       - {source_repo: course-materials-f2026, source_path: lectures/02_intro, dest_repo: materials}
       - {source_repo: course-materials-f2026, source_path: readings/02_intro, dest_repo: materials}
   bonus-dataset:                        # a one-off that isn't a numbered session
-    when: 2026-10-20T09:30
-    deploy:
-      - {source_repo: course-datasets-f2026, source_path: week7/housing.csv, dest_repo: materials, dest_path: datasets/housing.csv}
+    when: 2026-10-20T09:30              # one copy? a single mapping works, no list needed
+    deploy: {source_repo: course-datasets-f2026, source_path: week7/housing.csv, dest_repo: materials, dest_path: datasets/housing.csv}
   assignment-1-handout:
     when: 2026-09-22T09:00
     assignment: assignment-1-f2026
   assignment-1-grade:
     when: 2026-10-15T00:00
     grade: {template: assignment-1-f2026, deadline: 2026-10-13T23:59}
+    # shorthand: `grade: assignment-1-f2026` takes the deadline from `assignments:` below
 ```
 
 Every release is idempotent, so a re-run is a no-op and there is no "already released" state to
-track. The manual buttons remain available for anything you want out early or ad hoc.
+track. The schedule is the primary release mechanism; the manual release buttons are the
+fallback - for demos, one-offs, and recovery.
+
+### Silent failures - the parser never errors
+
+A malformed entry is **dropped, not reported**: the run stays green and the release simply
+never happens.
+
+| Mistake | What happens |
+|---------|--------------|
+| `when:` missing or unparseable | that release is silently dropped (it could never fire) |
+| `due:` missing or unparseable | that whole `assignments:` entry is dropped - no grading pin, no site date |
+| `grace_days:` not an integer | silently treated as `0` |
+| unknown `timezone:` | silent fallback to `Europe/Berlin` |
+| a `deploy` entry missing `source_repo` or `source_path` | that copy is silently skipped |
+
+Verify with `python3 -m dsl_course.schedule --cohort-org <COHORT>`: it dumps the parsed
+schedule, and anything dropped is simply absent. Workflow:
+[Schedule releases](06-schedule-releases.md).
 
 ### Website & grading dates
 
@@ -291,9 +310,11 @@ One secret, `DSL_BOT_TOKEN`, runs every workflow. On both orgs it needs repo adm
 repos, topics, settings), org members + teams, and contents R/W - a classic PAT with
 `repo` + `admin:org` + `workflow`.
 
-**Free-plan caveat:** org secrets don't reach private repos, so Bootstrap sets it as an *org*
-secret (for the public `.github`/`welcome`) **and** Refresh propagates it as a *repo* secret on
-each private content repo. On Team/Enterprise the propagation is unnecessary.
+**Free-plan caveat:** org secrets don't reach private repos, so the token gets there three ways:
+Bootstrap sets it as an *org* secret (for the public `.github`/`welcome`), Bootstrap **also**
+mirrors it as a *repo* secret onto each private **infra** repo - that is the only path it reaches
+`classroom-config`, whose dispatch workflows need it - and Refresh propagates it as a *repo*
+secret on each private **content** repo. On Team/Enterprise the mirroring is unnecessary.
 
 ## Email (optional)
 

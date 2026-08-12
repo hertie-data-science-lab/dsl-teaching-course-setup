@@ -13,11 +13,17 @@ The engine-wide input reference is
 [`required-input-schema.md`](../docs/faculty-and-instructors/required-input-schema.md); this file
 is the demo-specific concretisation of it.
 
+> **This deploys its own sandbox.** Following these steps stands up a **separate** org pair
+> (`Hertie-DSL-Demo` + a cohort org you create) that you own and can break freely. It is **not**
+> the live demo the runbooks link to (course org `DSL-Demo-Course-E1234`, cohort
+> `DSL-Demo-f2026`) - same dataset, different orgs. If that live cohort already exists, name your
+> cohort org something else below so you don't deploy into it.
+
 ## The demo orgs
 
 | Tier | Org | Role |
 |------|-----|------|
-| Course | **`Hertie-DSL-Demo`** | persistent control room - materials, assignment templates, the console |
+| Course | **`Hertie-DSL-Demo`** | persistent control panel - materials, assignment templates, the buttons |
 | Cohort | **`DSL-Demo-f2026`** | student-facing target - welcome, roster, released materials, the site |
 
 ## What's in this dataset
@@ -25,7 +31,8 @@ is the demo-specific concretisation of it.
 ```
 example-course/
   course-org/
-    dsl-course.yml                  # course identity + course_admins (SSOT) + display-only cards
+    dsl-course.yml                  # course identity + course_admins (single source of truth,
+                                    # SSOT) + display-only cards
     course-materials-f2026/
       lectures/01_week-1../05_week-5/  # 5 sessions (slides.md + a code demo each)
       readings/01_week-1../05_week-5/  # 5 sessions of placeholder readings
@@ -59,6 +66,10 @@ Prereqs: the bot is an **owner** of both demo orgs and `DSL_BOT_TOKEN` (`repo` +
    `Hertie-DSL-Demo/.github/dsl-course.yml`. It declares `course_admins` (real, course-wide
    access) plus **display-only** cards for the public course site. Real instructor/TA push
    access comes from the cohort's own `people.yml` (step 8).
+   *(Shortcut for the demo. The normal method - what the
+   [runbooks](../docs/faculty-and-instructors/01-new-course-org.md) teach - is editing the
+   `people:` block of the file bootstrap already seeded. If you do copy wholesale, keep the
+   seeded identity fields (`org_name`, `course_name`, `course_code`) as bootstrap wrote them.)*
 4. **New materials repo** (`tag=f2026`), then push `course-org/course-materials-f2026/` into it.
 5. **New assignment** for `number=1`, `2` and `4-project` (`tag=f2026`), then push each
    `course-org/assignment-*-f2026/main/` and `/solution/` to the matching branches.
@@ -71,8 +82,10 @@ Prereqs: the bot is an **owner** of both demo orgs and `DSL_BOT_TOKEN` (`repo` +
 9. **Send enrolment codes** for the cohort - untick `dry_run` to actually email them.
 10. Nothing else. The hourly **Scheduled release** cron works through `schedule.yml`: weeks 1-5
     of lectures + readings, the `mlpkg` subpackages, assignments 1 and 2, and the three
-    post-deadline autograde runs. Use **Release materials** / **Release assignment** only to
-    jump ahead of the schedule for a demo.
+    post-deadline autograde runs. The schedule is the primary release mechanism; use
+    **[Release materials](../docs/faculty-and-instructors/07-release-materials-to-cohort.md)** /
+    **[Release assignment](../docs/faculty-and-instructors/08-release-assignment-to-cohort.md)**
+    only to jump ahead of it for a demo.
 
 ## What this stands up
 
@@ -80,7 +93,7 @@ Prereqs: the bot is an **owner** of both demo orgs and `DSL_BOT_TOKEN` (`repo` +
   from the cohort's `people.yml`, lecture entries linking the released files, the assignment
   briefs, and a schedule with the real dates (Assignment 1 due 13 Oct, MidTerm 3 Nov, Final
   15 Dec at 14:00).
-- **The console:** `Hertie-DSL-Demo/.github` Actions tab - every button.
+- **The control panel:** `Hertie-DSL-Demo/.github` Actions tab - every button.
 - **Onboarding:** open a **Join** issue in `DSL-Demo-f2026/welcome` and paste the `enrol_code`
   that step 9 wrote onto a roster row. Try Eve Evans' code to see the **auditor** path: read
   access to the released materials, no assignment repo, no gradebook.

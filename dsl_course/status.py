@@ -7,8 +7,8 @@ what's configured, what's still missing, and where do I go to fix it - by reusin
 each source's existing loader rather than re-deriving anything. Read-only; it
 changes no state.
 
-Row IDs mirror docs/faculty-and-instructors/required-input-schema.md's B/C numbering, so the status view
-and that doc's table stay in lockstep.
+Row IDs (B1, C2, ...) are internal stable identifiers for the checklist rows - they key the
+REQUIRED set and the JSON output, and are not tied to any numbering in the docs.
 
 Usage:
     python3 -m dsl_course.status --course-org COURSE --cohort-org COHORT
@@ -30,7 +30,8 @@ from . import grades, roster, schedule, sync_faculty, teams
 from .utils import get_default_branch, get_file_content
 
 ITEMS = ("B1", "B6", "C2", "C3", "C4", "C5", "C6", "C7")
-# Mandatory per docs/faculty-and-instructors/required-input-schema.md; everything else is optional
+# Rows whose input is marked `[required]` in docs/faculty-and-instructors/required-input-schema.md;
+# everything else is optional
 # (synthesised/skipped when absent), so an absent optional item is "optional", not
 # "missing" - the status view shouldn't cry wolf over things that never block the pipeline.
 REQUIRED = {"B1", "C2"}

@@ -43,6 +43,11 @@ sequenceDiagram
    `role` names - `students`, or `auditors` for a read-only auditor. **They must accept the org
    invite** before they can see anything.
 
+   > **Testing the flow as an admin?** A Join issue opened by an org **owner/admin** gets its
+   > roster row linked but **no team added** - adding you as a `member` would demote your owner
+   > role and lock you out of the private repos, so `onboard` labels the issue `staff`, says so,
+   > and stops. Use a non-staff account to exercise the real student path.
+
 3. **Sync membership runs itself.** Any push to `classroom-config/students.csv` triggers it,
    reconciling both role teams from the roster - so deleting a row off-boards that student on
    the same push, and changing their `role` moves them between teams. A daily cron re-runs it as
@@ -66,7 +71,8 @@ grants each team its shared repo.
 
 ## Next
 
-- [Release an assignment](07-release-assignment-to-cohort.md) once students have onboarded.
+- [Release an assignment](08-release-assignment-to-cohort.md) once students have onboarded - or
+  let the [schedule](06-schedule-releases.md) hand it out for you.
 
 ---
 **Demo:** Join issue in [`DSL-Demo-f2026/welcome`](https://github.com/DSL-Demo-f2026).
