@@ -195,15 +195,41 @@ Assignments take no entry here: their whole lifecycle (handout/due/grading) live
 `tbc: true` beside a date = provisional, shown "(TBC)" but fires; `calendar_event: tbc`
 (or an exam's `date: tbc`) = undated TBC row, nothing fires.
 
+Deploy-item fields (paths are **relative to their repo**: `source_path` inside
+`source_repo`, `dest_path` inside `dest_repo`):
+
+| Field | Required | Default | Meaning |
+|---|---|---|---|
+| `source_repo` | **yes** | - | repo in the COURSE org to copy from |
+| `source_path` | **yes** | - | folder or file to copy, relative to `source_repo` |
+| `dest_repo` | no | `materials` | cohort repo to copy into (created on first release) |
+| `dest_path` | no | mirrors `source_path` | where it lands, relative to `dest_repo` |
+| `deploy_datetime` | no | the entry's `calendar_event` | ship this copy earlier/later |
+
+**Minimal** - the recommended shape; everything not stated takes its default:
+
 ```yaml
 timezone: Europe/Berlin
 materials_releases:
+  lecture_02:
+    calendar_event: 2026-09-15T10:00
+    deploy:
+      - {source_repo: course-materials-f2026, source_path: lectures/02_intro}
+      # -> lands at materials/lectures/02_intro, shipped at class time
+```
+
+**Full** - every field spelled out, when the defaults aren't what you want:
+
+```yaml
+materials_releases:
   session_2:
     calendar_event: 2026-09-15T10:00  # the class - what the site announces
+    tbc: false                        # true = provisional date, shown "(TBC)"
+    title: Linear regression          # site row label (default: prettified entry label)
     deploy:
       - {source_repo: course-materials-f2026, source_path: lectures/02_intro,
-         dest_repo: materials, deploy_datetime: 2026-09-15T09:00}    # ships 1h early
-      - {source_repo: course-materials-f2026, source_path: readings/02_intro, dest_repo: materials}
+         dest_repo: lecture_materials, dest_path: lectures/02_intro,
+         deploy_datetime: 2026-09-15T09:00}                          # ships 1h early
   bonus-dataset:
     calendar_event: 2026-10-20T09:30  # single copy - no list needed
     deploy: {source_repo: course-datasets-f2026, source_path: week7/housing.csv, dest_repo: materials, dest_path: datasets/housing.csv}
@@ -214,6 +240,16 @@ materials_releases:
 
 **Dates** - the website schedule and the grading deadlines. Absent values are synthesised
 (semester from the tag, lectures weekly, assignments fortnightly, exams weeks 8 + 15).
+
+Per assignment (`assignments.<slug>`; only `due` is required - a minimal entry is one line,
+`assignment-1: {due: 2026-10-13}`):
+
+| Field | Required | Default | Meaning |
+|---|---|---|---|
+| `due` | **yes** | - (entry dropped without it) | what students see; bare date = 23:59:59 |
+| `handout` | no | none - hand out manually | when repos are provisioned, automatic |
+| `grading_deadline` | no | `due` | snapshot freezes + autograder fires (once) |
+| `max_team_size` | no | 5 | group assignments: Join-team cap |
 
 ```yaml
 semester_start: 2026-09-07

@@ -23,20 +23,24 @@
 # ---------------------------------------------------------------------------
 # materials_releases:
 #
-#   session_2:                          # a normal weekly session (label is just a name)
-#     calendar_event: {year}-09-15T10:00   # when the CLASS happens - shown on the site,
-#                                          # and the default deploy time below
+#   lecture_02:                         # MINIMAL - the recommended shape. Only source_repo
+#     calendar_event: {year}-09-15T10:00  # + source_path are required; this lands at
+#     deploy:                             # materials/lectures/02_intro at class time.
+#       - {{source_repo: course-materials-{tag}, source_path: lectures/02_intro}}
+#
+#   session_2:                          # FULL - every field spelled out, for when a
+#     calendar_event: {year}-09-15T10:00   # default doesn't fit. (Paths are relative to
+#                                          # their repo: source_path inside source_repo,
+#                                          # dest_path inside dest_repo.)
 #     deploy:                           # copy one or more paths: course repo -> cohort repo
-#       - source_repo: course-materials-{tag}     # repo in the COURSE org
-#         source_path: lectures/02_intro          # folder or file to copy
+#       - source_repo: course-materials-{tag}     # REQUIRED - repo in the COURSE org
+#         source_path: lectures/02_intro          # REQUIRED - folder or file to copy
 #         dest_repo: materials                    # repo in THIS cohort org (default: materials)
 #         dest_path: lectures/02_intro            # where to put it (default: same as source_path)
-#         deploy_datetime: {year}-09-15T09:00     # OPTIONAL: ship THIS copy an hour before
-#                                                 # the class (default: the calendar_event)
+#         deploy_datetime: {year}-09-15T09:00     # ship THIS copy an hour before the
+#                                                 # class (default: the calendar_event)
 #       - source_repo: course-materials-{tag}
 #         source_path: readings/02_intro          # no deploy_datetime -> out at class time
-#         dest_repo: materials
-#         dest_path: readings/02_intro
 #
 #   project-clinic:                     # NO actions -> a display-only calendar event:
 #     calendar_event: {year}-11-17T10:00  # nothing is released, the site simply shows it
