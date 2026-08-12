@@ -37,12 +37,35 @@ collaborator.
 Other inputs, all default **off**: 
 - `include_solution` (also push the template's `solution`
 branch into each student repo)
-- `group` (**force** one shared repo per **team** from `teams.csv`. A template scaffolded with
-`type` = `group` - i.e. its `grading.yml` says so - provisions per team without the tick;
+- `group` (**force** one shared repo per **team** from `teams.csv`. Normally unneeded: an
+assignment declared `type: group` - in the cohort's `schedule.yml` (`assignments.<slug>.type`,
+which wins) or the template's `grading.yml` (fallback) - provisions per team without the tick;
 see [Enrol students → groups](05-enrol-students-to-cohort.md#group-assignments))
 - `dry_run` (list the repos that *would* be created).
 
 Auditors (`role=auditor`) are skipped. The assignment brief appears on the cohort site automatically.
+
+## Group or individual?
+
+Declare it either in the cohort's `classroom-config/schedule.yml`:
+
+```yaml
+assignments:
+  assignment-4-project:
+    type: group          # or individual (the default)
+```
+
+or in the assignment template's `grading.yml` (solution branch - the **New assignment**
+button's `type` input writes it there):
+
+```yaml
+type: group
+```
+
+`group` = one shared repo per team from `teams.csv` (repo `<slug>-<team>`, every member a
+collaborator), graded per team into the `team`/`team_grade` columns. `individual` = one
+private repo per onboarded, enrolled student (`<slug>-<handle>`), graded into `auto`.
+Handout and grading both follow the declaration automatically.
 
 ## Group assignments: creating the teams
 

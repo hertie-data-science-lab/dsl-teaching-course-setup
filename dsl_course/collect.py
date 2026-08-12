@@ -121,11 +121,23 @@ def parse_grading_spec(text: str) -> dict:
 def template_is_group(master_org: str, template: str) -> bool:
     """Whether an assignment template declares itself group-provisioned: `type: group` in
     the grading.yml on its solution branch (written by the New assignment scaffold). No
-    solution branch / no grading.yml means individual (the parse's default). Provisioning
-    (assign, scheduler) infers from this, so handing out is per-team without anyone having
-    to remember the group checkbox."""
+    solution branch / no grading.yml means individual (the parse's default)."""
     text = get_file_content(master_org, template, GRADING_FILE, ref=SOLUTION_BRANCH)
     return parse_grading_spec(text or "")["type"] == "group"
+
+
+def assignment_is_group(master_org: str, cohort_org: str, template: str) -> bool:
+    """The one resolution of group-vs-individual every consumer (handout, grading) uses.
+
+    Precedence: the COHORT's own declaration - `assignments.<slug>.type` in
+    classroom-config/schedule.yml - wins; else the template's design-time grading.yml
+    `type:` (solution branch, written by the New assignment scaffold); else individual.
+    Read-side only: the cohort setting never writes back into the course org's
+    grading.yml - sources are read course-ward, state written cohort-ward."""
+    entry = schedule.load(cohort_org).assignments.get(assignment_slug(template))
+    if entry is not None and entry.type is not None:
+        return entry.type == "group"
+    return template_is_group(master_org, template)
 
 
 def score_from_junit(xml_text: str) -> dict:
@@ -525,7 +537,17 @@ def collect(
                 f"{slug}: autograde disabled in {GRADING_FILE} - all-manual, nothing to collect."
             )
             return 0
-        is_group = group or spec["type"] == "group"
+        # group-vs-individual precedence: an explicit force (the button's checkbox) wins;
+        # else the COHORT's declaration (schedule.yml assignments.<slug>.type, already
+        # loaded above); else the template's design-time grading.yml `type:`.
+        entry = sched.assignments.get(slug)
+        cohort_kind = entry.type if entry else None
+        if group:
+            is_group = True
+        elif cohort_kind is not None:
+            is_group = cohort_kind == "group"
+        else:
+            is_group = spec["type"] == "group"
         tests_src = soldir / str(spec["tests"])
         if not tests_src.is_dir():
             log_err(
