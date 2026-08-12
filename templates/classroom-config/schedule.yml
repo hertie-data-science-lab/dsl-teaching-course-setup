@@ -47,12 +47,12 @@
 #     when: 2026-09-22T09:00
 #     assignment: assignment-1-f2026    # the assignment-*-<tag> template repo
 #
-#   assignment-1-grade:                 # run the autograder after the deadline
-#     when: 2026-10-15T00:00
-#     grade:
-#       template: assignment-1-f2026
-#       deadline: 2026-10-13T23:59      # commit cutoff (default: this assignment's due date)
-#       group: false                    # true for a group assignment
+#   assignment-1-grade:                 # LEGACY - you do not need this. The hourly cron
+#     when: 2026-10-15T00:00            # already autogrades each assignment ONCE, at its
+#     grade:                            # grading deadline below. Kept for a one-off run at
+#       template: assignment-1-f2026    # a `when` of your choosing; it shares the same
+#       deadline: 2026-10-13T23:59      # fire-once marker (classroom-config/autograde/<slug>/)
+#       group: false                    # so it can never double-grade.
 
 # ---------------------------------------------------------------------------
 # The rest is for DISPLAY (website) and GRADING - not the release plan above.
@@ -63,8 +63,10 @@
 # assignments:                          # due dates (keyed by slug, no -fYYYY tag)
 #   assignment-1:
 #     due: 2026-10-13T23:59            # a bare date -> END of that day (23:59:59)
-#     grace_days: 2                     # OPTIONAL: extra days for GRADING only (not shown
-#                                       # to students). Autograder pins to due + grace_days.
+#     grading_deadline: 2026-10-15      # OPTIONAL: when the submission snapshot freezes AND
+#                                       # the autograder fires (once). Not shown to students.
+#     grace_days: 2                     # LEGACY alternative: grading deadline = due + N days.
+#                                       # `grading_deadline` wins if you set both.
 #   assignment-2:
 #     due: 2026-11-10
 #

@@ -15,7 +15,9 @@ single home for the timed release plan AND the dates other tools display/enforce
     assignments:                     # due dates (website countdown + grading pin). A bare
       assignment-1:                  # due date is END of day (23:59:59) - "due on the
         due: 2026-10-13              # 13th" closes at day's end (a release date opens at
-        grace_days: 2               # its start). grace_days extends the grading pin only.
+        grading_deadline: 2026-10-15 # its start). `grading_deadline` is the explicit moment
+        grace_days: 2                # the snapshot freezes and the autograder fires; the
+                                     # legacy `grace_days` (due + N days) is the fallback.
     exams:                           # `date` is a whole day, or a full datetime when the
       - {name: MidTerm Exam, date: 2026-11-03}         # exam's start time is known
       - {name: Final Exam, date: 2026-12-15T14:00}
@@ -157,7 +159,8 @@ class Release:
 @dataclass
 class AssignmentEntry:
     due: datetime
-    grace_days: int = 0  # grading-only pin extension, never shown to students
+    grace_days: int = 0  # legacy grading-only pin extension, never shown to students
+    grading_deadline: datetime | None = None  # explicit pin; wins over due + grace_days
 
 
 @dataclass
@@ -238,8 +241,10 @@ def _parse_releases(raw: object, tz: ZoneInfo) -> list[Release]:
 
 
 def _parse_assignments(raw: object, tz: ZoneInfo) -> dict[str, AssignmentEntry]:
-    # Only the nested {due, grace_days} form is accepted - matching the one schema
-    # documented everywhere - rather than also silently accepting a bare due-date scalar.
+    # Only the nested {due, grading_deadline, grace_days} form is accepted - matching the one
+    # schema documented everywhere - rather than also silently accepting a bare due-date
+    # scalar. A malformed `grading_deadline` parses to None and the entry falls back to the
+    # grace_days path, in keeping with this parser's silent-drop style.
     out: dict[str, AssignmentEntry] = {}
     for slug, entry in (raw or {}).items():
         if not isinstance(entry, dict):
@@ -251,7 +256,13 @@ def _parse_assignments(raw: object, tz: ZoneInfo) -> dict[str, AssignmentEntry]:
             grace = int(entry.get("grace_days", 0))
         except (TypeError, ValueError):
             grace = 0
-        out[str(slug)] = AssignmentEntry(due=due, grace_days=grace)
+        out[str(slug)] = AssignmentEntry(
+            due=due,
+            grace_days=grace,
+            grading_deadline=_coerce_datetime(
+                entry.get("grading_deadline"), tz, end_of_day=True
+            ),
+        )
     return out
 
 
@@ -282,11 +293,16 @@ def parse(meta: dict) -> Schedule:
 
 
 def grading_deadline_at(sched: Schedule, slug: str) -> datetime | None:
-    """The grading pin for `slug` as a tz-aware datetime: due + optional grace_days. None
-    if unscheduled."""
+    """The grading pin for `slug` as a tz-aware datetime - the ONE instant at which the
+    submission snapshot freezes and the autograder fires, so both always agree.
+
+    Precedence: an explicit `grading_deadline` wins; else the legacy `due + grace_days`;
+    else `due` itself. None if unscheduled."""
     entry = sched.assignments.get(slug)
     if entry is None:
         return None
+    if entry.grading_deadline is not None:
+        return entry.grading_deadline
     return entry.due + timedelta(days=entry.grace_days)
 
 

@@ -40,16 +40,19 @@ repo name minus `-fYYYY`/`-sYYYY`):
 assignments:
   assignment-1:
     due: 2026-10-13               # the due date students see
-    grace_days: 2                 # OPTIONAL, grading-only (default 0)
-                                   # autograder pins to 2026-10-15; students still see 10-13
+    grading_deadline: 2026-10-15  # OPTIONAL, grading-only - snapshot + autograde fire here
+    grace_days: 2                 # LEGACY alternative: grading deadline = due + N days
 ```
 
 - **The date students see** (cohort site + the brief's "due" event) is `assignments[slug].due`
   (23:59 that day). Edit → commit → **Sync site**. Omit it and a date is synthesised
   (fortnightly).
-- **The grading deadline** is that same date + `grace_days` - there is **no deadline input** on
-  the Grade assignment button. Use `grace_days` to grade later without changing what students
-  were told.
+- **The grading deadline** is `grading_deadline` if set, else `due + grace_days`, else `due` -
+  there is **no deadline input** on the Grade assignment button. Set it to grade later than
+  the date students were told, without changing that date.
+- **Autograding fires there, once.** At that moment the hourly cron freezes the snapshot and
+  runs the autograder - no `grade:` entry needed. It never re-runs; delete
+  `classroom-config/autograde/<slug>/` to re-grade.
 - **The commit graded** is frozen for you shortly after the grading deadline passes, into
   `classroom-config/snapshots/<slug>.csv`. It is **write-once** - later pushes can't move the
   pin. To deliberately re-freeze (e.g. repos provisioned late), delete the CSV and the next

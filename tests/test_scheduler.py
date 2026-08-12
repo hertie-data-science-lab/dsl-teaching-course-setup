@@ -1,7 +1,8 @@
 """scheduler pure core: due_releases (datetime, timezone-correct) + _execute()'s dispatch
 to the release functions - monkeypatched so a schema<->signature mismatch (the class of bug
-that silently broke scheduled releases once) is caught without any real gh/git I/O. Plus a
-renderer guard (the cron is hourly and has NO check-team gate - scheduled runs have no actor).
+that silently broke scheduled releases once) is caught without any real gh/git I/O. Plus the
+deadline-driven phases (snapshot, then fire-once autograde) and a renderer guard (the cron is
+hourly and has NO check-team gate - scheduled runs have no actor).
 """
 
 from __future__ import annotations
@@ -124,6 +125,7 @@ def test_execute_nondeploy_assignment_calls_provision_all(monkeypatch):
 
 def test_execute_nondeploy_grade_calls_collect_with_iso_deadline(monkeypatch):
     calls = []
+    monkeypatch.setattr(collect, "has_autograde_results", lambda org, slug: False)
     monkeypatch.setattr(
         "dsl_course.collect.collect",
         lambda master_org, template, cohort_org, deadline, group=False: calls.append(
@@ -145,6 +147,7 @@ def test_execute_nondeploy_grade_calls_collect_with_iso_deadline(monkeypatch):
 def test_execute_nondeploy_grade_deadline_none_when_unset(monkeypatch):
     # No deadline in the schedule -> pass None so collect resolves it from the SSOT.
     calls = []
+    monkeypatch.setattr(collect, "has_autograde_results", lambda org, slug: False)
     monkeypatch.setattr(
         "dsl_course.collect.collect",
         lambda m, t, c, deadline, group=False: calls.append(deadline) or 0,
@@ -304,6 +307,14 @@ def test_due_snapshots_empty_without_assignments():
     assert scheduler.due_snapshots(Schedule(), datetime(2030, 1, 1, tzinfo=timezone.utc)) == []
 
 
+def _stub_autograde(monkeypatch, marked: bool = True):
+    """Neutralise the autograde phase's I/O (it shares due_snapshots with the snapshot
+    phase). `marked` = every slug already has its autograde/<slug>/ marker, so nothing
+    fires."""
+    monkeypatch.setattr(collect, "has_autograde_results", lambda org, slug: marked)
+    monkeypatch.setattr(scheduler, "_assignment_template", lambda c, o, slug: None)
+
+
 def _stub_snapshots(monkeypatch, existing: set[str]):
     """Track snapshot_assignment calls; `existing` are the slugs already frozen."""
     taken: list[tuple[str, str, str]] = []
@@ -315,6 +326,7 @@ def _stub_snapshots(monkeypatch, existing: set[str]):
         "snapshot_assignment",
         lambda org, slug, deadline: taken.append((org, slug, deadline)) or True,
     )
+    _stub_autograde(monkeypatch)
     return taken
 
 
@@ -374,6 +386,7 @@ def test_run_dry_run_snapshots_nothing(monkeypatch):
 def test_run_reports_a_failed_snapshot(monkeypatch):
     monkeypatch.setattr(collect, "load_snapshots", lambda org, slug: None)
     monkeypatch.setattr(collect, "snapshot_assignment", lambda org, slug, deadline: False)
+    _stub_autograde(monkeypatch)
     monkeypatch.setattr(
         scheduler.schedule, "load", lambda cohort: _assignments(**{"assignment-1": _due(13)})
     )
@@ -384,6 +397,9 @@ def test_run_snapshots_before_firing_a_grade_release(monkeypatch):
     # Order matters: a grade release firing in the same tick must already see the snapshot.
     order: list[str] = []
     monkeypatch.setattr(collect, "load_snapshots", lambda org, slug: None)
+    # No marker yet and no template repo behind the slug: the automatic path skips, so this
+    # test still exercises the LEGACY grade release's ordering against the snapshot.
+    _stub_autograde(monkeypatch, marked=False)
     monkeypatch.setattr(
         collect,
         "snapshot_assignment",
@@ -400,6 +416,200 @@ def test_run_snapshots_before_firing_a_grade_release(monkeypatch):
     monkeypatch.setattr(scheduler.schedule, "load", lambda cohort: sched)
     assert scheduler.run("Course-Org", "Cohort-Org", datetime(2026, 10, 15, tzinfo=timezone.utc)) == 0
     assert order == ["snapshot", "collect"]
+
+
+# ------------------------------------------------------- fire-once autograding
+# Autograding is zero-config: every assignment with a passed grading deadline is graded on
+# the next tick, exactly once. The marker is the autograde/<slug>/ results directory - so
+# what matters is that a present marker stops the run dead (an hourly re-grade would
+# recompute over a marker's hand-edits) and that the legacy `grade:` entry shares it.
+
+
+def test_assignment_template_is_slug_plus_the_cohort_tag(monkeypatch):
+    monkeypatch.setattr(
+        "dsl_course.utils.repo_exists",
+        lambda org, repo: repo == "assignment-1-f2026",
+    )
+    assert (
+        scheduler._assignment_template("Course-Org", "DSL-Demo-f2026", "assignment-1")
+        == "assignment-1-f2026"
+    )
+    # no such repo in the course org -> nothing to grade against
+    assert scheduler._assignment_template("Course-Org", "DSL-Demo-f2026", "assignment-9") is None
+    # an untagged cohort org names no template - skip rather than guess
+    assert scheduler._assignment_template("Course-Org", "Cohort-Org", "assignment-1") is None
+
+
+def _stub_collect(monkeypatch, marked: set[str], templates: set[str], rc: int = 0):
+    """Record collect() calls. `marked` = slugs whose autograde/<slug>/ already exists;
+    `templates` = the template repos that exist in the course org."""
+    graded: list[tuple[str, str, str, str, bool]] = []
+    monkeypatch.setattr(collect, "has_autograde_results", lambda org, slug: slug in marked)
+    monkeypatch.setattr(
+        scheduler,
+        "_assignment_template",
+        lambda course, cohort, slug: (
+            t if (t := f"{slug}-f2026") in templates else None
+        ),
+    )
+    monkeypatch.setattr(
+        "dsl_course.collect.collect",
+        lambda m, t, c, deadline=None, group=False: graded.append(
+            (m, t, c, deadline, group)
+        )
+        or rc,
+    )
+    return graded
+
+
+def _only_snapshots_taken(monkeypatch):
+    """Snapshots always succeed and are never the subject of these tests."""
+    monkeypatch.setattr(collect, "load_snapshots", lambda org, slug: {})
+    monkeypatch.setattr(collect, "snapshot_assignment", lambda org, slug, dl: True)
+
+
+def test_run_autogrades_a_passed_deadline_with_no_marker(monkeypatch):
+    _only_snapshots_taken(monkeypatch)
+    graded = _stub_collect(monkeypatch, marked=set(), templates={"assignment-1-f2026"})
+    monkeypatch.setattr(
+        scheduler.schedule, "load", lambda cohort: _assignments(**{"assignment-1": _due(13)})
+    )
+    now = datetime(2026, 10, 14, tzinfo=timezone.utc)
+    assert scheduler.run("Course-Org", "Cohort-f2026", now) == 0
+    (course, template, cohort, deadline, group), = graded
+    assert (course, template, cohort) == ("Course-Org", "assignment-1-f2026", "Cohort-f2026")
+    # graded at exactly the instant the snapshot froze, and never guessed as a group run
+    assert deadline.startswith("2026-10-13T23:59:59") and group is False
+
+
+def test_run_never_autogrades_twice_the_marker_is_the_state(monkeypatch):
+    _only_snapshots_taken(monkeypatch)
+    graded = _stub_collect(
+        monkeypatch, marked={"assignment-1"}, templates={"assignment-1-f2026"}
+    )
+    monkeypatch.setattr(
+        scheduler.schedule, "load", lambda cohort: _assignments(**{"assignment-1": _due(13)})
+    )
+    assert scheduler.run("Course-Org", "Cohort-f2026", datetime(2026, 12, 1, tzinfo=timezone.utc)) == 0
+    assert graded == []
+
+
+def test_run_does_not_autograde_before_the_grading_deadline(monkeypatch):
+    _only_snapshots_taken(monkeypatch)
+    graded = _stub_collect(monkeypatch, marked=set(), templates={"assignment-1-f2026"})
+    monkeypatch.setattr(
+        scheduler.schedule,
+        "load",
+        lambda cohort: _assignments(**{"assignment-1": _due(13, grace=2)}),
+    )
+    assert scheduler.run("Course-Org", "Cohort-f2026", datetime(2026, 10, 14, tzinfo=timezone.utc)) == 0
+    assert graded == []
+
+
+def test_run_skips_an_assignment_with_no_template_repo(monkeypatch):
+    # A due date can be pinned for the website alone, with no template behind it - a skip,
+    # never a red run.
+    _only_snapshots_taken(monkeypatch)
+    graded = _stub_collect(monkeypatch, marked=set(), templates=set())
+    monkeypatch.setattr(
+        scheduler.schedule, "load", lambda cohort: _assignments(**{"reading-week": _due(13)})
+    )
+    assert scheduler.run("Course-Org", "Cohort-f2026", datetime(2026, 11, 1, tzinfo=timezone.utc)) == 0
+    assert graded == []
+
+
+def test_run_treats_a_non_autogradable_template_as_a_skip(monkeypatch):
+    # collect() itself returns 0 for "no solution branch" / `autograde: false` - the
+    # scheduler must pass that through as success, not count it as a failed action.
+    _only_snapshots_taken(monkeypatch)
+    graded = _stub_collect(
+        monkeypatch, marked=set(), templates={"assignment-1-f2026"}, rc=0
+    )
+    monkeypatch.setattr(
+        scheduler.schedule, "load", lambda cohort: _assignments(**{"assignment-1": _due(13)})
+    )
+    assert scheduler.run("Course-Org", "Cohort-f2026", datetime(2026, 11, 1, tzinfo=timezone.utc)) == 0
+    assert len(graded) == 1
+
+
+def test_run_reports_a_failed_autograde(monkeypatch):
+    _only_snapshots_taken(monkeypatch)
+    _stub_collect(monkeypatch, marked=set(), templates={"assignment-1-f2026"}, rc=1)
+    monkeypatch.setattr(
+        scheduler.schedule, "load", lambda cohort: _assignments(**{"assignment-1": _due(13)})
+    )
+    assert scheduler.run("Course-Org", "Cohort-f2026", datetime(2026, 11, 1, tzinfo=timezone.utc)) == 1
+
+
+def test_run_dry_run_autogrades_nothing(monkeypatch):
+    _only_snapshots_taken(monkeypatch)
+    graded = _stub_collect(monkeypatch, marked=set(), templates={"assignment-1-f2026"})
+    monkeypatch.setattr(
+        scheduler.schedule, "load", lambda cohort: _assignments(**{"assignment-1": _due(13)})
+    )
+    now = datetime(2026, 11, 1, tzinfo=timezone.utc)
+    assert scheduler.run("Course-Org", "Cohort-f2026", now, dry_run=True) == 0
+    assert graded == []
+
+
+def test_run_autogrades_at_the_explicit_grading_deadline(monkeypatch):
+    # `grading_deadline` overrides due + grace_days, and snapshot + autograde must agree on
+    # that one instant.
+    _only_snapshots_taken(monkeypatch)
+    graded = _stub_collect(monkeypatch, marked=set(), templates={"assignment-1-f2026"})
+    entry = AssignmentEntry(
+        due=datetime(2026, 10, 13, 23, 59, 59, tzinfo=BERLIN),
+        grace_days=7,
+        grading_deadline=datetime(2026, 10, 15, 23, 59, 59, tzinfo=BERLIN),
+    )
+    monkeypatch.setattr(
+        scheduler.schedule, "load", lambda cohort: _assignments(**{"assignment-1": entry})
+    )
+    # past grading_deadline (10-15) but well before due + grace_days (10-20)
+    assert scheduler.run("Course-Org", "Cohort-f2026", datetime(2026, 10, 16, tzinfo=timezone.utc)) == 0
+    assert graded[0][3].startswith("2026-10-15T23:59:59")
+
+
+def test_legacy_grade_release_shares_the_fire_once_marker(monkeypatch):
+    # The `grade:` entry keeps working, but never re-fires once autograde/<slug>/ exists.
+    called = []
+    monkeypatch.setattr(collect, "has_autograde_results", lambda org, slug: True)
+    monkeypatch.setattr(
+        "dsl_course.collect.collect",
+        lambda m, t, c, deadline=None, group=False: called.append(t) or 0,
+    )
+    r = _r("a1-grade", WHEN, grade=Grade("assignment-1-f2026"))
+    assert scheduler._execute_nondeploy("Course-Org", "Cohort-f2026", r) == 0
+    assert called == []
+
+
+def test_legacy_grade_release_does_not_double_fire_in_the_same_tick(monkeypatch):
+    # The automatic path graded this slug moments ago; its marker may not be readable yet,
+    # so the slugs fired this tick close that window.
+    called = []
+    monkeypatch.setattr(collect, "has_autograde_results", lambda org, slug: False)
+    monkeypatch.setattr(
+        "dsl_course.collect.collect",
+        lambda m, t, c, deadline=None, group=False: called.append(t) or 0,
+    )
+    r = _r("a1-grade", WHEN, grade=Grade("assignment-1-f2026"))
+    assert scheduler._execute_nondeploy(
+        "Course-Org", "Cohort-f2026", r, {"assignment-1"}
+    ) == 0
+    assert called == []
+
+
+def test_run_autogrades_once_even_with_a_legacy_grade_entry_for_the_same_slug(monkeypatch):
+    # End to end: the automatic path fires, the legacy entry for the same slug does not.
+    _only_snapshots_taken(monkeypatch)
+    graded = _stub_collect(monkeypatch, marked=set(), templates={"assignment-1-f2026"})
+    sched = Schedule(
+        assignments={"assignment-1": _due(13)},
+        releases=[_r("a1-grade", datetime(2026, 10, 14, tzinfo=BERLIN), grade=Grade("assignment-1-f2026"))],
+    )
+    monkeypatch.setattr(scheduler.schedule, "load", lambda cohort: sched)
+    assert scheduler.run("Course-Org", "Cohort-f2026", datetime(2026, 10, 15, tzinfo=timezone.utc)) == 0
+    assert [t for _m, t, _c, _d, _g in graded] == ["assignment-1-f2026"]
 
 
 def test_main_all_cohorts_with_none_registered_is_a_noop(monkeypatch):

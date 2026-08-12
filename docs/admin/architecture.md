@@ -262,7 +262,9 @@ live truth).
 
 The intended operating mode: fill a cohort's `classroom-config/schedule.yml` once and the
 hourly **Scheduled release** cron runs the term. It calls the *same* idempotent functions the
-manual buttons do, so re-running is a no-op and there is no "already released" state to track.
+manual buttons do, so re-running a *release* is a no-op and there is no "already released" state
+to track. Grading is the exception: it must not repeat, so its state lives in the artefacts it
+writes (`snapshots/<slug>.csv`, `autograde/<slug>/`) rather than in the scheduler.
 Manual `workflow_dispatch` runs default to `dry_run=true`; the cron passes no inputs and so
 releases for real. It is the one org-level workflow with no `check-team` gate - a scheduled run
 has no actor. A course org with **no registered cohorts** is a quiet no-op: `scheduler.main()`
@@ -272,12 +274,19 @@ the course org (which installs the cron) and bootstrapping its first cohort.
 Each hourly tick:
 
 1. **Freezes passed deadlines** - for every assignment in `assignments:` whose grading deadline
-   (`due + grace_days`) has passed and has no snapshot yet, records the commit each submission
-   repo is at into `classroom-config/snapshots/<slug>.csv` (`repo,sha,recorded_at`). This runs
-   first, so a `grade:` release firing in the same tick already sees it, and it runs whether or
-   not the cohort uses `materials_releases` at all.
-2. **Fires every release whose `when` has arrived** - `deploy` (copy a course-org path into a
-   cohort repo), `assignment` (provision student repos), `grade` (autograde).
+   (`grading_deadline`, else `due + grace_days`) has passed and has no snapshot yet, records the
+   commit each submission repo is at into `classroom-config/snapshots/<slug>.csv`
+   (`repo,sha,recorded_at`).
+2. **Autogrades those same assignments, once each** - template `<slug>-<tag>` in the course org,
+   skipped gracefully when there is no such repo, no `solution` branch, or `autograde: false`.
+   The fire-once marker is the `autograde/<slug>/` results directory: present means graded, so
+   never again (a re-grade means deleting it). No `grade:` entry is needed.
+3. **Fires every release whose `when` has arrived** - `deploy` (copy a course-org path into a
+   cohort repo), `assignment` (provision student repos), `grade` (legacy autograde, sharing the
+   same marker so it cannot double-fire).
+
+Phases 1-2 run before the releases and run whether or not the cohort uses `materials_releases`
+at all.
 
 **Why snapshots.** A git committer date is entirely client-supplied (`GIT_COMMITTER_DATE`), so
 the old `git rev-list --before` pin could be defeated by backdating a late commit. The snapshot

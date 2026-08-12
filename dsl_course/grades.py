@@ -84,6 +84,10 @@ GRADE_FIELDS = (
     "team_comments",
 )
 
+# The columns the autograder writes. They are WRITE-ONCE (see merge_auto): once one holds a
+# value - a machine score, or a marker's correction of one - no later run may replace it.
+MACHINE_FIELDS = ("auto", "team", "team_grade")
+
 _STARTER_README = (
     "# Your gradebook\n\n"
     "This private repository is yours alone. Grades and feedback for each piece of "
@@ -204,18 +208,37 @@ def merge_auto(text: str, updates: list[tuple[str, dict[str, str]]]) -> str:
     Each update is (github_handle, {field: value}); the handle's row is updated in place
     (preserving every other column a faculty & instructors member has already filled) or created and
     appended if absent. Used by the collector to record `auto` (individual) or
-    `team`/`team_grade` (group) without disturbing manual marks, comments, or final."""
+    `team`/`team_grade` (group) without disturbing manual marks, comments, or final.
+
+    WRITE-ONCE. A machine-written cell (MACHINE_FIELDS) that already holds a value is NEVER
+    overwritten - this fills EMPTY cells only, on scheduled and manual runs alike. That is
+    what makes a hand-edited `auto`/`team_grade` safe: no re-run can silently replace a
+    marker's correction with a recomputed score. To get a fresh machine score, clear those
+    cells (or delete the CSV) first, then re-grade."""
     rows = parse_grades(text) if text.strip() else []
     order = [r.github_handle for r in rows]
     by_handle = {r.github_handle: r for r in rows}
+    preserved = 0
     for handle, fields in updates:
         row = by_handle.get(handle)
         if row is None:
             row = GradeRow(github_handle=handle)
             by_handle[handle] = row
             order.append(handle)
+        kept = 0
         for key, value in fields.items():
+            if key in MACHINE_FIELDS and getattr(row, key, ""):
+                kept += 1  # already filled (hand-edited or graded before) - leave it
+                continue
             setattr(row, key, value)
+        if kept:
+            preserved += kept
+            log(f"  [keep] {handle}: {kept} existing cell(s) left as they are")
+    if preserved:
+        log_ok(
+            f"{preserved} existing machine-written cell(s) preserved - "
+            f"{'/'.join(MACHINE_FIELDS)} are write-once; clear a cell to have it recomputed"
+        )
     return dump_grades([by_handle[h] for h in order])
 
 
