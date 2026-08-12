@@ -5,35 +5,30 @@ the model solution + autograder. One per assignment: `assignment-N-{f/s}YYYY`.
 
 ## Prerequisites
 
-- A bootstrapped [course org](01-new-course-org.md), and **push access on its content repos** -
-  normally via the tag-scoped `instructors-<tag>` team (reconciled by **Sync membership** from the
-  cohort's `classroom-config/people.yml`), or `course-admin` membership. See
+- A bootstrapped [course org](01-new-course-org.md) and push access on its content repos - see
   [Add materials → Prerequisites](02-add-materials-to-course.md#prerequisites).
 
 ## Steps
 
 1. **Scaffold the template.** Course org → `.github` → **Actions** →
-   [New assignment](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/new-assignment.yml), inputs `number` = `1`, `tag` = `f2026` → creates **`assignment-1-f2026`**  with two branches:
+   [New assignment](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/new-assignment.yml),
+   inputs `number` = `1`, `tag` = `f2026` → creates **`assignment-1-f2026`** with two branches
+   of stubs for you to replace:
 
-   | Branch | Holds (all stubs, for you to replace) | Who sees it |
+   | Branch | Holds | Who sees it |
    |--------|-------|-------------|
    | `main` | `README.md` (brief) + `starter.*` | **what students get** |
    | `solution` | `solution/` (model answer) + `grading.yml` + hidden `tests/` | **faculty & instructors only** |
 
-   That tag's `instructors-<tag>` team (plus `course-admin`) is granted **push** on it
-   automatically, so you can push straight away.
+2. **Push your content** - brief + starter to `main`; model solution, `grading.yml` and the
+   hidden `tests/` to `solution`. Student repos are generated from **`main` only**, unless you
+   tick `include_solution` at release time. For a hand-marked assignment, set
+   `autograde: false` in `grading.yml` (or delete the file).
 
-2. **Push your content** - the real brief + starter to `main`; the model solution,
-   `grading.yml` and the hidden `tests/` that **Grade assignment** runs to `solution`. Student
-   repos are generated from **`main` only**; the `solution` branch is never distributed unless
-   you tick `include_solution` at release time. Set `autograde: false` in `grading.yml` (or
-   delete that file) for a fully hand-marked assignment.
+3. **Run Refresh actions** so the assignment dropdowns update.
 
-3. **Refresh actions** so the assignment dropdowns update.
-
-Repeat for each assignment (`number` = 2, 3, …). A group project uses the same flow - whether it
-releases per-team or per-student is decided at **release** time (the `group` checkbox), not here.
-`grading.yml`'s `type:` is only the autograder's fallback when that checkbox is left unticked.
+Repeat for each assignment (`number` = 2, 3, …). A group project uses the same flow - per-team
+or per-student is decided at **release** time (the `group` checkbox), not here.
 
 > **Deadlines aren't set here.** The due date students see is **per cohort**, in that cohort's `schedule.yml` - see [Release assignment → Deadlines](08-release-assignment-to-cohort.md#deadlines).
 

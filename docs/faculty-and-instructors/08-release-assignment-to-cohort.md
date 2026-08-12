@@ -1,7 +1,6 @@
 # Release an assignment to a cohort
 
-Freeze a cohort-level copy of an assignment template and hand out one **private repo per
-student**, autograder included.
+Hand out one **private repo per student** from an assignment template, autograder included.
 
 ## Prerequisites
 
@@ -11,35 +10,31 @@ student**, autograder included.
 
 ## The schedule normally does this
 
-An `assignment:` entry in the cohort's `schedule.yml` `materials_releases:` plan does exactly
-what the button below does, at the datetime you gave it - and keeps doing it, so a student who
-onboards late gets their repo on the next hourly tick. Write the plan once:
-[Schedule releases](06-schedule-releases.md).
-
-**The button below is the manual override** - for a demo, an early or ad-hoc hand-out, or
+An `assignment:` entry in the cohort's `schedule.yml` hands out the same repos at the datetime
+you give it, and keeps doing it - so a student who onboards late still gets their repo:
+[Schedule releases](06-schedule-releases.md). Use the button for a demo, an ad-hoc hand-out, or
 recovery while you fix the YAML.
 
 ## Release assignment (manual)
 
 Course `.github` → **Actions** →
 [Release assignment](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/release-assignment.yml).
-Two stages:
-
-1. **Freeze** a cohort-level template repo `<slug>` from the chosen `assignment-*-fYYYY` template.
-2. **Generate** one **private** `<slug>-<handle>` repo per onboarded student (student added as
-   collaborator). The autograder rides along.
+It freezes a cohort-level copy `<slug>` of the chosen `assignment-*-fYYYY` template, then
+creates one **private** `<slug>-<handle>` repo per onboarded student, with that student as
+collaborator.
 
 Other inputs, all default **off**: `include_solution` (also push the template's `solution`
 branch into each student repo), `group` (one shared repo per **team** from `teams.csv` instead
 of one per student - see [Enrol students → groups](05-enrol-students-to-cohort.md#group-assignments-optional)),
 `dry_run` (list the repos that *would* be created).
 
-Auditors (`role=auditor` on the roster) are skipped - read-only means no assignment repo.
+Auditors (`role=auditor`) are skipped. The assignment brief appears on the cohort site
+automatically.
 
 ## Deadlines
 
-**One source of truth** - the **cohort's** `classroom-config/schedule.yml` `assignments:`
-block, keyed by the assignment **slug** (the repo name minus `-fYYYY`/`-sYYYY`):
+Set in the **cohort's** `classroom-config/schedule.yml`, keyed by the assignment **slug** (the
+repo name minus `-fYYYY`/`-sYYYY`):
 
 ```yaml
 assignments:
@@ -49,22 +44,16 @@ assignments:
                                    # autograder pins to 2026-10-15; students still see 10-13
 ```
 
-- **The due date students see** (cohort site schedule + the brief's "due" event) is
-  `assignments[slug].due` (23:59 that day). Edit → commit → **Sync site**. Omit it and the
-  date is **synthesised** (fortnightly).
-- **The grading deadline** is that **same date + `grace_days`** - there is **no separate
-  deadline input** on the Grade assignment button. `grace_days` is the one knob for a quiet
-  grace period: grade later than the published date without changing what students were told.
-- **The commit that gets graded** is frozen for you. Shortly after the grading deadline
-  passes, the hourly cron records each submission repo's HEAD into
-  `classroom-config/snapshots/<slug>.csv` (`repo,sha,recorded_at`) using the **server's**
-  clock - a git committer date is client-supplied, so a backdated late push would otherwise
-  slip past. The file is **write-once**: later pushes can't move the pin. To deliberately
-  re-freeze (e.g. repos were provisioned late), delete the CSV and the next tick rebuilds it.
-
-## The site
-
-Releases call **Sync site** automatically (the assignment brief appears on the cohort site).
+- **The date students see** (cohort site + the brief's "due" event) is `assignments[slug].due`
+  (23:59 that day). Edit → commit → **Sync site**. Omit it and a date is synthesised
+  (fortnightly).
+- **The grading deadline** is that same date + `grace_days` - there is **no deadline input** on
+  the Grade assignment button. Use `grace_days` to grade later without changing what students
+  were told.
+- **The commit graded** is frozen for you shortly after the grading deadline passes, into
+  `classroom-config/snapshots/<slug>.csv`. It is **write-once** - later pushes can't move the
+  pin. To deliberately re-freeze (e.g. repos provisioned late), delete the CSV and the next
+  hourly tick rebuilds it.
 
 ## Next
 

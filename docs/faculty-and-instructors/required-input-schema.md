@@ -1,16 +1,12 @@
 # Required input schema
 
-The authoritative reference for **every input** needed to stand up a working course + cohort.
-For a ready-to-run worked example, see [`example-course/`](../../example-course/README.md).
-
-Everything faculty-facing is a **GitHub Actions button** (also exposed as a CLI). The Python in
-`dsl_course/` is the single implementation behind every button.
+Every input needed to stand up a working course + cohort. Worked example:
+[`example-course/`](../../example-course/README.md).
 
 ## Deployment checklist
 
 Tick these off in order. `[required]` must be done to deploy; everything else is synthesised or
-skipped if you leave it. The one item worth doing *before* it's strictly required is the
-cohort's `schedule.yml` - fill it in up front and the hourly cron runs your whole term.
+skipped if you leave it.
 
 ### Course setup (once)
 
@@ -26,57 +22,19 @@ cohort's `schedule.yml` - fill it in up front and the hourly cron runs your whol
 
 - [ ] `[required]` Create the **cohort org** in the web UI; add **`hertie-dsl-bot`** as **Owner**.
 - [ ] `[required]` From the **course org's** Actions tab, run **Bootstrap cohort** with the empty cohort org's name. Seeds `welcome` + `classroom-config`, scaffolds the site, registers the cohort, propagates the token, applies the course's current `course_admins`.
-- [ ] `[do this first]` **Fill in `classroom-config/schedule.yml`, for the whole term.** Its `materials_releases` plan is what the hourly **Scheduled release** cron runs: every materials release, every assignment hand-out, every autograde run. Its `assignments`/`exams` dates drive the website and the grading deadlines. **Fill the schedule early and you never click a release button.** See [The schedule](#the-schedule)
-and the [Schedule releases](06-schedule-releases.md) runbook.
+- [ ] `[do this first]` **Fill in `classroom-config/schedule.yml`, for the whole term.** Its `materials_releases` plan is what the hourly **Scheduled release** cron runs: every materials release, every assignment hand-out, every autograde run. Its `assignments`/`exams` dates drive the website and the grading deadlines. See [The schedule](#the-schedule) and the [Schedule releases](06-schedule-releases.md) runbook.
 - [ ] `[required]` **Roster**: put registrar data in `classroom-config/students.csv` - `student_id, hertie_email, name, section` (+ `role: auditor` for read-only auditors). Leave `github_handle, github_id` blank; onboarding fills them.
-- [ ] *(optional)* **Instructors/TAs**: `classroom-config/people.yml`. Declared per cohort because most cohorts have different lecturers/TAs. See [People](#people).
+- [ ] *(optional)* **Instructors/TAs**: `classroom-config/people.yml`, per cohort. See [People](#people).
 - [ ] `[required]` **Enrol**: run **Send enrolment codes** (untick `dry_run` to actually send). Students self-onboard via the **Join** issue in `welcome`.
 - [ ] *(optional)* **Ad-hoc release**: **Release materials** / **Release assignment** for anything you want out earlier or differently than the schedule says.
 - [ ] *(optional)* **Return marks**: **Grade assignment** → fill `classroom-config/grades/<slug>.csv` → **Sync gradebooks** → **Render grades (preview)** → **Distribute grades**. See [the grading runbook](09-grade-and-return-assignments.md).
 - [ ] *(optional)* **Show status** any time: a per-cohort view of what's configured, what's missing, and an edit link for each gap.
 
-## What you end up with
-
-```mermaid
-flowchart LR
-  subgraph COURSE["COURSE org (persistent, private)"]
-    cfg[".github/dsl-course.yml<br/>course identity + course_admins"]
-    mat["course-materials-f202x<br/>lectures/ + readings/"]
-    tmpl["assignment-N-f202x<br/>template repos"]
-    console[".github<br/>console + buttons"]
-  end
-
-  subgraph COHORT["COHORT org (per year, private)"]
-    dotgithub[".github<br/>profile README + a dsl-course.yml<br/>pointer back to the course org"]
-    ccfg["classroom-config/<br/>students.csv, teams.csv, grades/*.csv,<br/>snapshots/*.csv, schedule.yml, people.yml"]
-    repos["&lt;assignment&gt;-&lt;handle&gt;<br/>per-student repos"]
-    site["live auto-generated site<br/>&lt;cohort&gt;.github.io"]
-  end
-
-  COURSE -->|"release + course_admins"| COHORT
-  ccfg -.->|"instructors-&lt;tag&gt; team<br/>(synced up)"| console
-  tmpl -->|instantiate per student| repos
-  mat --> site
-  ccfg --> site
-```
-
-The course org is the source of truth for identity + course-wide admin access; each cohort is
-the source of truth for its own roster, teams, grades, schedule and instructors, and receives
-materials releases from the course org.
-
 ## The input-schema contract
 
-Every part of a course has **one canonical place**:
-
-1. the course org's `.github/dsl-course.yml` - **identity + `course_admins`** (mirrored into every cohort);
-2. `course-materials-fYYYY` - the **content** (lectures/readings/syllabus by session);
-3. `assignment-*-fYYYY` template repos - the **assignments**;
-4. the cohort's `classroom-config` - **everything per-cohort**: roster, teams, grades, snapshots, schedule, this cohort's instructors/TAs.
-
-A cohort org's own `.github/dsl-course.yml` is just a `course:`/`org:` pointer back to its
-course org, so the cohort-side dispatchers know where to fire. Nothing to edit there.
-
-_Anything you don't supply is synthesised or skipped, never blocks._
+Where each input is edited, and what it becomes. Anything you don't supply is synthesised or
+skipped, never blocks. A cohort org's own `.github/dsl-course.yml` is just a pointer back to its
+course org - nothing to edit there.
 
 | Element | Input location | Becomes |
 |-------|-----------------|---------|
@@ -92,8 +50,6 @@ _Anything you don't supply is synthesised or skipped, never blocks._
 | **Roster** | cohort `classroom-config/students.csv` | enrolment + per-student provisioning |
 
 ## The two manual steps
-
-Everything else is a button or a file edit.
 
 | Input | How | Notes |
 |-------|-----|-------|
@@ -115,72 +71,54 @@ Everything else is a button or a file edit.
 | `enrol_code` | **Send enrolment codes** | generated; the token the student pastes to join |
 | `role` | registrar | blank or `enrolled` (default) = full participant; `auditor` = read-only |
 
-**Auditors.** `role: auditor` puts that student on the cohort's `auditors` team instead of
-`students`. Both teams get read on every released-materials repo - the split is assignments
-and grades, not content. Auditors get **no assignment repos, no gradebook, no marks**, and are
-politely refused if they open a **Join team** issue. Everything else is identical, including
-their enrolment code. A roster written before the column existed reads as all-enrolled.
+**Auditors.** `role: auditor` puts that student on the `auditors` team instead of `students`.
+Both read every released-materials repo. Auditors get **no assignment repos, no gradebook, no
+marks**, and are refused if they open a **Join team** issue. A roster written before the column
+existed reads as all-enrolled.
 
 ## How students are managed
 
-**Two stages: enrol once, provision per assignment.**
-
-1. **Enrolment.** Run **Send enrolment codes** (default `dry_run=true` - untick it to send).
-   It writes a random `enrol_code` onto every roster row that lacks one and emails it to each
-   not-yet-onboarded student. The
-   student opens a **Join** issue in the public `welcome` repo and pastes the code; `onboard.yml`
-   matches it, takes the issue **author** as the authenticated (unspoofable) GitHub handle,
-   writes handle + immutable `github_id` back onto that row, and grants org membership + the
-   `students` or `auditors` team. Non-matching codes are rejected. **The student must accept
-   the org invite** before they can see anything.
-
-   The code carries no personal data, so nothing in the public issue needs redacting; it is
-   unguessable and single-use, so a classmate can't claim your row.
-
+1. **Enrolment.** Run **Send enrolment codes** (default `dry_run=true` - untick it to send). It
+   writes a random `enrol_code` onto every roster row that lacks one and emails it to each
+   not-yet-onboarded student. The student opens a **Join** issue in the public `welcome` repo and
+   pastes the code; their handle and `github_id` are written back onto that row and they are added
+   to the `students` or `auditors` team. Non-matching codes are rejected. **The student must
+   accept the org invite** before they can see anything.
 2. **Provisioning.** **Release assignment** generates one private `<slug>-<handle>` repo per
-   onboarded, enrolled student from the assignment template. **Submission** is a plain
-   `git push` to `main`.
+   onboarded, enrolled student. **Submission** is a plain `git push` to `main`.
 
-A push to `students.csv` triggers **Sync membership**, which reconciles both role teams from
-the roster - so deleting a row off-boards that student on the same push, no separate step. A
-daily cron re-runs it as a safety net.
+Deleting a row from `students.csv` off-boards that student on the same push - no separate step.
 
 ## Grades
 
-Each student gets one private `grades-<handle>` repo - the single home for every mark (team
-project repos may be public, so grades never go there). Fill
-`classroom-config/grades/<slug>.csv` (`github_handle, team, auto, manual, team_grade,
-adjustment, final, comments, team_comments`); `final` is what the student sees and is
-authoritative, `auto`/`manual` are never shown to them. **Render grades** opens one PR whose
-diff is the preview; **Distribute grades** fans the merged files out. A teammate never sees
-another member's `adjustment`.
+Each student gets one private `grades-<handle>` repo. Fill `classroom-config/grades/<slug>.csv`
+(`github_handle, team, auto, manual, team_grade, adjustment, final, comments, team_comments`);
+`final` is what the student sees, `auto`/`manual` are never shown to them. **Render grades** opens
+one PR whose diff is the preview; **Distribute grades** fans the merged files out. A teammate
+never sees another member's `adjustment`.
 
-**Autograding is optional and private.** If an assignment's `solution` branch carries hidden
-tests + a `grading.yml`, **Grade assignment** runs them faculty-side after the deadline and
-fills `auto` (individual) / `team_grade` (group). Student repos get no tests, no workflow and
-no score.
+**Autograding is optional.** If an assignment's `solution` branch carries hidden tests + a
+`grading.yml`, **Grade assignment** runs them faculty-side after the deadline and fills `auto`
+(individual) / `team_grade` (group). Student repos get no tests, no workflow and no score.
 
 Step-by-step: [Grade and return assignments](09-grade-and-return-assignments.md).
 
 ## Teams (group assignments)
 
-`classroom-config/teams.csv` (`assignment, team, github_handle`) is the only writer surface:
-students self-select via the welcome **Join team** issue, or you edit the CSV. A push triggers
-**Sync membership**, which materialises a GitHub Team `<assignment>-<team>` from it - one-way,
-so the Team can't drift. A **Release assignment** run with `group` ticked then grants each team
-its shared repo. See [ARCHITECTURE → Project teams](../admin/architecture.md#project-teams-group-assignments).
+`classroom-config/teams.csv` (`assignment, team, github_handle`) is the only place to write:
+students self-select via the welcome **Join team** issue, or you edit the CSV. A push materialises
+a GitHub Team `<assignment>-<team>` from it. A **Release assignment** run with `group` ticked then
+grants each team its shared repo.
 
 ## People
 
 Access and website display are **separate inputs**:
 
 - **`course_admins`** (course-wide admin) live in the **course org's** `.github/dsl-course.yml`
-  `people:` block - the single source of truth (SSOT), reconciled into the course org's
-  `course-admin` team and mirrored into every cohort's.
+  `people:` block, and are mirrored into every cohort.
 - **`instructors`/`teaching_assistants`** (push access, and the cohort site's cards) live in
-  **each cohort's** `classroom-config/people.yml`, because most cohorts have different
-  lecturers/TAs. Reconciled into that cohort's `instructors` team AND a course-org
-  `instructors-<tag>` team scoped to that year's content repos + `.github`.
+  **each cohort's** `classroom-config/people.yml`. They get that cohort's `instructors` team plus
+  a course-org `instructors-<tag>` team scoped to that year's content repos + `.github`.
 
 `github_handle` is the only required field in either file. Optional `start`/`end` ISO dates
 auto-rotate access - it lapses on the `end` date with no manual removal.
@@ -200,29 +138,24 @@ people:
     - github_handle: "anOther"
 ```
 
-The course org's `people:` block takes the same shape. Its `instructors`/`teaching_assistants`
-entries there are **display-only** (they feed the public course site's cards) and grant no
-access anywhere. With no `people:` block at all, a site falls back to the org's GitHub
-`instructors` team for cards - and that team is no longer reconciled by **Sync membership**, so
-anyone on it got there by a manual Teams-page edit.
+The course org's `people:` block takes the same shape, but its `instructors`/`teaching_assistants`
+entries are **display-only** (the public course site's cards) and grant no access anywhere.
 
 ## The schedule
 
-`classroom-config/schedule.yml` is this cohort's single home for the **auto-release plan** and
-the **website/grading dates**. Private, per-cohort, no PII. **Fill it in up front and the
-hourly cron runs your term for you.**
+`classroom-config/schedule.yml` holds this cohort's **auto-release plan** and its
+**website/grading dates**. Private, per-cohort, no PII.
 
 **Times are timezone-aware.** A naive time is read in `timezone` (default `Europe/Berlin`), or
-give an explicit offset. The cron is hourly, so a `when:` is honoured to the hour (GitHub cron
-is UTC and best-effort). A bare **release** date means the **start** of that day (00:00); a
-bare **due** date means the **end** (23:59:59); a bare **exam** date shows as 09:00.
+give an explicit offset. The cron is hourly, so a `when:` is honoured to the hour. A bare
+**release** date means the **start** of that day (00:00); a bare **due** date means the **end**
+(23:59:59); a bare **exam** date shows as 09:00.
 
 ### `materials_releases` - the auto-release plan
 
-Each entry is a **label** you choose (`session_2`, `bonus-dataset`, `a1-grade` - just an
-identifier) mapping to a `when:` datetime and one or more actions. Sources are always read from
-the **course org**, destinations always written to this **cohort org**, so entries name repos,
-never orgs.
+Each entry is a **label** you choose (`session_2`, `bonus-dataset`, `a1-grade`) mapping to a
+`when:` datetime and one or more actions. Sources are read from the **course org**, destinations
+written to this **cohort org**, so entries name repos, never orgs.
 
 | Action | Does | Fields |
 |--------|------|--------|
@@ -251,9 +184,7 @@ materials_releases:
     # shorthand: `grade: assignment-1-f2026` takes the deadline from `assignments:` below
 ```
 
-Every release is idempotent, so a re-run is a no-op and there is no "already released" state to
-track. The schedule is the primary release mechanism; the manual release buttons are the
-fallback - for demos, one-offs, and recovery.
+Every release is idempotent, so a re-run is a no-op.
 
 ### Silent failures - the parser never errors
 
@@ -297,39 +228,30 @@ exams:
 
 ### Deadline snapshots
 
-Shortly after an assignment's grading deadline passes, the same hourly cron records the commit
-each submission repo is at into `classroom-config/snapshots/<slug>.csv` (`repo,sha,recorded_at`).
-A git committer date is client-supplied, so only a **server-recorded** pin can be trusted. The
+Shortly after an assignment's grading deadline passes, the hourly cron records the commit each
+submission repo is at into `classroom-config/snapshots/<slug>.csv` (`repo,sha,recorded_at`). The
 file is **write-once** - a later push can never move it; a blank sha means nothing was submitted
 by the deadline. To deliberately re-freeze (e.g. repos provisioned late), delete the CSV and the
 next tick rebuilds it. This happens whether or not the cohort uses `materials_releases` at all.
 
 ## Token
 
-One secret, `DSL_BOT_TOKEN`, runs every workflow. On both orgs it needs repo admin (create
-repos, topics, settings), org members + teams, and contents R/W - a classic PAT with
-`repo` + `admin:org` + `workflow`.
-
-**Free-plan caveat:** org secrets don't reach private repos, so the token gets there three ways:
-Bootstrap sets it as an *org* secret (for the public `.github`/`welcome`), Bootstrap **also**
-mirrors it as a *repo* secret onto each private **infra** repo - that is the only path it reaches
-`classroom-config`, whose dispatch workflows need it - and Refresh propagates it as a *repo*
-secret on each private **content** repo. On Team/Enterprise the mirroring is unnecessary.
+One secret, `DSL_BOT_TOKEN`, runs every workflow: a classic PAT with `repo` + `admin:org` +
+`workflow`. Bootstrap and Refresh put it everywhere it is needed - you never set it by hand.
 
 ## Email (optional)
 
 Enrolment-code and grade emails go through `dsl_course.mailer`. A `dry_run` preview needs
-neither transport:
+neither transport. Set the secrets at org level or on the `.github` repo:
 
 - **Microsoft Graph (preferred)** - `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`, `GRAPH_CLIENT_SECRET`,
   `GRAPH_SENDER`. Needs an Entra app registration with the **Mail.Send** application
   permission, admin-consented and scoped to one shared mailbox.
 - **SMTP (fallback)** - `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD` (+ optional `SMTP_PORT`,
-  `SMTP_FROM`). Works only where the tenant still allows SMTP AUTH.
+  `SMTP_FROM`). Most M365 tenants disable SMTP AUTH (the `5.7.139` error), so Graph is usually
+  required.
 
-Modern M365 tenants usually disable SMTP AUTH (the `5.7.139` error), so Graph is typically
-required. Set the secrets at org level or on the `.github` repo. Deliverability still needs
-SPF/DKIM/DMARC on the sending domain.
+Deliverability still needs SPF/DKIM/DMARC on the sending domain.
 
 ## Known limits
 

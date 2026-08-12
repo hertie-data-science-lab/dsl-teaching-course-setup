@@ -1,8 +1,7 @@
 # Enrol students
 
-Students get into the cohort org and its role team by pasting an **enrolment code** emailed to
-their university address - so only registrar-listed people can join, and their GitHub handle is
-captured unspoofably.
+Email each registrar-listed student an **enrolment code**; they paste it into a Join issue and
+land in the cohort org and their role team.
 
 ## Prerequisites
 
@@ -11,63 +10,39 @@ captured unspoofably.
 - To actually *send* email: the `GRAPH_*` (preferred) or `SMTP_*` Actions secrets. Without them
   every send stays a preview (codes are still written to the roster).
 
-## Flow
-
-```mermaid
-sequenceDiagram
-  participant F as Faculty & instructors
-  participant W as welcome repo
-  participant S as Student
-  participant O as Cohort org
-  F->>S: Send enrolment codes (emails each a dsl-xxxxxx code)
-  S->>W: open "Join" issue, paste code
-  W->>W: onboard matches code → records handle + GitHub id
-  W->>O: add to org + the students (or auditors) team
-  S->>O: accept org invite (required to see anything)
-  F->>W: edit students.csv (push) → Sync membership reconciles
-```
-
 ## Steps
 
 1. **Send enrolment codes.** Course org → `.github` → **Actions** →
    [Send enrolment codes](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/send-codes.yml),
-   pick the cohort. Writes a random `enrol_code` onto every roster row that lacks one and emails
-   it to each not-yet-onboarded student at their `hertie_email`.
+   pick the cohort. Writes an `enrol_code` onto every roster row that lacks one and emails it to
+   each not-yet-onboarded student at their `hertie_email`.
 
    > **`dry_run` defaults to `true`** - the first run only previews the codes and emails. Untick
    > it to actually write and send.
 
 2. **Students self-onboard.** Each opens a **Join** issue in the cohort's `welcome` repo and
-   pastes their code. `onboard` matches it to their roster row, records their (unspoofable,
-   issue-author) GitHub handle + immutable id, and adds them to the org and the team their
-   `role` names - `students`, or `auditors` for a read-only auditor. **They must accept the org
-   invite** before they can see anything.
+   pastes their code; they're added to the org and to the team their `role` names (`students`,
+   or `auditors`). **They must accept the org invite** before they can see anything.
 
-   > **Testing the flow as an admin?** A Join issue opened by an org **owner/admin** gets its
-   > roster row linked but **no team added** - adding you as a `member` would demote your owner
-   > role and lock you out of the private repos, so `onboard` labels the issue `staff`, says so,
-   > and stops. Use a non-staff account to exercise the real student path.
+   > **Testing the flow yourself?** A Join issue opened by an org owner/admin gets labelled
+   > `staff` and stops - no team is added, because that would demote you and lock you out. Use a
+   > non-staff account to exercise the real student path.
 
-3. **Sync membership runs itself.** Any push to `classroom-config/students.csv` triggers it,
-   reconciling both role teams from the roster - so deleting a row off-boards that student on
-   the same push, and changing their `role` moves them between teams. A daily cron re-runs it as
-   a safety net; the button is a manual escape hatch.
+3. **Keep the roster true.** Any push to `classroom-config/students.csv` triggers **Sync
+   membership**: deleting a row off-boards that student, changing their `role` moves them
+   between teams. A daily cron re-runs it; the button is the manual escape hatch.
 
 ## Auditors
 
-Set `role: auditor` on a roster row. That student joins the `auditors` team, which gets **read
-on every released-materials repo, exactly like enrolled students** - the split is assignments
-and grades, not content. Auditors get no assignment repo, no gradebook and no marks, and are
-politely refused (with a `needs-review` label for you) if they open a **Join team** issue.
-Everything else is identical, including their enrolment code. A blank or missing `role` means
-enrolled.
+Set `role: auditor` on a roster row (blank means enrolled). Auditors get **read on every
+released-materials repo, exactly like enrolled students**, but no assignment repo, no gradebook
+and no marks. A **Join team** issue from an auditor is refused and labelled `needs-review`.
 
 ## Group assignments (optional)
 
-Students open a **Join team** issue in `welcome` (or you edit `classroom-config/teams.csv`:
-`assignment, team, github_handle`) - either way the push triggers **Sync membership**, which
-materialises a GitHub team per group. A **Release assignment** run with `group` ticked then
-grants each team its shared repo.
+Students open a **Join team** issue in `welcome`, or you edit `classroom-config/teams.csv`
+(`assignment, team, github_handle`) - either way **Sync membership** creates a GitHub team per
+group. A **Release assignment** run with `group` ticked then grants each team its shared repo.
 
 ## Next
 

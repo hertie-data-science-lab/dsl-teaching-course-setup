@@ -1,20 +1,18 @@
 # TAs & faculty assistants - day one
 
-Someone added you to a cohort's `classroom-config/people.yml`, so you are now on its teaching
-team. (**FA** = faculty assistant.) This page is the ten minutes that saves you an afternoon.
-New to the vocabulary? [`../START-HERE.md`](../START-HERE.md) defines every term once.
+You've been added to a cohort's `classroom-config/people.yml`, so you are on its teaching team.
+(**FA** = faculty assistant.) Terms are defined in [`../START-HERE.md`](../START-HERE.md).
 
 ## Run this first
 
-Course org → `.github` → **Actions** → **Show status**, pick your cohort. It is a read-only
-per-cohort checklist of what's configured and what's missing, with an edit link for each gap -
-the fastest orientation to the state of the cohort you just inherited.
+Course org → `.github` → **Actions** → **Show status**, pick your cohort. It lists what's
+configured and what's missing, with an edit link for each gap.
 
-## The one gotcha
+## Your buttons are in the course org, not the cohort org
 
-**Your buttons are not in the cohort org.** The cohort org's front page is student-facing; it has
-no Actions of its own. Everything you run lives in the **course** org's `.github` repo - the
-**control panel** - and acts on a cohort you pick from a dropdown. Bookmark that Actions tab.
+The cohort org has no Actions of its own - its front page is student-facing. Everything you run
+lives in the **course** org's `.github` repo and acts on a cohort you pick from a dropdown.
+Bookmark that Actions tab.
 
 ## What you now have
 
@@ -28,26 +26,20 @@ Once **Sync membership** has run and you've accepted the org invites:
 
 ## Runbooks you actually need
 
-Skip 01-04 - those are course and cohort *setup*, done before you arrived.
+Skip 01-04 - course and cohort *setup*, done before you arrived.
 
 | # | Runbook | Your part |
 |---|---------|-----------|
 | [05](../faculty-and-instructors/05-enrol-students-to-cohort.md) | Enrol students | send codes, chase non-joiners, keep `students.csv` true |
-| [06](../faculty-and-instructors/06-schedule-releases.md) | **Schedule releases** | the main event - see below |
-| [07](../faculty-and-instructors/07-release-materials-to-cohort.md) | Release materials | ad-hoc pushes the schedule didn't cover |
-| [08](../faculty-and-instructors/08-release-assignment-to-cohort.md) | Release an assignment | ad-hoc hand-outs |
+| [06](../faculty-and-instructors/06-schedule-releases.md) | **Schedule releases** | the main event - fill `schedule.yml` for the whole term |
+| [07](../faculty-and-instructors/07-release-materials-to-cohort.md) | Release materials | fallback: ad-hoc pushes the schedule didn't cover |
+| [08](../faculty-and-instructors/08-release-assignment-to-cohort.md) | Release an assignment | fallback: ad-hoc hand-outs |
 | [09](../faculty-and-instructors/09-grade-and-return-assignments.md) | Grade and return | autograde → marks → preview PR → distribute |
-
-> The schedule (`materials_releases` in `schedule.yml`) is the primary release mechanism; the
-> manual release buttons are the fallback - for demos, one-offs, and recovery.
-
-So keep `schedule.yml` accurate and 07/08 stay unused. Reach for them when a session slips, a
-release fails, or you're demoing.
 
 ## Files you'll edit
 
-All in the cohort org's private `classroom-config` repo. A push to any of the first three
-triggers **Sync membership** or a site re-sync automatically.
+All in the cohort org's private `classroom-config` repo. Pushing to any of the first three
+re-syncs automatically - no button to press.
 
 | File | For |
 |------|-----|

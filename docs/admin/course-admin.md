@@ -1,35 +1,30 @@
 # Course admin - running an existing course
 
-You've been made an admin of a course org that's already running. This page is what that
-membership means, how access is declared (and revoked), and where the teams are. For the
-button-by-button walkthroughs see the
-**[runbooks](../faculty-and-instructors/README.md)**; if you're new to the platform start at
-**[START-HERE](../START-HERE.md)**. Every input file and its exact schema is in
-**[required-input-schema.md](../faculty-and-instructors/required-input-schema.md)**.
+You're an admin of a course org that's already running. This page covers what that grants and
+how access is declared and revoked.
 
-**Start by running [Show status](../faculty-and-instructors/actions-reference.md) on each cohort** (the
-course org's `.github` Actions tab → **Show status**). It's read-only and prints a per-cohort
-checklist - identity, people, schedule + release plan, roster, teams, grades - with edit links
-for anything missing. That is the fastest read of what state you've inherited.
+- Button-by-button walkthroughs: **[runbooks](../faculty-and-instructors/README.md)**
+- New to the platform: **[START-HERE](../START-HERE.md)**
+- Input files and their schemas:
+  **[required-input-schema.md](../faculty-and-instructors/required-input-schema.md)**
+
+**Start by running [Show status](../faculty-and-instructors/actions-reference.md) on each
+cohort** (course org's `.github` Actions tab → **Show status**). It is read-only and prints a
+per-cohort checklist - identity, people, schedule + release plan, roster, teams, grades - with
+edit links for anything missing.
 
 ## What course-admin membership grants
 
-Membership of **that course org's own `course-admin` team** grants admin on the course org's
-`.github` repo, which is what makes **every** button in that org's Actions tab visible and
-runnable - across all its cohorts. GitHub only shows "Run workflow" to write+ users, so without
-this (or an `instructors-<tag>` grant, below) you'd see nothing.
+Membership of **that course org's own `course-admin` team** makes **every** button in that org's
+Actions tab visible and runnable, across all its cohorts. It is scoped to **one course**;
+central `hertie-data-science-lab` membership gates only org *provisioning*
+([central-admin.md](central-admin.md)) and grants nothing here.
 
-It is scoped to **one course**. Central `hertie-data-science-lab` membership is a separate
-authority that gates only org *provisioning* (see [central-admin.md](central-admin.md)); it
-grants nothing here. Teams are org-scoped, so cross-org grants aren't possible anyway.
+Cron-driven runs (**Scheduled release**, and the automatic paths of **Sync site** /
+**Sync membership** / **Publish course website**) skip the access gate.
 
-The cron-driven workflows (**Scheduled release**, and the automatic paths of **Sync site** /
-**Sync membership** / **Publish course website**) skip the access gate - a scheduled run has no
-actor.
-
-> **Publish course website** carries an editorial responsibility: `actual-readings` mode hosts
-> the reading files publicly, so only publish what you hold the rights to share - use
-> `reading-list` for copyrighted readings.
+> **Publish course website:** `actual-readings` mode hosts the reading files publicly. Only
+> publish what you hold the rights to share - use `reading-list` for copyrighted readings.
 
 ## How access is declared
 
@@ -49,19 +44,25 @@ membership run, which removes anyone the config doesn't name. Edit the file inst
 
 ```mermaid
 flowchart LR
-  dcy["COURSE org · .github/dsl-course.yml<br/>people: course_admins"] -->|Sync membership| ca["course-admin team (course org)<br/>admin on .github → every button, all cohorts"]
-  ca -->|mirrored down| cca["course-admin team<br/>(every cohort org)"]
-  py["COHORT org · classroom-config/people.yml<br/>instructors + teaching_assistants"] -->|Sync membership| ci["instructors team (cohort org)<br/>classroom-config + welcome"]
-  py -->|synced upward| itag["instructors-&lt;tag&gt; team (course org)<br/>push on that tag's repos + .github → the buttons"]
+  dcy["COURSE org · .github/dsl-course.yml
+people: course_admins"] -->|Sync membership| ca["course-admin team (course org)
+admin on .github → every button, all cohorts"]
+  ca -->|mirrored down| cca["course-admin team
+(every cohort org)"]
+  py["COHORT org · classroom-config/people.yml
+instructors + teaching_assistants"] -->|Sync membership| ci["instructors team (cohort org)
+classroom-config + welcome"]
+  py -->|synced upward| itag["instructors-&lt;tag&gt; team (course org)
+push on that tag's repos + .github → the buttons"]
   ui["GitHub Teams UI (hand-add)"] -.->|reverted on next sync| ca
   ui -.->|reverted on next sync| ci
   ui -.->|reverted on next sync| itag
-  ui -->|sticks - manual only| gen["generic instructors team (course org)<br/>escape hatch: invisible to config & Show status"]
+  ui -->|sticks - manual only| gen["generic instructors team (course org)
+escape hatch: invisible to config & Show status"]
 ```
 
-Everyone added this way accepts a one-time org invite (membership shows `pending` until they
-do), after which the buttons appear in their Actions tab. Students never get write, so never
-see them.
+New members accept a one-time org invite (membership shows `pending` until they do), then the
+buttons appear in their Actions tab. Students never get write, so never see them.
 
 ## The three `instructors` teams
 
@@ -73,10 +74,9 @@ Three different teams share the word "instructors" - they are not interchangeabl
 | `instructors-<tag>` | the **course** org | the same `people.yml` (tag = e.g. `f2026`) | push on `.github` + that tag's content repos, i.e. the buttons for that cohort; reconciled |
 | `instructors` | the **course** org (generic) | nothing - manual | a rare, permanent escape hatch |
 
-The generic course-org `instructors` team is the exception: nothing reconciles it, so a manual
-add sticks until manually removed - useful for a guest nobody wants to type into a config file.
-But it is **invisible to every config file and to Show status**, so use it sparingly and record
-who's on it elsewhere. FA (faculty assistant) and TA access should go through `people.yml`.
+The generic course-org `instructors` team is the exception: a manual add sticks until manually
+removed, but it is **invisible to every config file and to Show status**. Use it sparingly and
+record who's on it elsewhere. Route FA (faculty assistant) and TA access through `people.yml`.
 
 ## Related
 

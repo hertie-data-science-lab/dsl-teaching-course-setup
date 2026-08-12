@@ -1,12 +1,11 @@
 # The bot & token reference
 
-The credential every button runs under: the bot account, its exact permissions, and the
-token / secret model. Who may run what is elsewhere - **[course-admin.md](course-admin.md)**
-(a single course's buttons) and **[central-admin.md](central-admin.md)** (central DSL
-authority, plus the bot's setup/rotation procedure). For **how the system is built and how the
-pieces move** - diagrams, the workflow sequences, the token-propagation flow, and the code map -
-see **[architecture.md](architecture.md)**. **Faculty & instructors delivering a course don't
-need any of these** - see the [root README](../../README.md) for the button workflow.
+The credential every button runs under: the bot account, its permissions, and the token/secret
+model. Who may run what is elsewhere - **[course-admin.md](course-admin.md)** (a course's
+buttons) and **[central-admin.md](central-admin.md)** (central DSL authority, plus bot
+setup/rotation). How the system is built: **[architecture.md](architecture.md)**. **Faculty &
+instructors delivering a course don't need this page** - see the
+[root README](../../README.md).
 
 ## The bot account
 
@@ -14,13 +13,12 @@ Every button runs under **one** credential, `DSL_BOT_TOKEN`. **Faculty & instruc
 or see it**: they trigger the Actions buttons, which run server-side under the org secret.
 
 The bot is the shared service account **`hertie-dsl-bot`**: one GitHub account with its own email
-+ 2FA, added as **Owner** of every course/cohort org; its classic PAT is `DSL_BOT_TOKEN`. One
-account, one token, rotated centrally; nobody shares the password. This is the account to
-**invite as Owner** of each new org. Standing it up and rotating it:
++ 2FA, added as **Owner** of every course/cohort org; its classic PAT is `DSL_BOT_TOKEN`. Invite
+this account as Owner of each new org. Standing it up and rotating it:
 [CENTRAL ADMIN → Bot lifecycle](central-admin.md#bot-lifecycle---setup--rotation).
 
-**Exact permissions.** It must be an **Owner** of every course and cohort org, and its token
-must carry:
+**Required permissions.** The bot must be an **Owner** of every course and cohort org, and its
+token must carry:
 
 | Classic PAT scope | Covers |
 | --- | --- |
@@ -28,20 +26,16 @@ must carry:
 | `admin:org` | org **membership** + **teams** (invite students, manage `students`/`auditors`/`instructors`/`course-admin`); org **settings** (2FA); **org secrets** |
 | `workflow` | write the seeded workflow files (the buttons) |
 
-A classic PAT spans both org tiers, which is what cross-org automation needs.
-
 ## Who can run which action
 
-Two **separate** populations, each with its own page - keep them distinct:
+Two **separate** populations - keep them distinct:
 
 - **Who may provision orgs** (the central **Bootstrap Course Org** button): the `faculty`/`admin`
   teams in `hertie-data-science-lab` → **[central-admin.md](central-admin.md)**.
 - **Who may run a specific course's buttons**: that course org's own `course-admin` team, or a
   cohort's `instructors-<tag>` team → **[course-admin.md](course-admin.md)**.
 
-Both gate on **repo permission** on the repo the workflow runs in
-(`workflows_render._CHECK_TEAM`, `bootstrap-org.yml`'s `check-team`), which is also why GitHub
-only shows "Run workflow" to write+ users.
+Both gate on repo permission, which is also why GitHub only shows "Run workflow" to write+ users.
 
 ## Token
 

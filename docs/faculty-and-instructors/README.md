@@ -3,7 +3,7 @@
 Step-by-step runbooks for the faculty- and instructor-facing processes, end to end. Each is a
 button (GitHub Actions) plus, where noted, a `git push` of your own content.
 
-> NB: all workflows can be automated at the start of the semester by correctly filling out the cohort org's `schedule.yml` for that semster. This will then automatically handle all release of materials / assignments / grades etc, with manual GH action buttons in the course org's `.github` repo for ad hoc runs of specific workflows. 
+> NB: all workflows can be automated at the start of the semester by correctly filling out the cohort org's `schedule.yml` for that semester. This will then automatically handle all release of materials / assignments / grades etc, with manual GH action buttons in the course org's `.github` repo for ad hoc runs of specific workflows. 
 
 ## The two tiers
 
@@ -19,32 +19,42 @@ Full model: [`../admin/architecture.md`](../admin/architecture.md).
 
 ```mermaid
 flowchart TD
-  A["<b>Admin</b>: add faculty & instructors to<br/>hertie-data-science-lab / faculty team"] --> B
+  A["<b>Admin</b>: add faculty & instructors to
+hertie-data-science-lab / faculty team"] --> B
 
   subgraph COURSE["Course org (one-time)"]
-    B["<b>01 New course org</b><br/>create + bootstrap"]
-    C["<b>02 Add materials</b><br/>scaffold + push lectures/readings"]
-    D["<b>03 Add assignment</b><br/>scaffold + push brief/solution"]
+    B["<b>01 New course org</b>
+create + bootstrap"]
+    C["<b>02 Add materials</b>
+scaffold + push lectures/readings"]
+    D["<b>03 Add assignment</b>
+scaffold + push brief/solution"]
     B --> C
     B --> D
   end
 
   subgraph COHORT["Cohort org (once / year)"]
-    E["<b>04 New cohort org</b><br/>create + bootstrap"]
-    F["<b>05 Enrol students</b><br/>Send enrolment codes + Join issue"]
-    S["<b>06 Schedule releases</b><br/>fill schedule.yml, the whole term, up front"]
+    E["<b>04 New cohort org</b>
+create + bootstrap"]
+    F["<b>05 Enrol students</b>
+Send enrolment codes + Join issue"]
+    S["<b>06 Schedule releases</b>
+fill schedule.yml, the whole term, up front"]
     E --> F
     E --> S
   end
 
   B --> E
-  C --> G["<b>Releases fire</b><br/>materials · assignments · autograde runs"]
+  C --> G["<b>Releases fire</b>
+materials · assignments · autograde runs"]
   D --> G
   F --> G
   S ==>|"hourly cron — the primary path"| G
-  M["<b>Manual buttons (07 · 08 · 10)</b><br/>fallback: demos, one-offs, recovery"] -.-> G
+  M["<b>Manual buttons (07 · 08 · 10)</b>
+fallback: demos, one-offs, recovery"] -.-> G
   G --> I["Sync site (automatic)"]
-  G --> J["<b>09 Grade + return</b><br/>autograde → marks → preview → distribute"]
+  G --> J["<b>09 Grade + return</b>
+autograde → marks → preview → distribute"]
 ```
 
 ## The workflows

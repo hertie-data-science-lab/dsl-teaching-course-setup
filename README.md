@@ -5,7 +5,7 @@ Central registry of the workflows that deliver courses at the Hertie Data Scienc
 ## Getting Started
 >**[`docs/START-HERE.md`](docs/START-HERE.md)** is the expected point of entry.
 
-Here are some futher useful links:
+Here are some further useful links:
 
 | You are | Go to |
 |---------|-------|
@@ -13,7 +13,7 @@ Here are some futher useful links:
 | A course admin inheriting a running course | [`course-admin.md`](docs/admin/course-admin.md) |
 | A TA or faculty assistant joining a cohort | [`docs/ta-fa/`](docs/ta-fa/README.md) |
 | An example course | [`example course`](example-course/README.md) |
-| Template artefacts| [`templates`](/templates/README.md) |
+| Template artefacts| [`templates`](templates/classroom-config/README.md) |
 | Every workflow in the course org's `.github` Actions tab | [`actions reference`](docs/faculty-and-instructors/actions-reference.md) |
 | Input schema + deployment checklist | [`required-input-schema.md`](docs/faculty-and-instructors/required-input-schema.md)|
 
@@ -21,8 +21,8 @@ Here are some futher useful links:
 ## Deploying a course
 
 - Three phases:
-   - (1) [**set up the course org**](docs/audit-user-journey/docs/faculty-and-instructors/01-new-course-org.md) (once),
-   - (2) [**add a cohort org**](docs/audit-user-journey/docs/faculty-and-instructors/04-new-cohort-org.md) (per year), 
+   - (1) [**set up the course org**](docs/faculty-and-instructors/01-new-course-org.md) (once),
+   - (2) [**add a cohort org**](docs/faculty-and-instructors/04-new-cohort-org.md) (per year), 
    - (3) **run it**. 
 - Fill the cohort's schedule up front (in the `materials_releases` block in `schedule.yml`) and all materials, assignments, hands-ins, grades & feedback etc will be **automatically released/collected**.
 - Otherwise use the manual GitHub actions found in the course/cohort org's `.github` repository to run specific ad hoc workflows
@@ -38,17 +38,33 @@ Two org tiers:
 ```mermaid
 flowchart TB
   subgraph COURSE["COURSE org — e.g. DSL-Demo-Course-E1234 (persistent)"]
-    mat["<strong>course-materials-f2026</strong><br/><br/>lectures/01_.../ + readings/01_.../ (+ syllabus, README)"]
-    tmpl["<strong>assignment-1-f2026</strong><br/><br/>... · template repos (+ optional autograder)"]
-    gh["<strong>.github</strong><br/><br/>· profile (auto) + faculty & instructors buttons + cohort registry"]
+    mat["<strong>course-materials-f2026</strong>
+
+lectures/01_.../ + readings/01_.../ (+ syllabus, README)"]
+    tmpl["<strong>assignment-1-f2026</strong>
+
+... · template repos (+ optional autograder)"]
+    gh["<strong>.github</strong>
+
+· profile (auto) + faculty & instructors buttons + cohort registry"]
   end
 
   subgraph COHORT["COHORT org — e.g. Deep-Learning-f2026 (per-year)"]
-    welcome["<strong>welcome</strong><br/><br/>Join issue → onboard.yml"]
-    cfg["<strong>classroom-config</strong><br/><br/>student-list, teams, schedule, grades, deadlines"]
-    cmat["<strong>materials</strong><br/><br/>released lectures/readings (students + auditors read)"]
-    repos["<strong>assignments</strong><br/><br/>one private repo per student (generated; autograder rides along)"]
-    team["<strong>teams</strong><br/><br/>student (& auditor) groups"]
+    welcome["<strong>welcome</strong>
+
+Join issue → onboard.yml"]
+    cfg["<strong>classroom-config</strong>
+
+student-list, teams, schedule, grades, deadlines"]
+    cmat["<strong>materials</strong>
+
+released lectures/readings (students + auditors read)"]
+    repos["<strong>assignments</strong>
+
+one private repo per student (generated; autograder rides along)"]
+    team["<strong>teams</strong>
+
+student (& auditor) groups"]
   end
 
   pub["&lt;course-org&gt;<course>.github.io · open-courseware site - hosts shared lectures + readings"]
