@@ -40,6 +40,19 @@ of one per student - see [Enrol students → groups](05-enrol-students-to-cohort
 
 Auditors (`role=auditor`) are skipped. The assignment brief appears on the cohort site automatically.
 
+## Group assignments: creating the teams
+
+Teams must exist **before** you release with `group` ticked. Two ways to form them - both end
+up in `classroom-config/teams.csv` (`assignment, team, github_handle`), and **Sync membership**
+turns each into a GitHub team on push:
+
+- **Instructor-allocated**: you edit `teams.csv` directly - add one row per member.
+- **Student self-service**: students open a **Join team** issue in the cohort's `welcome` repo
+  and name their team; the workflow writes the row for them (team size is capped).
+
+The release then grants each team its one shared repo. Full flow:
+[Enrol students → groups](05-enrol-students-to-cohort.md#group-assignments-optional).
+
 ## Deadlines
 
 Set in the **cohort's** `classroom-config/schedule.yml`, keyed by the assignment **slug** (the

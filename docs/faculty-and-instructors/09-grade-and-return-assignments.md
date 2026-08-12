@@ -1,5 +1,10 @@
 # Grade and return assignments
 
+> **This workflow is a prototype - and entirely optional.** It works best where parts of the
+> grading are automatable (hidden tests against code submissions). If it doesn't suit how you
+> plan to grade your course, skip it and grade as you always have. Feedback is very welcome,
+> and we're happy to customise it to your course's needs - just get in touch with the DSL team.
+
 Autograde (optional) → add your marks → preview → distribute. Marks land in each student's
 private `grades-<handle>` repo, never in their assignment repo.
 
