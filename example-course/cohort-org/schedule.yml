@@ -4,6 +4,12 @@
 # that moment, except deploys carrying their own `deploy_datetime`. Sources are read from the COURSE org;
 # destinations written to this COHORT org. Full schema:
 # docs/faculty-and-instructors/DEPLOYMENT-CHECKLIST.md#scheduleyml
+#
+# Changing a date later? Just commit the edit to this file on main - the GitHub web UI
+# is the recommended way (or edit a local clone, commit, push). The hourly cron reads
+# whatever is on main at each tick, so the change simply takes effect within the hour.
+# Only already-fired ONE-SHOT actions don't rewind: a release already shipped stays
+# shipped, and a snapshot/autograde that already ran needs its marker deleted to redo.
 timezone: Europe/Berlin
 
 materials_releases:

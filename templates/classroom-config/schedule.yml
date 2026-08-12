@@ -3,6 +3,12 @@
 # fYYYY tag; website exams at weeks 8 & 15) or simply not scheduled. Uncomment and fill
 # what you want. Times are Europe/Berlin unless you set `timezone:` or give an explicit
 # offset; the Scheduled release cron runs hourly, so times are honoured to the hour.
+#
+# Changing a date later? Just commit the edit to this file on main - the GitHub web UI
+# is the recommended way (or edit a local clone, commit, push). The hourly cron reads
+# whatever is on main at each tick, so the change simply takes effect within the hour.
+# Only already-fired ONE-SHOT actions don't rewind: a release already shipped stays
+# shipped, and a snapshot/autograde that already ran needs its marker deleted to redo.
 
 # timezone: Europe/Berlin              # optional - how the naive datetimes below are read
 

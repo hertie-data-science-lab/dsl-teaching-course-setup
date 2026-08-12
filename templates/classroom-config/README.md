@@ -81,6 +81,11 @@ event (a clinic, a guest lecture): nothing deploys, the site shows the row. Also
 assignment's `grading_deadline` - the moment its snapshot freezes and it is autograded,
 once; grading needs no release entry), and `exams`. Seeded mostly-commented - uncomment and
 fill what you want; anything left out is synthesised or simply not scheduled.
+**Changing a date later** is just committing the edit to this file on main (GitHub web
+UI recommended, or clone/commit/push) - the hourly cron reads whatever is on main at
+each tick, so it takes effect within the hour. Already-fired one-shot actions don't
+rewind: a shipped release stays shipped; a done snapshot/autograde needs its marker
+(`snapshots/<slug>.csv` / `autograde/<slug>/`) deleted to redo.
 
 ## people.yml - this cohort's instructors/TAs (optional)
 

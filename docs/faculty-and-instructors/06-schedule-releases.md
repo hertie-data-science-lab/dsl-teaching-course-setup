@@ -81,7 +81,16 @@ assignments:
     grading_deadline: 2026-10-15    # optional - when the snapshot freezes and it is autograded
 ```
 
-Full schema: [the schedule](DEPLOYMENT-CHECKLIST.md#scheduleyml). 
+Full schema: [the schedule](DEPLOYMENT-CHECKLIST.md#scheduleyml).
+
+## Changing dates mid-term
+
+Just commit the edit to `classroom-config/schedule.yml` on `main` - the **GitHub web UI is
+the recommended way** (or edit a local clone → commit → push). The hourly cron reads
+whatever is on `main` at each tick, so the change takes effect within the hour; there is
+nothing to re-arm or re-deploy. The one caveat: already-fired **one-shot** actions don't
+rewind - a release already shipped stays shipped, and a snapshot/autograde that already ran
+re-runs only if you delete its marker (`snapshots/<slug>.csv` / `autograde/<slug>/`).
 
 ## If you want to verify your schedule before trusting it
 
