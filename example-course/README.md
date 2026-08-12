@@ -92,6 +92,6 @@ Prereqs: the bot is an **owner** of both demo orgs and `DSL_BOT_TOKEN` (`repo` +
   briefs, and a schedule with the real dates (Assignment 1 due 13 Oct, MidTerm 3 Nov, Final
   15 Dec at 14:00).
 - **The control panel:** `Hertie-DSL-Demo/.github` Actions tab - every button.
-- **Onboarding:** open a **Join** issue in `Hertie-DSL-Demo-f2026/welcome` and paste the `enrol_code`
+- **Onboarding:** open a **Join course** issue in `Hertie-DSL-Demo-f2026/welcome` and paste the `enrol_code`
   that step 9 wrote onto a roster row. Try Eve Evans' code to see the **auditor** path: read
   access to the released materials, no assignment repo, no gradebook.

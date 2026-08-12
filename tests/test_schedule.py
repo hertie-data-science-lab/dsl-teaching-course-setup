@@ -279,3 +279,17 @@ def test_malformed_deploy_datetime_falls_back_to_the_calendar_event():
     }
     (r,) = parse(meta).releases
     assert r.deploy[0].deploy_datetime is None  # ships at the calendar_event
+
+
+def test_max_team_size_parses_and_defaults_to_none():
+    meta = {
+        "assignments": {
+            "assignment-4-project": {"due": "2026-11-15", "max_team_size": 3},
+            "assignment-1": {"due": "2026-10-13"},
+            "bad": {"due": "2026-10-20", "max_team_size": "lots"},
+        }
+    }
+    entries = parse(meta).assignments
+    assert entries["assignment-4-project"].max_team_size == 3
+    assert entries["assignment-1"].max_team_size is None
+    assert entries["bad"].max_team_size is None  # malformed -> silently dropped

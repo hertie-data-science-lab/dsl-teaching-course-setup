@@ -184,6 +184,10 @@ class AssignmentEntry:
     due: datetime
     grace_days: int = 0  # legacy grading-only pin extension, never shown to students
     grading_deadline: datetime | None = None  # explicit pin; wins over due + grace_days
+    # Group assignments: the team-size cap the welcome repo's "Join team" flow enforces
+    # (templates/welcome/team-formation.yml reads it straight from schedule.yml; its
+    # default when unset lives there). None = not set here.
+    max_team_size: int | None = None
 
 
 @dataclass
@@ -287,12 +291,17 @@ def _parse_assignments(raw: object, tz: ZoneInfo) -> dict[str, AssignmentEntry]:
             grace = int(entry.get("grace_days", 0))
         except (TypeError, ValueError):
             grace = 0
+        try:
+            cap = int(entry["max_team_size"])
+        except (KeyError, TypeError, ValueError):
+            cap = None
         out[str(slug)] = AssignmentEntry(
             due=due,
             grace_days=grace,
             grading_deadline=_coerce_datetime(
                 entry.get("grading_deadline"), tz, end_of_day=True
             ),
+            max_team_size=cap,
         )
     return out
 

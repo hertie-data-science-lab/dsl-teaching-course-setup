@@ -37,8 +37,8 @@ SYSTEM_OWNED = {
 WELCOME_SYSTEM_OWNED = {
     ".github/workflows/onboard.yml",
     ".github/workflows/team-formation.yml",
-    ".github/ISSUE_TEMPLATE/join.yml",
-    ".github/ISSUE_TEMPLATE/join-team.yml",
+    ".github/ISSUE_TEMPLATE/01-join-course.yml",
+    ".github/ISSUE_TEMPLATE/02-join-team.yml",
 }
 
 
@@ -48,6 +48,7 @@ class FakeOrg:
     def __init__(self, existing: dict[tuple[str, str], str] | None = None):
         self.files: dict[tuple[str, str], str] = dict(existing or {})
         self.writes: list[tuple[str, str]] = []
+        self.deletes: list[tuple[str, str]] = []
         self.skips: list[str] = []
 
     def get_file_content(self, org, repo, path):
@@ -56,6 +57,11 @@ class FakeOrg:
     def put_file(self, org, repo, path, content, message):
         self.files[(repo, path)] = content.decode()
         self.writes.append((repo, path))
+        return True
+
+    def delete_file(self, org, repo, path, message):
+        self.files.pop((repo, path), None)
+        self.deletes.append((repo, path))
         return True
 
     def written(self, repo):
@@ -67,6 +73,7 @@ def fake(monkeypatch):
     f = FakeOrg()
     monkeypatch.setattr(bc, "get_file_content", f.get_file_content)
     monkeypatch.setattr(bc, "put_file", f.put_file)
+    monkeypatch.setattr(bc, "delete_file", f.delete_file)
     monkeypatch.setattr(bc, "log_skip", lambda msg: f.skips.append(msg))
     # everything else setup_cohort_extras does is repo-level and safe to re-run; it is
     # stubbed out so these tests stay pure (no gh calls).
@@ -222,3 +229,12 @@ def test_course_dsl_course_yml_is_never_rewritten(fake, monkeypatch):
     assert fake.files[(".github", "dsl-course.yml")] == edited
     assert fake.writes == []
     assert fake.skips == [".github/dsl-course.yml"]
+
+
+def test_rerun_retires_the_pre_rename_issue_forms(fake):
+    # The forms moved to 01-/02- prefixed names (chooser ordering); a live cohort still
+    # carrying the old files would show both generations in the issue chooser.
+    fake.files[("welcome", ".github/ISSUE_TEMPLATE/join.yml")] = "name: old\n"
+    bc.setup_cohort_extras("Cohort-f2026")
+    assert ("welcome", ".github/ISSUE_TEMPLATE/join.yml") in fake.deletes
+    assert ("welcome", ".github/ISSUE_TEMPLATE/join.yml") not in fake.files

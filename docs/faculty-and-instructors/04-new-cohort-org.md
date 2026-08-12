@@ -21,7 +21,7 @@ Live example of every file below: [`example-course/cohort-org/`](../../example-c
 
 3. **Run [Bootstrap cohort](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/bootstrap-cohort.yml)**
    from the **course** org's `.github` Actions tab, `cohort_org` = `DSL-Demo-f2026`. You get the
-   public **`welcome`** repo (Join issue + onboarding, plus a student-facing `README.md`
+   public **`welcome`** repo (Join course issue + onboarding, plus a student-facing `README.md`
    telling them how to join - yours to reword, it is never overwritten), the private
    **`classroom-config`** repo
    (`students.csv`, `teams.csv`, `schedule.yml`, `people.yml`, `grades/`), the `students` +

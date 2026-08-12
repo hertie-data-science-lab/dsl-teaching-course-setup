@@ -30,6 +30,7 @@ from .utils import (
     COURSE_TEAM_ACCESS,
     create_repo,
     create_team,
+    delete_file,
     get_file_content,
     gh,
     grant_team_repo_access,
@@ -498,9 +499,9 @@ def setup_cohort_extras(org: str) -> None:
         put_file(
             org,
             "welcome",
-            ".github/ISSUE_TEMPLATE/join.yml",
-            _template("welcome/ISSUE_TEMPLATE/join.yml").encode(),
-            "ci: seed Join issue form",
+            ".github/ISSUE_TEMPLATE/01-join-course.yml",
+            _template("welcome/ISSUE_TEMPLATE/01-join-course.yml").encode(),
+            "ci: seed Join course issue form",
         )
         put_file(
             org,
@@ -512,10 +513,17 @@ def setup_cohort_extras(org: str) -> None:
         put_file(
             org,
             "welcome",
-            ".github/ISSUE_TEMPLATE/join-team.yml",
-            _template("welcome/ISSUE_TEMPLATE/join-team.yml").encode(),
+            ".github/ISSUE_TEMPLATE/02-join-team.yml",
+            _template("welcome/ISSUE_TEMPLATE/02-join-team.yml").encode(),
             "ci: seed Join team issue form",
         )
+        # The forms were renamed to control the issue-chooser ordering (01-/02- prefix);
+        # retire the old filenames on live cohorts or the chooser shows both generations.
+        for stale in (
+            ".github/ISSUE_TEMPLATE/join.yml",
+            ".github/ISSUE_TEMPLATE/join-team.yml",
+        ):
+            delete_file(org, "welcome", stale, "ci: retire renamed issue form")
         # The landing page a student sees on this public repo: what to do, and how. Its
         # link back to the issue chooser is org-specific, so the template carries `{org}`.
         # USER-owned (it is the cohort's front door, and faculty may reword it), so

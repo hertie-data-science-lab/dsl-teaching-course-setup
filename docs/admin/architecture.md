@@ -46,7 +46,7 @@ is_template: main + solution branch`"]
   end
   subgraph cohort["COHORT org — per year"]
     wel["`welcome
-Join issue → onboard`"]
+Join course issue → onboard`"]
     ros["`classroom-config
 roster, teams, grades, snapshots, schedule, people`"]
     cmat["`materials
@@ -224,10 +224,10 @@ buttons are for demos, one-offs, and recovery.
 ```mermaid
 sequenceDiagram
   actor St as Student
-  participant W as welcome, Join issue
+  participant W as welcome, Join course issue
   participant O as onboard.yml
   participant R as classroom-config roster
-  St->>W: open Join issue, paste the emailed enrol_code
+  St->>W: open Join course issue, paste the emailed enrol_code
   O->>R: match the code; record issue-author handle + immutable github_id
   O->>St: org membership + students (or auditors) team read
   Note over O,St: a push to students.csv triggers "Sync membership", reconciling both teams
@@ -240,7 +240,8 @@ row to their account. The handle comes from the issue **author**, so it cannot b
 ### Project teams (group assignments)
 
 `teams.csv` (in `classroom-config`, columns `assignment,team,github_handle`) is the **only
-writer surface**: students self-select by opening a "Join team" issue (`team-formation.yml`
+writer surface**: students self-select by opening a "Join team" issue (capped per assignment
+by `max_team_size` in the cohort's schedule.yml, default 5; `team-formation.yml`
 appends a row - authenticated author, one team per assignment, size-capped, auditors refused),
 and faculty can edit it directly. The cap is **5**, set by `MAX_TEAM_SIZE` in
 `templates/welcome/team-formation.yml` (edit there, then re-seed the cohort's `welcome` repo).

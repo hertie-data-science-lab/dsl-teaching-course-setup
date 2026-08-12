@@ -61,7 +61,9 @@ one column-group per assignment) appears alongside the per-student gradebooks on
 
 `assignment, team, github_handle`. Students self-select via the welcome "Join team" issue,
 or edit directly - a push here also triggers **Sync membership**. Auditors (`role: auditor`
-above) are refused by that issue: no assignment repos means no project teams. See
+above) are refused by that issue: no assignment repos means no project teams. The issue flow
+also enforces a **team-size cap**: set `max_team_size` per assignment under `assignments:`
+in `schedule.yml` (default 5 when unset). See
 `teams.csv.sample` - **the engine only acts on a real `teams.csv`.**
 
 ## schedule.yml - the release plan + due dates + exams (optional)

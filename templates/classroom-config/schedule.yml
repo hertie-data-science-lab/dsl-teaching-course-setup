@@ -73,6 +73,11 @@
 #                                       # Defaults to `due`.
 #   assignment-2:
 #     due: {year}-11-10
+#   assignment-4-project:
+#     due: {year}-11-27
+#     max_team_size: 4                  # OPTIONAL, group assignments: the welcome repo's
+#                                       # "Join team" flow refuses a member beyond this
+#                                       # (default when unset: 5)
 #
 # exams:                                # `date` is a whole day, OR a full datetime when
 #   - name: MidTerm Exam                # you know the start time

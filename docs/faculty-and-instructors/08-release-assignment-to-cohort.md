@@ -51,6 +51,7 @@ turns each into a GitHub team on push:
 
 - **Instructor-allocated**: you edit `teams.csv` directly - add one row per member.
 - **Student self-service**: students open a **Join team** issue in the cohort's `welcome` repo
+  (capped per assignment by `max_team_size` under `assignments:` in `schedule.yml`, default 5)
   and name their team; the workflow writes the row for them (team size is capped).
 
 The release then grants each team its one shared repo. Full flow:

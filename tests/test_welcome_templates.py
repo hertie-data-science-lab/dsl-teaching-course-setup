@@ -22,8 +22,8 @@ WELCOME = Path(__file__).resolve().parents[1] / "templates" / "welcome"
 TEMPLATES = [
     "onboard.yml",
     "team-formation.yml",
-    "ISSUE_TEMPLATE/join.yml",
-    "ISSUE_TEMPLATE/join-team.yml",
+    "ISSUE_TEMPLATE/01-join-course.yml",
+    "ISSUE_TEMPLATE/02-join-team.yml",
 ]
 # The two workflows carrying an embedded github-script CSV reader/writer.
 CSV_WORKFLOWS = {"onboard.yml": "onboard", "team-formation.yml": "form-team"}
@@ -56,10 +56,18 @@ def test_welcome_template_is_valid_yaml(rel):
     assert isinstance(doc, dict) and doc.get("name")
 
 
-def test_team_formation_gated_on_join_team_title():
+def test_workflows_are_gated_on_the_forms_labels():
+    # Titles are fixed defaults the workflows rewrite after the fact, so routing keys on
+    # the label each issue form applies - the one thing a student can't mistype.
     doc = yaml.safe_load((WELCOME / "team-formation.yml").read_text())
     job = doc["jobs"]["form-team"]
-    assert "Join team" in job["if"]
+    assert "'team-formation'" in job["if"] and "labels" in job["if"]
+    onboard = yaml.safe_load((WELCOME / "onboard.yml").read_text())["jobs"]["onboard"]
+    assert "'onboarding'" in onboard["if"] and "labels" in onboard["if"]
+    form = yaml.safe_load((WELCOME / "ISSUE_TEMPLATE/01-join-course.yml").read_text())
+    team_form = yaml.safe_load((WELCOME / "ISSUE_TEMPLATE/02-join-team.yml").read_text())
+    assert form["labels"] == ["onboarding"]
+    assert team_form["labels"] == ["team-formation"]
     # writes to the private roster repo, not a public one
     assert "classroom-config" in (WELCOME / "team-formation.yml").read_text()
 
@@ -172,3 +180,24 @@ def test_team_formation_addresses_columns_declared_in_python():
     # The header it writes on first use must match teams.FIELDS exactly, in order.
     literal = re.search(r"const FIELDS = \[(.*?)\];", script).group(1)
     assert tuple(re.findall(r"'([a-z_]+)'", literal)) == teams.FIELDS
+
+
+def test_forms_have_no_confirmation_checkbox_and_fixed_titles():
+    # The forms ask only for what the workflows parse; the title is a fixed default the
+    # workflows later rewrite from the author + fields.
+    for rel, fixed in (
+        ("ISSUE_TEMPLATE/01-join-course.yml", "Join course"),
+        ("ISSUE_TEMPLATE/02-join-team.yml", "Join team"),
+    ):
+        doc = yaml.safe_load((WELCOME / rel).read_text())
+        assert doc["title"] == fixed
+        assert all(b.get("type") != "checkboxes" for b in doc["body"]), rel
+
+
+def test_team_cap_is_read_from_schedule_yml_per_assignment():
+    # The cap is instructor-set config (assignments.<slug>.max_team_size in the cohort's
+    # schedule.yml), not a constant buried in the workflow.
+    script = script_of("team-formation.yml", "form-team")
+    assert "MAX_TEAM_SIZE" not in script
+    assert "max_team_size" in script and "schedule.yml" in script
+    assert "DEFAULT_TEAM_SIZE = 5" in script

@@ -1,7 +1,7 @@
 name: Onboard student
 
 # Seed this into a cohort's public `welcome` repo as
-# .github/workflows/onboard.yml. Students open a "Join" issue here; the issue AUTHOR is
+# .github/workflows/onboard.yml. Students open a "Join course" issue here; the issue AUTHOR is
 # the authenticated GitHub handle (unspoofable). We match the typed ENROLMENT CODE (a
 # random, non-PII token the bot emailed to each student) against the PRIVATE
 # classroom-config/students.csv, reject non-enrolees, record the handle + immutable GitHub
@@ -32,7 +32,9 @@ permissions:
 
 jobs:
   onboard:
-    if: startsWith(github.event.issue.title, 'Join') && !startsWith(github.event.issue.title, 'Join team')
+    # Routed by the FORM's label, not the title: the title is a fixed default the student
+    # never edits (this workflow retitles the issue from the authenticated author).
+    if: contains(github.event.issue.labels.*.name, 'onboarding')
     runs-on: ubuntu-latest
     steps:
       - name: Match enrolment code, grant access
@@ -172,7 +174,8 @@ jobs:
               await github.rest.issues.addLabels({
                 owner: org, repo: context.repo.repo, issue_number: issue.number, labels: ['staff'] });
               await github.rest.issues.update({
-                owner: org, repo: context.repo.repo, issue_number: issue.number, state: 'closed' });
+                owner: org, repo: context.repo.repo, issue_number: issue.number,
+                title: `Join course: ${handle} (staff)`, state: 'closed' });
               return;
             }
 
@@ -201,7 +204,9 @@ jobs:
             await github.rest.issues.addLabels({
               owner: org, repo: context.repo.repo, issue_number: issue.number,
               labels: [isAuditor ? 'auditor' : 'enrolled'] });
+            // Title is auto-derived - the form's fixed default plus the authenticated author.
             await github.rest.issues.update({
-              owner: org, repo: context.repo.repo, issue_number: issue.number, state: 'closed' });
+              owner: org, repo: context.repo.repo, issue_number: issue.number,
+              title: `Join course: ${handle}`, state: 'closed' });
         env:
           HAS_BOT: ${{ secrets.DSL_BOT_TOKEN != '' || '' }}
