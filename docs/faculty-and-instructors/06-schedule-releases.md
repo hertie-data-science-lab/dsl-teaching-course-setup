@@ -19,7 +19,7 @@ autograde run.
 |--------|------|
 | `deploy` | copy a source path from a course repo → a cohort repo (materials, code, datasets) |
 | `assignment` | provision one private repo per onboarded student from a template |
-| `grade` | run the faculty-side autograder |
+| `grade` | **legacy** - autograding now happens automatically at each assignment's grading deadline (see [below](#deadline-snapshots-and-autograding)). Keep an entry only to grade at a `when` of your own choosing; it shares the same fire-once marker, so it can never double-grade |
 
 ```yaml
 timezone: Europe/Berlin
@@ -32,10 +32,14 @@ materials_releases:
   assignment-1-handout:
     when: 2026-09-22T09:00
     assignment: assignment-1-f2026
-  assignment-1-grade:
-    when: 2026-10-15T00:00
-    grade: {template: assignment-1-f2026}
+
+assignments:
+  assignment-1:
+    due: 2026-10-13                 # what students see
+    grading_deadline: 2026-10-15    # optional - when the snapshot freezes and it is autograded
 ```
+
+No `grade:` entry is needed: `assignment-1` is autograded once, at `2026-10-15T23:59:59`.
 
 Full schema: [the schedule](required-input-schema.md#the-schedule). 
 
@@ -57,6 +61,8 @@ Full schema: [the schedule](required-input-schema.md#the-schedule).
 > - a malformed or missing **`due`** → the whole `assignments:` entry is dropped, and the
 >   grading deadline then falls back to *today* at grading time;
 > - a non-integer **`grace_days`** → silently treated as `0`;
+> - a malformed **`grading_deadline`** → ignored, and the deadline falls back to
+>   `due + grace_days`;
 > - an unknown or misspelt **`timezone:`** → silently falls back to `Europe/Berlin`;
 > - a `deploy` entry missing **`source_repo`** or **`source_path`** → silently skipped.
 >
@@ -68,9 +74,19 @@ Full schema: [the schedule](required-input-schema.md#the-schedule).
 - An explicit offset (`2026-09-15T14:00+02:00`) is honoured as written.
 - A **bare date** with no time means **00:00** on a release `when` (the day opens), **23:59:59** on an assignment `due` (the day closes), and a whole day for an exam `date` (the site shows a 09:00 placeholder).
 
-## Deadline snapshots
+## Deadline snapshots and autograding
 
-Shortly after `due + grace_days` passes, the same hourly run records each submission repo's HEAD into `classroom-config/snapshots/<slug>.csv`, using the **server's** clock. It is **write-once** - a later push can't move the pin. To deliberately re-freeze (repos provisioned late, say), delete the CSV and the next tick rebuilds it.
+Each assignment's **grading deadline** is `grading_deadline` if you set it, else
+`due + grace_days`, else `due`. Shortly after it passes, the hourly run does two things,
+once each:
+
+1. **Freezes** each submission repo's HEAD into `classroom-config/snapshots/<slug>.csv`, using
+   the **server's** clock. **Write-once** - a later push can't move the pin. To re-freeze
+   (repos provisioned late, say), delete the CSV and the next tick rebuilds it.
+2. **Autogrades** it, against the `<slug>-<tag>` template in the course org. The marker is the
+   `classroom-config/autograde/<slug>/` folder: while it exists, no further grading happens.
+   To re-grade, delete it. An assignment with no template repo, no hidden tests, or
+   `autograde: false` is skipped, not failed.
 
 If grading runs with **no snapshot at all**, it falls back to a date-based pin over
 student-supplied committer dates and says so loudly in the run log. Full flow:
@@ -78,27 +94,33 @@ student-supplied committer dates and says so loudly in the run log. Full flow:
 
 ## What happens on each tick
 
-First **freeze passed grading deadlines** - snapshot every assignment whose `due + grace_days`
-has gone by and isn't frozen yet (see below) - then **fire every due release**.
+**Freeze**, then **autograde**, each passed grading deadline - once, ever - then **fire every
+due release**.
 
 ```mermaid
 flowchart TB
   cron["Scheduled release - hourly cron"] --> parse["parse the cohort's schedule.yml"]
   parse --> p1["`1 · freeze passed deadlines
-every assignment past due + grace_days`"]
+every assignment past its grading deadline`"]
   p1 --> snap{"`snapshot CSV
 already written?`"}
   snap -- no --> freeze["`write snapshots/<slug>.csv
 write-once - the pin never moves again`"]
   snap -- yes --> skip["skip"]
-  p1 --> p2["`2 · fire EVERY release whose when has passed
+  parse --> p2["`2 · autograde those same assignments`"]
+  p2 --> mark{"`autograde/<slug>/
+already there?`"}
+  mark -- no --> grade["`run the hidden tests, fill EMPTY auto cells
+the folder it writes is the fire-once marker`"]
+  mark -- yes --> skip2["skip - delete the folder to re-grade"]
+  parse --> p3["`3 · fire EVERY release whose when has passed
 on every tick, forever - no released state`"]
-  p2 --> dep["`deploy → cheap
+  p3 --> dep["`deploy → cheap
 nothing changed, nothing pushed`"]
-  p2 --> asg["`assignment → useful
+  p3 --> asg["`assignment → useful
 a late onboarder gets their repo next tick`"]
-  p2 --> grd["`grade → expensive
-full autograder re-run, every tick`"]
+  p3 --> grd["`grade (legacy) → shares the marker
+so it never grades twice`"]
 ```
 
 ---

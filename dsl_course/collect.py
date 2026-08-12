@@ -36,6 +36,14 @@ The window for backdating shrinks from unlimited to <=1h; it does not close. Sho
 cron interval shortens it further. (To deliberately re-freeze - e.g. an assignment whose
 repos were provisioned late - delete the snapshot CSV and let the next tick rebuild it.)
 
+FIRE-ONCE.  The hourly scheduler autogrades each assignment exactly once, just after its
+grading deadline. The marker is the `autograde/<slug>/` directory this module writes: while
+it is absent the assignment has never been machine-graded, and once it exists it is never
+graded again automatically. Machine-written grade cells are write-once too (see
+`grades.merge_auto`), so a marker's hand-edit is never clobbered. To re-grade deliberately,
+delete `autograde/<slug>/` (the next tick regrades) or press the Grade assignment button -
+and clear the `auto`/`team_grade` cells you want recomputed.
+
 grading.yml (on the template's solution branch):
     type: individual        # or group
     format: py              # or notebook
@@ -155,6 +163,11 @@ def snapshot_path(slug: str) -> str:
     return f"{SNAPSHOT_DIR}/{slug}.csv"
 
 
+def autograde_path(slug: str) -> str:
+    """Where this assignment's per-target result archive lives in `classroom-config`."""
+    return f"{AUTOGRADE_DIR}/{slug}"
+
+
 def dump_snapshots(rows: list[tuple[str, str, str]]) -> str:
     """Serialise (repo, sha, recorded_at) rows to snapshot CSV text, repo-sorted so the
     file is stable and diffable."""
@@ -259,6 +272,19 @@ def _snapshot_sha(cohort_org: str, repo: str, deadline: str) -> str | None:
         return ""
     log_err(f"  ! could not read commits for {cohort_org}/{repo}: {out[:160]}")
     return None
+
+
+def has_autograde_results(cohort_org: str, slug: str) -> bool:
+    """Whether `autograde/<slug>/` already exists in the cohort's classroom-config.
+
+    This directory is the autograder's FIRE-ONCE marker: the scheduler grades an assignment
+    only while it is absent, so a machine score is written once and never silently refreshed
+    under a marker's hand-edits. A deliberate re-grade means deleting the directory (the next
+    hourly tick then regrades) or pressing the Grade assignment button."""
+    code, _ = gh(
+        "api", f"repos/{cohort_org}/{CONFIG_REPO}/contents/{autograde_path(slug)}"
+    )
+    return code == 0
 
 
 def load_snapshots(cohort_org: str, slug: str) -> dict[str, str] | None:
@@ -451,9 +477,10 @@ def collect(
         log_err("master-org and cohort-org must differ.")
         return 1
     slug = assignment_slug(template)
-    # SSOT: default the grading pin to the cohort schedule's due date (+ grace_days); an
-    # explicit `deadline` (CLI override) wins; fall back to today - in the cohort's own
-    # timezone, like every other date here - only if unscheduled.
+    # SSOT: default the grading pin to the cohort schedule's grading deadline (explicit
+    # `grading_deadline`, else due + grace_days); an explicit `deadline` (CLI override)
+    # wins; fall back to today - in the cohort's own timezone, like every other date here -
+    # only if unscheduled.
     sched = schedule.load(cohort_org)
     deadline = (
         deadline
@@ -542,7 +569,7 @@ def collect(
             put_file(
                 cohort_org,
                 CONFIG_REPO,
-                f"{AUTOGRADE_DIR}/{slug}/{key}.json",
+                f"{autograde_path(slug)}/{key}.json",
                 json.dumps(result, indent=2).encode(),
                 f"autograde: {slug}/{key}",
             )
@@ -590,7 +617,7 @@ def main() -> int:
     parser.add_argument(
         "--deadline",
         default=None,
-        help="ISO date override; default = the cohort schedule's due date + grace_days, else today",
+        help="ISO date override; default = the cohort schedule's grading deadline, else today",
     )
     parser.add_argument(
         "--group", action="store_true", help="Group assignment (one repo per team)"

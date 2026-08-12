@@ -60,7 +60,7 @@ def test_schedule_yml_seed_is_commented_and_covers_every_field():
         "timezone", "materials_releases", "when", "deploy",
         "source_repo", "source_path", "dest_repo", "dest_path",
         "assignment", "grade", "semester_start", "semester_end",
-        "assignments", "grace_days", "exams",
+        "assignments", "grading_deadline", "grace_days", "exams",
     ):
         assert key in schedule
 

@@ -137,6 +137,74 @@ def test_merge_auto_group_sets_team_grade_per_member():
     assert rows["ben"].team_grade == "85"
 
 
+# -------------------------------------------------------- write-once machine columns
+# `auto`, `team` and `team_grade` are filled by a machine but OWNED by whoever marks: a
+# non-empty cell is never overwritten, so a hand-corrected score survives every re-grade,
+# scheduled or manual. Only empty cells get filled.
+
+
+def test_merge_auto_never_overwrites_an_existing_auto_score():
+    existing = grades.dump_grades(
+        [grades.GradeRow(github_handle="anna", auto="9", comments="regraded by hand")]
+    )
+    out = grades.merge_auto(existing, [("anna", {"auto": "3"})])
+    rows = {r.github_handle: r for r in grades.parse_grades(out)}
+    assert rows["anna"].auto == "9"  # the hand-edit stands
+    assert rows["anna"].comments == "regraded by hand"
+
+
+def test_merge_auto_never_overwrites_existing_team_columns():
+    existing = grades.dump_grades(
+        [grades.GradeRow(github_handle="anna", team="team-x", team_grade="85")]
+    )
+    out = grades.merge_auto(
+        existing, [("anna", {"team": "team-y", "team_grade": "40"})]
+    )
+    row = grades.parse_grades(out)[0]
+    assert (row.team, row.team_grade) == ("team-x", "85")
+
+
+def test_merge_auto_fills_only_the_empty_cells_of_a_mixed_row():
+    existing = grades.dump_grades(
+        [grades.GradeRow(github_handle="anna", team="team-x")]  # team set, team_grade empty
+    )
+    out = grades.merge_auto(
+        existing, [("anna", {"team": "team-y", "team_grade": "85"})]
+    )
+    row = grades.parse_grades(out)[0]
+    assert row.team == "team-x"  # preserved
+    assert row.team_grade == "85"  # filled
+
+
+def test_merge_auto_write_once_is_per_row_not_per_file():
+    existing = grades.dump_grades(
+        [
+            grades.GradeRow(github_handle="anna", auto="9"),
+            grades.GradeRow(github_handle="ben"),
+        ]
+    )
+    out = grades.merge_auto(existing, [("anna", {"auto": "3"}), ("ben", {"auto": "3"})])
+    rows = {r.github_handle: r for r in grades.parse_grades(out)}
+    assert rows["anna"].auto == "9" and rows["ben"].auto == "3"
+
+
+def test_merge_auto_logs_how_many_cells_were_preserved(capsys):
+    existing = grades.dump_grades(
+        [grades.GradeRow(github_handle="anna", auto="9", team="team-x", team_grade="85")]
+    )
+    grades.merge_auto(
+        existing, [("anna", {"auto": "3"}), ("ben", {"auto": "3"})]
+    )
+    out = capsys.readouterr().out
+    assert "anna: 1 existing cell(s)" in out  # per-row skip count
+    assert "1 existing machine-written cell(s) preserved" in out
+
+
+def test_merge_auto_says_nothing_when_it_preserved_nothing(capsys):
+    grades.merge_auto("", [("anna", {"auto": "3"})])
+    assert "preserved" not in capsys.readouterr().out
+
+
 def test_render_cohort_csv_pivots_to_one_row_per_handle():
     per = {
         "assignment-2": [grades.GradeRow(github_handle="anna", final="90")],

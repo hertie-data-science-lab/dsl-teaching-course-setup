@@ -16,16 +16,22 @@ private `grades-<handle>` repo, never in their assignment repo.
 
 ## 1. Grade assignment (for autograde only)
 
+**This runs itself.** At each assignment's grading deadline the hourly cron autogrades it
+**once** - no `grade:` entry, no button press. Use the button only for a deliberate re-grade.
+
 Course `.github` → **Actions** → **Grade assignment**: `cohort_org`, `assignment`, plus `group`
 and `dry_run` (both default **off**). It runs the hidden tests and writes into
 `classroom-config`:
 
-- `grades/<slug>.csv` → the `auto` column (individual) or `team_grade` (group). Columns you
-  filled in by hand are preserved.
-- `autograde/<slug>/<handle-or-team>.json` → the raw per-test result, for appeals.
+- `grades/<slug>.csv` → the `auto` column (individual) or `team_grade` (group). **Write-once:**
+  a cell that already holds a value is never overwritten - re-running fills empty cells only,
+  so your hand-edits stand. For fresh machine scores, blank those cells first.
+- `autograde/<slug>/<handle-or-team>.json` → the raw per-test result, for appeals. This folder
+  is also the **fire-once marker**: while it exists the cron will not grade this assignment
+  again. Delete it to let the next hourly tick re-grade.
 
 There is **no deadline input**: the deadline is the cohort schedule's
-`assignments.<slug>.due + grace_days`, and the graded commit is the one frozen into
+`assignments.<slug>.grading_deadline` (else `due + grace_days`), and the graded commit is the one frozen into
 `classroom-config/snapshots/<slug>.csv` (see
 [Release assignment → Deadlines](08-release-assignment-to-cohort.md#deadlines)). A blank sha
 there means nothing was pushed by the deadline, and that scores zero.
@@ -104,14 +110,14 @@ Copies each merged gradebook to `grades-<handle>/grades.yml` and emails the stud
 
 ## Next
 
-- Repeat 1-5 per assignment as deadlines pass. A `grade:` entry in the schedule runs step 1 for
-  you - [Schedule releases](06-schedule-releases.md).
+- Repeat 2-5 per assignment as deadlines pass. Step 1 has already run itself -
+  [Schedule releases](06-schedule-releases.md).
 
-  > A `grade:` entry keeps re-running each hour after its `when`. Scores don't drift - the
-  > graded commit is pinned to the deadline snapshot - but it re-runs the tests every tick, and
-  > it rewrites the `auto` column, so **anything you hand-edit in `auto` gets overwritten**
-  > (put corrections in `manual` or `final` instead). Once an assignment is marked, delete its
-  > `grade:` entry from `schedule.yml` to stop it.
+  > ℹ️ **Autograding fires once**, at each assignment's grading deadline, and never again -
+  > the `autograde/<slug>/` folder is the marker. To re-grade: delete that folder (the next
+  > hourly tick regrades) or press **Grade assignment**. Either way, clear the `auto` /
+  > `team_grade` cells you want recomputed first - they are write-once and are otherwise left
+  > exactly as you left them.
 
 ---
 **Demo:** per-student `grades-<handle>` repos in [`DSL-Demo-f2026`](https://github.com/DSL-Demo-f2026).

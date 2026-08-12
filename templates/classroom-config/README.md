@@ -32,10 +32,13 @@ there is no separate off-boarding step).
 
 One file per assignment, e.g. `grades/assignment-1.csv`:
 `github_handle, team, auto, manual, team_grade, adjustment, final, comments, team_comments`.
-**Grade assignment** can pre-fill `auto`/`team_grade` from hidden tests; faculty & instructors fill the
-rest, then **Sync gradebooks** -> **Render grades** -> **Distribute grades**. The autograder
-pins to each assignment's **due date** from `schedule.yml` (`assignments.<slug>.due`,
-plus optional `grace_days`) - there is no separate deadline input. A generated,
+The autograder pre-fills `auto`/`team_grade` from hidden tests; faculty & instructors fill the
+rest, then **Sync gradebooks** -> **Render grades** -> **Distribute grades**. It runs itself
+**once** per assignment, at that assignment's grading deadline in `schedule.yml`
+(`assignments.<slug>.grading_deadline`, else `due` + optional `grace_days`) - there is no
+separate deadline input, and no hourly re-run. `auto`/`team`/`team_grade` are **write-once**:
+once filled, no run overwrites them, so your corrections stand. To recompute, clear those
+cells and delete `autograde/<slug>/`. A generated,
 read-only `cohort-gradebook.csv` (one row per student, one column-group per
 assignment) appears alongside the per-student gradebooks on every **Render grades** -
 never hand-edit it, it's a glance view, not a source.
@@ -54,8 +57,9 @@ plan** - labelled entries (`session_2`, `lab_1`, `bonus-dataset`, ...), each wit
 `when:` datetime and one or more actions (`deploy` a source path -> a cohort repo,
 `assignment` provision student repos, `grade` run the autograder). The hourly **Scheduled
 release** cron fires each entry once its `when` has arrived (honoured to the hour). Also
-holds `semester_start`/`semester_end`, `assignments` (due dates for the website + grading
-pin, with an optional `grace_days`), and `exams`. Seeded mostly-commented - uncomment and
+holds `semester_start`/`semester_end`, `assignments` (due dates for the website, plus each
+assignment's `grading_deadline` - the moment its snapshot freezes and it is autograded,
+once), and `exams`. Seeded mostly-commented - uncomment and
 fill what you want; anything left out is synthesised or simply not scheduled.
 
 ## people.yml - this cohort's instructors/TAs (optional)

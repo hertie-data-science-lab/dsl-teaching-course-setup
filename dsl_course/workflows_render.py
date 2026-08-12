@@ -409,11 +409,18 @@ def render_grade_assignment(
     """Faculty-side autograder button: run hidden tests after the deadline, record scores."""
     return f"""name: Grade assignment
 
-# Faculty-side autograder. Clones each submission as of its scheduled due date (the cohort
-# schedule's date + grace_days - SSOT, no input here), runs the HIDDEN tests
-# from the template's solution branch, archives result.json, and records the machine score
-# into the private grades CSV (faculty & instructors then add manual marks; Render + Distribute send them).
-# Nothing is written to student repos. dry_run lists what would be graded.
+# Faculty-side autograder, by hand. The hourly cron already grades each assignment ONCE at
+# its grading deadline - this button is for a deliberate re-grade. Clones each submission as
+# of the cohort schedule's grading deadline (`grading_deadline`, else due + grace_days -
+# SSOT, no input here), runs the HIDDEN tests from the template's solution branch, archives
+# result.json, and fills the machine score into the private grades CSV (faculty & instructors
+# then add manual marks; Render + Distribute send them).
+#
+# WRITE-ONCE: an `auto`/`team`/`team_grade` cell that already holds a value is never
+# overwritten, so re-running does NOT refresh scores - it only fills cells still empty. For a
+# fresh machine score, clear those cells first (and delete classroom-config/autograde/<slug>/
+# to let the cron regrade). Nothing is written to student repos. dry_run lists what would be
+# graded.
 
 on:
   workflow_dispatch:
@@ -700,15 +707,18 @@ jobs:
 
 
 def render_scheduler() -> str:
-    """Hourly cron that auto-releases whatever each cohort's schedule says is now due,
-    across every registered cohort. No check-team gate: scheduled runs have no actor, and
-    the scheduler only calls idempotent release functions (manual dispatch still needs
-    write)."""
+    """Hourly cron that snapshots + autogrades each passed grading deadline and releases
+    whatever each cohort's schedule says is now due, across every registered cohort. No
+    check-team gate: scheduled runs have no actor, and every action is either idempotent or
+    fire-once (manual dispatch still needs write)."""
     return f"""name: Scheduled release
 
-# Reads each cohort's classroom-config/schedule.yml `materials_releases:` plan and fires
-# every release whose `when` datetime has arrived. Idempotent, so re-releasing on the next
-# hour is a no-op. On the cron it releases for real; manual runs default to dry-run.
+# Reads each cohort's classroom-config/schedule.yml and, every hour: freezes the submission
+# snapshot for each assignment whose grading deadline has passed, autogrades that assignment
+# ONCE (marker: classroom-config/autograde/<slug>/ - delete it to re-grade), then fires every
+# `materials_releases:` release whose `when` datetime has arrived. Releases are idempotent, so
+# re-releasing on the next hour is a no-op; grading is not re-run. On the cron it releases for
+# real; manual runs default to dry-run.
 # Hourly so a `when` time-of-day is honoured to the hour (GitHub cron is UTC and best-effort).
 
 on:

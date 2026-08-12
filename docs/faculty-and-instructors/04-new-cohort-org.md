@@ -48,7 +48,7 @@ cohort website, and the schedule that runs the term. Once each year; the
    assignments:
      assignment-1:
        due: 2026-10-13              # due date students see; bare date -> 23:59:59
-       grace_days: 0                # optional grading-only extension
+       grading_deadline: 2026-10-15 # optional; snapshot + autograde fire here (once)
    exams:
      - {name: MidTerm Exam, date: 2026-11-03}        # bare date -> shown at 09:00
      - {name: Final Exam, date: 2026-12-15T14:00}    # real start time, shown as given

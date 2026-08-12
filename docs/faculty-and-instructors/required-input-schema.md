@@ -180,7 +180,7 @@ materials_releases:
   assignment-1-handout:
     when: 2026-09-22T09:00
     assignment: assignment-1-f2026
-  assignment-1-grade:
+  assignment-1-grade:               # LEGACY - autograding is automatic (see `assignments:`)
     when: 2026-10-15T00:00
     grade: {template: assignment-1-f2026, deadline: 2026-10-13T23:59}
     # shorthand: `grade: assignment-1-f2026` takes the deadline from `assignments:` below
@@ -198,6 +198,7 @@ never happens.
 | `when:` missing or unparseable | that release is silently dropped (it could never fire) |
 | `due:` missing or unparseable | that whole `assignments:` entry is dropped - no grading pin, no site date |
 | `grace_days:` not an integer | silently treated as `0` |
+| `grading_deadline:` unparseable | silently ignored - the grading deadline falls back to `due + grace_days` |
 | unknown `timezone:` | silent fallback to `Europe/Berlin` |
 | a `deploy` entry missing `source_repo` or `source_path` | that copy is silently skipped |
 
@@ -217,8 +218,11 @@ semester_end: 2026-12-18
 assignments:                          # keyed by assignment slug (repo name minus -fYYYY)
   assignment-1:
     due: 2026-10-13T23:59             # a bare date -> end of that day
-    grace_days: 2                     # OPTIONAL: extra days for GRADING only, not shown to
-                                      # students. The grading deadline is due + grace_days.
+    grading_deadline: 2026-10-15      # OPTIONAL: the GRADING pin, not shown to students - the
+                                      # moment the snapshot freezes and the autograder fires
+                                      # (once). A bare date -> end of that day.
+    grace_days: 2                     # LEGACY alternative: grading deadline = due + N days.
+                                      # `grading_deadline` wins when both are set.
   assignment-2:
     due: 2026-11-17
 exams:
@@ -228,13 +232,18 @@ exams:
     date: 2026-12-15T14:00            # a real start time is shown as given
 ```
 
-### Deadline snapshots
+### Deadline snapshots and autograding
 
 Shortly after an assignment's grading deadline passes, the hourly cron records the commit each
 submission repo is at into `classroom-config/snapshots/<slug>.csv` (`repo,sha,recorded_at`). The
 file is **write-once** - a later push can never move it; a blank sha means nothing was submitted
 by the deadline. To deliberately re-freeze (e.g. repos provisioned late), delete the CSV and the
-next tick rebuilds it. This happens whether or not the cohort uses `materials_releases` at all.
+next tick rebuilds it.
+
+It then autogrades that assignment **once**, against the `<slug>-<tag>` template in the course
+org. The marker is `classroom-config/autograde/<slug>/`: while it exists nothing regrades, so
+delete it to re-grade. Machine columns (`auto`, `team`, `team_grade`) are write-once too - a run
+fills empty cells only. Both happen whether or not the cohort uses `materials_releases` at all.
 
 ## Token
 
