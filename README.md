@@ -74,7 +74,7 @@ student-list, teams, schedule, grades, deadlines`"]
     cmat["`**released materials**
 
 lectures/readings/labs (students + auditors read)`"]
-    repos["`**assignments**
+    repos["`**released assignments**
 
 one private repo per student/group (generated; autograder rides along)`"]
     team["`**teams**
