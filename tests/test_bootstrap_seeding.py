@@ -5,9 +5,10 @@ grants, refresh workflows), so it runs against LIVE cohorts. `utils.create_repo`
 an already-existing repo as success, so the `if create_repo(...)` blocks are no
 first-run guard - the guard has to be per file. These tests pin the split:
 
-- USER-owned (classroom-config roster/schedule/people/teams/README/grades, and the course
-  org's dsl-course.yml SSOT): seeded once, NEVER rewritten - a rewrite destroyed a live
-  roster (enrol codes + onboarded handles) in DSL-Demo-f2026.
+- USER-owned (classroom-config roster/schedule/people/teams/README/grades, welcome's
+  student-facing README, and the course org's dsl-course.yml SSOT): seeded once, NEVER
+  rewritten - a rewrite destroyed a live roster (enrol codes + onboarded handles) in
+  DSL-Demo-f2026.
 - SYSTEM-owned (welcome's onboard/team-formation workflows + the issue forms they parse,
   classroom-config's dispatch-sync*.yml, the cohort's generated dsl-course.yml pointer):
   re-pushed on every run so fixes reach running cohorts.
@@ -30,6 +31,12 @@ USER_OWNED = {
 SYSTEM_OWNED = {
     ".github/workflows/dispatch-sync.yml",
     ".github/workflows/dispatch-sync-site.yml",
+}
+WELCOME_SYSTEM_OWNED = {
+    ".github/workflows/onboard.yml",
+    ".github/workflows/team-formation.yml",
+    ".github/ISSUE_TEMPLATE/join.yml",
+    ".github/ISSUE_TEMPLATE/join-team.yml",
 }
 
 
@@ -72,13 +79,32 @@ def fake(monkeypatch):
 def test_fresh_cohort_seeds_every_file(fake):
     bc.setup_cohort_extras("Cohort-f2026")
     assert USER_OWNED | SYSTEM_OWNED == fake.written("classroom-config")
-    assert fake.written("welcome") == {
-        ".github/workflows/onboard.yml",
-        ".github/workflows/team-formation.yml",
-        ".github/ISSUE_TEMPLATE/join.yml",
-        ".github/ISSUE_TEMPLATE/join-team.yml",
-    }
+    assert fake.written("welcome") == WELCOME_SYSTEM_OWNED | {"README.md"}
     assert fake.skips == []
+
+
+def test_welcome_readme_links_to_this_orgs_issue_chooser(fake):
+    # The "open a Join issue" link is org-specific, so `{org}` must be substituted - an
+    # unrendered placeholder would send every cohort's students to a dead link.
+    bc.setup_cohort_extras("Cohort-f2026")
+    readme = fake.files[("welcome", "README.md")]
+    assert (
+        "https://github.com/Cohort-f2026/welcome/issues/new/choose" in readme
+    ), readme
+    assert "{org}" not in readme
+
+
+def test_rerun_preserves_a_faculty_edited_welcome_readme(fake):
+    # A repo-root README is content faculty may reword for their course; a repair re-run
+    # must leave it alone while the .github/ machinery underneath it still refreshes.
+    edited = "# Welcome to Deep Learning\n\nOur own wording.\n"
+    fake.files[("welcome", "README.md")] = edited
+
+    bc.setup_cohort_extras("Cohort-f2026")
+
+    assert fake.files[("welcome", "README.md")] == edited
+    assert fake.written("welcome") == WELCOME_SYSTEM_OWNED
+    assert "welcome/README.md" in fake.skips
 
 
 def test_rerun_preserves_user_config_and_refreshes_workflows(fake):
@@ -110,7 +136,7 @@ def test_rerun_preserves_user_config_and_refreshes_workflows(fake):
     assert fake.files[("welcome", ".github/workflows/onboard.yml")] == (
         bc._template("welcome/onboard.yml")
     )
-    assert len(fake.written("welcome")) == 4
+    assert fake.written("welcome") == WELCOME_SYSTEM_OWNED | {"README.md"}
 
 
 def test_rerun_logs_one_skip_per_preserved_file(fake):
