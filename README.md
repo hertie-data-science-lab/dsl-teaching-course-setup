@@ -64,9 +64,12 @@ lectures/01_.../ + readings/01_.../ + labs/01_.../ (+ syllabus, README)`"]
   end
 
   subgraph COHORT["COHORT org — e.g. Deep-Learning-f2026 (per-year)"]
+    cgh["`**.github**
+
+cohort config pointer + auto-generated student-facing org page`"]
     welcome["`**welcome**
 
-Join issue → onboard.yml`"]
+Join issue → onboard.yml (+ student README)`"]
     cfg["`**classroom-config**
 
 student-list, teams, schedule, grades, deadlines`"]
@@ -79,6 +82,9 @@ one private repo per student (generated; autograder rides along)`"]
     team["`**teams**
 
 student (& auditor) groups`"]
+    site["`**<cohort>.github.io**
+
+auto-deployed cohort website (material links: enrolled + auditors only)`"]
   end
 
   pub["**`\<course-org\>.github.io**
@@ -90,7 +96,7 @@ student (& auditor) groups`"]
 
   classDef public fill:#e6f4ea,stroke:#2e7d32,color:#1b5e20;
   classDef private fill:#f3f3f3,stroke:#8a8a8a,color:#3c3c3c;
-  class gh,welcome,pub public;
+  class gh,cgh,welcome,site,pub public;
   class mat,tmpl,cfg,cmat,repos,team private;
 ```
 
