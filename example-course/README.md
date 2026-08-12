@@ -71,8 +71,9 @@ Prereqs: the bot is an **owner** of both demo orgs and `DSL_BOT_TOKEN` (`repo` +
    [`people.yml`](cohort-org/people.yml), [`teams.csv`](cohort-org/teams.csv).
 9. **Send enrolment codes** for the cohort - untick `dry_run` to actually email them.
 10. Nothing else. The hourly **Scheduled release** cron works through `schedule.yml`: weeks 1-5
-    of lectures + readings, the `mlpkg` subpackages, assignments 1 and 2, and the three
-    post-deadline autograde runs. Use
+    of lectures + readings, the `mlpkg` subpackages, and assignments 1 and 2 - and autogrades
+    each assignment once, automatically, at its grading deadline (the project grades per-team;
+    its template's `grading.yml` says `type: group`). Use
     **[Release materials](../docs/faculty-and-instructors/07-release-materials-to-cohort.md)** /
     **[Release assignment](../docs/faculty-and-instructors/08-release-assignment-to-cohort.md)**
     only to jump ahead of it for a demo.
