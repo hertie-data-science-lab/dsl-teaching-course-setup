@@ -1,65 +1,59 @@
-# DSL Teaching & Course Setup
+# DSL Teaching & Course Setup (GitHub delivery)
 
-Central registry of the workflows that deliver courses at the Hertie Data Science Lab. A course
-lives once in a persistent **course** org and is delivered each year into a per-year **cohort**
-org; everything faculty-facing is a **GitHub Actions button**, and the Python in `dsl_course/` is
-the single implementation behind every one.
+Central registry of the workflows that deliver courses at the Hertie Data Science Lab. A course lives once in a persistent **course** org and is delivered each year into a per-year **cohort** org; everything faculty-facing is a **GitHub Actions button**, and can be scheduled in advance at the start of the semester.
 
-**[`docs/START-HERE.md`](docs/START-HERE.md)** routes you by persona and defines the vocabulary once:
+## Getting Started
+>**[`docs/START-HERE.md`](docs/START-HERE.md)** is the expected point of entry.
+
+Here are some futher useful links:
 
 | You are | Go to |
 |---------|-------|
-| Setting up or running a course | [workflow runbooks](docs/faculty-and-instructors/README.md) |
-| A TA or faculty assistant (FA) joining a cohort | [`docs/ta-fa/`](docs/ta-fa/README.md) |
+| Setting up a new course | [workflow runbooks](docs/faculty-and-instructors/README.md) |
 | A course admin inheriting a running course | [`course-admin.md`](docs/admin/course-admin.md) |
-| An admin of the central `hertie-data-science-lab` org | [`central-admin.md`](docs/admin/central-admin.md) |
+| A TA or faculty assistant joining a cohort | [`docs/ta-fa/`](docs/ta-fa/README.md) |
+| An example course | [`example course`](example-course/README.md) |
+| Template artefacts| [`templates`](/templates/README.md) |
+| Every workflow in the course org's `.github` Actions tab | [`actions reference`](docs/faculty-and-instructors/actions-reference.md) |
+| Input schema + deployment checklist | [`required-input-schema.md`](docs/faculty-and-instructors/required-input-schema.md)|
+
 
 ## Deploying a course
 
-Three phases - **set up the course** (once), **add a cohort** (per year), then **run it**. Fill the
-cohort's schedule in up front and an hourly cron runs the term: the schedule (`materials_releases`
-in `schedule.yml`) is the primary release mechanism; the manual release buttons are the fallback -
-for demos, one-offs, and recovery.
-
-- **▶ Workflow runbooks — [`docs/faculty-and-instructors/`](docs/faculty-and-instructors/README.md) — start here.** One per workflow, each naming the exact button, inputs, and order.
-- **Every button, one line each:** [actions reference](docs/faculty-and-instructors/actions-reference.md) - they all live in the course org's `.github` Actions tab, its **control panel**.
-- **Worked example:** [`example-course/`](example-course/README.md) - a dummy course you can stand up end to end alongside the runbooks.
-- **Input schema + deployment checklist** (reference): [`required-input-schema.md`](docs/faculty-and-instructors/required-input-schema.md) - the what-goes-where data contract, and a [tickable deploy-ordered checklist](docs/faculty-and-instructors/required-input-schema.md#deployment-checklist).
-
-The only manual steps are creating each org in the GitHub web UI
-([github.com/account/organizations/new](https://github.com/account/organizations/new) - there is no
-org-creation API) and inviting **`hertie-dsl-bot`** as **Owner** (Org → People → Invite; the DSL
-team must **accept** it before you bootstrap -
-[which account?](docs/admin/admin-setup.md#the-bot-account)). Everything after that is a button.
+- Three phases:
+   - (1) [**set up the course org**](docs/audit-user-journey/docs/faculty-and-instructors/01-new-course-org.md) (once),
+   - (2) [**add a cohort org**](docs/audit-user-journey/docs/faculty-and-instructors/04-new-cohort-org.md) (per year), 
+   - (3) **run it**. 
+- Fill the cohort's schedule up front (in the `materials_releases` block in `schedule.yml`) and all materials, assignments, hands-ins, grades & feedback etc will be **automatically released/collected**.
+- Otherwise use the manual GitHub actions found in the course/cohort org's `.github` repository to run specific ad hoc workflows
+- The only manual steps are (1) creating each org in the GitHub web UI
+([github.com/account/organizations/new](https://github.com/account/organizations/new) and (2) [inviting **`hertie-dsl-bot`** as an org **Owner**](docs/faculty-and-instructors/01-new-course-org.md#steps); the DSL team must **accept** it before you bootstrap. Everything after that is automated via the scheduler / a button click.
 
 ## The model
 
 Two org tiers:
-1. the **course** org is the faculty-facing control panel - the persistent, historical registry
-   of course materials, where faculty & instructors push version-controlled materials from;
-2. the **cohort** org is the per-year student-facing delivery target - materials are released
-   here, student assignments are submitted and assessed here, and student-facing features
-   (onboarding, the website) live here.
+1. the **course** org is the faculty-facing control panel - the persistent, historical registry, of course materials & assignments, where faculty & instructors push version-controlled materials from;
+2. the **cohort** org is the per-year student-facing delivery target - materials are released here, student assignments are submitted and assessed here, and student-facing features (onboarding, the website) live here.
 
 ```mermaid
 flowchart TB
   subgraph COURSE["COURSE org — e.g. DSL-Demo-Course-E1234 (persistent)"]
-    mat["course-materials-f2026 · PRIVATE<br/>lectures/01_.../ + readings/01_.../ (+ syllabus, README)"]
-    tmpl["assignment-1-f2026 ... · PRIVATE<br/>template repos (is_template) + autograder"]
-    gh[".github · PUBLIC<br/>profile (auto) + ALL faculty & instructors buttons + cohort registry"]
+    mat["<strong>course-materials-f2026</strong><br/><br/>lectures/01_.../ + readings/01_.../ (+ syllabus, README)"]
+    tmpl["<strong>assignment-1-f2026</strong><br/><br/>... · template repos (+ optional autograder)"]
+    gh["<strong>.github</strong><br/><br/>· profile (auto) + faculty & instructors buttons + cohort registry"]
   end
 
   subgraph COHORT["COHORT org — e.g. Deep-Learning-f2026 (per-year)"]
-    welcome["welcome · PUBLIC<br/>Join issue → onboard.yml (paste enrolment code)"]
-    cfg["classroom-config · PRIVATE<br/>roster, teams, schedule, grades, deadline snapshots"]
-    cmat["materials · PRIVATE<br/>released lectures/readings (students + auditors read)"]
-    repos["&lt;assignment&gt;-&lt;handle&gt; · PRIVATE<br/>one private repo per student (generated; autograder rides along)"]
-    team["students / auditors teams · PRIVATE"]
+    welcome["<strong>welcome</strong><br/><br/>Join issue → onboard.yml"]
+    cfg["<strong>classroom-config</strong><br/><br/>student-list, teams, schedule, grades, deadlines"]
+    cmat["<strong>materials</strong><br/><br/>released lectures/readings (students + auditors read)"]
+    repos["<strong>assignments</strong><br/><br/>one private repo per student (generated; autograder rides along)"]
+    team["<strong>teams</strong><br/><br/>student (& auditor) groups"]
   end
 
-  pub["&lt;course-org&gt;.github.io · PUBLIC (opt-in)<br/>open-courseware site — hosts shared lectures + readings"]
+  pub["&lt;course-org&gt;<course>.github.io · open-courseware site - hosts shared lectures + readings"]
 
-  COURSE -->|"release / generate (bot token, cross-org)"| COHORT
+  COURSE -->|"release"| COHORT
   gh -.->|"Publish course website (opt-in)"| pub
 
   classDef public fill:#e6f4ea,stroke:#2e7d32,color:#1b5e20;
@@ -68,13 +62,9 @@ flowchart TB
   class mat,tmpl,cfg,cmat,repos,team private;
 ```
 
-Each cohort gets an auto-deployed `<cohort>.github.io` site whose material links are private
-(enrolled students and auditors only). A course can optionally also publish a **public**
-`<course-org>.github.io` open-courseware site - see [**Publish course website**](docs/faculty-and-instructors/actions-reference.md#optional-public-course-website).
+Each cohort gets an auto-deployed `<cohort>.github.io` site whose material links are private (enrolled students and auditors only). A course can optionally also publish a **public** `<course-org>.github.io` open-courseware site - see [**Publish course website**](docs/faculty-and-instructors/actions-reference.md#optional-public-course-website).
 
 ---
 
-**Admin & developer reference** (faculty & instructors delivering a course don't need this):
-[`docs/admin/`](docs/admin/) - the [architecture](docs/admin/architecture.md) (system design,
-token propagation, who-can-run access, the code map) and
+**Admin & developer reference** (faculty & instructors delivering a course don't need this): [`docs/admin/`](docs/admin/) - the [architecture](docs/admin/architecture.md) (system design, token propagation, who-can-run access, the code map) and
 [operational setup](docs/admin/admin-setup.md) (the bot credential, PAT scopes, secret model).
