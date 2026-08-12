@@ -4,19 +4,25 @@
 # dispatch buttons). Course admins are declared at the course-org level instead (see
 # that org's .github/dsl-course.yml). Uncomment and fill what you want:
 #
+# `photo` takes EITHER an absolute URL on a host that ALLOWS HOTLINKING, OR a
+# site-relative path to an image committed into this cohort's site repo under
+# `_images/pp/` (that dir is served, and no sync ever rewrites it). Many
+# institutional sites return 403 to off-site requests, which renders as a broken
+# image - host those locally. One of each is shown below.
+#
 # people:
 #   instructors:
 #     - github_handle: "janedoe"      # required - grants the `instructors` team
 #       name: "Prof. Jane Doe"        # optional, display only
 #       title: "Professor of ..."
-#       photo: "https://.../jane.jpg"
+#       photo: "/_images/pp/jane.jpg" # local file in <cohort-org>.github.io
 #       url: "https://.../profile/jane"
 #       start: "{year}-09-01"         # optional - no start = active immediately
 #       end: "{year_next}-01-31"      # optional - no end = indefinite
 #   teaching_assistants:
 #     - github_handle: "anOther"
 #       name: "..."                  # optional, display only
-#       photo: "https://.../ta.jpg"
+#       photo: "https://github.com/anOther.png"   # remote URL (hotlinkable)
 #       url: "https://.../profile/ta"
 #       start: "{year}-09-01"
 #       end: "{year_next}-01-31"

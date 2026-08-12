@@ -94,7 +94,7 @@ people:
     - github_handle: "janedoe"     # required - everything else is optional
       name: "Prof. Jane Doe"       # site card fields
       title: "Professor of ..."
-      photo: "https://.../jane.jpg"
+      photo: "/_images/pp/jane.jpg"  # see "Staff photos" below
       url: "https://.../jane"
       start: "2026-09-01"          # access auto-starts/lapses on these dates
       end: "2027-01-31"
@@ -105,6 +105,18 @@ people:
 The **course** org's `dsl-course.yml` accepts the same `instructors`/`teaching_assistants`
 shape, but there it is **display-only** (public-site cards, no access) - course-wide admin is
 [`course_admins`](#dsl-courseyml).
+
+**Staff photos.** `photo` accepts either form:
+
+| Form | Example | Use when |
+|---|---|---|
+| site-relative path | `/_images/pp/jane.jpg` | **the safe default.** Commit the image into this cohort's site repo `<cohort-org>.github.io` under `_images/pp/`. That directory is served (`include: ['_images']` in the site's `_config.yml`) and is not a synced collection, so no release, cron or **Sync site** run will ever overwrite it. |
+| absolute URL | `https://github.com/janedoe.png` | the host allows hotlinking. GitHub avatars (`https://github.com/<handle>.png`) always do. |
+
+Institutional profile sites often **don't** - `hertie-school.org`, for one, returns 403 to any
+off-site request, so a headshot copied from a staff profile page renders as a broken image. If a
+photo doesn't appear, check the URL with `curl -sI <url>` before suspecting the sync. A card with
+no usable `photo` still renders, just without the image.
 
 `start`/`end` are inclusive ISO dates, both optional (no `start` = active immediately, no `end` =
 indefinite). Access is revoked automatically once `end` passes - a full reconcile runs every sync,

@@ -10,6 +10,13 @@ course_code: GRAD-DEMO
 # push access is declared in the cohort's own classroom-config/people.yml instead
 # (see ../cohort-org/people.yml) - most cohorts have different lecturers/TAs, so
 # that's where it's actually reconciled.
+#
+# `photo` takes EITHER an absolute URL on a host that ALLOWS HOTLINKING, OR a
+# site-relative path to an image committed into the site repo under `_images/pp/`
+# (that dir is served - `include: ['_images']` - and no sync ever rewrites it).
+# Many institutional sites, hertie-school.org among them, return 403 to requests
+# from outside the site, which renders as a broken image; host those locally.
+# One of each mechanism is shown below.
 people:
   course_admins:
     - github_handle: "lkaack"
@@ -17,7 +24,7 @@ people:
     - github_handle: "lkaack"
       name: "Prof. Lynn Kaack, PhD"
       title: "Assistant Professor of Computer Science and Public Policy"
-      photo: "https://www.hertie-school.org/fileadmin/_processed_/7/9/csm_Kaack3_01_36ff2991f7.png"
+      photo: "/_images/pp/placeholder.jpg"   # local file in the site repo
       url: "https://www.hertie-school.org/de/research/faculty-and-researchers/profile/person/kaack"
   teaching_assistants:
     - github_handle: "cfusarbassini"
@@ -25,14 +32,14 @@ people:
       end: "2027-01-31"
       name: "Chiara Fusar Bassini"
       title: "PhD candidate, Data Science Lab"
-      photo: "https://www.hertie-school.org/fileadmin/_processed_/6/f/csm_Picture_Chiara_Fusar_Bassini_be71ff890e.jpg"
+      photo: "/_images/pp/placeholder.jpg"   # local file in the site repo
       url: "https://www.hertie-school.org/en/who-we-are/profile/person/fusar-bassini"
     - github_handle: "henrycgbaker"
       start: "2026-09-01"
       end: "2027-01-31"
       name: "Henry Baker"
       title: "Teaching Assistant"
-      photo: "https://www.hertie-school.org/fileadmin/_processed_/f/8/csm_Henry_final_deda644991.jpg"
+      photo: "https://github.com/henrycgbaker.png"   # remote URL (hotlinkable)
       url: "https://www.hertie-school.org/en/who-we-are/profile/person/baker"
 
 # The schedule (release calendar, due dates, exams) is cohort-specific - it lives in

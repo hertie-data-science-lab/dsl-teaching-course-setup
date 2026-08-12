@@ -52,7 +52,7 @@ Full model - every team and what it reaches: [`access-reference.md`](access-refe
        - github_handle: "janedoe"        # required - this is what grants access
          name: "Prof. Jane Doe"          # optional, from here down: cohort site card
          title: "Professor of ..."
-         photo: "https://.../jane.jpg"
+         photo: "/_images/pp/jane.jpg"   # see "Staff photos" below
          url: "https://.../jane"
      teaching_assistants:
        - github_handle: "anOther"
@@ -72,6 +72,28 @@ Full model - every team and what it reaches: [`access-reference.md`](access-refe
 3. **They accept the org invite.** Membership shows `pending` in the Teams UI until they do; the
    buttons appear in their Actions tab afterwards. Students never have write, so they never see
    them.
+
+## Staff photos
+
+A card renders only for an entry that has a `name` **and** is active today. `photo` accepts
+either form:
+
+- **A site-relative path** - `/_images/pp/jane.jpg`. Commit the image into this cohort's site
+  repo, `<cohort-org>.github.io`, under `_images/pp/`. This is the **safe default**: that folder
+  is served (the site's `_config.yml` carries `include: ['_images']`) and it isn't one of the
+  directories a sync owns, so no release, cron or **Sync site** run will overwrite what you put
+  there.
+- **An absolute URL** - but only on a host that allows hotlinking. GitHub avatars
+  (`https://github.com/<handle>.png`) always work.
+
+> Institutional profile sites often block off-site requests. `hertie-school.org` returns **403**
+> to anything not loaded from its own pages, so a headshot URL copied from a staff profile page
+> renders as a broken image no matter how correct the rest of the config is. Check with
+> `curl -sI <url>` before suspecting the sync; download the image and host it locally instead.
+
+A card with no usable `photo` still renders, just without the picture. Live example: the demo
+cohorts show one of each mechanism - the instructor card by remote URL, the TA card by local
+path.
 
 ## Time-box it (`start` / `end`)
 
