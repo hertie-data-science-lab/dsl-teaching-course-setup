@@ -3,8 +3,11 @@ name: Dispatch membership sync
 # Seed this into a cohort's private classroom-config repo as
 # .github/workflows/dispatch-sync.yml. classroom-config has no other workflows of its
 # own - this file's only job is to trigger the course org's consolidated Sync
-# membership workflow (in <course-org>/.github) whenever students.csv or teams.csv
-# changes here, so a commit takes effect immediately without an extra manual click.
+# membership workflow (in <course-org>/.github) whenever students.csv, teams.csv or
+# people.yml changes here, so a commit takes effect immediately without an extra
+# manual click. people.yml is included so granting or revoking an instructor/TA lands
+# at once rather than waiting for the daily cron; a start/end date lapsing with no
+# edit that day still needs the cron, since nothing pushes on a date rolling over.
 #
 # Reads the course org from THIS cohort's own dsl-course.yml (single source of truth -
 # no course-org name baked in at bootstrap time). Fires a `repository_dispatch` (not
@@ -19,6 +22,7 @@ on:
     paths:
       - students.csv
       - teams.csv
+      - people.yml
 
 jobs:
   dispatch:
