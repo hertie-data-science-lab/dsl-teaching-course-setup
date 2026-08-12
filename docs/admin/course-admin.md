@@ -4,7 +4,7 @@ You're an admin of a course org that's already running. This page covers what th
 how access is declared and revoked.
 
 - Button-by-button walkthroughs: **[runbooks](../faculty-and-instructors/README.md)**
-- New to the platform: **[START-HERE](../START-HERE.md)**
+- New to the platform: the **[root README](../../README.md)** (routing + glossary)
 - Input files and their schemas:
   **[required-input-schema.md](../faculty-and-instructors/required-input-schema.md)**
 
