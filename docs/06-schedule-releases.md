@@ -21,10 +21,13 @@ Two blocks carry the whole term:
   to a `calendar_event` plus, optionally, `deploy` actions (copy a source path from a course
   repo → a cohort repo: materials, code, datasets).
 - **`assignments:`** - each assignment's **whole lifecycle in one block**, keyed by slug:
-  `handout` (when repos are provisioned - one per student, or per **team** when the
-  template's `grading.yml` says `type: group`), `due` (what students see),
-  `grading_deadline` (when it is snapshotted and autograded, once - see
-  [below](#deadline-snapshots-and-autograding)), and `max_team_size` (group assignments).
+  `handout` (when repos are provisioned - without it the schedule never releases the
+  assignment; omit only if you use the manual **Release assignment** button), `due`
+  (REQUIRED - what students see), `grading_deadline`
+  (when it is snapshotted and autograded, once - see
+  [below](#deadline-snapshots-and-autograding)), `type` (`group` = per-team repos and
+  grading; also settable in the template's `grading.yml`), and `max_team_size` (group
+  assignments).
 
 Nothing assignment-related needs a `materials_releases` entry (a legacy `assignment:` action
 there is still honoured).
@@ -110,6 +113,7 @@ assignments:
     handout: 2026-09-22T09:00       # optional - one repo per student from assignment-1-<tag>
     due: 2026-10-13                 # REQUIRED - what students see
     grading_deadline: 2026-10-15    # optional - snapshot freezes + autograded (default: due)
+    type: group                     # or individual - the default if field empty
 ```
 
 Field-by-field tables (required/optional/defaults):

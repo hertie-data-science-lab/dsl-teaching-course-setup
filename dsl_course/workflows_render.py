@@ -372,10 +372,15 @@ on:
         description: "Also push the solution (from the template's solution branch) into each student repo"
         type: boolean
         default: false
-      group:
-        description: "FORCE group - one repo per team (from teams.csv). Leave unticked: a template whose grading.yml says `type: group` is already provisioned per team"
-        type: boolean
-        default: false
+      type:
+        description: "individual (one repo per student) or group (one per team from teams.csv). auto = whatever schedule.yml / the template's grading.yml declare (default: individual)"
+        required: true
+        type: choice
+        default: auto
+        options:
+          - auto
+          - individual
+          - group
       dry_run:
         description: "Preview only - list the repos that WOULD be created, don't create them"
         type: boolean
@@ -391,13 +396,13 @@ jobs:
           COHORT_ORG: ${{{{ inputs.cohort_org }}}}
           TEMPLATE: ${{{{ inputs.assignment }}}}
           INC_SOL: ${{{{ inputs.include_solution }}}}
-          GROUP: ${{{{ inputs.group }}}}
+          TYPE: ${{{{ inputs.type }}}}
           DRY_RUN: ${{{{ inputs.dry_run }}}}
         run: |
           gh auth setup-git
           args=(--master-org "$MASTER_ORG" --template "$TEMPLATE" --cohort-org "$COHORT_ORG")
           [ "$INC_SOL" = "true" ] && args+=(--solution)
-          [ "$GROUP" = "true" ] && args+=(--group)
+          args+=(--type "$TYPE")
           [ "$DRY_RUN" = "true" ] && args+=(--dry-run)
           python3 -m dsl_course.assign "${{args[@]}}"
 """

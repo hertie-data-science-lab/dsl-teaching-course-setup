@@ -121,13 +121,19 @@ def test_publish_site_cron_resyncs_from_persisted_settings():
     assert jobs["publish"]["needs"] == "check-team"
 
 
-def test_provision_has_group_toggle():
-    inp = workflow_inputs(
-        workflows_render.render_provision(["Cohort-f2026"], ["assignment-4-project-f2026"])
+def test_provision_type_choice_defaults_to_auto():
+    # Manual dispatch surfaces the individual/group choice, but `auto` (follow
+    # schedule.yml / the template's grading.yml) is the default - dispatching without
+    # thinking about it must match what the schedule would have done.
+    rendered = workflows_render.render_provision(
+        ["Cohort-f2026"], ["assignment-4-project-f2026"]
     )
-    assert inp["group"]["type"] == "boolean"
-    assert inp["group"]["default"] is False
-    assert "--group" in workflows_render.render_provision(["Cohort-f2026"], [])
+    inp = workflow_inputs(rendered)
+    assert inp["type"]["options"] == ["auto", "individual", "group"]
+    assert inp["type"]["default"] == "auto"
+    step = workflow_jobs(rendered)["provision"]["steps"][-1]
+    assert step["env"]["TYPE"] == "${{ inputs.type }}"
+    assert '--type "$TYPE"' in rendered
 
 
 def test_grade_assignment_calls_collect_with_no_deadline_input():

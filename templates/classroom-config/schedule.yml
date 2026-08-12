@@ -80,9 +80,11 @@
 #
 # assignments:                          # each assignment's WHOLE lifecycle, keyed by slug
 #   assignment-1:                       # (repo name minus the -{tag} tag)
-#     handout: {year}-09-22T09:00       # OPTIONAL: when to provision one repo per student
-#                                       # (or per team - the template's grading.yml decides)
-#                                       # from the assignment-1-{tag} template
+#     handout: {year}-09-22T09:00       # when to provision one repo per student (or per
+#                                       # team) from the assignment-1-{tag} template.
+#                                       # Without it the schedule never releases this
+#                                       # assignment - omit ONLY if you hand out via the
+#                                       # manual "Release assignment" button
 #     due: {year}-10-13T23:59          # a bare date -> END of that day (23:59:59)
 #     grading_deadline: {year}-10-15    # OPTIONAL: when the submission snapshot freezes AND
 #                                       # the autograder fires (once). Not shown to students.
@@ -92,6 +94,8 @@
 #   assignment-4-project:
 #     handout: {year}-10-20T14:00
 #     due: {year}-11-27
+#     type: group                       # OPTIONAL: group | individual (can also be set
+#                                       # in the template's grading.yml; default: individual)
 #     max_team_size: 4                  # OPTIONAL, group assignments: the welcome repo's
 #                                       # "Join team" flow refuses a member beyond this
 #                                       # (default when unset: 5)

@@ -248,21 +248,30 @@ def main() -> int:
         help="Also push the solution (template's `solution` branch) into each student repo",
     )
     parser.add_argument(
+        "--type",
+        dest="kind",
+        choices=["auto", "individual", "group"],
+        default="auto",
+        help="individual = one repo per student; group = one per team (from "
+        "classroom-config/teams.csv); auto = whatever schedule.yml / the template's "
+        "grading.yml declare (default: individual).",
+    )
+    parser.add_argument(
+        # legacy spelling of --type group, kept so a not-yet-refreshed workflow still works
         "--group",
         action="store_true",
-        help="Force a group assignment: one repo per team (from classroom-config/"
-        "teams.csv), granted to the team materialised from the CSV, instead of one repo "
-        "per student. Without it, the template's own grading.yml (`type: group`) decides.",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+    kind = "group" if args.group else args.kind
     return provision_all(
         args.master_org,
         args.template,
         args.cohort_org,
         roster_path=args.roster,
         solution=args.solution,
-        group=args.group or None,
+        group={"auto": None, "individual": False, "group": True}[kind],
         dry_run=args.dry_run,
     )
 
@@ -286,11 +295,12 @@ def provision_all(
         log_err("master-org and cohort-org must differ.")
         return 1
     if group is None:
-        from .collect import template_is_group
+        from .collect import assignment_is_group
 
-        group = template_is_group(master_org, template)
+        # schedule.yml's assignments.<slug>.type wins; grading.yml is the fallback.
+        group = assignment_is_group(master_org, cohort_org, template)
         if group:
-            log("  (grading.yml declares `type: group` - provisioning per team)")
+            log("  (declared `type: group` - provisioning per team)")
 
     students = roster.load_path(roster_path) if roster_path else roster.load(cohort_org)
     if not students:
