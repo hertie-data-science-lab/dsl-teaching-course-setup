@@ -14,11 +14,7 @@
 #
 # A card renders only for an entry that has a `name` AND is active today, so the
 # start/end window below governs the card as well as the access.
-# DEMO DATA: the `demo-*-placeholder` handles are deliberately NON-EXISTENT GitHub
-# accounts, so copying this dataset never sends anyone an org invitation. The cards
-# still carry real names/photos/links - a card is built from this file, not from
-# GitHub. Swap in real handles to actually grant access (a handle that does not
-# exist is logged as a warning and skipped, so the sync still completes).
+
 people:
   instructors:
     - github_handle: "demo-lkaack-placeholder"
