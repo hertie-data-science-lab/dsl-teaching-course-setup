@@ -47,6 +47,18 @@ push to those files and on a daily cron, adding *and removing* to match:
 team, or `instructors-<tag>` through the GitHub Teams UI survives only until the next Sync
 membership run, which removes anyone the config doesn't name. Edit the file instead.
 
+```mermaid
+flowchart LR
+  dcy["COURSE org · .github/dsl-course.yml<br/>people: course_admins"] -->|Sync membership| ca["course-admin team (course org)<br/>admin on .github → every button, all cohorts"]
+  ca -->|mirrored down| cca["course-admin team<br/>(every cohort org)"]
+  py["COHORT org · classroom-config/people.yml<br/>instructors + teaching_assistants"] -->|Sync membership| ci["instructors team (cohort org)<br/>classroom-config + welcome"]
+  py -->|synced upward| itag["instructors-&lt;tag&gt; team (course org)<br/>push on that tag's repos + .github → the buttons"]
+  ui["GitHub Teams UI (hand-add)"] -.->|reverted on next sync| ca
+  ui -.->|reverted on next sync| ci
+  ui -.->|reverted on next sync| itag
+  ui -->|sticks - manual only| gen["generic instructors team (course org)<br/>escape hatch: invisible to config & Show status"]
+```
+
 Everyone added this way accepts a one-time org invite (membership shows `pending` until they
 do), after which the buttons appear in their Actions tab. Students never get write, so never
 see them.

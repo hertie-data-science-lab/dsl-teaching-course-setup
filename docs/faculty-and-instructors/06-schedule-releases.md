@@ -65,6 +65,19 @@ list, and `grade:` takes a **bare template name** (`grade: assignment-1-f2026`) 
 First **freeze passed grading deadlines** - snapshot every assignment whose `due + grace_days`
 has gone by and isn't frozen yet (see below) - then **fire every due release**.
 
+```mermaid
+flowchart TB
+  cron["Scheduled release - hourly cron"] --> parse["parse the cohort's schedule.yml<br/>(malformed entries already silently dropped)"]
+  parse --> p1["1 · freeze passed deadlines<br/>every assignment past due + grace_days"]
+  p1 --> snap{"snapshot CSV<br/>already written?"}
+  snap -- no --> freeze["write snapshots/&lt;slug&gt;.csv<br/>write-once - the pin never moves again"]
+  snap -- yes --> skip["skip"]
+  p1 --> p2["2 · fire EVERY release whose when has passed<br/>on every tick, forever - no released state"]
+  p2 --> dep["deploy → cheap<br/>nothing changed, nothing pushed"]
+  p2 --> asg["assignment → useful<br/>a late onboarder gets their repo next tick"]
+  p2 --> grd["grade → expensive<br/>full autograder re-run, every tick"]
+```
+
 **Every entry with a past `when` fires on every tick, forever** - there is no "already released"
 state. That's by design, because every release function is idempotent:
 

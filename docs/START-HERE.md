@@ -42,6 +42,9 @@ have no buttons of their own; their front page is student-facing.
 | `instructors-<tag>` | the **course** org | the same `people.yml`, synced upward | push on that year's course content repos + the control panel |
 | `instructors` | the **course** org | nothing - manual only | a rare escape hatch; invisible to config files, use sparingly |
 
+Diagram of how all of it flows from the two config files:
+[course-admin.md](admin/course-admin.md#how-access-is-declared).
+
 **`course-admin` team** - the course org's standing owners of the course, declared once in the
 course org's `.github/dsl-course.yml` (`course_admins`) and mirrored down into every cohort org.
 Unlike instructors, it is not per-cohort.
