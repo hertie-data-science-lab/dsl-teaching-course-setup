@@ -5,15 +5,15 @@ Every button, one line each. They all live in the **course org's `.github` Actio
 **Release code** lives there **only**.
 
 Step-by-step flows: [workflow runbooks](README.md). File layouts and CSV columns:
-[`required-input-schema.md`](required-input-schema.md).
+[`DEPLOYMENT-CHECKLIST.md`](DEPLOYMENT-CHECKLIST.md).
 
 ## Setup
 
 | Action | Effect |
 | --- | --- |
 | **Bootstrap cohort** | Configure a pre-created cohort org: `welcome` + `classroom-config`, permissions, site, `course_admins`, register + refresh. Safe to re-run on a live cohort - your `classroom-config` files are never overwritten. |
-| **New materials repo** | Scaffold a `course-materials-<tag>` repo (session folders, `SYLLABUS.md`, the run-from-repo Release buttons). |
-| **New assignment** | Scaffold an `assignment-N-<tag>` template: brief + starter on `main`; stub solution, `grading.yml` and a hidden test on the `solution` branch. |
+| **New materials repo** | Scaffold a `course-materials-<tag>` repo (lectures/readings/labs session folders, `SYLLABUS.md`, the run-from-repo Release buttons). |
+| **New assignment** | Scaffold an `assignment-N-<tag>` template: brief + starter on `main`; stub solution, `grading.yml` and a hidden test on the `solution` branch. `format` picks py/notebook stubs; `type: group` makes handout + grading run per team. |
 | **Refresh actions** | Re-seed the run-from-repo buttons, propagate the repo secret, repopulate every dropdown, rebuild the profile READMEs. No inputs. _(All DSL orgs at once: [Refresh Course Orgs Inventory](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions/workflows/refresh-inventory.yml).)_ |
 | **Show status** | Read-only per-cohort checklist of what's configured and what's missing, with an edit link for each gap. |
 | **Sync membership** | Reconcile `students`/`auditors` teams (`students.csv`), project teams (`teams.csv`) and instructor/course-admin access (`people.yml`). Automatic on push to those files, plus a daily cron. |

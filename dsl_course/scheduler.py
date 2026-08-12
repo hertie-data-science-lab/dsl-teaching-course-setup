@@ -48,10 +48,18 @@ from .utils import log, log_err, log_ok, log_step
 
 
 def due_releases(releases: list[Release], now: datetime) -> list[Release]:
-    """Releases whose `when` has arrived (<= now), in `when` order. `releases` is already
-    sorted by `when` (schedule._parse_releases), and `now`/`when` are both tz-aware, so
-    the comparison is correct across timezones."""
-    return [r for r in releases if r.when <= now]
+    """Entries with something to DO at `now`, in calendar_event order. assignment/grade
+    actions fire at the entry's calendar_event; each deploy at its own deploy_datetime
+    (else the calendar_event) - so an entry is due as soon as any one of its actions is.
+    Display-only entries (no actions) never fire and are never due. `releases` is already
+    sorted (schedule._parse_releases), and every datetime is tz-aware, so the comparisons
+    are correct across timezones."""
+    return [
+        r
+        for r in releases
+        if r.due_deploys(now)
+        or ((r.assignment or r.grade) and r.when <= now)
+    ]
 
 
 def due_snapshots(sched: schedule.Schedule, now: datetime) -> list[tuple[str, str]]:
@@ -72,19 +80,33 @@ def _dest(d: Deploy) -> str:
     return d.dest_path or d.source_path
 
 
-def describe(release: Release) -> list[str]:
-    """Human one-liners for a release's actions (for dry-run / 'what opens when')."""
+def describe(release: Release, now: datetime | None = None) -> list[str]:
+    """Human one-liners for a release's actions (for dry-run / 'what opens when'). With
+    `now`, deploys not yet due (a deploy_datetime after the entry's calendar_event) are
+    marked rather than listed as firing."""
+    if release.is_event_only:
+        return ["calendar event only (site schedule row) - nothing to release"]
     lines: list[str] = []
     for d in release.deploy:
-        lines.append(
-            f"deploy {d.source_repo}/{d.source_path} -> {d.dest_repo}/{_dest(d)}"
+        pending = now is not None and (d.deploy_datetime or release.when) > now
+        suffix = (
+            f"  (not yet due - deploys {d.deploy_datetime.isoformat()})"
+            if pending and d.deploy_datetime
+            else ""
         )
+        lines.append(
+            f"deploy {d.source_repo}/{d.source_path} -> {d.dest_repo}/{_dest(d)}{suffix}"
+        )
+    actions_pending = now is not None and release.when > now
+    actions_suffix = (
+        f"  (not yet due - fires {release.when.isoformat()})" if actions_pending else ""
+    )
     if release.assignment:
-        lines.append(f"assignment {release.assignment}")
+        lines.append(f"assignment {release.assignment}{actions_suffix}")
     if release.grade:
         lines.append(
             f"grade {release.grade.template} "
-            f"(deadline {release.grade.deadline or 'from schedule'})"
+            f"(deadline {release.grade.deadline or 'from schedule'}){actions_suffix}"
         )
     return lines
 
@@ -109,6 +131,9 @@ def _execute_nondeploy(
     if release.assignment:
         from .assign import provision_all
 
+        # provision_all's default (group=None) reads the template's own grading.yml
+        # `type:` declaration - so a scheduled group handout provisions per TEAM, not
+        # one repo per student.
         if provision_all(course_org, release.assignment, cohort_org) != 0:
             errors += 1
     if release.grade:
@@ -215,13 +240,16 @@ def _autograde_passed_deadlines(
 
 
 def _run_releases(
-    course_org: str, cohort_org: str, due: list[Release], graded: set[str]
+    course_org: str, cohort_org: str, due: list[Release], graded: set[str], now: datetime
 ) -> int:
-    """Fire every due release's actions, then sync the site once. Returns the error count."""
+    """Fire every due release's due actions, then sync the site once. Returns the error
+    count. `now` gates each action individually: a deploy with its own deploy_datetime
+    fires on its own clock, an entry's assignment/grade at its calendar_event - an entry
+    can be due for one and not (yet) the other."""
     errors = 0
-    # Batch EVERY due release's deploys through one deploy_many: each unique source and
-    # dest repo is cloned once for the whole run, not once per copy.
-    all_deploys = [d for release in due for d in release.deploy]
+    # Batch EVERY due release's due deploys through one deploy_many: each unique source
+    # and dest repo is cloned once for the whole run, not once per copy.
+    all_deploys = [d for release in due for d in release.due_deploys(now)]
     deploy_errors, changed = 0, False
     if all_deploys:
         from .release_code import deploy_many
@@ -234,7 +262,7 @@ def _run_releases(
     # Assignment / grade actions run per release (they aren't file copies).
     did_assign = False
     for release in due:
-        if release.assignment or release.grade:
+        if (release.assignment or release.grade) and release.when <= now:
             log_step(f"  [{release.label}] assignment/grade")
             errors += _execute_nondeploy(course_org, cohort_org, release, graded)
             did_assign = did_assign or bool(release.assignment)
@@ -266,7 +294,7 @@ def run(course_org: str, cohort_org: str, now: datetime, dry_run: bool = False) 
 
     if dry_run:
         for release in due:
-            for line in describe(release):
+            for line in describe(release, now):
                 log(f"    DRY-RUN  [{release.label}] {line}")
         return 0
 
@@ -278,7 +306,7 @@ def run(course_org: str, cohort_org: str, now: datetime, dry_run: bool = False) 
     elif not due:
         log_ok("nothing due.")
     else:
-        errors += _run_releases(course_org, cohort_org, due, graded)
+        errors += _run_releases(course_org, cohort_org, due, graded, now)
 
     if errors:
         log_err(f"{errors} action(s) failed")

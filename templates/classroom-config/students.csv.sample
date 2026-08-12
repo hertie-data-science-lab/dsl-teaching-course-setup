@@ -1,0 +1,3 @@
+student_id,hertie_email,name,github_handle,github_id,section,enrol_code,role
+000001,jane.doe@example.edu,Jane Doe,,,A,,enrolled
+000002,alex.auditor@example.edu,Alex Auditor,,,A,,auditor

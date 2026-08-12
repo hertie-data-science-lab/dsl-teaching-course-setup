@@ -506,11 +506,15 @@ def put_file(org: str, repo: str, path: str, content: bytes, message: str) -> bo
     return False
 
 
-def get_file_content(org: str, repo: str, path: str) -> str | None:
-    """Fetch a file's decoded text content. Returns None if not found."""
+def get_file_content(org: str, repo: str, path: str, ref: str = "") -> str | None:
+    """Fetch a file's decoded text content (from `ref`, default branch if empty).
+    Returns None if not found."""
+    url = f"repos/{org}/{repo}/contents/{path}"
+    if ref:
+        url += f"?ref={ref}"
     code, out = gh(
         "api",
-        f"repos/{org}/{repo}/contents/{path}",
+        url,
         "--jq",
         ".content | @base64d",
     )

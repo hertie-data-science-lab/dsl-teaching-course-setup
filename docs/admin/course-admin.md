@@ -6,7 +6,7 @@ how access is declared and revoked.
 - Button-by-button walkthroughs: **[runbooks](../faculty-and-instructors/README.md)**
 - New to the platform: the **[root README](../../README.md)** (routing + glossary)
 - Input files and their schemas:
-  **[required-input-schema.md](../faculty-and-instructors/required-input-schema.md)**
+  **[DEPLOYMENT-CHECKLIST.md](../faculty-and-instructors/DEPLOYMENT-CHECKLIST.md)**
 
 **Start by running [Show status](../faculty-and-instructors/actions-reference.md) on each
 cohort** (course org's `.github` Actions tab → **Show status**). It is read-only and prints a

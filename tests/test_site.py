@@ -70,3 +70,37 @@ def test_lecture_entry_shows_real_time_from_a_datetime():
 def test_lecture_entry_falls_back_to_0900_for_a_bare_date():
     md = site._lecture_entry("Cohort", "2", date(2026, 9, 15), [])
     assert "date: 2026-09-15T09:00:00" in md
+
+
+def test_session_dates_use_the_calendar_event_not_the_deploy_datetime():
+    # The site announces the class; the copies may ship on their own clocks.
+    s = Schedule(
+        releases=[
+            Release(
+                "week-2",
+                datetime(2026, 9, 15, 10, 0, tzinfo=BERLIN),
+                deploy=[
+                    Deploy(
+                        "cm",
+                        "lectures/02_intro",
+                        "materials",
+                        None,
+                        deploy_datetime=datetime(2026, 9, 15, 9, 0, tzinfo=BERLIN),
+                    )
+                ],
+            )
+        ]
+    )
+    assert site._session_dates(s)["2"] == datetime(2026, 9, 15, 10, 0, tzinfo=BERLIN)
+
+
+def test_raw_event_entry_renders_a_display_only_schedule_row():
+    r = Release("project-clinic", datetime(2026, 11, 17, 10, 0, tzinfo=BERLIN))
+    out = site._raw_event_entry(r)
+    assert "type: raw_event" in out
+    assert 'name: "Project Clinic"' in out  # prettified from the label
+    assert "date: 2026-11-17T10:00:00" in out
+    titled = Release(
+        "project-clinic", datetime(2026, 11, 17, 10, 0, tzinfo=BERLIN), title="Bring your data"
+    )
+    assert 'name: "Bring your data"' in site._raw_event_entry(titled)

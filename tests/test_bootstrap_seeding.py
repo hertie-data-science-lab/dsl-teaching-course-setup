@@ -5,13 +5,13 @@ grants, refresh workflows), so it runs against LIVE cohorts. `utils.create_repo`
 an already-existing repo as success, so the `if create_repo(...)` blocks are no
 first-run guard - the guard has to be per file. These tests pin the split:
 
-- USER-owned (classroom-config roster/schedule/people/teams/README/grades, welcome's
-  student-facing README, and the course org's dsl-course.yml SSOT): seeded once, NEVER
-  rewritten - a rewrite destroyed a live roster (enrol codes + onboarded handles) in
-  DSL-Demo-f2026.
+- USER-owned (classroom-config roster/schedule/people/grades, welcome's student-facing
+  README, and the course org's dsl-course.yml SSOT): seeded once, NEVER rewritten - a
+  rewrite destroyed a live roster (enrol codes + onboarded handles) in DSL-Demo-f2026.
 - SYSTEM-owned (welcome's onboard/team-formation workflows + the issue forms they parse,
-  classroom-config's dispatch-sync*.yml, the cohort's generated dsl-course.yml pointer):
-  re-pushed on every run so fixes reach running cohorts.
+  classroom-config's dispatch-sync*.yml, its README contract and `*.csv.sample` worked
+  examples, the cohort's generated dsl-course.yml pointer): re-pushed on every run so
+  fixes reach running cohorts.
 """
 
 from __future__ import annotations
@@ -24,13 +24,15 @@ USER_OWNED = {
     "students.csv",
     "schedule.yml",
     "people.yml",
-    "teams.csv.sample",
-    "README.md",
     "grades/.gitkeep",
 }
 SYSTEM_OWNED = {
     ".github/workflows/dispatch-sync.yml",
     ".github/workflows/dispatch-sync-site.yml",
+    "README.md",
+    "students.csv.sample",
+    "teams.csv.sample",
+    "grades/assignment-1.csv.sample",
 }
 WELCOME_SYSTEM_OWNED = {
     ".github/workflows/onboard.yml",
@@ -108,13 +110,14 @@ def test_rerun_preserves_a_faculty_edited_welcome_readme(fake):
 
 
 def test_rerun_preserves_user_config_and_refreshes_workflows(fake):
-    # A live mid-semester cohort: real roster + faculty-edited schedule/people/teams.
+    # A live mid-semester cohort: real roster + faculty-edited schedule/people, plus a
+    # stale README/sample from an older engine version.
     live = {
         "students.csv": "email,github_handle,enrol_code\na@x.edu,ahandle,AB12CD\n",
         "schedule.yml": "timezone: Europe/Berlin\nassignments:\n  - id: a1\n",
         "people.yml": "people:\n  instructors:\n    - github_handle: profx\n",
-        "teams.csv.sample": "team,members\nreal,edited\n",
-        "README.md": "# our cohort\n",
+        "teams.csv.sample": "team,members\nstale,sample\n",
+        "README.md": "# stale contract from an older engine\n",
         "grades/.gitkeep": "",
         ".github/workflows/dispatch-sync.yml": "name: stale dispatcher\n",
     }
@@ -132,6 +135,12 @@ def test_rerun_preserves_user_config_and_refreshes_workflows(fake):
     # SYSTEM-owned files: re-pushed, so the stale copies are replaced by the templates.
     assert fake.files[("classroom-config", ".github/workflows/dispatch-sync.yml")] == (
         bc._template("classroom-config/dispatch-sync.yml")
+    )
+    assert fake.files[("classroom-config", "README.md")] == (
+        bc._template("classroom-config/README.md")
+    )
+    assert fake.files[("classroom-config", "teams.csv.sample")] == (
+        bc._template("classroom-config/teams.csv.sample")
     )
     assert fake.files[("welcome", ".github/workflows/onboard.yml")] == (
         bc._template("welcome/onboard.yml")
@@ -161,6 +170,44 @@ def test_seed_user_file_skips_an_empty_existing_file(fake):
         "Cohort-f2026", "classroom-config", "grades/.gitkeep", b"x", "msg"
     )
     assert fake.writes == []
+
+
+def test_seeded_scaffolds_render_this_cohorts_tag(fake):
+    # The commented examples must be copy-paste-correct for THIS cohort: schedule.yml
+    # names `course-materials-<tag>` / `assignment-1-<tag>`, people.yml carries this
+    # year's dates, and no format placeholder survives into any seeded file.
+    bc.setup_cohort_extras("Deep-Learning-f2027")
+    sched = fake.files[("classroom-config", "schedule.yml")]
+    assert "course-materials-f2027" in sched and "assignment-1-f2027" in sched
+    assert "2027-09-15" in sched
+    people = fake.files[("classroom-config", "people.yml")]
+    assert '"2027-09-01"' in people and '"2028-01-31"' in people
+    for (repo, path), content in fake.files.items():
+        assert "{tag}" not in content and "{year" not in content, f"{repo}/{path}"
+
+
+def test_cohort_tag_derivation():
+    assert bc._cohort_tag("Deep-Learning-f2027") == ("f2027", 2027)
+    assert bc._cohort_tag("Stats-S2030") == ("s2030", 2030)
+    # No recognisable suffix -> the fallback keeps the examples plausible.
+    assert bc._cohort_tag("Some-Odd-Name") == ("f2026", 2026)
+
+
+def test_sample_headers_match_the_engine_schemas():
+    # The seeded worked examples must always carry the real, current column sets - a
+    # drifted sample teaches faculty a schema the engine no longer reads.
+    from dsl_course.grades import GRADE_FIELDS
+    from dsl_course.roster import FIELDS
+
+    roster_header = ",".join(FIELDS)
+    assert bc._template("classroom-config/students.csv").splitlines()[0] == roster_header
+    sample = bc._template("classroom-config/students.csv.sample").splitlines()
+    assert sample[0] == roster_header
+    assert any(",auditor" in line for line in sample[1:])  # the auditor worked example
+    grades_sample = bc._template(
+        "classroom-config/grades/assignment-1.csv.sample"
+    ).splitlines()
+    assert grades_sample[0] == ",".join(GRADE_FIELDS)
 
 
 def test_course_dsl_course_yml_is_never_rewritten(fake, monkeypatch):

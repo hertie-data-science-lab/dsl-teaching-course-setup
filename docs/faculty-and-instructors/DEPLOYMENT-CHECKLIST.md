@@ -1,4 +1,4 @@
-# Required input schema
+# Deployment checklist
 
 Every input needed to stand up a working course + cohort: each step's workflow, inputs and
 output, then [every input file with a copyable example](#inputs-by-file). Worked example:
@@ -11,7 +11,7 @@ output, then [every input file with a copyable example](#inputs-by-file). Worked
 | `[required]` | 1. Create the course org | course | GitHub [web UI](https://github.com/account/organizations/new) | name `<course-name>-<CODE>` (no year); invite **`hertie-dsl-bot`** as **Owner** (must accept) | an empty org the bot can bootstrap |
 | `[required]` | 2. Bootstrap | course | [central repo → Actions → **Bootstrap Course Org**](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions/workflows/bootstrap-org.yml) | `org`, `org_name`, `course_code`; optional `admin` (your handle) | the `.github` control panel with every button, the `course-admin` team, [`dsl-course.yml`](#dsl-courseyml), `DSL_BOT_TOKEN` set for you |
 | `[required]` | 3. Materials | course | course `.github` → **New materials repo**, then `git push` | `tag` (e.g. `f2026`); then your content ([layout](#materials-repo)) | `course-materials-<tag>` with run-from-repo Release buttons |
-| `[required]` | 4. Assignment(s) | course | course `.github` → **New assignment**, then `git push` | `number` + `tag`; brief + starter on `main`, optional autograding on `solution` ([layout](#assignment-template)) | one `assignment-N-<tag>` template each |
+| `[required]` | 4. Assignment(s) | course | course `.github` → **New assignment**, then `git push` | `number` + `tag` + `format` (py/notebook) + `type` (individual/group); brief + starter on `main`, optional autograding on `solution` ([layout](#assignment-template)) | one `assignment-N-<tag>` template each |
 | *(optional)* | 5. Course admins | course | edit [`dsl-course.yml`](#dsl-courseyml), commit to `main` | GitHub handles | admin on the course org + every cohort, reconciled |
 | `[required]` | 6. Refresh | course | course `.github` → **Refresh actions** | none | dropdowns populated, secrets on content repos |
 
@@ -59,8 +59,9 @@ people:
 
 Live example: [`example-course/cohort-org/students.csv`](../../example-course/cohort-org/students.csv).
 
-`classroom-config/students.csv` - one row per student, straight from the registrar. Leave the
-onboarding-owned columns blank. Deleting a row off-boards that student on the push.
+`classroom-config/students.csv` - one row per student, straight from the registrar (seeded
+header-only, with a filled `students.csv.sample` next to it). Leave the onboarding-owned
+columns blank. Deleting a row off-boards that student on the push.
 
 ```csv
 student_id,hertie_email,name,github_handle,github_id,section,enrol_code,role
@@ -119,8 +120,9 @@ assignment-4-project,team-x,ben-baker
 
 Live example: [`example-course/cohort-org/grades/assignment-1.csv`](../../example-course/cohort-org/grades/assignment-1.csv).
 
-`classroom-config/grades/<slug>.csv` - one per assignment. **Grade assignment** creates it and
-fills the machine columns (write-once); for hand-marked work create it yourself. `final` +
+`classroom-config/grades/<slug>.csv` - one per assignment. The autograder creates it and
+fills the machine columns (write-once); for hand-marked work copy the header from the seeded
+`grades/assignment-1.csv.sample`. `final` +
 `comments` are what the student sees; full column-by-column reference:
 [the grading runbook](09-grade-and-return-assignments.md#2-add-your-marks-on-top-of--instead-of-autograde).
 
@@ -149,7 +151,9 @@ course-materials-f2026/
 Live example: [`example-course/course-org/assignment-1-f2026`](../../example-course/course-org/assignment-1-f2026).
 
 `assignment-N-<tag>` - a template repo with two branches. Student repos are generated from
-`main` only.
+`main` only. The **New assignment** button's `format` (py/notebook) and `type`
+(individual/group) shape the stubs and are recorded in `grading.yml` - handout and grading
+obey `type: group` automatically.
 
 ```
 main branch      README.md (the brief) + starter.*      -> what students get
@@ -164,33 +168,46 @@ Live example: [`example-course/cohort-org/schedule.yml`](../../example-course/co
 `classroom-config/schedule.yml` - the term plan: the **auto-release plan** the hourly cron
 runs, and the **dates** that drive the website and grading. Times are read in `timezone`
 (default `Europe/Berlin`) unless given an offset; a bare **release** date = 00:00, a bare
-**due**/`grading_deadline` date = 23:59:59, a bare **exam** date shows as 09:00. `when:` is
+**due**/`grading_deadline` date = 23:59:59, a bare **exam** date shows as 09:00. Times are
 honoured to the hour.
 
-**`materials_releases`** - each entry: a label you choose, a `when:`, and one or more actions.
+**`materials_releases`** - the term calendar and release plan in one block: each entry is a
+label you choose, a `calendar_event:`, and optionally actions.
 Sources are read from the course org, destinations written to this cohort, so entries name
 repos, never orgs. Every release is idempotent - re-runs are no-ops.
 
 | Action | Does | Fields |
 |--------|------|--------|
 | `deploy` | copy a source path → a cohort repo | `source_repo`, `source_path`, `dest_repo` (default `materials`), `dest_path` (default: mirror). A list, or a single mapping for one copy |
-| `assignment` | one private repo per onboarded student | the template repo name |
-| `grade` | *legacy* - autograding now fires automatically at each assignment's grading deadline | `template`; optional `deadline`, `group` |
+| `assignment` | one private repo per onboarded student - or per team, when the template's `grading.yml` says `type: group` | the template repo name |
+
+(Grading takes no action here - each assignment is autograded automatically, once, at its
+`grading_deadline` under `assignments:`.)
+
+Per entry: `calendar_event` (required - when the thing happens; the site schedule shows it,
+and it is the default fire time; `when` is accepted as a legacy alias), `title` (optional
+row label), and the actions. A deploy item may carry its own `deploy_datetime` to ship
+earlier or later than the calendar event. An entry with no actions is a **display-only
+calendar event** - nothing deploys, the site shows the row.
 
 ```yaml
 timezone: Europe/Berlin
 materials_releases:
   session_2:
-    when: 2026-09-15T14:00
+    calendar_event: 2026-09-15T10:00  # the class - what the site announces
     deploy:
-      - {source_repo: course-materials-f2026, source_path: lectures/02_intro, dest_repo: materials}
+      - {source_repo: course-materials-f2026, source_path: lectures/02_intro,
+         dest_repo: materials, deploy_datetime: 2026-09-15T09:00}    # ships 1h early
       - {source_repo: course-materials-f2026, source_path: readings/02_intro, dest_repo: materials}
   bonus-dataset:
-    when: 2026-10-20T09:30            # single copy - no list needed
+    calendar_event: 2026-10-20T09:30  # single copy - no list needed
     deploy: {source_repo: course-datasets-f2026, source_path: week7/housing.csv, dest_repo: materials, dest_path: datasets/housing.csv}
   assignment-1-handout:
-    when: 2026-09-22T09:00
+    calendar_event: 2026-09-22T09:00
     assignment: assignment-1-f2026
+  project-clinic:
+    calendar_event: 2026-11-17T10:00  # no actions -> display-only row on the site schedule
+    title: Project clinic
 ```
 
 **Dates** - the website schedule and the grading deadlines. Absent values are synthesised
@@ -213,7 +230,8 @@ exams:
 
 | Mistake | What happens |
 |---------|--------------|
-| `when:` missing/unparseable | that release is silently dropped |
+| `calendar_event:` (or legacy `when:`) missing/unparseable | that entry is silently dropped |
+| `deploy_datetime:` unparseable | silently ignored - that copy ships at the `calendar_event` |
 | `due:` missing/unparseable | the whole `assignments:` entry is dropped - no grading pin, no site date |
 | `grading_deadline:` unparseable | silently ignored - the grading deadline falls back to `due` |
 | unknown `timezone:` | silent fallback to `Europe/Berlin` |

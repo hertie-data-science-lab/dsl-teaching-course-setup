@@ -118,6 +118,16 @@ def parse_grading_spec(text: str) -> dict:
     return spec
 
 
+def template_is_group(master_org: str, template: str) -> bool:
+    """Whether an assignment template declares itself group-provisioned: `type: group` in
+    the grading.yml on its solution branch (written by the New assignment scaffold). No
+    solution branch / no grading.yml means individual (the parse's default). Provisioning
+    (assign, scheduler) infers from this, so handing out is per-team without anyone having
+    to remember the group checkbox."""
+    text = get_file_content(master_org, template, GRADING_FILE, ref=SOLUTION_BRANCH)
+    return parse_grading_spec(text or "")["type"] == "group"
+
+
 def score_from_junit(xml_text: str) -> dict:
     """Turn a pytest junit XML report into the result.json contract {score, max, tests}.
 

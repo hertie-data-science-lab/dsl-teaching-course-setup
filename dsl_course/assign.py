@@ -250,8 +250,9 @@ def main() -> int:
     parser.add_argument(
         "--group",
         action="store_true",
-        help="Group assignment: one repo per team (from classroom-config/teams.csv), "
-        "granted to the team materialised from the CSV, instead of one repo per student.",
+        help="Force a group assignment: one repo per team (from classroom-config/"
+        "teams.csv), granted to the team materialised from the CSV, instead of one repo "
+        "per student. Without it, the template's own grading.yml (`type: group`) decides.",
     )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
@@ -261,7 +262,7 @@ def main() -> int:
         args.cohort_org,
         roster_path=args.roster,
         solution=args.solution,
-        group=args.group,
+        group=args.group or None,
         dry_run=args.dry_run,
     )
 
@@ -272,15 +273,24 @@ def provision_all(
     cohort_org: str,
     roster_path: str | None = None,
     solution: bool = False,
-    group: bool = False,
+    group: bool | None = None,
     dry_run: bool = False,
 ) -> int:
     """Freeze the cohort template, then provision a repo per unit (student, or team).
 
-    Callable directly (e.g. by the scheduler) as well as from the CLI."""
+    Callable directly (e.g. by the scheduler) as well as from the CLI. `group=None`
+    (the default) reads the template's own declaration - `type: group` in the
+    grading.yml on its solution branch; pass True to force per-team for a template
+    that doesn't declare it."""
     if master_org == cohort_org:
         log_err("master-org and cohort-org must differ.")
         return 1
+    if group is None:
+        from .collect import template_is_group
+
+        group = template_is_group(master_org, template)
+        if group:
+            log("  (grading.yml declares `type: group` - provisioning per team)")
 
     students = roster.load_path(roster_path) if roster_path else roster.load(cohort_org)
     if not students:

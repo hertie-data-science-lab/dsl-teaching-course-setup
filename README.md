@@ -17,19 +17,21 @@ Central registry of the workflows that deliver courses at the Hertie Data Scienc
 | An example course setup | [`example course`](example-course/README.md) |
 | Template artefacts | [`templates`](templates/classroom-config/README.md) |
 | All available `.github` Actions tab buttons (course org) | [`actions reference`](docs/faculty-and-instructors/actions-reference.md) |
-| **Deployment checklist** | [`required-input-schema.md`](docs/faculty-and-instructors/required-input-schema.md) |
+| **Deployment checklist** | [`DEPLOYMENT-CHECKLIST.md`](docs/faculty-and-instructors/DEPLOYMENT-CHECKLIST.md) |
 
 ## Deploying a course
 
-- Three phases:
-   - (1) [**set up the course org**](docs/faculty-and-instructors/01-new-course-org.md) (once),
-   - (2) [**add a cohort org**](docs/faculty-and-instructors/04-new-cohort-org.md) (per year),
-   - (3) Set up the schedule up front, and/or manually release.
-- Fill the cohort's schedule up front (in the `materials_releases` block in `schedule.yml`) and all materials, assignments, hand-ins, grades & feedback etc will be **automatically released/collected**.
-- Otherwise use the manual GitHub Actions buttons in the course org's `.github` repository to run specific ad hoc workflows.
-- The only manual steps are (1) creating each org in the GitHub web UI
-([github.com/account/organizations/new](https://github.com/account/organizations/new)) and (2) [inviting **`hertie-dsl-bot`** as an org **Owner**](docs/faculty-and-instructors/01-new-course-org.md#steps); the DSL team must **accept** it before you bootstrap. Everything after that is automated via the scheduler / a button click.
-   - NB: if email integration is not currently live, then it may be necessary to email students their invite codes. 
+2 phases:
+1. [**set up the course org**](docs/faculty-and-instructors/01-new-course-org.md) (once)
+   - [Add materials](docs/faculty-and-instructors/02-add-materials-to-course.md) - lectures slides, readings, labs, other
+   - [Add assignments](docs/faculty-and-instructors/03-add-assignment-to-course.md) - a template repo that is copied into student private response repos, optionally contains a solutions branch
+2. [**add a cohort org**](docs/faculty-and-instructors/04-new-cohort-org.md) (per year),
+   - [Enrol students](docs/faculty-and-instructors/05-enrol-students-to-cohort.md)
+   - [Define schedule up front](docs/faculty-and-instructors/06-schedule-releases.md) , to automate release/collect of materials, assignments & grading runs from course org -> cohort org (and/or manually release [materials](docs/faculty-and-instructors/07-release-materials-to-cohort.md) and [assignments](docs/faculty-and-instructors/08-release-assignment-to-cohort.md) on an ad hoc basis)
+   - [Grade assignments](docs/faculty-and-instructors/09-grade-and-return-assignments.md)
+      
+> The only manually-required steps are (1) creating each org in the GitHub web UI ([github.com/account/organizations/new](https://github.com/account/organizations/new)) and (2) [inviting **`hertie-dsl-bot`** as an org **Owner**](docs/faculty-and-instructors/01-new-course-org.md#steps); the DSL team must **accept** it before you bootstrap. Everything after that is automated via the scheduler / a button click.
+> *NB: if email integration is not currently live, then it may be necessary to email students their initial course invite codes as well.* 
 
 ## The model
 
@@ -72,7 +74,7 @@ student-list, teams, schedule, grades, deadlines`"]
     cmat["`**released materials**
 
 lectures/readings/labs (students + auditors read)`"]
-    repos["`**assignments**
+    repos["`**released assignments**
 
 one private repo per student/group (generated; autograder rides along)`"]
     team["`**teams**

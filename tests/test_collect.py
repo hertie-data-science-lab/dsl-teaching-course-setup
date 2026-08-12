@@ -469,3 +469,26 @@ def test_collect_without_a_snapshot_grades_on_dates_and_says_so(monkeypatch, cap
     assert set(seen.values()) == {None}
     err = capsys.readouterr().err
     assert "snapshots/assignment-1.csv" in err and "students control" in err
+
+
+def test_template_is_group_reads_the_solution_branch_grading_yml(monkeypatch):
+    seen = {}
+
+    def fake_get(org, repo, path, ref=""):
+        seen.update(org=org, repo=repo, path=path, ref=ref)
+        return "type: group\nformat: py\n"
+
+    monkeypatch.setattr(collect, "get_file_content", fake_get)
+    assert collect.template_is_group("Course-Org", "assignment-4-project-f2026")
+    assert seen == {
+        "org": "Course-Org",
+        "repo": "assignment-4-project-f2026",
+        "path": collect.GRADING_FILE,
+        "ref": collect.SOLUTION_BRANCH,
+    }
+
+
+def test_template_is_group_defaults_to_individual_without_grading_yml(monkeypatch):
+    # No solution branch / no grading.yml -> the contents fetch misses -> individual.
+    monkeypatch.setattr(collect, "get_file_content", lambda *a, **k: None)
+    assert not collect.template_is_group("Course-Org", "assignment-1-f2026")

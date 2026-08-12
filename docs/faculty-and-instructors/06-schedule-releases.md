@@ -15,24 +15,49 @@ autograde run.
 
 Live example (a full term): [`example-course/cohort-org/schedule.yml`](../../example-course/cohort-org/schedule.yml).
 
-`materials_releases:` maps a free-form label to a `when` plus any mix of three actions:
+`materials_releases:` maps a free-form label to a `calendar_event` plus any mix of two actions:
 
 | Action | Does |
 |--------|------|
 | `deploy` | copy a source path from a course repo → a cohort repo (materials, code, datasets) |
-| `assignment` | provision one private repo per onboarded student from a template |
-| `grade` | **legacy** - autograding now happens automatically at each assignment's grading deadline (see [below](#deadline-snapshots-and-autograding)). Keep an entry only to grade at a `when` of your own choosing; it shares the same fire-once marker, so it can never double-grade |
+| `assignment` | provision one private repo per onboarded student from a template - or per **team**, when the template's `grading.yml` says `type: group` |
+
+Grading never appears in this plan: each assignment is snapshotted and autograded
+automatically, once, at its `grading_deadline`
+(see [below](#deadline-snapshots-and-autograding)).
+
+**The calendar event is not the release.** Each entry's `calendar_event:` is when the thing
+*happens* - that is what the cohort site's schedule shows, and the default fire time for the
+entry's actions. A deploy can carry its own `deploy_datetime:` to ship its files earlier (or
+later) than the class they belong to. And an entry with **no actions at all** is a
+display-only calendar event - a project clinic, a guest lecture: nothing deploys, the row
+simply appears on the cohort site (optionally with a `title:`). Exams work the same way, via
+the dedicated `exams:` block below.
+
+```yaml
+  session-02:
+    calendar_event: 2026-09-15T10:00   # the class - what the site announces
+    deploy:
+      - {source_repo: course-materials-f2026, source_path: lectures/02_intro,
+         dest_repo: materials, deploy_datetime: 2026-09-15T09:00}   # slides out 1h early
+      - {source_repo: course-materials-f2026, source_path: readings/02_intro,
+         dest_repo: materials}                                      # out at class time
+
+  project-clinic:                      # no actions -> display-only site row
+    calendar_event: 2026-11-17T10:00
+    title: Project clinic
+```
 
 ```yaml
 timezone: Europe/Berlin
 materials_releases:
   week-2:
-    when: 2026-09-15T09:00
+    calendar_event: 2026-09-15T10:00
     deploy:
       - {source_repo: course-materials-f2026, source_path: lectures/02_week-2, dest_repo: materials}
       - {source_repo: lecture-code-f2026, source_path: mlpkg/simulation, dest_repo: materials}
   assignment-1-handout:
-    when: 2026-09-22T09:00
+    calendar_event: 2026-09-22T09:00
     assignment: assignment-1-f2026
 
 assignments:
@@ -43,7 +68,7 @@ assignments:
 
 No `grade:` entry is needed: `assignment-1` is autograded once, at `2026-10-15T23:59:59`.
 
-Full schema: [the schedule](required-input-schema.md#scheduleyml). 
+Full schema: [the schedule](DEPLOYMENT-CHECKLIST.md#scheduleyml). 
 
 ## Verify your schedule before trusting it
 
@@ -59,7 +84,8 @@ Full schema: [the schedule](required-input-schema.md#scheduleyml).
 ## Silent failures
 
 > **The schedule never errors - it drops.** Nothing below fails a run:
-> - a malformed or missing **`when`** → that whole release is dropped;
+> - a malformed or missing **`calendar_event`** (or legacy `when`) → that whole entry is dropped;
+> - a malformed **`deploy_datetime`** → ignored, and that copy ships at the `calendar_event`;
 > - a malformed or missing **`due`** → the whole `assignments:` entry is dropped, and the
 >   grading deadline then falls back to *today* at grading time;
 > - a malformed **`grading_deadline`** → ignored, and the deadline falls back to `due`;
@@ -72,7 +98,7 @@ Full schema: [the schedule](required-input-schema.md#scheduleyml).
 
 - Everything naive is read in the cohort's `timezone:` (default `Europe/Berlin`).
 - An explicit offset (`2026-09-15T14:00+02:00`) is honoured as written.
-- A **bare date** with no time means **00:00** on a release `when` (the day opens), **23:59:59** on an assignment `due` (the day closes), and a whole day for an exam `date` (the site shows a 09:00 placeholder).
+- A **bare date** with no time means **00:00** on a `calendar_event`/`deploy_datetime` (the day opens), **23:59:59** on an assignment `due` (the day closes), and a whole day for an exam `date` (the site shows a 09:00 placeholder).
 
 ## Deadline snapshots and autograding
 
@@ -113,14 +139,13 @@ already there?`"}
   mark -- no --> grade["`run the hidden tests, fill EMPTY auto cells
 the folder it writes is the fire-once marker`"]
   mark -- yes --> skip2["skip - delete the folder to re-grade"]
-  parse --> p3["`3 · fire EVERY release whose when has passed
+  parse --> p3["`3 · fire EVERY action whose time has passed
+(deploy_datetime, else calendar_event)
 on every tick, forever - no released state`"]
   p3 --> dep["`deploy → cheap
 nothing changed, nothing pushed`"]
   p3 --> asg["`assignment → useful
 a late onboarder gets their repo next tick`"]
-  p3 --> grd["`grade (legacy) → shares the marker
-so it never grades twice`"]
 ```
 
 ---

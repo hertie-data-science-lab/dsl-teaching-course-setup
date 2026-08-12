@@ -128,12 +128,18 @@ def _coerce_date_or_datetime(value: object, tz: ZoneInfo) -> date | datetime | N
 @dataclass
 class Deploy:
     """One source->dest copy: a path in a COURSE-org source repo copied into a COHORT-org
-    dest repo. `dest_path` defaults to `source_path` (mirror)."""
+    dest repo. `dest_path` defaults to `source_path` (mirror).
+
+    `deploy_datetime` optionally overrides the copy's own ship time; unset, it ships at
+    the parent entry's `calendar_event`. This is what disaggregates the class from its
+    materials: the entry's `calendar_event` is the session the site announces, a deploy's
+    `deploy_datetime` ships the files an hour (or a week) before or after it."""
 
     source_repo: str
     source_path: str
     dest_repo: str = "materials"
     dest_path: str | None = None
+    deploy_datetime: datetime | None = None
 
 
 @dataclass
@@ -145,15 +151,32 @@ class Grade:
 
 @dataclass
 class Release:
-    """A labelled scheduled release: fire its actions once `when` has arrived. A release
-    may carry any mix of `deploy` (content copies), `assignment` (provision student repos
-    from a template), and `grade` (run the autograder)."""
+    """A labelled scheduled entry: when the thing HAPPENS (`calendar_event` in the YAML),
+    plus any mix of `deploy` (content copies), `assignment` (provision student repos from
+    a template), and `grade` (run the autograder).
+
+    `when` holds the entry's `calendar_event`: what the cohort site's schedule shows AND
+    the default fire time for the actions. An individual deploy may carry its own
+    `deploy_datetime` to ship earlier or later than the session it belongs to. An entry
+    with no actions at all is a pure display-only event (a clinic, a guest lecture):
+    nothing fires, the site shows the row."""
 
     label: str
     when: datetime
     deploy: list[Deploy] = field(default_factory=list)
     assignment: str | None = None
     grade: Grade | None = None
+    title: str = ""  # display-only: overrides the prettified label on the site
+
+    @property
+    def is_event_only(self) -> bool:
+        """No actions - nothing to fire, purely a site schedule row."""
+        return not self.deploy and not self.assignment and not self.grade
+
+    def due_deploys(self, now: datetime) -> list[Deploy]:
+        """The deploys whose own ship time (`deploy_datetime`, else this entry's
+        `calendar_event`) has arrived."""
+        return [d for d in self.deploy if (d.deploy_datetime or self.when) <= now]
 
 
 @dataclass
@@ -179,9 +202,11 @@ class Schedule:
     exams: list[Exam] = field(default_factory=list)
 
 
-def _parse_deploy(raw: object) -> list[Deploy]:
+def _parse_deploy(raw: object, tz: ZoneInfo) -> list[Deploy]:
     """Parse a release's `deploy:` - a list (or a single mapping) of source->dest copies.
-    Entries missing source_repo/source_path are skipped (nothing to copy)."""
+    Entries missing source_repo/source_path are skipped (nothing to copy). A malformed
+    `deploy_datetime` parses to None (ship at the entry's calendar_event), in keeping
+    with this parser's silent-drop style."""
     items = [raw] if isinstance(raw, dict) else (raw or [])
     out: list[Deploy] = []
     for d in items:
@@ -197,6 +222,7 @@ def _parse_deploy(raw: object) -> list[Deploy]:
                 source_path=str(src_path),
                 dest_repo=str(d.get("dest_repo") or "materials"),
                 dest_path=str(dest_path) if dest_path else None,
+                deploy_datetime=_coerce_datetime(d.get("deploy_datetime"), tz),
             )
         )
     return out
@@ -217,13 +243,17 @@ def _parse_grade(raw: object, tz: ZoneInfo) -> Grade | None:
 
 
 def _parse_releases(raw: object, tz: ZoneInfo) -> list[Release]:
-    """Parse `materials_releases:` (label -> {when + actions}) into Releases sorted by
-    `when`. A release with no valid `when` can never fire, so it's dropped."""
+    """Parse `materials_releases:` (label -> {calendar_event + actions}) into Releases
+    sorted by their calendar_event. `when:` is accepted as a legacy alias (schedules
+    written before the rename), losing to `calendar_event` when both are set. An entry
+    with neither can never fire or be shown, so it's dropped."""
     out: list[Release] = []
     for label, entry in (raw or {}).items():
         if not isinstance(entry, dict):
             continue
-        when = _coerce_datetime(entry.get("when"), tz)
+        when = _coerce_datetime(entry.get("calendar_event"), tz) or _coerce_datetime(
+            entry.get("when"), tz
+        )
         if when is None:
             continue
         assignment = entry.get("assignment")
@@ -231,9 +261,10 @@ def _parse_releases(raw: object, tz: ZoneInfo) -> list[Release]:
             Release(
                 label=str(label),
                 when=when,
-                deploy=_parse_deploy(entry.get("deploy")),
+                deploy=_parse_deploy(entry.get("deploy"), tz),
                 assignment=str(assignment) if assignment else None,
                 grade=_parse_grade(entry.get("grade"), tz),
+                title=str(entry.get("title") or ""),
             )
         )
     out.sort(key=lambda r: r.when)

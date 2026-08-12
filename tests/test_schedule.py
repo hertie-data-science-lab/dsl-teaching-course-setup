@@ -204,3 +204,78 @@ def test_assignment_bare_date_is_rejected_only_the_nested_form_is_accepted():
 
 def test_assignment_without_due_is_skipped():
     assert parse({"assignments": {"assignment-1": {"grace_days": 2}}}).assignments == {}
+
+
+def test_calendar_event_is_the_canonical_key_when_is_a_legacy_alias():
+    meta = {
+        "materials_releases": {
+            "new-style": {"calendar_event": "2026-09-15T10:00", "deploy": []},
+            "old-style": {"when": "2026-09-01T09:00", "deploy": []},
+            "both": {
+                # calendar_event wins - `when` is only read for schedules written
+                # before the rename
+                "calendar_event": "2026-09-22T10:00",
+                "when": "2026-09-22T09:00",
+            },
+        }
+    }
+    releases = {r.label: r for r in parse(meta).releases}
+    assert releases["new-style"].when.isoformat().startswith("2026-09-15T10:00")
+    assert releases["old-style"].when.isoformat().startswith("2026-09-01T09:00")
+    assert releases["both"].when.isoformat().startswith("2026-09-22T10:00")
+
+
+def test_deploy_datetime_parses_and_defaults_to_none():
+    meta = {
+        "materials_releases": {
+            "session_2": {
+                "calendar_event": "2026-09-15T10:00",
+                "deploy": [
+                    {
+                        "source_repo": "cm-f2026",
+                        "source_path": "lectures/02_intro",
+                        "deploy_datetime": "2026-09-15T09:00",
+                    },
+                    {"source_repo": "cm-f2026", "source_path": "readings/02_intro"},
+                ],
+            }
+        }
+    }
+    (r,) = parse(meta).releases
+    early, at_class = r.deploy
+    assert early.deploy_datetime.isoformat().startswith("2026-09-15T09:00")
+    assert at_class.deploy_datetime is None
+    # due_deploys: the early copy fires before the class, the other at it
+    tz = early.deploy_datetime.tzinfo
+    between = datetime(2026, 9, 15, 9, 30, tzinfo=tz)
+    assert r.due_deploys(between) == [early]
+    assert r.due_deploys(datetime(2026, 9, 15, 10, 0, tzinfo=tz)) == [early, at_class]
+
+
+def test_display_only_entry_is_kept_with_its_title():
+    meta = {
+        "materials_releases": {
+            "project-clinic": {"calendar_event": "2026-11-17T10:00", "title": "Project clinic"}
+        }
+    }
+    (r,) = parse(meta).releases
+    assert r.is_event_only and r.title == "Project clinic"
+
+
+def test_malformed_deploy_datetime_falls_back_to_the_calendar_event():
+    meta = {
+        "materials_releases": {
+            "s": {
+                "calendar_event": "2026-09-15T10:00",
+                "deploy": [
+                    {
+                        "source_repo": "cm-f2026",
+                        "source_path": "lectures/02_intro",
+                        "deploy_datetime": "not-a-date",
+                    }
+                ],
+            }
+        }
+    }
+    (r,) = parse(meta).releases
+    assert r.deploy[0].deploy_datetime is None  # ships at the calendar_event

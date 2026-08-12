@@ -359,3 +359,19 @@ def test_classroom_config_site_dispatcher_fires_on_schedule_change():
     trigger = doc.get("on", doc.get(True))
     assert trigger["push"]["paths"] == ["schedule.yml"]
     assert "sync-site" in tmpl  # dispatches the sync-site event
+
+
+def test_new_assignment_button_exposes_format_and_type():
+    # The grading.yml vocabulary (format: py/notebook, type: individual/group) is chosen
+    # on the button and recorded by the scaffold - not hand-edited in afterwards.
+    rendered = workflows_render.render_new_assignment()
+    inputs = workflow_inputs(rendered)
+    assert inputs["format"]["options"] == ["py", "notebook"]
+    assert inputs["format"]["default"] == "py"
+    assert inputs["type"]["options"] == ["individual", "group"]
+    assert inputs["type"]["default"] == "individual"
+    step = workflow_jobs(rendered)["scaffold"]["steps"][-1]
+    assert "${{" not in step["run"]
+    assert step["env"]["FORMAT"] == "${{ inputs.format }}"
+    assert step["env"]["TYPE"] == "${{ inputs.type }}"
+    assert '--format "$FORMAT"' in rendered and '--type "$TYPE"' in rendered

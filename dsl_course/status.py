@@ -30,7 +30,7 @@ from . import grades, roster, schedule, sync_faculty, teams
 from .utils import get_default_branch, get_file_content
 
 ITEMS = ("B1", "B6", "C2", "C3", "C4", "C5", "C6", "C7")
-# Rows whose input is marked `[required]` in docs/faculty-and-instructors/required-input-schema.md;
+# Rows whose input is marked `[required]` in docs/faculty-and-instructors/DEPLOYMENT-CHECKLIST.md;
 # everything else is optional
 # (synthesised/skipped when absent), so an absent optional item is "optional", not
 # "missing" - the status view shouldn't cry wolf over things that never block the pipeline.
@@ -63,7 +63,7 @@ def _row(
 
 
 def render_markdown(course_org: str, cohort_org: str, data: dict[str, dict]) -> str:
-    """One markdown table, in `docs/faculty-and-instructors/required-input-schema.md`'s B/C order, each
+    """One markdown table, in `docs/faculty-and-instructors/DEPLOYMENT-CHECKLIST.md`'s B/C order, each
     row linking straight to the file to fix if something's missing."""
     icon = {"ok": "OK", "missing": "MISSING", "optional": "not set (optional)"}
     lines = [
@@ -108,7 +108,7 @@ def collect(course_org: str, cohort_org: str) -> dict[str, dict]:
     # so it undercounts here. Reuse the already-fetched course_raw. course-admin only
     # - a course-level `instructors`/`teaching_assistants` entry is a legitimate,
     # display-only website card (see the People section in
-    # docs/faculty-and-instructors/required-input-schema.md), not access, so it must not inflate
+    # docs/faculty-and-instructors/DEPLOYMENT-CHECKLIST.md), not access, so it must not inflate
     # this count.
     has_people_block = isinstance(course_meta.get("people"), dict)
     course_faculty = sync_faculty.parse_faculty(course_raw or "")

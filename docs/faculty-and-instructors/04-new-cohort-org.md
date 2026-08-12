@@ -30,21 +30,19 @@ Live example of every file below: [`example-course/cohort-org/`](../../example-c
 4. **Fill in `classroom-config/schedule.yml` for the whole term** (edit locally or in the web UI
    → commit to `main`). Its dates drive every release, the grading deadlines and the website.
    Full guide: [Schedule releases](06-schedule-releases.md); full schema:
-   [the schedule](required-input-schema.md#scheduleyml).
+   [the schedule](DEPLOYMENT-CHECKLIST.md#scheduleyml).
 
    ```yaml
    timezone: Europe/Berlin
    materials_releases:
      session_1:
-       when: 2026-09-07T14:00       # bare date -> 00:00 that day
+       calendar_event: 2026-09-07T14:00   # when the class happens - shown on the site
        deploy:
-         - {source_repo: course-materials-f2026, source_path: lectures/01_intro, dest_repo: materials}
+         - {source_repo: course-materials-f2026, source_path: lectures/01_intro, dest_repo: materials,
+            deploy_datetime: 2026-09-07T13:00}   # optional: ship this copy 1h early
      assignment-1-handout:
-       when: 2026-09-22T09:00
+       calendar_event: 2026-09-22T09:00
        assignment: assignment-1-f2026
-     assignment-1-grade:
-       when: 2026-10-15T00:00
-       grade: {template: assignment-1-f2026}
    semester_start: 2026-09-07
    semester_end: 2026-12-18
    assignments:
@@ -70,10 +68,11 @@ Live example of every file below: [`example-course/cohort-org/`](../../example-c
          end: "2027-01-31"
    ```
 
-6. **Load the roster.** Replace the example row in `classroom-config/students.csv` with
+6. **Load the roster.** Fill `classroom-config/students.csv` (seeded header-only) with
    registrar data (`student_id, hertie_email, name, section`; leave `github_handle, github_id`
    blank - onboarding fills them). Add `role: auditor` for anyone who should get the released
-   materials but no assignments and no grades. That repo's `README.md` documents every column.
+   materials but no assignments and no grades. `students.csv.sample` next to it shows a filled
+   row of each kind, and that repo's `README.md` documents every column.
 
 ## Next
 
