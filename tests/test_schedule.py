@@ -305,3 +305,38 @@ def test_assignment_handout_parses():
     entries = parse(meta).assignments
     assert entries["assignment-1"].handout.isoformat().startswith("2026-09-22T09:00")
     assert entries["assignment-2"].handout is None
+
+
+def test_tbc_calendar_event_keeps_an_undated_entry():
+    meta = {
+        "materials_releases": {
+            "guest-lecture": {"calendar_event": "tbc", "title": "Guest lecture"},
+            "dated": {"calendar_event": "2026-09-15T10:00", "deploy": []},
+            "dropped": {"deploy": []},  # no date, no tbc -> gone
+        }
+    }
+    releases = parse(meta).releases
+    assert [r.label for r in releases] == ["dated", "guest-lecture"]  # TBC sorts last
+    gl = releases[-1]
+    assert gl.when is None and gl.tbc and gl.is_event_only
+    # undated -> nothing can ever be due
+    assert gl.due_deploys(datetime(2099, 1, 1, tzinfo=ZoneInfo("UTC"))) == []
+
+
+def test_tbc_flag_keeps_a_provisional_date_firing():
+    meta = {
+        "materials_releases": {
+            "clinic": {"calendar_event": "2026-11-17T10:00", "tbc": True},
+        },
+        "exams": [
+            {"name": "MidTerm", "date": "2026-11-03", "tbc": True},
+            {"name": "Resit", "date": "tbc"},
+            {"name": "Broken", "date": "not-a-date"},  # no date, no tbc -> dropped
+        ],
+    }
+    sched = parse(meta)
+    (clinic,) = sched.releases
+    assert clinic.tbc and clinic.when is not None  # provisional: still fires
+    midterm, resit = sched.exams
+    assert midterm.tbc and midterm.date is not None
+    assert resit.tbc and resit.date is None

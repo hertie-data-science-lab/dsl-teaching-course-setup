@@ -63,7 +63,7 @@ def due_releases(releases: list[Release], now: datetime) -> list[Release]:
         r
         for r in releases
         if r.due_deploys(now)
-        or ((r.assignment or r.grade) and r.when <= now)
+        or ((r.assignment or r.grade) and r.when is not None and r.when <= now)
     ]
 
 
@@ -93,7 +93,8 @@ def describe(release: Release, now: datetime | None = None) -> list[str]:
         return ["calendar event only (site schedule row) - nothing to release"]
     lines: list[str] = []
     for d in release.deploy:
-        pending = now is not None and (d.deploy_datetime or release.when) > now
+        fire_at = d.deploy_datetime or release.when
+        pending = now is not None and (fire_at is None or fire_at > now)
         suffix = (
             f"  (not yet due - deploys {d.deploy_datetime.isoformat()})"
             if pending and d.deploy_datetime
@@ -102,9 +103,11 @@ def describe(release: Release, now: datetime | None = None) -> list[str]:
         lines.append(
             f"deploy {d.source_repo}/{d.source_path} -> {d.dest_repo}/{_dest(d)}{suffix}"
         )
-    actions_pending = now is not None and release.when > now
+    actions_pending = now is not None and (release.when is None or release.when > now)
     actions_suffix = (
-        f"  (not yet due - fires {release.when.isoformat()})" if actions_pending else ""
+        f"  (not yet due - fires {release.when.isoformat() if release.when else 'TBC'})"
+        if actions_pending
+        else ""
     )
     if release.assignment:
         lines.append(f"assignment {release.assignment}{actions_suffix}")
@@ -267,7 +270,11 @@ def _run_releases(
     # Assignment / grade actions run per release (they aren't file copies).
     did_assign = False
     for release in due:
-        if (release.assignment or release.grade) and release.when <= now:
+        if (
+            (release.assignment or release.grade)
+            and release.when is not None
+            and release.when <= now
+        ):
             log_step(f"  [{release.label}] assignment/grade")
             errors += _execute_nondeploy(course_org, cohort_org, release, graded)
             did_assign = did_assign or bool(release.assignment)

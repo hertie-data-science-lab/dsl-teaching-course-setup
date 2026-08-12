@@ -191,7 +191,9 @@ row label), and optionally `deploy` actions. A deploy item may carry its own
 `deploy_datetime` to ship earlier or later than the calendar event. An entry with no
 actions is a **display-only calendar event** - nothing deploys, the site shows the row.
 Assignments take no entry here: their whole lifecycle (handout/due/grading) lives under
-`assignments:` below (a legacy `assignment:` action is still honoured).
+`assignments:` below (a legacy `assignment:` action is still honoured). Uncertain dates:
+`tbc: true` beside a date = provisional, shown "(TBC)" but fires; `calendar_event: tbc`
+(or an exam's `date: tbc`) = undated TBC row, nothing fires.
 
 ```yaml
 timezone: Europe/Berlin
@@ -228,8 +230,9 @@ assignments:                          # each assignment's WHOLE lifecycle, keyed
     max_team_size: 4                  # optional, group assignments: the welcome Join team
                                       # flow refuses members beyond this (default 5)
 exams:
-  - {name: MidTerm Exam, date: 2026-11-03}
+  - {name: MidTerm Exam, date: 2026-11-03, tbc: true}   # provisional - shown "(TBC)"
   - {name: Final Exam, date: 2026-12-15T14:00}
+  - {name: Resit Exam, date: tbc}                        # undated - shown as a TBC row
 ```
 
 **Silent failures - the parser never errors.** A malformed entry is dropped, not reported:

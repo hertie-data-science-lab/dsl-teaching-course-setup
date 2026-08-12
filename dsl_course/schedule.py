@@ -40,7 +40,7 @@ import argparse
 import json
 import sys
 from dataclasses import asdict, dataclass, field
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
@@ -162,11 +162,16 @@ class Release:
     nothing fires, the site shows the row."""
 
     label: str
-    when: datetime
+    # None = the calendar_event is literally `tbc`: the site shows a TBC row and nothing
+    # can fire until faculty replace it with a real date.
+    when: datetime | None
     deploy: list[Deploy] = field(default_factory=list)
     assignment: str | None = None
     grade: Grade | None = None
     title: str = ""  # display-only: overrides the prettified label on the site
+    # `tbc: true` next to a REAL date = a provisional sketch: everything fires at that
+    # date as normal, but the site marks it "(TBC)" to signal it may still move.
+    tbc: bool = False
 
     @property
     def is_event_only(self) -> bool:
@@ -175,8 +180,14 @@ class Release:
 
     def due_deploys(self, now: datetime) -> list[Deploy]:
         """The deploys whose own ship time (`deploy_datetime`, else this entry's
-        `calendar_event`) has arrived."""
-        return [d for d in self.deploy if (d.deploy_datetime or self.when) <= now]
+        `calendar_event`) has arrived. An undated (TBC) entry's deploys can never be due -
+        except one carrying its own explicit `deploy_datetime`."""
+        return [
+            d
+            for d in self.deploy
+            if (d.deploy_datetime or self.when) is not None
+            and (d.deploy_datetime or self.when) <= now
+        ]
 
 
 @dataclass
@@ -202,7 +213,10 @@ class AssignmentEntry:
 @dataclass
 class Exam:
     name: str
-    date: date | datetime  # a bare date = whole day; a datetime = real start time
+    # A bare date = whole day; a datetime = real start time; None = `date: tbc` (the site
+    # shows a TBC row). `tbc: true` next to a real date marks it provisional - "(TBC)".
+    date: date | datetime | None
+    tbc: bool = False
 
 
 @dataclass
@@ -255,19 +269,29 @@ def _parse_grade(raw: object, tz: ZoneInfo) -> Grade | None:
     return None
 
 
+def _is_tbc(value: object) -> bool:
+    return isinstance(value, str) and value.strip().lower() == "tbc"
+
+
 def _parse_releases(raw: object, tz: ZoneInfo) -> list[Release]:
     """Parse `materials_releases:` (label -> {calendar_event + actions}) into Releases
     sorted by their calendar_event. `when:` is accepted as a legacy alias (schedules
-    written before the rename), losing to `calendar_event` when both are set. An entry
-    with neither can never fire or be shown, so it's dropped."""
+    written before the rename), losing to `calendar_event` when both are set.
+
+    TBC: `calendar_event: tbc` keeps the entry as an UNDATED site row (when=None -
+    nothing can fire); `tbc: true` next to a real date keeps everything firing but marks
+    the site row "(TBC)". An entry with no date and no tbc can never fire or be shown,
+    so it's dropped."""
     out: list[Release] = []
     for label, entry in (raw or {}).items():
         if not isinstance(entry, dict):
             continue
+        raw_when = entry.get("calendar_event", entry.get("when"))
         when = _coerce_datetime(entry.get("calendar_event"), tz) or _coerce_datetime(
             entry.get("when"), tz
         )
-        if when is None:
+        tbc = _is_tbc(raw_when) or entry.get("tbc") is True
+        if when is None and not tbc:
             continue
         assignment = entry.get("assignment")
         out.append(
@@ -278,9 +302,12 @@ def _parse_releases(raw: object, tz: ZoneInfo) -> list[Release]:
                 assignment=str(assignment) if assignment else None,
                 grade=_parse_grade(entry.get("grade"), tz),
                 title=str(entry.get("title") or ""),
+                tbc=tbc,
             )
         )
-    out.sort(key=lambda r: r.when)
+    # Undated (TBC) entries sort to the end of the plan.
+    epoch = datetime.min.replace(tzinfo=timezone.utc)
+    out.sort(key=lambda r: (r.when is None, r.when or epoch))
     return out
 
 
@@ -319,12 +346,18 @@ def _parse_assignments(raw: object, tz: ZoneInfo) -> dict[str, AssignmentEntry]:
 def _parse_exams(raw: object, tz: ZoneInfo) -> list[Exam]:
     """Parse `exams:` - a list of `{name, date}`. `date` is a whole-day date, or a full
     datetime when the exam's start time is known (the website then shows that time
-    instead of its 09:00 placeholder)."""
-    return [
-        Exam(name=str(e.get("name", "Exam")), date=d)
-        for e in (raw or [])
-        if isinstance(e, dict) and (d := _coerce_date_or_datetime(e.get("date"), tz))
-    ]
+    instead of its 09:00 placeholder). `date: tbc` keeps the exam as an undated TBC row;
+    `tbc: true` next to a real date marks it provisional ("(TBC)" on the site)."""
+    out: list[Exam] = []
+    for e in raw or []:
+        if not isinstance(e, dict):
+            continue
+        d = _coerce_date_or_datetime(e.get("date"), tz)
+        tbc = _is_tbc(e.get("date")) or e.get("tbc") is True
+        if d is None and not tbc:
+            continue
+        out.append(Exam(name=str(e.get("name", "Exam")), date=d, tbc=tbc))
+    return out
 
 
 def parse(meta: dict) -> Schedule:

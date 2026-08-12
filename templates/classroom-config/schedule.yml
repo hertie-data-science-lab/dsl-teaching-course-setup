@@ -41,6 +41,12 @@
 #   project-clinic:                     # NO actions -> a display-only calendar event:
 #     calendar_event: {year}-11-17T10:00  # nothing is released, the site simply shows it
 #     title: Project clinic             # OPTIONAL row label (default: prettified label)
+#     tbc: true                         # OPTIONAL: a provisional date - fires as normal,
+#                                       # but the site marks it "(TBC)"
+#
+#   guest-lecture:                      # `calendar_event: tbc` = not even a sketch yet:
+#     calendar_event: tbc               # the site shows a TBC row (sorted end-of-term);
+#     title: Guest lecture              # nothing can fire until you set a real date
 #
 #   lab_1:                              # a lab is just another entry - no special section
 #     calendar_event: {year}-09-17T10:00
@@ -89,5 +95,8 @@
 # exams:                                # `date` is a whole day, OR a full datetime when
 #   - name: MidTerm Exam                # you know the start time
 #     date: {year}-11-03                # bare date -> the website shows 09:00
+#     tbc: true                         # OPTIONAL: provisional - shown with a "(TBC)" marker
 #   - name: Final Exam
 #     date: {year}-12-15T14:00          # real start time, shown as given
+#   - name: Resit Exam
+#     date: tbc                         # no date at all yet -> the site shows a TBC row

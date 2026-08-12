@@ -374,16 +374,26 @@ def _assignment_entry(course_org: str, repo: str, when: date | datetime) -> str:
     )
 
 
-def _exam_entry(title: str, when: date | datetime) -> str:
+def _exam_entry(
+    title: str, when: date | datetime, tbc: bool = False, dateless: bool = False
+) -> str:
     """A red exam row (the template's schedule_row_exam.html styles `type: exam`).
 
     `when` is a datetime when schedule.yml gave the exam a real start time, or a bare date
     (whole-day entry, or the synthesised mid/end-of-semester fallback) - which keeps the
-    09:00 placeholder. Rendered offset-free, like `_assignment_entry`'s due time."""
+    09:00 placeholder. Rendered offset-free, like `_assignment_entry`'s due time.
+
+    TBC: an undated exam (`date: tbc`) still needs a sortable date for the theme, so the
+    caller passes end-of-term as `when` with `dateless=True` - the theme then prints
+    "TBC" instead; `tbc=True` with a real date adds the "(TBC)" marker."""
+    flags = ""
+    if tbc or dateless:
+        flags = "tbc: true\n" + ("dateless: true\n" if dateless else "")
     return (
         f"---\n"
         f"type: exam\n"
         f"date: {_iso_when(when)}\n"
+        f"{flags}"
         f'description: "{title}"\n'
         f"---\n"
         f"Details to be confirmed.\n"
@@ -406,6 +416,8 @@ def _session_dates(sched: schedule.Schedule) -> dict[str, datetime]:
     the same ordinal."""
     out: dict[str, datetime] = {}
     for release in sched.releases:
+        if release.when is None:
+            continue  # calendar_event: tbc - undated, can't place a session
         for d in release.deploy:
             folder = (d.dest_path or d.source_path).rstrip("/").rsplit("/", 1)[-1]
             n = session_number(folder)
@@ -417,17 +429,26 @@ def _session_dates(sched: schedule.Schedule) -> dict[str, datetime]:
     return out
 
 
-def _raw_event_entry(release: schedule.Release) -> str:
+def _raw_event_entry(release: schedule.Release, fallback: date) -> str:
     """A generic schedule row (the theme's schedule_row_raw_event.html) for a display-only
     entry - a `calendar_event` with no actions: a clinic, a guest lecture, a review
-    session. Nothing is released; the site simply shows it."""
+    session. Nothing is released; the site simply shows it.
+
+    TBC: an undated entry (`calendar_event: tbc`) still needs a sortable `date:` for the
+    theme, so it carries `fallback` (end of term) plus `dateless: true` - the theme then
+    prints "TBC" instead of the placeholder. A dated entry with `tbc: true` keeps its date
+    and gains a "(TBC)" marker."""
     title = (release.title or release.label.replace("-", " ").replace("_", " ").title())
     title = title.replace('"', "'")
+    flags = ""
+    if release.tbc:
+        flags = "tbc: true\n" + ("dateless: true\n" if release.when is None else "")
     return (
         f"---\n"
         f"type: raw_event\n"
         f'name: "{title}"\n'
-        f"date: {_iso_when(release.when, '09:00:00')}\n"
+        f"date: {_iso_when(release.when or fallback, '09:00:00')}\n"
+        f"{flags}"
         f'description: ""\n'
         f"---\n"
     )
@@ -588,7 +609,12 @@ def sync_site(course_org: str, cohort_org: str) -> int:
         end = sched.semester_end or start + timedelta(weeks=15)
         if sched.exams:
             exam_entries = {
-                f"{i + 1:02d}-{_slug(exam.name)}.md": _exam_entry(exam.name, exam.date)
+                f"{i + 1:02d}-{_slug(exam.name)}.md": _exam_entry(
+                    exam.name,
+                    exam.date if exam.date is not None else end,
+                    tbc=exam.tbc,
+                    dateless=exam.date is None,
+                )
                 for i, exam in enumerate(sched.exams)
             }
         else:
@@ -596,10 +622,11 @@ def sync_site(course_org: str, cohort_org: str) -> int:
                 "midterm.md": _exam_entry("MidTerm Exam", start + timedelta(weeks=8)),
                 "final.md": _exam_entry("Final Exam", end),
             }
-        # Display-only schedule rows: materials_releases entries with a when/event but no
-        # actions (a clinic, a guest lecture). Nothing deploys; the site just shows them.
+        # Display-only schedule rows: materials_releases entries with a calendar_event
+        # but no actions (a clinic, a guest lecture). Nothing deploys; the site just
+        # shows them - an undated (TBC) one sorts at end-of-term.
         exam_entries |= {
-            f"ev-{_slug(r.label)}.md": _raw_event_entry(r)
+            f"ev-{_slug(r.label)}.md": _raw_event_entry(r, end)
             for r in sched.releases
             if r.is_event_only
         }

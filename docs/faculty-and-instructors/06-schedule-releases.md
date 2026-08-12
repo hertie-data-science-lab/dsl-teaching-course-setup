@@ -56,7 +56,18 @@ simply appears on the cohort site (optionally with a `title:`).
   project-clinic:                      # no actions -> display-only site row
     calendar_event: 2026-11-17T10:00
     title: Project clinic
+    tbc: true                          # provisional date - fires as normal, site shows "(TBC)"
+
+  guest-lecture:                       # not even a sketch yet: the site shows a TBC row
+    calendar_event: tbc                # (sorted end-of-term); nothing fires until a real
+    title: Guest lecture               # date replaces `tbc`
 ```
+
+**Uncertain dates.** `tbc: true` next to any date (a release entry or an exam) sketches a
+provisional slot: everything fires at that date as normal, but the site marks it **(TBC)**
+so students know it may move. `calendar_event: tbc` (or an exam's `date: tbc`) is for no
+date at all: the row appears as **TBC** and nothing fires until you commit a real date -
+which, like any change, is just an edit to `schedule.yml` on `main`.
 
 (`dest_repo` is yours to choose - one shared `materials` repo, or one per section as here;
 the repo is created on first release.)
