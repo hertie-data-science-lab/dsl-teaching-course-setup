@@ -4,6 +4,10 @@ Admin / developer reference - **how the system is built and how the pieces move*
 faculty-facing overview see the [root README](../../README.md); for operational specifics (PAT
 scopes, granting access) see [admin-setup.md](admin-setup.md).
 
+**You need this doc only if you're modifying `dsl_course/`, debugging a workflow failure, or
+rotating the bot.** Everything faculty do is covered by the
+[runbooks](../faculty-and-instructors/README.md).
+
 - [System overview](#system-overview)
 - [The bot identity](#the-bot-identity)
 - [Token & secret propagation](#token--secret-propagation)
@@ -26,21 +30,31 @@ Owner; everything after that is a button.
 ```mermaid
 flowchart TB
   subgraph central["hertie-data-science-lab (central)"]
-    repo["dsl-teaching-course-setup<br/>code + Bootstrap action"]
+    repo["`dsl-teaching-course-setup
+code + Bootstrap action`"]
     sec["DSL_BOT_TOKEN secret"]
   end
-  bot(["hertie-dsl-bot<br/>service account · Owner of every org"])
+  bot(["`hertie-dsl-bot
+service account · Owner of every org`"])
   subgraph course["COURSE org — persistent"]
-    cg[".github<br/>profile + faculty & instructors buttons + cohort registry"]
-    mat["course-materials-fYYYY<br/>lectures/ + readings/"]
-    asg["assignment-N-fYYYY<br/>is_template: main + solution branch"]
+    cg["`.github
+profile + faculty & instructors buttons + cohort registry`"]
+    mat["`course-materials-fYYYY
+lectures/ + readings/`"]
+    asg["`assignment-N-fYYYY
+is_template: main + solution branch`"]
   end
   subgraph cohort["COHORT org — per year"]
-    wel["welcome<br/>Join issue → onboard"]
-    ros["classroom-config<br/>roster, teams, grades, snapshots, schedule, people"]
-    cmat["materials<br/>released lectures/readings"]
-    stu["slug-handle<br/>one private repo per student"]
-    site["org.github.io<br/>auto-deployed website"]
+    wel["`welcome
+Join issue → onboard`"]
+    ros["`classroom-config
+roster, teams, grades, snapshots, schedule, people`"]
+    cmat["`materials
+released lectures/readings`"]
+    stu["`slug-handle
+one private repo per student`"]
+    site["`org.github.io
+auto-deployed website`"]
   end
   repo -->|"Bootstrap Course Org"| course
   cg -->|"Bootstrap cohort"| cohort
@@ -64,20 +78,43 @@ hand-edit per-org secrets.
 
 ```mermaid
 flowchart TD
-  src["central repo secret<br/>DSL_BOT_TOKEN = bot PAT<br/>(set once, by hand)"]
-  src -->|"Bootstrap Course Org<br/>--propagate-secret"| orgsec["each org's DSL_BOT_TOKEN<br/>ORG secret<br/>visibility = selected → .github (+ welcome)"]
-  src -->|"Refresh actions"| reposec["REPO secret on each<br/>private content repo<br/>materials-* · assignment-*"]
-  orgsec --> pub["public .github / welcome<br/>workflows authenticate"]
-  reposec --> priv["run-from-repo buttons in<br/>private content repos"]
+  src["`central repo secret
+DSL_BOT_TOKEN = bot PAT
+(set once, by hand)`"]
+  src -->|"`Bootstrap Course Org
+--propagate-secret`"| orgsec["`each org's DSL_BOT_TOKEN
+ORG secret
+visibility = selected → .github (+ welcome, classroom-config)`"]
+  src -->|"Bootstrap, same run"| infrasec["`REPO secret on each
+PRIVATE infra repo
+classroom-config`"]
+  src -->|"Refresh actions"| reposec["`REPO secret on each
+private content repo
+materials-* (not assignment-*)`"]
+  orgsec --> pub["`public .github / welcome
+workflows authenticate`"]
+  infrasec --> disp["`classroom-config's
+dispatch workflows authenticate`"]
+  reposec --> priv["`run-from-repo buttons in
+private content repos`"]
 ```
 
-Why two paths, and why `selected` visibility:
+Why three paths, and why `selected` visibility:
 
 - On the **GitHub Free plan, org secrets don't reach private repos** - so the private content
-  repos get a **repo** secret, set by **Refresh actions**.
+  repos get a **repo** secret, set by **Refresh actions**. `assignment-*` templates deliberately
+  get none: they host no run-from-repo buttons (`discover_content_repos` excludes them), and a
+  secret on a template would propagate into every generated student repo.
+- The same gap hits the private **infra** repo `classroom-config`, whose dispatch workflows (a
+  push to `students.csv`/`teams.csv`/`schedule.yml` fires **Sync membership** / **Sync site**
+  cross-org) also run under `DSL_BOT_TOKEN`. Refresh only ever touches *content* repos, so
+  **Bootstrap** mirrors the token as a **repo** secret onto each private infra repo in the same
+  run that sets the org secret (`bootstrap_course.set_org_secret`) - that is the only path the
+  token reaches `classroom-config`.
 - An org secret with the gh-default `private` visibility doesn't reach **public** repos either,
   and `.github` / `welcome` are public. So the **org** secret is scoped
-  **`visibility=selected → .github`** (plus `welcome` on cohort orgs), which reaches the public
+  **`visibility=selected → .github`** (plus `welcome` + `classroom-config` on cohort orgs, each
+  scoped only if it exists), which reaches the public
   infra repos while keeping the org-admin token **out of** student/content repos.
   `visibility=all` would expose it to every workflow in the org.
 - On GitHub Team/Enterprise, org secrets reach private repos and this propagation is unnecessary.
@@ -89,11 +126,16 @@ Two **separate** gates - do not conflate them.
 ```mermaid
 flowchart TD
   subgraph prov["1 · Provision orgs (DSL-wide)"]
-    ct["hertie-data-science-lab<br/>faculty / admin teams"] -->|"write/admin on"| cr["central repo"] --> ba["run Bootstrap Course Org"]
+    ct["`hertie-data-science-lab
+faculty / admin teams`"] -->|"write/admin on"| cr["central repo"] --> ba["run Bootstrap Course Org"]
   end
   subgraph run["2 · Run a course's buttons (per-course)"]
-    ca["course org people: → course-admin<br/>(course-wide, admin)"] -->|"mirrored to"| gh["course org .github<br/>+ every cohort org"]
-    it["cohort people.yml → instructors-&lt;tag&gt;<br/>(per-cohort, push)"] -->|"granted on"| ghtag["course org .github<br/>+ that tag's own content repos"]
+    ca["`course org people: → course-admin
+(course-wide, admin)`"] -->|"mirrored to"| gh["`course org .github
++ every cohort org`"]
+    it["`cohort people.yml → instructors-<tag>
+(per-cohort, push)`"] -->|"granted on"| ghtag["`course org .github
++ that tag's own content repos`"]
     gh --> rb["run Release / Refresh / Sync membership / ..."]
     ghtag --> rb
   end
@@ -137,8 +179,8 @@ sequenceDiagram
 ```
 
 `--admins` both invites those handles to `course-admin` directly (so they have access before
-any sync runs) AND seeds them into `dsl-course.yml`'s `people.course_admins` - the SSOT
-`sync_faculty` reconciles against. **Anything not in the SSOT gets pruned by the next sync**,
+any sync runs) AND seeds them into `dsl-course.yml`'s `people.course_admins` - the single source
+of truth (SSOT) `sync_faculty` reconciles against. **Anything not in the SSOT gets pruned by the next sync**,
 so an admin added via the Teams UI or a one-off `gh api` call must also be declared in
 `dsl-course.yml`.
 
@@ -165,8 +207,17 @@ Solutions live on the template's `solution` branch and are never shipped unless
 workflow's `group` checkbox - not anything in `grading.yml`, whose `type:` only serves as the
 autograder's fallback.
 
-Both are exposed centrally (in `.github`) and run-from-repo (in each content repo), from the
-same renderer; the run-from-repo copy drops `source_repo` and knows that repo's own sections.
+**Code** (`release_code`, rendered by `workflows_render.render_release_code`) copies one path -
+a subpackage folder or a single module - from the repo it is run in into a cohort repo, purely
+additively, so a package can be disclosed topic by topic. It is **never seeded centrally**
+(`seed_github_workflows` has no entry for it): the workflow is pushed only into content repos by
+`_push_workflows`, because the source repo is always the repo you run it from.
+
+Materials and Assignment are exposed centrally (in `.github`) *and* run-from-repo (in each
+content repo), from the same renderer; the run-from-repo copy drops `source_repo` and knows that
+repo's own sections. All three are the **fallback path** - the schedule
+(`materials_releases` in `schedule.yml`) is the primary release mechanism; the manual release
+buttons are for demos, one-offs, and recovery.
 
 ### Student onboarding
 
@@ -191,7 +242,8 @@ row to their account. The handle comes from the issue **author**, so it cannot b
 `teams.csv` (in `classroom-config`, columns `assignment,team,github_handle`) is the **only
 writer surface**: students self-select by opening a "Join team" issue (`team-formation.yml`
 appends a row - authenticated author, one team per assignment, size-capped, auditors refused),
-and faculty can edit it directly.
+and faculty can edit it directly. The cap is **5**, set by `MAX_TEAM_SIZE` in
+`templates/welcome/team-formation.yml` (edit there, then re-seed the cohort's `welcome` repo).
 
 ```mermaid
 flowchart LR
@@ -213,7 +265,9 @@ hourly **Scheduled release** cron runs the term. It calls the *same* idempotent 
 manual buttons do, so re-running is a no-op and there is no "already released" state to track.
 Manual `workflow_dispatch` runs default to `dry_run=true`; the cron passes no inputs and so
 releases for real. It is the one org-level workflow with no `check-team` gate - a scheduled run
-has no actor.
+has no actor. A course org with **no registered cohorts** is a quiet no-op: `scheduler.main()`
+logs a skip and exits 0, so the hourly run stays green - the normal state between bootstrapping
+the course org (which installs the cron) and bootstrapping its first cohort.
 
 Each hourly tick:
 
@@ -313,31 +367,13 @@ path not starting with `_`) and links to those site-relative URLs.
 
 ## Bot lifecycle — setup & rotation
 
-```mermaid
-flowchart TD
-  A["1 · Create hertie-dsl-bot<br/>own email + 2FA"] --> B["2 · Mint classic PAT<br/>repo + admin:org + workflow"]
-  B --> C["3 · Invite bot as Owner of each course/cohort org<br/>+ MEMBER of hertie-data-science-lab (bot accepts)"]
-  C --> D["4 · Set DSL_BOT_TOKEN = bot PAT<br/>in the CENTRAL repo (UI)"]
-  D --> E["5 · Run Bootstrap (+ Refresh) per org<br/>→ propagates the token"]
-  E --> F["6 · Verify green + bot-attributed"]
-```
+Standing the bot up, minting and rotating its PAT, and the ordering rules that make rotation
+safe (Owner before token, central-org membership, revoke the old PAT last) live in
+**[central-admin.md](central-admin.md#bot-lifecycle---setup--rotation)**.
 
-**Rotation:** mint a fresh PAT (2), set it in the central repo (4), re-run Bootstrap + Refresh
-(5), verify (6), then **revoke the previous PAT last** - only after *every* org verifies green
-under the new one. Set a PAT expiry so rotation is forced.
-
-**Hard rules** (ordering is not optional):
-
-- **Owner before token.** The bot must be Owner of an org *before* its PAT has admin there -
-  invite + accept (3) before propagating (5). GitHub has no API to force-add a member.
-- **The bot must be a member of the central org.** Bootstrap's `check-team` gate reads
-  `hertie-data-science-lab`'s (closed) `faculty`/`admin` teams **under `DSL_BOT_TOKEN`**, so
-  without that membership the lookup 404s and the gate **denies everyone**. Member is enough;
-  it needn't be an owner there.
-- **Swap central only after a one-org test.** Setting the central secret (4) doesn't touch
-  existing org secrets - they stay until re-propagated - so it's safe, but prove it on one org.
-- **Never paste a token into chat, PRs, or issues.** Set it *only* via the Secrets UI; a token
-  exposed anywhere must be **revoked and reissued** immediately.
+Architecturally, all you need here: one credential, `DSL_BOT_TOKEN`, is set by hand in the
+central repo and fanned out by Bootstrap/Refresh - see
+[Token & secret propagation](#token--secret-propagation).
 
 ## Code map
 
@@ -348,7 +384,10 @@ Self-contained - workflows and their Python implementation both live in this rep
   *rendered* and seeded into the course/cohort orgs, not kept here.
 - `dsl_course/`:
   - `bootstrap_course` - configure a course or (`--cohort`) cohort org; create teams; grant
-    button access; propagate the secret.
+    button access on `.github` and, cohort-side, on the infra repos faculty actually work in
+    (`grant_cohort_faculty_access` / `COHORT_FACULTY_REPOS` = `welcome`, `classroom-config`, so
+    non-owner instructors get write and course-admin gets admin under
+    `default_repository_permission=none`); propagate the secret.
   - `seed` - place the workflows (central + run-from-repo) and the `refresh` CLI; it delegates
     to four modules and re-exports a few of their names (see `__all__`; new code imports from
     the owner):
