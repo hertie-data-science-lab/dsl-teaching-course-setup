@@ -31,18 +31,6 @@ Central registry of the workflows that deliver courses at the Hertie Data Scienc
 ([github.com/account/organizations/new](https://github.com/account/organizations/new)) and (2) [inviting **`hertie-dsl-bot`** as an org **Owner**](docs/faculty-and-instructors/01-new-course-org.md#steps); the DSL team must **accept** it before you bootstrap. Everything after that is automated via the scheduler / a button click.
    - NB: if email integration is not currently live, then it may be necessary to email students their invite codes. 
 
-## Glossary
-
-| Term | Meaning |
-|------|---------|
-| **Course org** | the persistent org for a course (e.g. `DSL-Demo-Course-E1234`): materials repos, assignment templates, the control panel. Lives across all years. |
-| **Cohort org** | one org per delivery (e.g. `DSL-Demo-f2026`): roster, released materials, per-student repos, grades, the cohort website. Fresh each year. |
-| **Tag** | the `fYYYY`/`sYYYY` suffix naming a delivery (`f2026` = Fall 2026). Scopes the year's content repos and teams. |
-| **Control panel** | the course org's `.github` repo - its **Actions** tab holds every workflow button, for the course org and all its cohorts. Cohort orgs have no buttons of their own. |
-| **`course-admin` team** | the course's standing owners, declared once in the course org's `.github/dsl-course.yml` (`course_admins`), mirrored into every cohort. |
-| **SSOT** | single source of truth. The course org is the SSOT for content; each cohort's `classroom-config` for that cohort's roster, teams, schedule and grades. |
-| **The bot** | `hertie-dsl-bot`, the machine account behind every action. Must be an **Owner** of every org - the one irreducible manual step. See [admin-setup](docs/admin/admin-setup.md#the-bot-account). |
-
 ## The model
 
 Two org tiers:
@@ -114,6 +102,19 @@ open-courseware site - hosts shared lectures + readings`"]
 ```
 
 Each cohort gets an auto-deployed `<cohort>.github.io` site whose material links are private (enrolled students and auditors only). A course can optionally also publish a **public** `<course-org>.github.io` open-courseware site - see [**Publish course website**](docs/faculty-and-instructors/actions-reference.md#optional-public-course-website).
+
+
+## Glossary
+
+| Term | Meaning |
+|------|---------|
+| **Course org** | the persistent org for a course (e.g. `DSL-Demo-Course-E1234`): materials repos, assignment templates, the control panel. Lives across all years. |
+| **Cohort org** | one org per semester delivery (e.g. `DSL-Demo-f2026`): roster, released materials, per-student repos, grades, the cohort website. Fresh each year. |
+| **Tag** | the `fYYYY`/`sYYYY` suffix naming a delivery (`f2026` = Fall 2026, s2027 = Summer 2027). Scopes the year's content repos and teams. |
+| **Control panel** | the course org's `.github` repo - its **Actions** tab holds every workflow button, for the course org and all its cohorts. Cohort orgs have no buttons of their own. |
+| **`course-admin` team** | the course's standing owners, declared once in the course org's `.github/dsl-course.yml` (`course_admins`), mirrored into every cohort. |
+| **SSOT** | single source of truth. The course org is the SSOT for all content; each cohort's `classroom-config` is the SSOT for that specific cohort's student roster, teams, schedule and grades. |
+| **The bot** | `hertie-dsl-bot`, the machine account behind every action. Must be an **Owner** of every org - the one irreducible manual step. See [admin-setup](docs/admin/admin-setup.md#the-bot-account). |
 
 ---
 
