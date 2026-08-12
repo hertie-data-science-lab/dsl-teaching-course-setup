@@ -14,9 +14,9 @@
 
 # ---------------------------------------------------------------------------
 # materials_releases: the term CALENDAR and the AUTO-RELEASE plan, in one block. Each
-# entry is a label (any name you like - session_2, lab_1, bonus-dataset) mapping to a
-# `calendar_event:` datetime - when the thing HAPPENS, which is what the cohort site's
-# schedule shows - and, optionally, actions. Actions fire at the calendar_event unless a
+# entry is a label (any name you like - session_2, lab_1, bonus-dataset) mapping to an
+# `event_datetime:` - when the thing HAPPENS, which is what the cohort site's
+# schedule shows - and, optionally, actions. Actions fire at the event_datetime unless a
 # deploy carries its own `deploy_datetime:`. The hourly Scheduled release cron does the
 # firing (idempotent - safe to re-run). Sources are always read from the COURSE org;
 # destinations always written to THIS cohort org.
@@ -24,12 +24,12 @@
 # materials_releases:
 #
 #   lecture_02:                         # MINIMAL - the recommended shape. Only source_repo
-#     calendar_event: {year}-09-15T10:00  # + source_path are required; this lands at
+#     event_datetime: {year}-09-15T10:00  # + source_path are required; this lands at
 #     deploy:                             # materials/lectures/02_intro at class time.
 #       - {{source_repo: course-materials-{tag}, source_path: lectures/02_intro}}
 #
 #   session_2:                          # FULL - every field spelled out, for when a
-#     calendar_event: {year}-09-15T10:00   # default doesn't fit. (Paths are relative to
+#     event_datetime: {year}-09-15T10:00   # default doesn't fit. (Paths are relative to
 #                                          # their repo: source_path inside source_repo,
 #                                          # dest_path inside dest_repo.)
 #     deploy:                           # copy one or more paths: course repo -> cohort repo
@@ -38,22 +38,22 @@
 #         dest_repo: materials                    # repo in THIS cohort org (default: materials)
 #         dest_path: lectures/02_intro            # where to put it (default: same as source_path)
 #         deploy_datetime: {year}-09-15T09:00     # ship THIS copy an hour before the
-#                                                 # class (default: the calendar_event)
+#                                                 # class (default: the event_datetime)
 #       - source_repo: course-materials-{tag}
 #         source_path: readings/02_intro          # no deploy_datetime -> out at class time
 #
 #   project-clinic:                     # NO actions -> a display-only calendar event:
-#     calendar_event: {year}-11-17T10:00  # nothing is released, the site simply shows it
+#     event_datetime: {year}-11-17T10:00  # nothing is released, the site simply shows it
 #     title: Project clinic             # OPTIONAL row label (default: prettified label)
 #     tbc: true                         # OPTIONAL: a provisional date - fires as normal,
 #                                       # but the site marks it "(TBC)"
 #
-#   guest-lecture:                      # `calendar_event: tbc` = not even a sketch yet:
-#     calendar_event: tbc               # the site shows a TBC row (sorted end-of-term);
+#   guest-lecture:                      # `event_datetime: tbc` = not even a sketch yet:
+#     event_datetime: tbc               # the site shows a TBC row (sorted end-of-term);
 #     title: Guest lecture              # nothing can fire until you set a real date
 #
 #   lab_1:                              # a lab is just another entry - no special section
-#     calendar_event: {year}-09-17T10:00
+#     event_datetime: {year}-09-17T10:00
 #     deploy:
 #       - source_repo: course-materials-{tag}
 #         source_path: labs/01_setup
@@ -61,7 +61,7 @@
 #         # dest_path omitted -> mirrors source_path (labs/01_setup)
 #
 #   bonus-dataset:                      # a one-off that isn't a numbered teaching session
-#     calendar_event: {year}-10-20T09:30
+#     event_datetime: {year}-10-20T09:30
 #     deploy:
 #       - source_repo: course-materials-{tag}
 #         source_path: datasets/housing.csv
@@ -70,7 +70,7 @@
 #
 #   (Assignments need NO entry here: their whole lifecycle - handout, due date, grading -
 #   lives under `assignments:` below. Grading fires automatically, ONCE, at each
-#   assignment's `grading_deadline`.)
+#   assignment's `grading_datetime`.)
 
 # ---------------------------------------------------------------------------
 # The rest is for DISPLAY (website) and GRADING - not the release plan above.
@@ -80,27 +80,32 @@
 #
 # assignments:                          # each assignment's WHOLE lifecycle, keyed by slug
 #   assignment-1:                       # (repo name minus the -{tag} tag)
-#     handout: {year}-09-22T09:00       # OPTIONAL: when to provision one repo per student
-#                                       # (or per team - the template's grading.yml decides)
-#                                       # from the assignment-1-{tag} template
-#     due: {year}-10-13T23:59          # a bare date -> END of that day (23:59:59)
-#     grading_deadline: {year}-10-15    # OPTIONAL: when the submission snapshot freezes AND
+#     handout_datetime: {year}-09-22T09:00  # when to provision one repo per student (or per
+#                                       # team) from the assignment-1-{tag} template.
+#                                       # Without it the schedule never releases this
+#                                       # assignment - omit ONLY if you hand out via the
+#                                       # manual "Release assignment" button (which then
+#                                       # records the release moment here for you)
+#     due_datetime: {year}-10-13T23:59  # a bare date -> END of that day (23:59:59)
+#     grading_datetime: {year}-10-15    # OPTIONAL: when the submission snapshot freezes AND
 #                                       # the autograder fires (once). Not shown to students.
-#                                       # Defaults to `due`.
+#                                       # Defaults to `due_datetime`.
 #   assignment-2:
-#     due: {year}-11-10
+#     due_datetime: {year}-11-10
 #   assignment-4-project:
-#     handout: {year}-10-20T14:00
-#     due: {year}-11-27
+#     handout_datetime: {year}-10-20T14:00
+#     due_datetime: {year}-11-27
+#     type: group                       # OPTIONAL: group | individual (can also be set
+#                                       # in the template's grading.yml; default: individual)
 #     max_team_size: 4                  # OPTIONAL, group assignments: the welcome repo's
 #                                       # "Join team" flow refuses a member beyond this
 #                                       # (default when unset: 5)
 #
-# exams:                                # `date` is a whole day, OR a full datetime when
-#   - name: MidTerm Exam                # you know the start time
-#     date: {year}-11-03                # bare date -> the website shows 09:00
+# exams:                                # `exam_datetime` is a whole day, OR a full datetime
+#   - name: MidTerm Exam                # when you know the start time
+#     exam_datetime: {year}-11-03       # bare date -> the website shows 09:00
 #     tbc: true                         # OPTIONAL: provisional - shown with a "(TBC)" marker
 #   - name: Final Exam
-#     date: {year}-12-15T14:00          # real start time, shown as given
+#     exam_datetime: {year}-12-15T14:00 # real start time, shown as given
 #   - name: Resit Exam
-#     date: tbc                         # no date at all yet -> the site shows a TBC row
+#     exam_datetime: tbc                # no date at all yet -> the site shows a TBC row

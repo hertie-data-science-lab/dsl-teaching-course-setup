@@ -57,12 +57,10 @@ def test_schedule_yml_seed_is_commented_and_covers_every_field():
         line.startswith("#") or not line.strip() for line in schedule.splitlines()
     )
     for key in (
-        "timezone", "materials_releases", "when", "deploy",
+        "timezone", "materials_releases", "event_datetime", "deploy",
         "source_repo", "source_path", "dest_repo", "dest_path",
-        "assignment", "grade", "semester_start", "semester_end",
-        # grace_days stays parser-supported for existing cohorts but is deliberately
-        # undocumented - grading_deadline is the taught field.
-        "assignments", "grading_deadline", "exams",
+        "assignment", "semester_start", "semester_end",
+        "assignments", "grading_datetime", "exams",
     ):
         assert key in schedule
 

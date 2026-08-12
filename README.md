@@ -9,7 +9,8 @@ Central registry of the workflows that deliver courses at the Hertie Data Scienc
 |---------|-------|
 | Setting up a brand-new course | [workflow runbooks](docs/README.md) - [01](docs/01-new-course-org.md)-[03](docs/03-add-assignment-to-course.md) |
 | Starting a new cohort / semester of an existing course | [04 New cohort org](docs/04-new-cohort-org.md) onwards |
-| A TA or faculty assistant joining a cohort | [runbooks](docs/README.md) [05](docs/05-enrol-students-to-cohort.md)-[09](docs/09-grade-and-return-assignments.md) - skip 01-04 (setup) |
+| A TA or faculty assistant joining a cohort | [runbooks](docs/README.md) [06](docs/06-enrol-students-to-cohort.md)-[10](docs/10-grade-and-return-assignments.md) - skip 01-05 (setup; 05 is done for you by a course admin) |
+| Granting someone access to a course - incl. **for a fixed term** | [05 Manage the teaching team](docs/05-manage-teaching-team.md) |
 
 | Reference Materials | Go to |
 |---------|-------|
@@ -17,6 +18,7 @@ Central registry of the workflows that deliver courses at the Hertie Data Scienc
 | An example course setup | [`example course`](example-course/README.md) |
 | Template artefacts | [`templates`](templates/classroom-config/README.md) |
 | All available `.github` Actions tab buttons (course org) | [`actions reference`](docs/actions-reference.md) |
+| Who may run those buttons, and which team grants it | [`access reference`](docs/access-reference.md) |
 | **Deployment checklist** | [`DEPLOYMENT-CHECKLIST.md`](docs/DEPLOYMENT-CHECKLIST.md) |
 
 ## Deploying a course
@@ -26,9 +28,10 @@ Central registry of the workflows that deliver courses at the Hertie Data Scienc
    - [Add materials](docs/02-add-materials-to-course.md) - lectures slides, readings, labs, other
    - [Add assignments](docs/03-add-assignment-to-course.md) - a template repo that is copied into student private response repos, optionally contains a solutions branch
 2. [**add a cohort org**](docs/04-new-cohort-org.md) (per year),
-   - [Enrol students](docs/05-enrol-students-to-cohort.md)
-   - [Define schedule up front](docs/06-schedule-releases.md) , to automate release/collect of materials, assignments & grading runs from course org -> cohort org (and/or manually release [materials](docs/07-release-materials-to-cohort.md) and [assignments](docs/08-release-assignment-to-cohort.md) on an ad hoc basis)
-   - [Grade assignments](docs/09-grade-and-return-assignments.md)
+   - [Declare the teaching team](docs/05-manage-teaching-team.md) - this year's instructors & TAs, optionally with `start`/`end` dates so access lapses on its own
+   - [Enrol students](docs/06-enrol-students-to-cohort.md)
+   - [Define schedule up front](docs/07-schedule-releases.md) , to automate release/collect of materials, assignments & grading runs from course org -> cohort org (and/or manually release [materials](docs/08-release-materials-to-cohort.md) and [assignments](docs/09-release-assignment-to-cohort.md) on an ad hoc basis)
+   - [Grade assignments](docs/10-grade-and-return-assignments.md)
       
 > The only manually-required steps are (1) creating each org in the GitHub web UI ([github.com/account/organizations/new](https://github.com/account/organizations/new)) and (2) [inviting **`hertie-dsl-bot`** as an org **Owner**](docs/01-new-course-org.md#steps); the DSL team must **accept** it before you bootstrap. Everything after that is automated via the scheduler / a button click.
 > *NB: if email integration is not currently live, then it may be necessary to email students their initial course invite codes as well.* 

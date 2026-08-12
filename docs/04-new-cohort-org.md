@@ -29,14 +29,14 @@ Live example of every file below: [`example-course/cohort-org/`](../example-cour
 
 4. **Fill in `classroom-config/schedule.yml` for the whole term** (edit locally or in the web UI
    → commit to `main`). Its dates drive every release, the grading deadlines and the website.
-   Full guide: [Schedule releases](06-schedule-releases.md); full schema:
+   Full guide: [Schedule releases](07-schedule-releases.md); full schema:
    [the schedule](DEPLOYMENT-CHECKLIST.md#scheduleyml).
 
    ```yaml
    timezone: Europe/Berlin
    materials_releases:
      session_1:
-       calendar_event: 2026-09-07T14:00   # when the class happens - shown on the site
+       event_datetime: 2026-09-07T14:00   # when the class happens - shown on the site
        deploy:
          - {source_repo: course-materials-f2026, source_path: lectures/01_intro, dest_repo: materials,
             deploy_datetime: 2026-09-07T13:00}   # optional: ship this copy 1h early
@@ -44,13 +44,13 @@ Live example of every file below: [`example-course/cohort-org/`](../example-cour
    semester_end: 2026-12-18
    assignments:
      assignment-1:
-       handout: 2026-09-22T09:00    # repos provisioned automatically (per team if the
-                                    # template's grading.yml says type: group)
-       due: 2026-10-13              # due date students see; bare date -> 23:59:59
-       grading_deadline: 2026-10-15 # optional; snapshot + autograde fire here (once)
+       handout_datetime: 2026-09-22T09:00  # repos provisioned automatically (per team if the
+                                           # template's grading.yml says type: group)
+       due_datetime: 2026-10-13         # due date students see; bare date -> 23:59:59
+       grading_datetime: 2026-10-15     # optional; snapshot + autograde fire here (once)
    exams:
-     - {name: MidTerm Exam, date: 2026-11-03}        # bare date -> shown at 09:00
-     - {name: Final Exam, date: 2026-12-15T14:00}    # real start time, shown as given
+     - {name: MidTerm Exam, exam_datetime: 2026-11-03}        # bare date -> shown at 09:00
+     - {name: Final Exam, exam_datetime: 2026-12-15T14:00}    # real start time, shown as given
    ```
 
 5. *(optional)* **Declare this cohort's instructors/TAs** in `classroom-config/people.yml`.
@@ -63,9 +63,16 @@ Live example of every file below: [`example-course/cohort-org/`](../example-cour
        - github_handle: "janedoe"
      teaching_assistants:
        - github_handle: "anOther"
-         start: "2026-09-01"
-         end: "2027-01-31"
+         start: "2026-09-01"     # optional - omit for "active immediately"
+         end: "2027-01-31"       # optional - omit for "indefinite"
    ```
+
+   `github_handle` is the only required field. The optional `start`/`end` dates **bound when the
+   access is live**: it is granted from `start` and revoked after `end`, automatically, with no
+   removal step to remember - which is how you hand a guest lecturer or a fixed-term TA push
+   access for one term. Course-wide admins are declared at the **course** level instead
+   (`.github/dsl-course.yml` → `course_admins`), not here. Full guide, including removing people
+   and how quickly changes land: [05 Manage the teaching team](05-manage-teaching-team.md).
 
 6. **Load the roster.** Fill `classroom-config/students.csv` (seeded header-only) with
    registrar data (`student_id, hertie_email, name, section`; leave `github_handle, github_id`
@@ -75,9 +82,11 @@ Live example of every file below: [`example-course/cohort-org/`](../example-cour
 
 ## Next
 
-- [Enrol students](05-enrol-students-to-cohort.md).
-- [Schedule releases](06-schedule-releases.md) - the full guide to the plan you started in step 4.
-- [Release ad hoc](07-release-materials-to-cohort.md), if you want something out before the
+- [Manage the teaching team](05-manage-teaching-team.md) - the full version of step 5, incl.
+  fixed-term access and how to revoke it.
+- [Enrol students](06-enrol-students-to-cohort.md).
+- [Schedule releases](07-schedule-releases.md) - the full guide to the plan you started in step 4.
+- [Release ad hoc](08-release-materials-to-cohort.md), if you want something out before the
   schedule says so.
 
 ---

@@ -72,7 +72,7 @@ def test_lecture_entry_falls_back_to_0900_for_a_bare_date():
     assert "date: 2026-09-15T09:00:00" in md
 
 
-def test_session_dates_use_the_calendar_event_not_the_deploy_datetime():
+def test_session_dates_use_the_event_datetime_not_the_deploy_datetime():
     # The site announces the class; the copies may ship on their own clocks.
     s = Schedule(
         releases=[
@@ -128,7 +128,7 @@ def test_cohort_site_links_back_to_the_cohort_org(monkeypatch, tmp_path):
 def test_tbc_rows_render_with_theme_flags():
     from datetime import date as date_cls
 
-    # Undated (calendar_event: tbc): sortable end-of-term placeholder + dateless flag,
+    # Undated (event_datetime: tbc): sortable end-of-term placeholder + dateless flag,
     # so the theme prints "TBC" instead of the placeholder date.
     undated = Release("guest-lecture", None, title="Guest lecture", tbc=True)
     out = site._raw_event_entry(undated, date_cls(2026, 12, 18))

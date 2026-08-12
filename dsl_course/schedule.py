@@ -3,24 +3,21 @@ single home for the timed release plan AND the dates other tools display/enforce
 
     timezone: Europe/Berlin          # optional (default Europe/Berlin) - how naive times
                                      # below are interpreted; GitHub cron itself is UTC
-    materials_releases:              # the auto-release plan - label -> {when + actions}.
-      session_2:                     # `when` is a full datetime (bare date -> 00:00);
-        when: 2026-09-15T14:00       # dsl_course.scheduler fires each release when its
-        deploy:                      # `when` has arrived. Labels are free identifiers.
+    materials_releases:              # the term calendar + auto-release plan - label ->
+      lecture_02:                    # {event_datetime + deploys}. Each deploy ships at its
+        event_datetime: 2026-09-15T10:00   # deploy_datetime (default: the event itself).
+        deploy:                            # Labels are free identifiers.
           - {source_repo: course-materials-f2026, source_path: lectures/02_intro,
-             dest_repo: materials, dest_path: lectures/02_intro}   # dest_path optional
-      a2-grade:
-        when: 2026-10-15T00:00
-        grade: {template: assignment-2-f2026, deadline: 2026-10-13T23:59, group: false}
-    assignments:                     # due dates (website countdown + grading pin). A bare
-      assignment-1:                  # due date is END of day (23:59:59) - "due on the
-        due: 2026-10-13              # 13th" closes at day's end (a release date opens at
-        grading_deadline: 2026-10-15 # its start). `grading_deadline` is the explicit moment
-        grace_days: 2                # the snapshot freezes and the autograder fires; the
-                                     # legacy `grace_days` (due + N days) is the fallback.
-    exams:                           # `date` is a whole day, or a full datetime when the
-      - {name: MidTerm Exam, date: 2026-11-03}         # exam's start time is known
-      - {name: Final Exam, date: 2026-12-15T14:00}
+             dest_repo: materials, dest_path: lectures/02_intro,
+             deploy_datetime: 2026-09-15T09:00}   # dest_path/deploy_datetime optional
+    assignments:                     # each assignment's whole lifecycle. A bare
+      assignment-1:                  # due_datetime is END of day (23:59:59) - "due on the
+        handout_datetime: 2026-09-22T09:00  # 13th" closes at day's end.
+        due_datetime: 2026-10-13     # grading_datetime is the moment the snapshot
+        grading_datetime: 2026-10-15 # freezes and the autograder fires (default: due).
+    exams:                           # `exam_datetime` is a whole day, or a full datetime
+      - {name: MidTerm Exam, exam_datetime: 2026-11-03}   # when the start time is known
+      - {name: Final Exam, exam_datetime: 2026-12-15T14:00}
     semester_start: 2026-09-07
     semester_end: 2026-12-18
 
@@ -40,7 +37,7 @@ import argparse
 import json
 import sys
 from dataclasses import asdict, dataclass, field
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
@@ -131,8 +128,8 @@ class Deploy:
     dest repo. `dest_path` defaults to `source_path` (mirror).
 
     `deploy_datetime` optionally overrides the copy's own ship time; unset, it ships at
-    the parent entry's `calendar_event`. This is what disaggregates the class from its
-    materials: the entry's `calendar_event` is the session the site announces, a deploy's
+    the parent entry's `event_datetime`. This is what disaggregates the class from its
+    materials: the entry's `event_datetime` is the session the site announces, a deploy's
     `deploy_datetime` ships the files an hour (or a week) before or after it."""
 
     source_repo: str
@@ -143,31 +140,23 @@ class Deploy:
 
 
 @dataclass
-class Grade:
-    template: str
-    deadline: datetime | None = None  # commit cutoff; None -> resolved from assignments
-    group: bool = False
-
-
-@dataclass
 class Release:
-    """A labelled scheduled entry: when the thing HAPPENS (`calendar_event` in the YAML),
-    plus any mix of `deploy` (content copies), `assignment` (provision student repos from
-    a template), and `grade` (run the autograder).
+    """A labelled scheduled entry: when the thing HAPPENS (`event_datetime` in the YAML),
+    plus, optionally, `deploy` actions (content copies) - or an `assignment` handout
+    synthesised by the scheduler from `assignments.<slug>.handout_datetime`.
 
-    `when` holds the entry's `calendar_event`: what the cohort site's schedule shows AND
-    the default fire time for the actions. An individual deploy may carry its own
+    `when` holds the entry's `event_datetime`: what the cohort site's schedule shows AND
+    the default fire time for its deploys. An individual deploy may carry its own
     `deploy_datetime` to ship earlier or later than the session it belongs to. An entry
     with no actions at all is a pure display-only event (a clinic, a guest lecture):
     nothing fires, the site shows the row."""
 
     label: str
-    # None = the calendar_event is literally `tbc`: the site shows a TBC row and nothing
+    # None = the event_datetime is literally `tbc`: the site shows a TBC row and nothing
     # can fire until faculty replace it with a real date.
     when: datetime | None
     deploy: list[Deploy] = field(default_factory=list)
     assignment: str | None = None
-    grade: Grade | None = None
     title: str = ""  # display-only: overrides the prettified label on the site
     # `tbc: true` next to a REAL date = a provisional sketch: everything fires at that
     # date as normal, but the site marks it "(TBC)" to signal it may still move.
@@ -176,11 +165,11 @@ class Release:
     @property
     def is_event_only(self) -> bool:
         """No actions - nothing to fire, purely a site schedule row."""
-        return not self.deploy and not self.assignment and not self.grade
+        return not self.deploy and not self.assignment
 
     def due_deploys(self, now: datetime) -> list[Deploy]:
         """The deploys whose own ship time (`deploy_datetime`, else this entry's
-        `calendar_event`) has arrived. An undated (TBC) entry's deploys can never be due -
+        `event_datetime`) has arrived. An undated (TBC) entry's deploys can never be due -
         except one carrying its own explicit `deploy_datetime`."""
         return [
             d
@@ -192,18 +181,22 @@ class Release:
 
 @dataclass
 class AssignmentEntry:
-    """One assignment's whole lifecycle, in one place: `handout` (when student/team repos
-    are provisioned), `due` (what students see), `grading_deadline` (when the snapshot
-    freezes and the autograder fires), `max_team_size` (group assignments)."""
+    """One assignment's whole lifecycle, in one place: `handout_datetime` (when
+    student/team repos are provisioned), `due_datetime` (what students see),
+    `grading_datetime` (when the snapshot freezes and the autograder fires), `type` and
+    `max_team_size` (group assignments)."""
 
-    due: datetime
-    grace_days: int = 0  # legacy grading-only pin extension, never shown to students
-    grading_deadline: datetime | None = None  # explicit pin; wins over due + grace_days
-    # When to provision one repo per student (or per team - the template's grading.yml
-    # decides) from the `<slug>-<tag>` template. The scheduler synthesises a release from
-    # this, so it fires exactly like a `materials_releases` handout entry. None = hand
-    # out manually (or via a legacy release entry).
-    handout: datetime | None = None
+    due_datetime: datetime
+    grading_datetime: datetime | None = None  # explicit pin; defaults to due_datetime
+    # When to provision one repo per student (or per team - see `type`) from the
+    # `<slug>-<tag>` template. The scheduler synthesises a release from this, so it fires
+    # exactly like a `materials_releases` entry. None = hand out manually (the button
+    # then records the release moment here).
+    handout_datetime: datetime | None = None
+    # 'group' | 'individual' | None. The COHORT-level declaration of how this assignment
+    # fans out; when set it wins over the template's own grading.yml `type:` (the
+    # design-time fallback). None = defer to grading.yml (then individual).
+    type: str | None = None
     # Group assignments: the team-size cap the welcome repo's "Join team" flow enforces
     # (templates/welcome/team-formation.yml reads it straight from schedule.yml; its
     # default when unset lives there). None = not set here.
@@ -213,9 +206,9 @@ class AssignmentEntry:
 @dataclass
 class Exam:
     name: str
-    # A bare date = whole day; a datetime = real start time; None = `date: tbc` (the site
-    # shows a TBC row). `tbc: true` next to a real date marks it provisional - "(TBC)".
-    date: date | datetime | None
+    # A bare date = whole day; a datetime = real start time; None = `exam_datetime: tbc`
+    # (the site shows a TBC row). `tbc: true` next to a real date = provisional, "(TBC)".
+    exam_datetime: date | datetime | None
     tbc: bool = False
 
 
@@ -232,7 +225,7 @@ class Schedule:
 def _parse_deploy(raw: object, tz: ZoneInfo) -> list[Deploy]:
     """Parse a release's `deploy:` - a list (or a single mapping) of source->dest copies.
     Entries missing source_repo/source_path are skipped (nothing to copy). A malformed
-    `deploy_datetime` parses to None (ship at the entry's calendar_event), in keeping
+    `deploy_datetime` parses to None (ship at the entry's event_datetime), in keeping
     with this parser's silent-drop style."""
     items = [raw] if isinstance(raw, dict) else (raw or [])
     out: list[Deploy] = []
@@ -255,30 +248,15 @@ def _parse_deploy(raw: object, tz: ZoneInfo) -> list[Deploy]:
     return out
 
 
-def _parse_grade(raw: object, tz: ZoneInfo) -> Grade | None:
-    """Parse a release's `grade:` - either `grade: <template>` or a
-    `{template, deadline, group}` mapping."""
-    if isinstance(raw, str) and raw.strip():
-        return Grade(template=raw.strip())
-    if isinstance(raw, dict) and raw.get("template"):
-        return Grade(
-            template=str(raw["template"]),
-            deadline=_coerce_datetime(raw.get("deadline"), tz, end_of_day=True),
-            group=bool(raw.get("group", False)),
-        )
-    return None
-
-
 def _is_tbc(value: object) -> bool:
     return isinstance(value, str) and value.strip().lower() == "tbc"
 
 
 def _parse_releases(raw: object, tz: ZoneInfo) -> list[Release]:
-    """Parse `materials_releases:` (label -> {calendar_event + actions}) into Releases
-    sorted by their calendar_event. `when:` is accepted as a legacy alias (schedules
-    written before the rename), losing to `calendar_event` when both are set.
+    """Parse `materials_releases:` (label -> {event_datetime + deploys}) into Releases
+    sorted by their event_datetime.
 
-    TBC: `calendar_event: tbc` keeps the entry as an UNDATED site row (when=None -
+    TBC: `event_datetime: tbc` keeps the entry as an UNDATED site row (when=None -
     nothing can fire); `tbc: true` next to a real date keeps everything firing but marks
     the site row "(TBC)". An entry with no date and no tbc can never fire or be shown,
     so it's dropped."""
@@ -286,10 +264,8 @@ def _parse_releases(raw: object, tz: ZoneInfo) -> list[Release]:
     for label, entry in (raw or {}).items():
         if not isinstance(entry, dict):
             continue
-        raw_when = entry.get("calendar_event", entry.get("when"))
-        when = _coerce_datetime(entry.get("calendar_event"), tz) or _coerce_datetime(
-            entry.get("when"), tz
-        )
+        raw_when = entry.get("event_datetime")
+        when = _coerce_datetime(raw_when, tz)
         tbc = _is_tbc(raw_when) or entry.get("tbc") is True
         if when is None and not tbc:
             continue
@@ -300,7 +276,6 @@ def _parse_releases(raw: object, tz: ZoneInfo) -> list[Release]:
                 when=when,
                 deploy=_parse_deploy(entry.get("deploy"), tz),
                 assignment=str(assignment) if assignment else None,
-                grade=_parse_grade(entry.get("grade"), tz),
                 title=str(entry.get("title") or ""),
                 tbc=tbc,
             )
@@ -312,51 +287,49 @@ def _parse_releases(raw: object, tz: ZoneInfo) -> list[Release]:
 
 
 def _parse_assignments(raw: object, tz: ZoneInfo) -> dict[str, AssignmentEntry]:
-    # Only the nested {due, grading_deadline, grace_days} form is accepted - matching the one
-    # schema documented everywhere - rather than also silently accepting a bare due-date
-    # scalar. A malformed `grading_deadline` parses to None and the entry falls back to the
-    # grace_days path, in keeping with this parser's silent-drop style.
+    # Only the nested {due_datetime, ...} form is accepted - matching the one schema
+    # documented everywhere - rather than also silently accepting a bare due-date scalar.
+    # A malformed `grading_datetime` parses to None and grading falls back to
+    # due_datetime, in keeping with this parser's silent-drop style.
     out: dict[str, AssignmentEntry] = {}
     for slug, entry in (raw or {}).items():
         if not isinstance(entry, dict):
             continue
-        due = _coerce_datetime(entry.get("due"), tz, end_of_day=True)
+        due = _coerce_datetime(entry.get("due_datetime"), tz, end_of_day=True)
         if due is None:
             continue
-        try:
-            grace = int(entry.get("grace_days", 0))
-        except (TypeError, ValueError):
-            grace = 0
         try:
             cap = int(entry["max_team_size"])
         except (KeyError, TypeError, ValueError):
             cap = None
+        kind = str(entry.get("type") or "").strip().lower()
         out[str(slug)] = AssignmentEntry(
-            due=due,
-            grace_days=grace,
-            grading_deadline=_coerce_datetime(
-                entry.get("grading_deadline"), tz, end_of_day=True
+            due_datetime=due,
+            grading_datetime=_coerce_datetime(
+                entry.get("grading_datetime"), tz, end_of_day=True
             ),
-            handout=_coerce_datetime(entry.get("handout"), tz),
+            handout_datetime=_coerce_datetime(entry.get("handout_datetime"), tz),
+            # anything other than the two known values -> None (silent-drop style)
+            type=kind if kind in ("group", "individual") else None,
             max_team_size=cap,
         )
     return out
 
 
 def _parse_exams(raw: object, tz: ZoneInfo) -> list[Exam]:
-    """Parse `exams:` - a list of `{name, date}`. `date` is a whole-day date, or a full
-    datetime when the exam's start time is known (the website then shows that time
-    instead of its 09:00 placeholder). `date: tbc` keeps the exam as an undated TBC row;
-    `tbc: true` next to a real date marks it provisional ("(TBC)" on the site)."""
+    """Parse `exams:` - a list of `{name, exam_datetime}`. `exam_datetime` is a whole-day
+    date, or a full datetime when the exam's start time is known (the website then shows
+    that time instead of its 09:00 placeholder). `exam_datetime: tbc` keeps the exam as
+    an undated TBC row; `tbc: true` next to a real date marks it provisional ("(TBC)")."""
     out: list[Exam] = []
     for e in raw or []:
         if not isinstance(e, dict):
             continue
-        d = _coerce_date_or_datetime(e.get("date"), tz)
-        tbc = _is_tbc(e.get("date")) or e.get("tbc") is True
+        d = _coerce_date_or_datetime(e.get("exam_datetime"), tz)
+        tbc = _is_tbc(e.get("exam_datetime")) or e.get("tbc") is True
         if d is None and not tbc:
             continue
-        out.append(Exam(name=str(e.get("name", "Exam")), date=d, tbc=tbc))
+        out.append(Exam(name=str(e.get("name", "Exam")), exam_datetime=d, tbc=tbc))
     return out
 
 
@@ -375,23 +348,22 @@ def parse(meta: dict) -> Schedule:
     )
 
 
-def grading_deadline_at(sched: Schedule, slug: str) -> datetime | None:
+def grading_datetime_at(sched: Schedule, slug: str) -> datetime | None:
     """The grading pin for `slug` as a tz-aware datetime - the ONE instant at which the
     submission snapshot freezes and the autograder fires, so both always agree.
 
-    Precedence: an explicit `grading_deadline` wins; else the legacy `due + grace_days`;
-    else `due` itself. None if unscheduled."""
+    An explicit `grading_datetime` wins; else `due_datetime`. None if unscheduled."""
     entry = sched.assignments.get(slug)
     if entry is None:
         return None
-    if entry.grading_deadline is not None:
-        return entry.grading_deadline
-    return entry.due + timedelta(days=entry.grace_days)
+    if entry.grading_datetime is not None:
+        return entry.grading_datetime
+    return entry.due_datetime
 
 
-def grading_deadline(sched: Schedule, slug: str) -> str | None:
-    """`grading_deadline_at` as an ISO string, or None if unscheduled."""
-    at = grading_deadline_at(sched, slug)
+def grading_datetime_iso(sched: Schedule, slug: str) -> str | None:
+    """`grading_datetime_at` as an ISO string, or None if unscheduled."""
+    at = grading_datetime_at(sched, slug)
     return at.isoformat() if at is not None else None
 
 
@@ -405,6 +377,86 @@ def load(cohort_org: str) -> Schedule:
     content = get_file_content(cohort_org, CONFIG_REPO, SCHEDULE_PATH)
     meta = yaml.safe_load(content) if content else {}
     return parse(meta if isinstance(meta, dict) else {})
+
+
+def _insert_handout(text: str, slug: str, stamp: str) -> str | None:
+    """Pure text surgery for `record_handout` - schedule.yml is USER-owned and
+    comment-rich, so we insert lines rather than re-serialising (which would destroy
+    every comment). Returns the new text, or None when nothing should change (the
+    entry already has a handout - write-once, a scheduled value is never touched)."""
+    lines = text.splitlines(keepends=True)
+    # locate the top-level assignments: block and, inside it, the slug's sub-block
+    a_start = next(
+        (i for i, ln in enumerate(lines) if ln.split("#")[0].rstrip() == "assignments:"),
+        None,
+    )
+    entry_line = (
+        f"    handout_datetime: {stamp}   # set automatically by the Release assignment button\n"
+    )
+    if a_start is None:
+        # no assignments block at all: append one, flagging the due date still to add
+        return (
+            (text if text.endswith("\n") or not text else text + "\n")
+            + f"\nassignments:\n  {slug}:\n{entry_line}"
+            + "    # TODO: add `due_datetime:` - the date students see (required)\n"
+        )
+    # walk the block: find `  <slug>:`; block ends at the next non-comment col-0 line
+    s_start = None
+    for i in range(a_start + 1, len(lines)):
+        stripped = lines[i].split("#")[0].rstrip()
+        if stripped and not lines[i].startswith(" "):
+            break  # left the assignments block
+        if stripped == f"  {slug}:":
+            s_start = i
+            break
+    if s_start is None:
+        insert = (
+            f"  {slug}:\n{entry_line}"
+            "    # TODO: add `due_datetime:` - the date students see (required)\n"
+        )
+        lines.insert(a_start + 1, insert)
+        return "".join(lines)
+    # slug found: scan its sub-block (deeper-indented lines) for an existing handout
+    for i in range(s_start + 1, len(lines)):
+        stripped = lines[i].split("#")[0].rstrip()
+        if stripped and (len(lines[i]) - len(lines[i].lstrip())) <= 2:
+            break  # next slug or out of the block
+        if stripped.strip().startswith("handout_datetime:"):
+            return None  # write-once - never move a scheduled or recorded handout
+    lines.insert(s_start + 1, entry_line)
+    return "".join(lines)
+
+
+def record_handout(cohort_org: str, slug: str, stamp: str | None = None) -> None:
+    """Record a manual handout back into schedule.yml (`assignments.<slug>.handout_datetime`),
+    so the schedule stays the one record of when every assignment went out - whether
+    the cron released it or a person clicked the button. Write-once: an existing
+    handout_datetime (scheduled, or recorded by an earlier click) is never modified. Best
+    effort - a failure here must never fail the release itself."""
+    from .utils import log, put_file
+
+    text = get_file_content(cohort_org, CONFIG_REPO, SCHEDULE_PATH) or ""
+    if stamp is None:
+        # the release moment, in the cohort's own timezone (naive, like every other
+        # schedule datetime - the parser reads it back in that same zone)
+        try:
+            tz_name = (yaml.safe_load(text) or {}).get("timezone")
+        except yaml.YAMLError:
+            tz_name = None
+        stamp = datetime.now(_tz(tz_name if isinstance(tz_name, str) else None)).strftime(
+            "%Y-%m-%dT%H:%M"
+        )
+    new = _insert_handout(text, slug, stamp)
+    if new is None:
+        return
+    if put_file(
+        cohort_org,
+        CONFIG_REPO,
+        SCHEDULE_PATH,
+        new.encode(),
+        f"schedule: record {slug} handout ({stamp})",
+    ):
+        log(f"  recorded handout in {CONFIG_REPO}/{SCHEDULE_PATH}: {slug} @ {stamp}")
 
 
 def main() -> int:

@@ -10,23 +10,19 @@ actions - `deploy` (copy a source path from a COURSE-org repo into a COHORT-org 
 no "already released" state to track. Grading is the exception - see AUTOGRADE below.
 
 Assignment handouts are declared with the rest of the assignment's lifecycle -
-`assignments.<slug>.handout` - and synthesised into releases here (_handout_releases), so
-they fire through the same machinery; a `materials_releases` entry with an `assignment:`
-action is the legacy spelling and still works.
+`assignments.<slug>.handout_datetime` - and synthesised into releases here
+(_handout_releases), so they fire through the exact machinery a deploy does.
 
-The same hourly run also drives each assignment's grading deadline (`grading_deadline`, else
-`due + grace_days`), whether or not the cohort uses `materials_releases` at all:
+The same hourly run also drives each assignment's grading deadline (`grading_datetime`,
+else `due_datetime`), whether or not the cohort uses `materials_releases` at all:
 
 1. FREEZE. For every assignment whose grading deadline has gone by and that has no snapshot
    yet, record the commit each submission repo is graded at into
    `classroom-config/snapshots/<slug>.csv` (see `dsl_course.collect`). That timestamp is the
    server's, not the student's, which is the only reason the pin can be trusted.
 2. AUTOGRADE, ONCE. Then run the autograder for those same assignments - template
-   `<slug>-<tag>` in the course org - so no `grade:` entry has to be written at all. The
-   fire-once marker is the `autograde/<slug>/` results directory: present means already
-   graded, so never again. Both phases run before the release actions, so a legacy `grade:`
-   release firing in the same tick sees the snapshot AND shares the marker (it cannot
-   double-fire).
+   `<slug>-<tag>` in the course org. The fire-once marker is the `autograde/<slug>/`
+   results directory: present means already graded, so never again.
 
 Sources are always read from the course org and destinations always written to the cohort
 org - the two orgs come from the invocation (`--course-org` / `--cohort-org`), never from
@@ -53,9 +49,9 @@ from .utils import log, log_err, log_ok, log_step
 
 
 def due_releases(releases: list[Release], now: datetime) -> list[Release]:
-    """Entries with something to DO at `now`, in calendar_event order. assignment/grade
-    actions fire at the entry's calendar_event; each deploy at its own deploy_datetime
-    (else the calendar_event) - so an entry is due as soon as any one of its actions is.
+    """Entries with something to DO at `now`, in event_datetime order. An assignment
+    handout fires at the entry's event_datetime; each deploy at its own deploy_datetime
+    (else the event_datetime) - so an entry is due as soon as any one of its actions is.
     Display-only entries (no actions) never fire and are never due. `releases` is already
     sorted (schedule._parse_releases), and every datetime is tz-aware, so the comparisons
     are correct across timezones."""
@@ -63,20 +59,20 @@ def due_releases(releases: list[Release], now: datetime) -> list[Release]:
         r
         for r in releases
         if r.due_deploys(now)
-        or ((r.assignment or r.grade) and r.when is not None and r.when <= now)
+        or (r.assignment and r.when is not None and r.when <= now)
     ]
 
 
 def due_snapshots(sched: schedule.Schedule, now: datetime) -> list[tuple[str, str]]:
     """(slug, grading-deadline ISO) for every scheduled assignment whose grading deadline
-    (`grading_deadline`, else due + grace_days) has passed at `now` - the assignments whose
+    (`grading_datetime`, else `due_datetime`) has passed at `now` - the assignments whose
     submissions are ready to be frozen and then graded. Deadline-ordered, so the run log is
     deterministic. Whether each one has already been snapshotted or graded is a separate,
     I/O question (see `_snapshot_passed_deadlines` / `_autograde_passed_deadlines`)."""
     passed = [
         (slug, at)
         for slug in sched.assignments
-        if (at := schedule.grading_deadline_at(sched, slug)) is not None and at <= now
+        if (at := schedule.grading_datetime_at(sched, slug)) is not None and at <= now
     ]
     return [(slug, at.isoformat()) for slug, at in sorted(passed, key=lambda p: p[1])]
 
@@ -87,7 +83,7 @@ def _dest(d: Deploy) -> str:
 
 def describe(release: Release, now: datetime | None = None) -> list[str]:
     """Human one-liners for a release's actions (for dry-run / 'what opens when'). With
-    `now`, deploys not yet due (a deploy_datetime after the entry's calendar_event) are
+    `now`, deploys not yet due (a deploy_datetime after the entry's event_datetime) are
     marked rather than listed as firing."""
     if release.is_event_only:
         return ["calendar event only (site schedule row) - nothing to release"]
@@ -111,64 +107,24 @@ def describe(release: Release, now: datetime | None = None) -> list[str]:
     )
     if release.assignment:
         lines.append(f"assignment {release.assignment}{actions_suffix}")
-    if release.grade:
-        lines.append(
-            f"grade {release.grade.template} "
-            f"(deadline {release.grade.deadline or 'from schedule'}){actions_suffix}"
-        )
     return lines
 
 
 # ---------------------------------------------------------------------- gh/git wiring
 
 
-def _execute_nondeploy(
-    course_org: str,
-    cohort_org: str,
-    release: Release,
-    graded: frozenset[str] | set[str] = frozenset(),
-) -> int:
-    """Run one release's non-deploy actions (assignment / grade). Deploys are batched
+def _execute_nondeploy(course_org: str, cohort_org: str, release: Release) -> int:
+    """Run one release's non-deploy action (an assignment handout). Deploys are batched
     across the whole run (see `run`) so their source/dest repos clone once. Returns the
-    error count.
-
-    A legacy `grade:` entry shares the automatic path's fire-once marker: it is skipped once
-    `autograde/<slug>/` exists, and `graded` (the slugs this tick already autograded) closes
-    the window before that freshly written marker is readable."""
+    error count."""
     errors = 0
     if release.assignment:
         from .assign import provision_all
 
-        # provision_all's default (group=None) reads the template's own grading.yml
-        # `type:` declaration - so a scheduled group handout provisions per TEAM, not
-        # one repo per student.
+        # provision_all's default (group=None) resolves group-vs-individual from the
+        # cohort schedule / the template's grading.yml - so a scheduled group handout
+        # provisions per TEAM, not one repo per student.
         if provision_all(course_org, release.assignment, cohort_org) != 0:
-            errors += 1
-    if release.grade:
-        from .assign import assignment_slug
-        from .collect import autograde_path, collect, has_autograde_results
-
-        slug = assignment_slug(release.grade.template)
-        if slug in graded or has_autograde_results(cohort_org, slug):
-            log(
-                f"  [skip] grade {slug} - {autograde_path(slug)}/ already recorded "
-                f"(delete it to re-grade)"
-            )
-            return errors
-        # deadline=None -> collect resolves it from the cohort schedule (SSOT)
-        deadline = (
-            release.grade.deadline.isoformat() if release.grade.deadline else None
-        )
-        if (
-            collect(
-                course_org,
-                release.grade.template,
-                cohort_org,
-                deadline,
-                group=release.grade.group,
-            )
-            != 0
-        ):
             errors += 1
     return errors
 
@@ -216,8 +172,8 @@ def _autograde_passed_deadlines(
     now: datetime,
     dry_run: bool,
 ) -> tuple[int, set[str]]:
-    """Autograde every passed-deadline assignment exactly once - zero config, no `grade:`
-    entry needed. Returns (error count, the slugs fired this tick).
+    """Autograde every passed-deadline assignment exactly once - zero config. Returns
+    (error count, the slugs fired this tick).
 
     Fire-once: `autograde/<slug>/` in classroom-config is the marker. Absent means never
     machine-graded, so grade now; present means graded already, so never again - which is
@@ -226,7 +182,7 @@ def _autograde_passed_deadlines(
 
     A missing template repo, a template with no `solution` branch, and `autograde: false`
     are all skips, not failures: plenty of assignments are hand-marked. Group vs individual
-    is not guessed here - `collect` reads `type:` from the template's own grading.yml."""
+    is not guessed here - `collect` resolves it from the cohort schedule / grading.yml."""
     from .collect import collect, has_autograde_results
 
     errors, fired = 0, set()
@@ -248,12 +204,12 @@ def _autograde_passed_deadlines(
 
 
 def _run_releases(
-    course_org: str, cohort_org: str, due: list[Release], graded: set[str], now: datetime
+    course_org: str, cohort_org: str, due: list[Release], now: datetime
 ) -> int:
     """Fire every due release's due actions, then sync the site once. Returns the error
     count. `now` gates each action individually: a deploy with its own deploy_datetime
-    fires on its own clock, an entry's assignment/grade at its calendar_event - an entry
-    can be due for one and not (yet) the other."""
+    fires on its own clock, an entry's handout at its event_datetime - an entry can be
+    due for one and not (yet) the other."""
     errors = 0
     # Batch EVERY due release's due deploys through one deploy_many: each unique source
     # and dest repo is cloned once for the whole run, not once per copy.
@@ -267,17 +223,13 @@ def _run_releases(
         )
         errors += deploy_errors
 
-    # Assignment / grade actions run per release (they aren't file copies).
+    # Assignment handouts run per release (they aren't file copies).
     did_assign = False
     for release in due:
-        if (
-            (release.assignment or release.grade)
-            and release.when is not None
-            and release.when <= now
-        ):
-            log_step(f"  [{release.label}] assignment/grade")
-            errors += _execute_nondeploy(course_org, cohort_org, release, graded)
-            did_assign = did_assign or bool(release.assignment)
+        if release.assignment and release.when is not None and release.when <= now:
+            log_step(f"  [{release.label}] assignment handout")
+            errors += _execute_nondeploy(course_org, cohort_org, release)
+            did_assign = True
 
     # One website sync at the end, only if something actually changed.
     if changed or did_assign:
@@ -290,23 +242,25 @@ def _run_releases(
 def _handout_releases(
     course_org: str, cohort_org: str, sched: schedule.Schedule
 ) -> list[Release]:
-    """Synthetic releases for `assignments.<slug>.handout` - the whole assignment
-    lifecycle (handout/due/grading_deadline/max_team_size) is declared in ONE block, and
-    the handout still fires through the exact machinery a `materials_releases` entry
-    would: due at its datetime, re-checked every tick (idempotent - a late onboarder gets
-    their repo on the next one), per-team when the template's grading.yml says so. An
-    assignment with no `<slug>-<tag>` template repo is skipped - it may be pinned for its
-    website date alone."""
+    """Synthetic releases for `assignments.<slug>.handout_datetime` - the whole assignment
+    lifecycle (handout_datetime/due_datetime/grading_datetime/max_team_size) is declared in
+    ONE block, and the handout still fires through the exact machinery a
+    `materials_releases` entry would: due at its datetime, re-checked every tick
+    (idempotent - a late onboarder gets their repo on the next one), per-team when the
+    template's grading.yml says so. An assignment with no `<slug>-<tag>` template repo is
+    skipped - it may be pinned for its website date alone."""
     out = []
     for slug, entry in sched.assignments.items():
-        if entry.handout is None:
+        if entry.handout_datetime is None:
             continue
         template = _assignment_template(course_org, cohort_org, slug)
         if template is None:
             log(f"  [skip] handout {slug} - no template repo for it in {course_org}")
             continue
         out.append(
-            Release(label=f"{slug}-handout", when=entry.handout, assignment=template)
+            Release(
+                label=f"{slug}-handout", when=entry.handout_datetime, assignment=template
+            )
         )
     return out
 
@@ -324,7 +278,7 @@ def run(course_org: str, cohort_org: str, now: datetime, dry_run: bool = False) 
     # snapshot. Then autograde those same assignments, once each. Both are independent of
     # the release plan - a cohort can pin due dates without scheduling a single release.
     errors = _snapshot_passed_deadlines(cohort_org, sched, now, dry_run)
-    autograde_errors, graded = _autograde_passed_deadlines(
+    autograde_errors, _fired = _autograde_passed_deadlines(
         course_org, cohort_org, sched, now, dry_run
     )
     errors += autograde_errors
@@ -344,7 +298,7 @@ def run(course_org: str, cohort_org: str, now: datetime, dry_run: bool = False) 
     elif not due:
         log_ok("nothing due.")
     else:
-        errors += _run_releases(course_org, cohort_org, due, graded, now)
+        errors += _run_releases(course_org, cohort_org, due, now)
 
     if errors:
         log_err(f"{errors} action(s) failed")

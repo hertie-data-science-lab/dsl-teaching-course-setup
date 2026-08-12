@@ -6,5 +6,11 @@
   #   - github_handle: "janedoe"
   #     name:  "Prof. Dr. Jane Doe"
   #     title: "Professor of Data Science"
-  #     photo: "https://.../headshot.jpg"        # square image URL
+  #     photo: "/_images/pp/jane.jpg"             # square image: EITHER a path to a
+  #                                               # file committed into the site repo
+  #                                               # under _images/pp/, OR an absolute
+  #                                               # URL on a host that allows
+  #                                               # hotlinking (many institutional
+  #                                               # sites 403 off-site requests and
+  #                                               # render as a broken image)
   #     url:   "https://.../profile/jane-doe"     # bio / profile link

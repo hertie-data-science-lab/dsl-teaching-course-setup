@@ -59,8 +59,8 @@ and no marks. A **Join team** issue from an auditor is refused and labelled `nee
 
 ## Next
 
-- [Release an assignment](08-release-assignment-to-cohort.md) once students have onboarded - or
-  let the [schedule](06-schedule-releases.md) hand it out for you.
+- [Release an assignment](09-release-assignment-to-cohort.md) once students have onboarded - or
+  let the [schedule](07-schedule-releases.md) hand it out for you.
 
 ---
 **Demo:** [Send enrolment codes](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/send-codes.yml)

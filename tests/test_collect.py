@@ -492,3 +492,28 @@ def test_template_is_group_defaults_to_individual_without_grading_yml(monkeypatc
     # No solution branch / no grading.yml -> the contents fetch misses -> individual.
     monkeypatch.setattr(collect, "get_file_content", lambda *a, **k: None)
     assert not collect.template_is_group("Course-Org", "assignment-1-f2026")
+
+
+def test_assignment_is_group_prefers_the_cohort_schedule(monkeypatch):
+    # schedule.yml's assignments.<slug>.type wins; grading.yml is only the fallback.
+    from dsl_course.schedule import AssignmentEntry, Schedule
+
+    entry = AssignmentEntry(due_datetime=datetime(2026, 11, 15, tzinfo=ZoneInfo("Europe/Berlin")))
+    sched = Schedule(assignments={"assignment-4-project": entry})
+    monkeypatch.setattr(collect.schedule, "load", lambda org: sched)
+    calls = []
+    monkeypatch.setattr(
+        collect, "template_is_group", lambda org, template: calls.append(template) or True
+    )
+    # no cohort declaration -> falls through to grading.yml
+    entry.type = None
+    assert collect.assignment_is_group("Course", "Cohort-f2026", "assignment-4-project-f2026")
+    assert calls == ["assignment-4-project-f2026"]
+    # cohort says individual -> grading.yml is NOT consulted
+    entry.type = "individual"
+    calls.clear()
+    assert not collect.assignment_is_group("Course", "Cohort-f2026", "assignment-4-project-f2026")
+    assert calls == []
+    # cohort says group -> group, regardless of the template
+    entry.type = "group"
+    assert collect.assignment_is_group("Course", "Cohort-f2026", "assignment-4-project-f2026")

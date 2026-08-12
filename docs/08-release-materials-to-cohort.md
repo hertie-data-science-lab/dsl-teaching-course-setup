@@ -11,7 +11,7 @@ Open sessions up to a cohort, from any section of your materials repo (lectures,
 
 ## The schedule normally does this (recommended)
 
-A `deploy` entry in the cohort's `schedule.yml` releases exactly what the button below does, at the datetime you give it: [Schedule releases](06-schedule-releases.md). 
+A `deploy` entry in the cohort's `schedule.yml` releases exactly what the button below does, at the datetime you give it: [Schedule releases](07-schedule-releases.md). 
 This is the recommended method for releasing materials, as it also creates an entry in the deployed `<course>.github.io` site, so students can clearly understand the course plan in advance.
 
 ## Release materials via manual dispatch
@@ -41,8 +41,8 @@ by hand only when you don't want to wait for the cron to fire - e.g. after editi
 
 ## Next
 
-- [Add an assignment](03-add-assignment-to-course.md), then [release it](08-release-assignment-to-cohort.md).
-- [Release code](10-release-code.md) - a growing package, disclosed in phases (not session folders).
+- [Add an assignment](03-add-assignment-to-course.md), then [release it](09-release-assignment-to-cohort.md).
+- [Release code](11-release-code.md) - a growing package, disclosed in phases (not session folders).
 
 ---
 **Demo:** released into [`DSL-Demo-f2026`](https://github.com/DSL-Demo-f2026); site at

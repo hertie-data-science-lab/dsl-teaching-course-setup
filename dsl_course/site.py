@@ -152,16 +152,40 @@ def _team_people(course_org: str, team: str) -> list[tuple[str, str, str]]:
     return people
 
 
-def _people_from_meta(meta: dict) -> tuple[list[tuple], list[tuple]] | None:
+# A person entry mixes two concerns: who gets the GitHub grant, and what the website
+# card shows. These keys drive the grant and are never rendered; everything else is
+# display and is passed through to `_data/people.yml` as-is.
+ACCESS_ONLY = ("github_handle", "start", "end")
+# Our config spelling -> the key the Jekyll theme reads.
+CARD_ALIASES = {"photo": "profile_pic", "url": "webpage"}
+# Leading keys, so a generated file has a stable, readable order.
+CARD_ORDER = ("name", "profile_pic", "webpage", "title")
+
+
+def _card(entry: dict) -> dict:
+    """One person entry -> the card dict written into `_data/people.yml`: drop the
+    access-only keys, rename `photo`/`url` to the theme's names, keep everything else
+    the course declared. Ordered by CARD_ORDER first, then the extras alphabetically."""
+    card = {
+        CARD_ALIASES.get(k, k): "" if v is None else str(v)
+        for k, v in entry.items()
+        if k not in ACCESS_ONLY
+    }
+    ordered = {k: card[k] for k in CARD_ORDER if k in card}
+    ordered.update({k: card[k] for k in sorted(card) if k not in ordered})
+    return ordered
+
+
+def _people_from_meta(meta: dict) -> tuple[list[dict], list[dict]] | None:
     """Declared people from a `people:` block - either the COURSE org's
     `.github/dsl-course.yml` (course site: instructors only, TAs are never declared
     there) or a cohort's own `classroom-config/people.yml` (cohort site: instructors
     AND TAs). Same schema either way.
 
-    Returns `(instructors, teaching_assistants)` as lists of `(name, photo, url,
-    title)` for entries active today (per optional start/end dates) that also declare
-    a display `name`, or None when there is no `people:` block at all (then fall back
-    to the GitHub teams). Schema (templates/course/people-header.yml +
+    Returns `(instructors, teaching_assistants)` as lists of **card dicts** keyed the way
+    the Jekyll theme reads them, for entries active today (per optional start/end dates)
+    that also declare a display `name`; or None when there is no `people:` block at all
+    (then fall back to the GitHub teams). Schema (templates/course/people-header.yml +
     people-cards.yml for the course org's block, templates/classroom-config/people.yml
     for a cohort's):
 
@@ -170,27 +194,25 @@ def _people_from_meta(meta: dict) -> tuple[list[tuple], list[tuple]] | None:
             - {github_handle: ..., start: ..., end: ..., name: ..., photo: <img-url>, url: <bio-link>, title: ...}
           teaching_assistants:
             - {github_handle: ..., name: ..., photo: ..., url: ..., title: ...}
+
+    Every declared field is passed through to the card: `photo`/`url` are renamed to the
+    theme's `profile_pic`/`webpage`, ACCESS_ONLY keys are dropped (they govern the GitHub
+    grant, not the display), and anything else a course chooses to add rides along
+    verbatim, so a new field needs a theme change but no change here.
     """
     people = meta.get("people") if isinstance(meta, dict) else None
     if not isinstance(people, dict):
         return None
     today = date.today().isoformat()
 
-    def rows(key: str) -> list[tuple]:
+    def rows(key: str) -> list[dict]:
         out = []
         for p in people.get(key) or []:
             if not isinstance(p, dict) or not p.get("name"):
                 continue
             if not active_today(p.get("start"), p.get("end"), today):
                 continue
-            out.append(
-                (
-                    str(p["name"]),
-                    str(p.get("photo", "")),
-                    str(p.get("url", "")),
-                    str(p.get("title", "")),
-                )
-            )
+            out.append(_card(p))
         return out
 
     return rows("instructors"), rows("teaching_assistants")
@@ -212,28 +234,39 @@ def _people_yaml(org: str, meta: dict | None = None, *, include_tas: bool = True
         instructors, tas = override
         note = "declared in the `people:` block"
     else:
-        instructors = [(*t, "") for t in _team_people(org, "instructors")]
+        instructors = [
+            {"name": n, "profile_pic": p, "webpage": w}
+            for n, p, w in _team_people(org, "instructors")
+        ]
         tas = []
         note = "auto-generated from the org's instructors team"
     if not include_tas:
         tas = []
 
-    def block(items: list[tuple]) -> str:
+    def block(items: list[dict]) -> str:
         if not items:
             return " []"
         rows = []
-        for n, p, w, t in items:
-            row = f'  - name: "{_q(n)}"\n    profile_pic: "{_q(p)}"\n    webpage: "{_q(w)}"'
-            if t:
-                row += f'\n    title: "{_q(t)}"'
-            rows.append(row)
+        for card in items:
+            # The theme's three core keys are always emitted, empty or not (a card the
+            # theme can't find `profile_pic` on renders differently from one where it is
+            # blank); optional fields appear only when they carry something.
+            fields = [
+                f'{k}: "{_q(card.get(k, ""))}"' for k in ("name", "profile_pic", "webpage")
+            ] + [
+                f'{k}: "{_q(v)}"'
+                for k, v in card.items()
+                if k not in ("name", "profile_pic", "webpage") and v != ""
+            ]
+            rows.append("  - " + "\n    ".join(fields))
         return "\n" + "\n".join(rows)
 
-    featured = instructors[0] if instructors else ("Course staff", "", "", "")
+    featured = instructors[0] if instructors else {"name": "Course staff"}
     return (
         f"# {note}.\n\n"
-        f'instructor:\n  name: "{_q(featured[0])}"\n'
-        f'  profile_pic: "{_q(featured[1])}"\n  webpage: "{_q(featured[2])}"\n\n'
+        f'instructor:\n  name: "{_q(featured.get("name", ""))}"\n'
+        f'  profile_pic: "{_q(featured.get("profile_pic", ""))}"\n'
+        f'  webpage: "{_q(featured.get("webpage", ""))}"\n\n'
         f"instructors:{block(instructors)}\n\n"
         f"teaching_assistants:{block(tas)}\n"
     )
@@ -404,12 +437,12 @@ def _due_date(sched: schedule.Schedule, repo: str, fallback: date) -> date | dat
     """This assignment's due date from schedule.yml (keyed on the slug, repo minus its
     -fYYYY/-sYYYY tag), or `fallback` if unscheduled."""
     entry = sched.assignments.get(assignment_slug(repo))
-    return entry.due if entry else fallback
+    return entry.due_datetime if entry else fallback
 
 
 def _session_dates(sched: schedule.Schedule) -> dict[str, datetime]:
     """Map a session ordinal (e.g. '2') to when that session HAPPENS - the entry's
-    `calendar_event` from schedule.yml's `materials_releases`, keyed by the ordinal of
+    `event_datetime` from schedule.yml's `materials_releases`, keyed by the ordinal of
     each deploy's destination folder (so the site can date a released session from the
     plan that released it). Deploys may ship on their own `deploy_datetime` clocks; the
     site announces the class, not the copy. Earliest wins when several releases touch
@@ -417,7 +450,7 @@ def _session_dates(sched: schedule.Schedule) -> dict[str, datetime]:
     out: dict[str, datetime] = {}
     for release in sched.releases:
         if release.when is None:
-            continue  # calendar_event: tbc - undated, can't place a session
+            continue  # event_datetime: tbc - undated, can't place a session
         for d in release.deploy:
             folder = (d.dest_path or d.source_path).rstrip("/").rsplit("/", 1)[-1]
             n = session_number(folder)
@@ -431,10 +464,10 @@ def _session_dates(sched: schedule.Schedule) -> dict[str, datetime]:
 
 def _raw_event_entry(release: schedule.Release, fallback: date) -> str:
     """A generic schedule row (the theme's schedule_row_raw_event.html) for a display-only
-    entry - a `calendar_event` with no actions: a clinic, a guest lecture, a review
+    entry - an `event_datetime` with no actions: a clinic, a guest lecture, a review
     session. Nothing is released; the site simply shows it.
 
-    TBC: an undated entry (`calendar_event: tbc`) still needs a sortable `date:` for the
+    TBC: an undated entry (`event_datetime: tbc`) still needs a sortable `date:` for the
     theme, so it carries `fallback` (end of term) plus `dateless: true` - the theme then
     prints "TBC" instead of the placeholder. A dated entry with `tbc: true` keeps its date
     and gains a "(TBC)" marker."""
@@ -611,9 +644,9 @@ def sync_site(course_org: str, cohort_org: str) -> int:
             exam_entries = {
                 f"{i + 1:02d}-{_slug(exam.name)}.md": _exam_entry(
                     exam.name,
-                    exam.date if exam.date is not None else end,
+                    exam.exam_datetime if exam.exam_datetime is not None else end,
                     tbc=exam.tbc,
-                    dateless=exam.date is None,
+                    dateless=exam.exam_datetime is None,
                 )
                 for i, exam in enumerate(sched.exams)
             }
@@ -622,7 +655,7 @@ def sync_site(course_org: str, cohort_org: str) -> int:
                 "midterm.md": _exam_entry("MidTerm Exam", start + timedelta(weeks=8)),
                 "final.md": _exam_entry("Final Exam", end),
             }
-        # Display-only schedule rows: materials_releases entries with a calendar_event
+        # Display-only schedule rows: materials_releases entries with an event_datetime
         # but no actions (a clinic, a guest lecture). Nothing deploys; the site just
         # shows them - an undated (TBC) one sorts at end-of-term.
         exam_entries |= {
