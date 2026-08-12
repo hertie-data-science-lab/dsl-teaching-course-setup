@@ -1,8 +1,8 @@
 # E2E Dummy Course Delivery 
 
 A complete, ready-to-copy set of **dummy course materials**: incl a growing lecture package, placeholder lab materials, three
-assignments (one group project), a roster with an auditor, instructor/TA cards, and a full term's
-auto-release schedule. Follow the same steps to stand up your own course.
+assignments (one group project run by three teams of 3-4), a roster with an auditor, instructor/TA
+cards, and a full term's auto-release schedule. Follow the same steps to stand up your own course.
 
 Find the example materials in this markdown's parent directory.
 
@@ -34,8 +34,8 @@ example-course/
     assignment-2-f2026/             # individual (notebook) main/ + solution/
     assignment-4-project-f2026/     # GROUP project         main/ + solution/
   cohort-org/
-    students.csv                    # 4 students + 1 auditor (handles blank until they onboard)
-    teams.csv                       # team membership for the group project
+    students.csv                    # 10 students + 1 auditor (handles blank until they onboard)
+    teams.csv                       # 3 project teams of 3-4 (auditors are refused from teams)
     schedule.yml                    # the full term: materials_releases + due dates + exams
     people.yml                      # this cohort's own instructors/TAs (real push access)
     grades/*.csv                    # per-assignment grade tables (auto/manual/final)

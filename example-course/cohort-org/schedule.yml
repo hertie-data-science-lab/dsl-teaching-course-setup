@@ -104,7 +104,7 @@ assignments:                    # each assignment's whole lifecycle in one block
     type: group                   # per-team handout + grading (also set in the
                                   # template's grading.yml)
     due_datetime: 2026-11-15T23:59
-    max_team_size: 3              # the welcome "Join team" flow refuses a 4th member
+    max_team_size: 4              # the welcome "Join team" flow refuses a 5th member
 
 
 exams:

@@ -19,27 +19,38 @@ course_code: GRAD-DEMO
 # One of each mechanism is shown below.
 people:
   course_admins:
-    - github_handle: "lkaack"
+    # Course-wide admin, mirrored into every cohort. Optional start/end bound it -
+    # here, the course director's tenure running this course.
+    - github_handle: "LynnKaack"
+      start: "2026-08-01"
+      end: "2027-07-31"
   instructors:
-    - github_handle: "lkaack"
+    - github_handle: "LynnKaack"
       name: "Prof. Lynn Kaack, PhD"
       title: "Assistant Professor of Computer Science and Public Policy"
-      photo: "/_images/pp/placeholder.jpg"   # local file in the site repo
+      photo: "https://github.com/LynnKaack.png"   # remote URL (GitHub avatars always hotlink)
       url: "https://www.hertie-school.org/de/research/faculty-and-researchers/profile/person/kaack"
+      start: "2026-08-01"
+      end: "2027-07-31"
+  # NB: the public course site renders INSTRUCTOR cards only (`include_tas=False` in
+  # site.sync_public_site) - TAs are cohort-scoped, so their cards come from the
+  # cohort's own classroom-config/people.yml (../cohort-org/people.yml). The two
+  # entries below are therefore inert here; they are kept only to show the key is
+  # accepted and to keep the two files' shapes comparable.
   teaching_assistants:
-    - github_handle: "cfusarbassini"
-      start: "2026-09-01"
+    - github_handle: "chiara-fb"
+      start: "2026-08-01"
       end: "2027-01-31"
       name: "Chiara Fusar Bassini"
       title: "PhD candidate, Data Science Lab"
-      photo: "/_images/pp/placeholder.jpg"   # local file in the site repo
+      photo: "https://github.com/chiara-fb.png"
       url: "https://www.hertie-school.org/en/who-we-are/profile/person/fusar-bassini"
     - github_handle: "henrycgbaker"
-      start: "2026-09-01"
+      start: "2026-08-01"
       end: "2027-01-31"
       name: "Henry Baker"
-      title: "Teaching Assistant"
-      photo: "https://github.com/henrycgbaker.png"   # remote URL (hotlinkable)
+      title: "Research Engineer & Data Scientist"
+      photo: "/_images/pp/henrycgbaker.jpg"   # the other form: local file in the site repo
       url: "https://www.hertie-school.org/en/who-we-are/profile/person/baker"
 
 # The schedule (release calendar, due dates, exams) is cohort-specific - it lives in

@@ -7,6 +7,7 @@ repo. No network here.
 
 from __future__ import annotations
 
+import csv
 from pathlib import Path
 
 from dsl_course import roster
@@ -86,4 +87,10 @@ def test_example_dataset_roster_declares_roles_and_ships_an_auditor():
     )
     students = roster.load_path(str(path))
     assert [s.name for s in roster.auditors(students)] == ["Eve Evans"]
-    assert len(roster.enrolled(students)) == 4
+    # enough enrolled students to fill the dataset's three project teams
+    assert len(roster.enrolled(students)) >= 10
+    # ...and the raw file still leaves one `role` cell blank, so the dataset demonstrates
+    # that the column is optional (normalise_role turns blank into `enrolled` on load,
+    # so this can only be checked against the CSV text)
+    rows = list(csv.DictReader(path.read_text().splitlines()))
+    assert any(r["role"] == "" for r in rows)
