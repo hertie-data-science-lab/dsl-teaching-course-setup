@@ -1,23 +1,25 @@
 # Release materials to a cohort
 
-Open sessions up to a cohort, from any section of your materials repo (lectures, readings, …).
+> Releases materials from the course org (private, historical registry of course materials) -> cohort org (a single instance, available to students)
+
+Open sessions up to a cohort, from any section of your materials repo (lectures, readings, labs…).
 
 ## Prerequisites
 
 - A course [materials repo](02-add-materials-to-course.md) with the sessions you want to release.
 - A bootstrapped [cohort](04-new-cohort-org.md).
 
-## The schedule normally does this
+## The schedule normally does this (recommended)
 
-A `deploy` entry in the cohort's `schedule.yml` releases exactly what the button below does, at
-the datetime you give it: [Schedule releases](06-schedule-releases.md). Use the button for a
-demo, an ad-hoc release, or recovery while you fix the YAML.
+A `deploy` entry in the cohort's `schedule.yml` releases exactly what the button below does, at the datetime you give it: [Schedule releases](06-schedule-releases.md). 
+This is the recommended method for releasing materials, as it also creates an entry in the deployed `<course>.github.io` site, so students can clearly understand the course plan in advance.
 
-## Release materials (manual)
+## Release materials via manual dispatch
 
-Use the materials repo's own **Release materials** button (it knows that repo's sections and
-sessions), or the course `.github` →
-[Release materials](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/release-materials.yml):
+In the course org, use either (1) the **materials repo's own** `Release materials` button (it knows that repo's sections and
+sessions), or (2) the **course org's`.github` repo's** `release materials` button 
+
+e.g. → [Release materials](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/release-materials.yml):
 
 - `cohort_org` = `DSL-Demo-f2026`
 - per section, `release_<section>` (checkbox, default **on**) and `<section>_path` (free text).
@@ -28,19 +30,14 @@ sessions), or the course `.github` →
   found in the repo)
 - `include_root_files` (default **off**) - also release the syllabus file(s) + source README
 
-Re-releasing is a no-op, so it's safe to re-run.
+Re-releasing is safe to re-run.
 
-> **Only the first 3 sections (alphabetically) get buttons.** For a 4th or later section -
-> **Refresh actions** logs which were left out - release it with
-> `python3 -m dsl_course.release --destinations "section=repo/subpath,..."`.
-
-## The site
-
-Releases trigger **Sync site** for you, as does a push to `classroom-config/schedule.yml`, plus
-a daily cron. Run
-[Sync site](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/sync-site.yml)
-by hand only when you don't want to wait - e.g. after editing `classroom-config/people.yml` or a
-file inside an already-released repo.
+## Live updates to the deployed `<course>.github.io` site
+- Any released materials will automatically show up in the deployed site (i.e. their release triggers a redeploy).
+  - Releases trigger **Sync site** for you, as does a push to `classroom-config/schedule.yml`
+  - Plus there's a daily cron)
+- You can also run [Sync site](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/sync-site.yml)
+by hand only when you don't want to wait for the cron to fire - e.g. after editing `classroom-config/people.yml` or a file inside an already-released repo.
 
 ## Next
 

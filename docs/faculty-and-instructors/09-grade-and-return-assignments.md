@@ -1,5 +1,10 @@
 # Grade and return assignments
 
+> **This workflow is a prototype - and entirely optional.** It works best where parts of the
+> grading are automatable (hidden tests against code submissions). If it doesn't suit how you
+> plan to grade your course, skip it and grade as you always have. Feedback is very welcome,
+> and we're happy to customise it to your course's needs - just get in touch with the DSL team.
+
 Autograde (optional) → add your marks → preview → distribute. Marks land in each student's
 private `grades-<handle>` repo, never in their assignment repo.
 
@@ -8,10 +13,8 @@ private `grades-<handle>` repo, never in their assignment repo.
 - An assignment [released](08-release-assignment-to-cohort.md) to the cohort.
 - *(autograding only)* hidden tests + `grading.yml` on the template's `solution` branch. Without
   them (or with `autograde: false`), skip step 1 and grade entirely by hand.
-- *(emails only)* email sending is configured centrally by the DSL team; where it isn't live
-  yet, step 5's email stays a preview (the grades still reach each student's repo).
 
-## 1. Grade assignment (autograde)
+## 1. Grade assignment (for autograde only)
 
 Course `.github` → **Actions** → **Grade assignment**: `cohort_org`, `assignment`, plus `group`
 and `dry_run` (both default **off**). It runs the hidden tests and writes into
@@ -27,44 +30,74 @@ There is **no deadline input**: the deadline is the cohort schedule's
 [Release assignment → Deadlines](08-release-assignment-to-cohort.md#deadlines)). A blank sha
 there means nothing was pushed by the deadline, and that scores zero.
 
-> ⚠️ **No snapshot = a spoofable pin.** With no `snapshots/<slug>.csv`, grading falls back to
-> git committer dates, which students control - backdated late work passes. The run log says so
-> (`! no ... snapshots/<slug>.csv`). Fix: check the schedule's `assignments:` block really has a
-> `due` for this slug (a malformed one is
-> [silently dropped](06-schedule-releases.md#silent-failures), and the deadline then defaults to
-> *today*), then let the hourly cron freeze it before you grade.
-
 Nothing is written to any student repo. Auditors are never graded.
 
-## 2. Add your marks
+## 2. Add your marks (on top of / instead of autograde)
 
-Edit `classroom-config/grades/<slug>.csv` (web UI is fine). Columns:
-`github_handle, team, auto, manual, team_grade, adjustment, final, comments, team_comments`.
+Edit `classroom-config/grades/<slug>.csv` (directly editing via web UI is fine; otherwise edit a local copy of the repo, commit & push)
 
-- `auto` and `manual` are **faculty-internal** and never shown to the student.
-- **`final` is what the student sees, and you own it** - nothing sums `auto` + `manual` for you.
-  A hand-marked assignment just needs `final` + `comments`.
-- Group project: `team_grade` (shared), each member's private `adjustment`, shared
-  `team_comments`, plus each member's own `final`. No one sees another member's adjustment.
+> **Where does the CSV come from?** Step 1 creates it. If you're not autograding, create it
+> yourself: `classroom-config/grades/<slug>.csv` (the folder is seeded empty), with the header
+> row below and one row per student handle. Any column you leave out is treated as blank.
+
+| Column | You fill? | The student sees it? | What it's for |
+|--------|-----------|----------------------|---------------|
+| `github_handle` | no - roster | - | which student the row is |
+| `team` | no - autograder | yes (group only) | their team, on group assignments |
+| `auto` | no - autograder | **no** | the machine score |
+| `manual` | yes | **no** | your hand-marked part - a working column |
+| `team_grade` | yes (group) | yes | the shared team mark |
+| `adjustment` | yes (group) | only their own | that member's individual adjustment |
+| `final` | **yes** | **yes** | **the mark. Nothing computes it for you** |
+| `comments` | yes | yes | feedback for that student |
+| `team_comments` | yes (group) | yes | feedback shared with the whole team |
+
+- **For group projects**:
+  - `team_grade` (shared), each member's private `adjustment`, shared
+  `team_comments`, plus each member's own `final`.
+  - No one sees another member's adjustment.
+- **For no-autograde**: A hand-marked assignment just needs `final` + `comments`.
+- `auto` and `manual` are faculty-internal and never shown to the student.
+- `final` is what the student sees, and you own it - nothing sums `auto` + `manual` for you.
+- Values stay as you type them - a letter, a percentage, `+4` - nothing is coerced or rounded.
 
 ## 3. Sync gradebooks
 
-Gives every onboarded, enrolled student a private `grades-<handle>` repo. Re-run after late
-enrolments. `dry_run` defaults **off**.
+Course `.github` → **Actions** → **Sync gradebooks**: pick `cohort_org`, plus `dry_run`
+(defaults **off**).
+
+- Gives every onboarded, enrolled student a **private** `grades-<handle>` repo, with that
+  student added as a read-only collaborator. Auditors get none.
+- Idempotent - re-run after late enrolments.
 
 ## 4. Render grades (preview)
 
-Opens **one** PR in `classroom-config` (branch `grades-update`, "Grades: review before
-distribution") with a `gradebook/<handle>.yml` per student. **That diff is the preview.** Only
-`final`, `comments` and the group fields cross over; `auto`/`manual` never do. It also
-regenerates the faculty-only `cohort-gradebook.csv` at the repo root.
+Course `.github` → **Actions** → **Render grades (preview)**: pick `cohort_org`. No other
+inputs - it never sends anything.
 
-Review, then **merge**. Nothing reaches a student until you do.
+- Opens **one** PR in `classroom-config` (branch `grades-update`, "Grades: review before
+  distribution") holding a `gradebook/<handle>.yml` per student - what that student will
+  receive in step 5.
+- **That diff is the preview.** Only `final`, `comments` and, for group work, `team`,
+  `team_grade`, that member's own `adjustment` and `team_comments` are copied into a student's
+  file. `auto` and `manual` never are.
+- It also regenerates `cohort-gradebook.csv` at the repo root - a wide all-students view for
+  you, which stays in `classroom-config` and is never distributed.
+- Review, then **merge**. Nothing reaches a student until you do.
+
+> **Everything here is private.** `classroom-config` and every `grades-<handle>` repo are
+> private; a student is a read-only collaborator on their own gradebook repo and has no access
+> to `classroom-config`, so they can't see the source CSVs, the preview PR, or anyone else's
+> marks.
 
 ## 5. Distribute grades
 
-Copies each merged gradebook to `grades-<handle>/grades.yml` and emails the student a "your
-grades have been updated" link (no marks in the email).
+Course `.github` → **Actions** → **Distribute grades**: pick `cohort_org`, plus `dry_run` and
+`silent`. Run it **after merging step 4's PR** - it distributes what was merged.
+
+Copies each merged gradebook to `grades-<handle>/grades.yml` and emails the student a "your grades have been updated" link (no marks in the email). 
+
+> *NB: the automated email functionality is configured centrally by the DSL team; if/when it isn't live, the grades still reach each student's repo, but no email notification will be dispatched.
 
 **`dry_run` defaults to `true`** - it pushes nothing and sends nothing until you untick it.
 `silent` pushes the grades without emailing.
@@ -74,8 +107,11 @@ grades have been updated" link (no marks in the email).
 - Repeat 1-5 per assignment as deadlines pass. A `grade:` entry in the schedule runs step 1 for
   you - [Schedule releases](06-schedule-releases.md).
 
-  > ⚠️ A `grade:` entry re-runs **every hour** once its `when` has passed - the full autograder,
-  > every student, every tick. Remove it from the plan once the assignment is marked.
+  > A `grade:` entry keeps re-running each hour after its `when`. Scores don't drift - the
+  > graded commit is pinned to the deadline snapshot - but it re-runs the tests every tick, and
+  > it rewrites the `auto` column, so **anything you hand-edit in `auto` gets overwritten**
+  > (put corrections in `manual` or `final` instead). Once an assignment is marked, delete its
+  > `grade:` entry from `schedule.yml` to stop it.
 
 ---
 **Demo:** per-student `grades-<handle>` repos in [`DSL-Demo-f2026`](https://github.com/DSL-Demo-f2026).
