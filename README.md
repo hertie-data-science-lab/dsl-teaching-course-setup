@@ -81,7 +81,7 @@ one private repo per student (generated; autograder rides along)`"]
 student (& auditor) groups`"]
   end
 
-  pub["**`<course-org>.github.io**
+  pub["**`\<course-org\>.github.io**
 
  open-courseware site - hosts shared lectures + readings`"]
 
