@@ -40,21 +40,24 @@ create + bootstrap`"]
 Send enrolment codes + Join issue`"]
     S["`**06 Schedule releases**
 fill schedule.yml, the whole term, up front`"]
+    G["`**Releases fire**
+materials · assignments · autograde runs`"]
+    I["Sync site (automatic)"]
+    J["`**09 Grade + return**
+autograde → marks → preview → distribute`"]
     E --> F
     E --> S
+    F --> G
+    S ==>|"hourly cron - the primary path"| G
+    G --> I
+    G --> J
   end
 
   B --> E
-  C --> G["`**Releases fire**
-materials · assignments · autograde runs`"]
+  C --> G
   D --> G
-  F --> G
-  S ==>|"hourly cron — the primary path"| G
   M["`**Manual buttons (07 · 08 · 10)**
 fallback: demos, one-offs, recovery`"] -.-> G
-  G --> I["Sync site (automatic)"]
-  G --> J["`**09 Grade + return**
-autograde → marks → preview → distribute`"]
 ```
 
 ## The workflows
@@ -90,17 +93,32 @@ Two separate populations - neither ever holds the bot token:
 | **Bootstrap Course Org** | `faculty` / `admin` team in **`hertie-data-science-lab`** | [central repo Actions](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions) |
 | Every **course button** | write on the course org's `.github` - i.e. its **`course-admin`** team (`course_admins`) or an **`instructors-<tag>`** team, where `<tag>` is the cohort's `fYYYY`/`sYYYY` suffix and membership comes from that cohort's own `people.yml` | the course org's `.github` Actions tab |
 
-Neither is automatic - you're declared in a config file and **Sync membership** grants it, then
-you accept a one-time org invite. Three distinct teams are called "instructors";
-[course-admin.md](../admin/course-admin.md#the-three-instructors-teams) tells them apart. Detail:
-[access model](../admin/architecture.md#access-model--two-populations), and
-[`../admin/course-admin.md`](../admin/course-admin.md) for running a course day to day.
-The bot (`hertie-dsl-bot`) must be an **Owner** of every org - the one irreducible manual
-prerequisite (no org-creation API).
+## Example org artefacts
+
+Every file these runbooks ask you to write exists, filled in, in
+[`../../example-course/`](../../example-course/) - a complete worked dummy course you can copy
+from or deploy wholesale ([how](../../example-course/README.md#deploy-it-20-min)):
+
+| Runbook | Worked example |
+|---------|----------------|
+| [01](01-new-course-org.md) course identity, `course_admins`, staff cards | [`course-org/dsl-course.yml`](../../example-course/course-org/dsl-course.yml) |
+| [02](02-add-materials-to-course.md) materials tree | [`course-materials-f2026/`](../../example-course/course-org/course-materials-f2026/) - `lectures/`, `readings/`, `syllabus.md` |
+| [03](03-add-assignment-to-course.md) assignment `main/` + `solution/` | [`assignment-1`](../../example-course/course-org/assignment-1-f2026/) (`.py`), [`assignment-2`](../../example-course/course-org/assignment-2-f2026/) (notebook), [`assignment-4-project`](../../example-course/course-org/assignment-4-project-f2026/) (**group**) - each with `grading.yml` + hidden `tests/` |
+| [05](05-enrol-students-to-cohort.md) roster, teams, staff | [`students.csv`](../../example-course/cohort-org/students.csv) (incl. an auditor), [`teams.csv`](../../example-course/cohort-org/teams.csv), [`people.yml`](../../example-course/cohort-org/people.yml) |
+| [06](06-schedule-releases.md) the whole term's plan | [`schedule.yml`](../../example-course/cohort-org/schedule.yml) - `materials_releases`, `assignments` + `grading_deadline`, `exams` |
+| [09](09-grade-and-return-assignments.md) grade tables | [`grades/assignment-1.csv`](../../example-course/cohort-org/grades/assignment-1.csv), [`grades/assignment-4-project.csv`](../../example-course/cohort-org/grades/assignment-4-project.csv) (team grades) |
+| [10](10-release-code.md) a growing package | [`lecture-code-f2026/mlpkg/`](../../example-course/course-org/lecture-code-f2026/) - disclosed module by module |
+
+Field-by-field rules for all of these: [`required-input-schema.md`](required-input-schema.md).
 
 ## Demo orgs (live reference)
 
-A standing demo you can point at while reading:
+A standing demo you can point at while reading - one course org, two cohorts, running the
+current engine:
 
-- Course org: **[`DSL-Demo-Course-E1234`](https://github.com/DSL-Demo-Course-E1234)** · control panel: [`.github` Actions](https://github.com/DSL-Demo-Course-E1234/.github/actions)
-- Cohort org: **[`DSL-Demo-f2026`](https://github.com/DSL-Demo-f2026)**
+- Course org: **[`DSL-Demo-Course-E1234`](https://github.com/DSL-Demo-Course-E1234)** · control panel: [`.github` Actions](https://github.com/DSL-Demo-Course-E1234/.github/actions) · [public course site](https://dsl-demo-course-e1234.github.io)
+- Cohort org (current): **[`DSL-Demo-f2026`](https://github.com/DSL-Demo-f2026)** · [`classroom-config`](https://github.com/DSL-Demo-f2026/classroom-config) (the filled-in [`schedule.yml`](https://github.com/DSL-Demo-f2026/classroom-config/blob/main/schedule.yml): 10 sessions, labs, three assignments, `grading_deadline`s) · [cohort site](https://dsl-demo-f2026.github.io) · [`welcome`](https://github.com/DSL-Demo-f2026/welcome)
+- Cohort org (last year): **[`DSL-Demo-f2025`](https://github.com/DSL-Demo-f2025)** - what a persistent course org looks like with more than one cohort hanging off it
+
+To stand up your own throwaway copy instead, deploy
+[`example-course/`](../../example-course/README.md#deploy-it-20-min) into orgs you create.
