@@ -54,7 +54,7 @@ flowchart TB
   subgraph COURSE["COURSE org — e.g. DSL-Demo-Course-E1234 (persistent)"]
     mat["`**course-materials-f2026**
 
-lectures/01_.../ + readings/01_.../ (+ syllabus, README)`"]
+lectures/01_.../ + readings/01_.../ + labs/01_.../ (+ syllabus, README)`"]
     tmpl["`**assignment-1-f2026**
 
 ... · template repos (+ optional autograder)`"]
@@ -72,7 +72,7 @@ Join issue → onboard.yml`"]
 student-list, teams, schedule, grades, deadlines`"]
     cmat["`**materials**
 
-released lectures/readings (students + auditors read)`"]
+released lectures/readings/labs (students + auditors read)`"]
     repos["`**assignments**
 
 one private repo per student (generated; autograder rides along)`"]
@@ -81,7 +81,9 @@ one private repo per student (generated; autograder rides along)`"]
 student (& auditor) groups`"]
   end
 
-  pub["`<course-org>.github.io · open-courseware site - hosts shared lectures + readings`"]
+  pub["**`<course-org>.github.io**
+
+ open-courseware site - hosts shared lectures + readings`"]
 
   COURSE -->|"release"| COHORT
   gh -.->|"Publish course website (opt-in)"| pub
