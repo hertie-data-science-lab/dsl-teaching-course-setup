@@ -1,20 +1,20 @@
-# example-course - a worked dummy course for demos
+# E2E Dummy Course Delivery 
 
-A complete, ready-to-deploy **dummy course**: materials, a growing lecture package, three
+A complete, ready-to-copy set of **dummy course materials**: incl a growing lecture package, placeholder lab materials, three
 assignments (one group project), a roster with an auditor, instructor/TA cards, and a full term's
 auto-release schedule. Follow the same steps to stand up your own course.
 
 Full input reference:
 [`DEPLOYMENT-CHECKLIST.md`](../docs/DEPLOYMENT-CHECKLIST.md).
+ 
+## What this stands up 
 
-## The demo orgs
+i.e. what these files were used to create
 
-Names used below - create them yourself; nothing here writes to the live demo pair.
-
-| Tier | Org | Role |
-|------|-----|------|
-| Course | **`Hertie-DSL-Demo C11`** | persistent control panel - materials, assignment templates, the buttons |
-| Cohort | **`Hertie-DSL-Demo-f2026`** | student-facing target - welcome, roster, released materials, the site |
+| Tier | Org | Role | URL|
+|------|-----|------|----|
+| Course | **`Hertie-DSL-Demo-E1234`** | persistent control panel - materials, assignment templates, the buttons | [Course org](https://github.com/DSL-Demo-Course-E1234) | 
+| Cohort | **`Hertie-DSL-Demo-f2026`** | student-facing target - welcome, roster, released materials, the site | [Cohort org](https://github.com/DSL-Demo-f2026) & [Deployed site](https://hertie-dsl-demo-f2026.github.io`)|
 
 ## What's in this dataset
 
@@ -39,53 +39,6 @@ example-course/
     grades/*.csv                    # per-assignment grade tables (auto/manual/final)
 ```
 
-> **Assignment layout:** each `assignment-*/` splits into `main/` (→ the repo's `main` branch,
+> NB: **Assignment layout:** each `assignment-*/` splits into `main/` (→ the repo's `main` branch,
 > what students get) and `solution/` (→ the `solution` branch: model solution, `grading.yml`, and
 > the HIDDEN `tests/` that **Grade assignment** runs). Student repos never get `solution/`.
-
-## Deploy it (≈20 min)
-
-Prereqs: the bot is an **owner** of both demo orgs and `DSL_BOT_TOKEN` (`repo` + `admin:org` +
-`workflow`) is set. See [Token](../docs/DEPLOYMENT-CHECKLIST.md#token).
-
-1. **Create** `Hertie-DSL-Demo` and `Hertie-DSL-Demo-f2026` in the web UI; add the bot as owner of
-   each. *(The only manual step - there is no org-creation API.)*
-2. This repo → Actions → **Bootstrap Course Org**: `org=Hertie-DSL-Demo`,
-   `org_name=DSL Demo Course`, `course_code=GRAD-DEMO`, `set_secret=true`.
-3. Copy [`course-org/dsl-course.yml`](course-org/dsl-course.yml) into
-   `Hertie-DSL-Demo/.github/dsl-course.yml`, keeping the identity fields (`org_name`,
-   `course_name`, `course_code`) as bootstrap wrote them. It declares `course_admins` plus
-   display-only cards; real instructor/TA push access comes from the cohort's `people.yml`
-   (step 8).
-4. **New materials repo** (`tag=f2026`), then push `course-org/course-materials-f2026/` into it.
-5. **New assignment** for `number=1` (`format=py`), `2` (`format=notebook`) and `4-project`
-   (`type=group`), all `tag=f2026`, then push each `course-org/assignment-*-f2026/main/` and
-   `/solution/` to the matching branches (each `grading.yml` already declares the matching
-   type/format).
-6. **Refresh actions** (populates dropdowns + propagates the repo secret).
-7. **Bootstrap cohort**: `cohort_org=Hertie-DSL-Demo-f2026`.
-8. Copy this dataset's `cohort-org/` files into `Hertie-DSL-Demo-f2026/classroom-config/`:
-   [`schedule.yml`](cohort-org/schedule.yml), [`students.csv`](cohort-org/students.csv),
-   [`people.yml`](cohort-org/people.yml), [`teams.csv`](cohort-org/teams.csv).
-9. **Send enrolment codes** for the cohort - untick `dry_run` to actually email them.
-10. Nothing else. The hourly **Scheduled release** cron works through `schedule.yml`: 5 weeks
-    of lecture + lab entries (each lecture ships an hour before its 10:00 `event_datetime`;
-    labs on Thursdays), the `mlpkg` subpackages, and every assignment's whole lifecycle from
-    its own `assignments:` block - `handout_datetime` provisions the repos (the project per-team, from
-    its template's `grading.yml`), and each assignment autogrades once at its grading
-    deadline. The display-only `project-clinic` entry deploys nothing - it just appears on
-    the site's schedule. Use
-    **[Release materials](../docs/08-release-materials-to-cohort.md)** /
-    **[Release assignment](../docs/09-release-assignment-to-cohort.md)**
-    only to jump ahead of it for a demo.
-
-## What this stands up
-
-- **The site:** `https://hertie-dsl-demo-f2026.github.io` - course name, semester, instructor/TA cards
-  from the cohort's `people.yml`, lecture entries linking the released files, the assignment
-  briefs, and a schedule with the real dates (Assignment 1 due 13 Oct, MidTerm 3 Nov, Final
-  15 Dec at 14:00).
-- **The control panel:** `Hertie-DSL-Demo/.github` Actions tab - every button.
-- **Onboarding:** open a **Join course** issue in `Hertie-DSL-Demo-f2026/welcome` and paste the `enrol_code`
-  that step 9 wrote onto a roster row. Try Eve Evans' code to see the **auditor** path: read
-  access to the released materials, no assignment repo, no gradebook.
