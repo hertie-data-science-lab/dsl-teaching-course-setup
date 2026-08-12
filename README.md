@@ -28,6 +28,7 @@ Central registry of the workflows that deliver courses at the Hertie Data Scienc
 2. [**add a cohort org**](docs/faculty-and-instructors/04-new-cohort-org.md) (per year),
    - [Enrol students](docs/faculty-and-instructors/05-enrol-students-to-cohort.md)
    - [Define schedule up front](docs/faculty-and-instructors/06-schedule-releases.md) , to automate release/collect of materials, assignments & grading runs from course org -> cohort org (and/or manually release [materials](docs/faculty-and-instructors/07-release-materials-to-cohort.md) and [assignments](docs/faculty-and-instructors/08-release-assignment-to-cohort.md) on an ad hoc basis)
+   - [Grade assignments](docs/faculty-and-instructors/09-grade-and-return-assignments.md)
       
 > The only manually-required steps are (1) creating each org in the GitHub web UI ([github.com/account/organizations/new](https://github.com/account/organizations/new)) and (2) [inviting **`hertie-dsl-bot`** as an org **Owner**](docs/faculty-and-instructors/01-new-course-org.md#steps); the DSL team must **accept** it before you bootstrap. Everything after that is automated via the scheduler / a button click.
 > *NB: if email integration is not currently live, then it may be necessary to email students their initial course invite codes as well.* 
