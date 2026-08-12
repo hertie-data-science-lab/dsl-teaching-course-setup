@@ -4,7 +4,7 @@ A complete, ready-to-copy set of **dummy course materials**: incl a growing lect
 assignments (one group project), a roster with an auditor, instructor/TA cards, and a full term's
 auto-release schedule. Follow the same steps to stand up your own course.
 
-Find the example materials [here](../)
+Find the example materials [here](..)
 
 Full input reference:
 [`DEPLOYMENT-CHECKLIST.md`](../docs/DEPLOYMENT-CHECKLIST.md).
