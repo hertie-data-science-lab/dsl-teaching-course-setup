@@ -39,18 +39,18 @@ self-onboard via a Join issue - no by-hand invites.
    > **Testing the flow yourself?** A Join issue from an org owner/admin gets labelled `staff`
    > and stops (it would demote you). Use a non-staff account to test the student path.
 
-## Auditors
-
-Set `role: auditor` on a roster row (blank means enrolled). Auditors get **read on every
-released-materials repo, exactly like enrolled students**, but no assignment repo, no gradebook
-and no marks. A **Join team** issue from an auditor is refused and labelled `needs-review`.
-
-## Group assignments (optional)
+## Group assignments 
 
 - Students open a **Join team** issue in `welcome`, or you edit `classroom-config/teams.csv`
 (`assignment, team, github_handle`)
 - Either way **Sync membership** creates a GitHub team per group.
 - A **Release assignment** run with `group` ticked then grants each team its shared repo.
+
+## Auditors (optional)
+
+Set `role: auditor` on a roster row (blank means enrolled). Auditors get **read on every
+released-materials repo, exactly like enrolled students**, but no assignment repo, no gradebook
+and no marks. A **Join team** issue from an auditor is refused and labelled `needs-review`.
 
 ## Next
 
