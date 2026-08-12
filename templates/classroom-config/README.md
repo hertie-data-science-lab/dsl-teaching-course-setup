@@ -76,7 +76,10 @@ provision student repos). The hourly **Scheduled release** cron fires each actio
 time has arrived (honoured to the hour): actions fire at the `calendar_event`, except a
 deploy carrying its own `deploy_datetime:` - so materials can ship an hour (or a week)
 before the class they belong to. An entry with **no actions** is a display-only calendar
-event (a clinic, a guest lecture): nothing deploys, the site shows the row. Also holds
+event (a clinic, a guest lecture): nothing deploys, the site shows the row. Uncertain
+dates: `tbc: true` next to a date marks it provisional ("(TBC)" on the site, still fires);
+`calendar_event: tbc` / an exam's `date: tbc` is a fully undated TBC row (nothing fires).
+Also holds
 `semester_start`/`semester_end`, `assignments` (due dates for the website, plus each
 assignment's `grading_deadline` - the moment its snapshot freezes and it is autograded,
 once; grading needs no release entry), and `exams`. Seeded mostly-commented - uncomment and

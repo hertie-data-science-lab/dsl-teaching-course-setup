@@ -95,15 +95,17 @@ def test_session_dates_use_the_calendar_event_not_the_deploy_datetime():
 
 
 def test_raw_event_entry_renders_a_display_only_schedule_row():
+    from datetime import date as date_cls
+
     r = Release("project-clinic", datetime(2026, 11, 17, 10, 0, tzinfo=BERLIN))
-    out = site._raw_event_entry(r)
+    out = site._raw_event_entry(r, date_cls(2026, 12, 18))
     assert "type: raw_event" in out
     assert 'name: "Project Clinic"' in out  # prettified from the label
     assert "date: 2026-11-17T10:00:00" in out
     titled = Release(
         "project-clinic", datetime(2026, 11, 17, 10, 0, tzinfo=BERLIN), title="Bring your data"
     )
-    assert 'name: "Bring your data"' in site._raw_event_entry(titled)
+    assert 'name: "Bring your data"' in site._raw_event_entry(titled, date_cls(2026, 12, 18))
 
 
 def test_cohort_site_links_back_to_the_cohort_org(monkeypatch, tmp_path):
@@ -121,3 +123,26 @@ def test_cohort_site_links_back_to_the_cohort_org(monkeypatch, tmp_path):
     monkeypatch.setattr(site, "_people_yaml", lambda *a, **k: "people: []\n")
     assert site.sync_site("Course-Org", "Cohort-f2026") == 0
     assert captured["plan"].config["github_org"] == "Cohort-f2026"
+
+
+def test_tbc_rows_render_with_theme_flags():
+    from datetime import date as date_cls
+
+    # Undated (calendar_event: tbc): sortable end-of-term placeholder + dateless flag,
+    # so the theme prints "TBC" instead of the placeholder date.
+    undated = Release("guest-lecture", None, title="Guest lecture", tbc=True)
+    out = site._raw_event_entry(undated, date_cls(2026, 12, 18))
+    assert "tbc: true" in out and "dateless: true" in out
+    assert "date: 2026-12-18T09:00:00" in out
+    # Provisionally dated (tbc: true): real date kept, marker only.
+    dated = Release(
+        "project-clinic", datetime(2026, 11, 17, 10, 0, tzinfo=BERLIN), tbc=True
+    )
+    out = site._raw_event_entry(dated, date_cls(2026, 12, 18))
+    assert "tbc: true" in out and "dateless" not in out
+    assert "date: 2026-11-17T10:00:00" in out
+    # Exams: same two shapes.
+    out = site._exam_entry("Resit Exam", date_cls(2026, 12, 18), tbc=True, dateless=True)
+    assert "dateless: true" in out
+    out = site._exam_entry("MidTerm Exam", date_cls(2026, 11, 3), tbc=True)
+    assert "tbc: true" in out and "dateless" not in out
