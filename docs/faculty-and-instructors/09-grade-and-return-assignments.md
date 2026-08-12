@@ -27,9 +27,11 @@ there means nothing was pushed by the deadline, and that scores zero.
 
 Nothing is written to any student repo. Auditors are never graded.
 
-## 2. Add your marks
+## 2. Add your marks (on top of / instead of autograde)
 
 Edit `classroom-config/grades/<slug>.csv` (directly editing via web UI is fine; otherwise edit a local copy of the repo, commit & push)
+
+> NB: autograding via `Grade assignments` workflow already creates `classroom-config/grades/<slug>.csv` to edit; otherwise you will need to create your own??? OR is there a scaffold already there?????
 
 | Column | You fill? | The student sees it? | What it's for |
 |--------|-----------|----------------------|---------------|
@@ -53,24 +55,25 @@ Edit `classroom-config/grades/<slug>.csv` (directly editing via web UI is fine; 
 - Values stay as you type them - a letter, a percentage, `+4` - nothing is coerced or rounded.
 
 ## 3. Sync gradebooks
-- 
+- IS THIS A WORKFLOW TO BE RUN? IF SO GIVE DIRECTIONS
 - Gives every onboarded, enrolled student a private `grades-<handle>` repo.
 - Re-run after late enrolments.
 - `dry_run` defaults **off**.
 
 ## 4. Render grades (preview)
-
-Opens **one** PR in `classroom-config` (branch `grades-update`, "Grades: review before
-distribution") with a `gradebook/<handle>.yml` per student. **That diff is the preview.** Only
-`final`, `comments` and the group fields cross over; `auto`/`manual` never do. It also
-regenerates the faculty-only `cohort-gradebook.csv` at the repo root.
-
-Review, then **merge**. Nothing reaches a student until you do.
+- IS THIS A WORKFLOW TO BE RUN? IF SO GIVE DIRECTIONS
+- Opens **one** PR in `classroom-config` (branch `grades-update`, "Grades: review before
+distribution") with a `gradebook/<handle>.yml` per student.
+- **That diff is the preview.**
+  - Only `final`, `comments` and the group fields cross over into the students' (what????)
+  - `auto`/`manual` never do.
+  - It also regenerates the faculty-only `cohort-gradebook.csv` at the repo root.
+  - CHECK ACTUAL CODE THAT ALL OF THIS IS CORRECTLY SETUP TO BE PRIVATE / PUBLIC ETC
+- Review, then **merge**. Nothing reaches a student until you do.
 
 ## 5. Distribute grades
-
-Copies each merged gradebook to `grades-<handle>/grades.yml` and emails the student a "your
-grades have been updated" link (no marks in the email). 
+- IS THIS A WORKFLOW TO BE RUN? IF SO GIVE DIRECTIONS
+Copies each merged gradebook to `grades-<handle>/grades.yml` and emails the student a "your grades have been updated" link (no marks in the email). 
 
 > *NB: the automated email functionality is configured centrally by the DSL team; if/when it isn't live, the grades still reach each student's repo, but no email notification will be dispatched.
 
@@ -83,7 +86,7 @@ grades have been updated" link (no marks in the email).
   you - [Schedule releases](06-schedule-releases.md).
 
   > ⚠️ A `grade:` entry re-runs **every hour** once its `when` has passed - the full autograder,
-  > every student, every tick. Remove it from the plan once the assignment is marked.
+  > every student, every tick. Remove it from the plan once the assignment is marked. WHAT DOES THIS MEAN???? CAN WE REMOVE THIS? DO THEY REALLY NEED TO REMOVE IT?? CAN THEY NOT JUST FIRE ONCE OR SOEMTHING? ??
 
 ---
 **Demo:** per-student `grades-<handle>` repos in [`DSL-Demo-f2026`](https://github.com/DSL-Demo-f2026).
