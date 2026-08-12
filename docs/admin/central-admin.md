@@ -62,6 +62,23 @@ PAT expiry so rotation is forced.
 - Walkthroughs: [01-new-course-org.md](../faculty-and-instructors/01-new-course-org.md) and
   [04-new-cohort-org.md](../faculty-and-instructors/04-new-cohort-org.md).
 
+## Email
+
+Enrolment-code and grade emails go through `dsl_course.mailer` under a **tenant-level mail
+credential** - a one-time central setup, not per course. `dry_run` previews need nothing.
+
+- **Microsoft Graph (preferred)** - secrets `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`,
+  `GRAPH_CLIENT_SECRET`, `GRAPH_SENDER`. Needs an Entra app registration with the **Mail.Send**
+  application permission, admin-consented, scoped to one shared mailbox (Exchange application
+  access policy), plus that shared mailbox as the sender.
+- **SMTP (fallback)** - `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD` (+ optional `SMTP_PORT`,
+  `SMTP_FROM`). Most M365 tenants disable SMTP AUTH (error `5.7.139`), so Graph is usually the
+  only viable route.
+
+Set the secrets once; they must reach each course org's `.github` repo (where the send
+workflows run). **Status: not yet configured in any DSL org** - a request to Hertie IT for the
+Entra app registration is pending.
+
 ## What orgs exist
 
 **[`inventory/course-orgs.md`](../../inventory/course-orgs.md)** is the live list. It is

@@ -15,7 +15,9 @@ skipped if you leave it.
 - [ ] `[required]` **Materials**: scaffold with **New materials repo**, then fill `course-materials-fYYYY/lectures/01_.../` and `readings/01_.../`. Any top-level dir with ordinal-prefixed subdirs is a releasable section - add more freely. *(optional: a `*syllabus*` file + root `README`.)*
 - [ ] `[required]` **Assignments** (≥1): scaffold with **New assignment**, then on `main` add the brief (`README.md`) + starter. *(optional: on the `solution` branch, the model solution, hidden `tests/` and a `grading.yml` to autograde. Student repos get `main` only.)*
 - [ ] *(optional)* **Course admins**: the `people:` → `course_admins` block in the **course org's** `.github/dsl-course.yml`. See [People](#people).
-- [ ] *(optional)* **Email**: to actually send enrolment-code + grade emails, add the `GRAPH_*` or `SMTP_*` secrets. See [Email](#email-optional). Without them every send stays a preview.
+- [ ] *(nothing to do)* **Email**: enrolment-code + grade emails send through a centrally
+  configured mailbox (DSL team, one-time - [details](../admin/central-admin.md#email)). Where it
+  isn't live yet, every send stays a preview and enrolment codes still land in `students.csv`.
 - [ ] `[required]` Run **Refresh actions** so every content repo gets its Release buttons, the secret propagates, and all dropdowns populate.
 
 ### Cohort setup (per year)
@@ -239,19 +241,11 @@ next tick rebuilds it. This happens whether or not the cohort uses `materials_re
 One secret, `DSL_BOT_TOKEN`, runs every workflow: a classic PAT with `repo` + `admin:org` +
 `workflow`. Bootstrap and Refresh put it everywhere it is needed - you never set it by hand.
 
-## Email (optional)
+## Email
 
-Enrolment-code and grade emails go through `dsl_course.mailer`. A `dry_run` preview needs
-neither transport. Set the secrets at org level or on the `.github` repo:
-
-- **Microsoft Graph (preferred)** - `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`, `GRAPH_CLIENT_SECRET`,
-  `GRAPH_SENDER`. Needs an Entra app registration with the **Mail.Send** application
-  permission, admin-consented and scoped to one shared mailbox.
-- **SMTP (fallback)** - `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD` (+ optional `SMTP_PORT`,
-  `SMTP_FROM`). Most M365 tenants disable SMTP AUTH (the `5.7.139` error), so Graph is usually
-  required.
-
-Deliverability still needs SPF/DKIM/DMARC on the sending domain.
+Enrolment-code and grade emails send through a centrally configured mailbox - nothing to set
+per course, and `dry_run` previews need nothing at all. Setup/detail:
+[central-admin → Email](../admin/central-admin.md#email).
 
 ## Known limits
 

@@ -1,36 +1,38 @@
 # Enrol students
 
-Email each registrar-listed student an **enrolment code**; they paste it into a Join issue and
-land in the cohort org and their role team.
+Put the registrar's list into the roster, send each student an enrolment code, and they
+self-onboard via a Join issue - no by-hand invites.
 
 ## Prerequisites
 
-- A bootstrapped [cohort org](04-new-cohort-org.md) with the roster loaded in
-  `classroom-config/students.csv`.
-- To actually *send* email: the `GRAPH_*` (preferred) or `SMTP_*` Actions secrets. Without them
-  every send stays a preview (codes are still written to the roster).
+- A bootstrapped [cohort org](04-new-cohort-org.md).
 
 ## Steps
 
-1. **Send enrolment codes.** Course org → `.github` → **Actions** →
-   [Send enrolment codes](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/send-codes.yml),
-   pick the cohort. Writes an `enrol_code` onto every roster row that lacks one and emails it to
-   each not-yet-onboarded student at their `hertie_email`.
+1. **Add the students to the roster.** Edit `classroom-config/students.csv` in the **cohort**
+   org (the web UI is fine) - one row per student, straight from the registrar:
+   `student_id, hertie_email, name, section`. Leave `github_handle, github_id, enrol_code`
+   **blank** - onboarding and step 2 fill them. Set `role: auditor` for anyone who should get
+   the materials but no assignments or grades.
 
-   > **`dry_run` defaults to `true`** - the first run only previews the codes and emails. Untick
-   > it to actually write and send.
+   Someone joins late? Add their row and commit - then re-run step 2 for their code.
+   Someone drops? Delete their row - the push off-boards them.
 
-2. **Students self-onboard.** Each opens a **Join** issue in the cohort's `welcome` repo and
-   pastes their code; they're added to the org and to the team their `role` names (`students`,
-   or `auditors`). **They must accept the org invite** before they can see anything.
+2. **Send enrolment codes.** Your **course** org → `.github` → **Actions** →
+   **Send enrolment codes**, pick the cohort. It writes an `enrol_code` onto every roster row
+   that lacks one and emails each not-yet-onboarded student at their `hertie_email`.
 
-   > **Testing the flow yourself?** A Join issue opened by an org owner/admin gets labelled
-   > `staff` and stops - no team is added, because that would demote you and lock you out. Use a
-   > non-staff account to exercise the real student path.
+   > **`dry_run` defaults to `true`** - the first run only previews. Untick it to write and send.
+   >
+   > **If emailing isn't live yet** (it's configured centrally by the DSL team), the codes are
+   > still written into `students.csv` - copy each student's code into an email of your own.
 
-3. **Keep the roster true.** Any push to `classroom-config/students.csv` triggers **Sync
-   membership**: deleting a row off-boards that student, changing their `role` moves them
-   between teams. A daily cron re-runs it; the button is the manual escape hatch.
+3. **Students self-onboard.** Each opens a **Join** issue in the cohort's `welcome` repo and
+   pastes their code; that adds them to the org and their role's team. **They must accept the
+   org invite** before they can see anything - chase anyone stuck on *pending*.
+
+   > **Testing the flow yourself?** A Join issue from an org owner/admin gets labelled `staff`
+   > and stops - it would demote you. Use a non-staff account to test the student path.
 
 ## Auditors
 
@@ -50,4 +52,5 @@ group. A **Release assignment** run with `group` ticked then grants each team it
   let the [schedule](06-schedule-releases.md) hand it out for you.
 
 ---
-**Demo:** Join issue in [`DSL-Demo-f2026/welcome`](https://github.com/DSL-Demo-f2026).
+**Demo:** [Send enrolment codes](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/send-codes.yml)
+in the demo course org · Join issue in [`DSL-Demo-f2026/welcome`](https://github.com/DSL-Demo-f2026).

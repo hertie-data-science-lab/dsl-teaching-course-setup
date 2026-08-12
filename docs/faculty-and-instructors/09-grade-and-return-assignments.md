@@ -8,7 +8,8 @@ private `grades-<handle>` repo, never in their assignment repo.
 - An assignment [released](08-release-assignment-to-cohort.md) to the cohort.
 - *(autograding only)* hidden tests + `grading.yml` on the template's `solution` branch. Without
   them (or with `autograde: false`), skip step 1 and grade entirely by hand.
-- *(emails only)* the `GRAPH_*` or `SMTP_*` secrets. Without them, step 5's email is a preview.
+- *(emails only)* email sending is configured centrally by the DSL team; where it isn't live
+  yet, step 5's email stays a preview (the grades still reach each student's repo).
 
 ## 1. Grade assignment (autograde)
 
