@@ -39,41 +39,6 @@ materials_releases:
 
 Full schema: [the schedule](required-input-schema.md#the-schedule). 
 
-## What happens on each tick
-
-First **freeze passed grading deadlines** - snapshot every assignment whose `due + grace_days`
-has gone by and isn't frozen yet (see below) - then **fire every due release**.
-
-```mermaid
-flowchart TB
-  cron["Scheduled release - hourly cron"] --> parse["parse the cohort's schedule.yml"]
-  parse --> p1["1 · freeze passed deadlines
-every assignment past due + grace_days"]
-  p1 --> snap{"snapshot CSV
-already written?"}
-  snap -- no --> freeze["write snapshots/&lt;slug&gt;.csv
-write-once - the pin never moves again"]
-  snap -- yes --> skip["skip"]
-  p1 --> p2["2 · fire EVERY release whose when has passed
-on every tick, forever - no released state"]
-  p2 --> dep["deploy → cheap
-nothing changed, nothing pushed"]
-  p2 --> asg["assignment → useful
-a late onboarder gets their repo next tick"]
-  p2 --> grd["grade → expensive
-full autograder re-run, every tick"]
-```
-
-**Every entry with a past `when` fires on every tick, forever** - there is no "already released"
-state. That's by design, because every release function is idempotent:
-
-- `deploy` is **cheap**: nothing changed, nothing pushed.
-- `assignment` is **useful**: a student who onboards in week 4 gets their repo on the next tick,
-  with no button pressed.
-- `grade` is **expensive**: the autograder re-clones and re-runs the hidden tests for **every
-  student, every hour**, for as long as the entry's `when` is in the past. Give `grade:` entries
-  a sensible `when`, and consider deleting them from the plan once that assignment is marked.
-
 ## Verify your schedule before trusting it
 
 1. **Dry-run the cron.** Run **Scheduled release** by hand - `dry_run` defaults to **`true`**,
@@ -99,17 +64,13 @@ state. That's by design, because every release function is idempotent:
 
 ## Timezones and bare dates
 
-Everything naive is read in the cohort's `timezone:` (default `Europe/Berlin`); an explicit
-offset (`2026-09-15T14:00+02:00`) is honoured as written. A **bare date** with no time means
-**00:00** on a release `when` (the day opens), **23:59:59** on an assignment `due` (the day
-closes), and a whole day for an exam `date` (the site shows a 09:00 placeholder).
+- Everything naive is read in the cohort's `timezone:` (default `Europe/Berlin`).
+- An explicit offset (`2026-09-15T14:00+02:00`) is honoured as written.
+- A **bare date** with no time means **00:00** on a release `when` (the day opens), **23:59:59** on an assignment `due` (the day closes), and a whole day for an exam `date` (the site shows a 09:00 placeholder).
 
 ## Deadline snapshots
 
-Shortly after `due + grace_days` passes, the same hourly run records each submission repo's HEAD
-into `classroom-config/snapshots/<slug>.csv`, using the **server's** clock. It is **write-once**
-- a later push can't move the pin. To deliberately re-freeze (repos provisioned late, say),
-delete the CSV and the next tick rebuilds it.
+Shortly after `due + grace_days` passes, the same hourly run records each submission repo's HEAD into `classroom-config/snapshots/<slug>.csv`, using the **server's** clock. It is **write-once** - a later push can't move the pin. To deliberately re-freeze (repos provisioned late, say), delete the CSV and the next tick rebuilds it.
 
 If grading runs with **no snapshot at all**, it falls back to a date-based pin over
 student-supplied committer dates and says so loudly in the run log. Full flow:
@@ -117,10 +78,33 @@ student-supplied committer dates and says so loudly in the run log. Full flow:
 
 ## When to use the manual buttons
 
-Three cases, and only three: a **demo** or jumping ahead of a `when`; a **one-off** that doesn't
-belong in the term plan; and **recovery** - an entry didn't parse and students are waiting, so
-release by hand, then fix the YAML.
 
+## What happens on each tick
+
+First **freeze passed grading deadlines** - snapshot every assignment whose `due + grace_days`
+has gone by and isn't frozen yet (see below) - then **fire every due release**.
+
+```mermaid
+flowchart TB
+  cron["Scheduled release - hourly cron"] --> parse["parse the cohort's schedule.yml"]
+  parse --> p1["1 · freeze passed deadlines
+every assignment past due + grace_days"]
+  p1 --> snap{"snapshot CSV
+already written?"}
+  snap -- no --> freeze["write snapshots/&lt;slug&gt;.csv
+write-once - the pin never moves again"]
+  snap -- yes --> skip["skip"]
+  p1 --> p2["2 · fire EVERY release whose when has passed
+on every tick, forever - no released state"]
+  p2 --> dep["deploy → cheap
+nothing changed, nothing pushed"]
+  p2 --> asg["assignment → useful
+a late onboarder gets their repo next tick"]
+  p2 --> grd["grade → expensive
+full autograder re-run, every tick"]
+```
+
+---
 ## Next
 
 - [Release materials](07-release-materials-to-cohort.md) /
