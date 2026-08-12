@@ -2,7 +2,7 @@
 
 Every input needed to stand up a working course + cohort: each step's workflow, inputs and
 output, then [every input file with a copyable example](#inputs-by-file). Worked example:
-[`example-course/`](../../example-course/README.md).
+[`example-course/`](../example-course/README.md).
 
 ## Course setup (once)
 
@@ -16,7 +16,7 @@ output, then [every input file with a copyable example](#inputs-by-file). Worked
 | `[required]` | 6. Refresh | course | course `.github` → **Refresh actions** | none | dropdowns populated, secrets on content repos |
 
 Email needs nothing from you: enrolment-code + grade emails send through a centrally
-configured mailbox ([details](../admin/central-admin.md#email)). Where it isn't live yet,
+configured mailbox ([details](../docs-admin-arch/central-admin.md#email)). Where it isn't live yet,
 sends stay previews and enrolment codes still land in `students.csv`.
 
 ## Cohort setup (per year)
@@ -41,7 +41,7 @@ back to its course org - never edit it.
 
 ### `dsl-course.yml`
 
-Live example: [`example-course/course-org/dsl-course.yml`](../../example-course/course-org/dsl-course.yml).
+Live example: [`example-course/course-org/dsl-course.yml`](../example-course/course-org/dsl-course.yml).
 
 Course org's `.github` repo - the course's identity card. Bootstrap writes it; you only ever
 touch `course_admins` (and optional display-only cards for the public course site).
@@ -57,7 +57,7 @@ people:
 
 ### `students.csv`
 
-Live example: [`example-course/cohort-org/students.csv`](../../example-course/cohort-org/students.csv).
+Live example: [`example-course/cohort-org/students.csv`](../example-course/cohort-org/students.csv).
 
 `classroom-config/students.csv` - one row per student, straight from the registrar (seeded
 header-only, with a filled `students.csv.sample` next to it). Leave the onboarding-owned
@@ -78,7 +78,7 @@ student_id,hertie_email,name,github_handle,github_id,section,enrol_code,role
 
 ### `people.yml`
 
-Live example: [`example-course/cohort-org/people.yml`](../../example-course/cohort-org/people.yml).
+Live example: [`example-course/cohort-org/people.yml`](../example-course/cohort-org/people.yml).
 
 `classroom-config/people.yml` - this cohort's teaching team. Grants the cohort's `instructors`
 team **and** course-org push on that year's content repos (`instructors-<tag>`), and supplies
@@ -103,7 +103,7 @@ shape, but there it is **display-only** (public-site cards, no access).
 
 ### `teams.csv`
 
-Live example: [`example-course/cohort-org/teams.csv`](../../example-course/cohort-org/teams.csv).
+Live example: [`example-course/cohort-org/teams.csv`](../example-course/cohort-org/teams.csv).
 
 `classroom-config/teams.csv` - group membership, per assignment. Students self-select via the
 `welcome` **Join team** issue (which enforces the per-assignment `max_team_size` set under
@@ -119,7 +119,7 @@ assignment-4-project,team-x,ben-baker
 
 ### `grades/<slug>.csv`
 
-Live example: [`example-course/cohort-org/grades/assignment-1.csv`](../../example-course/cohort-org/grades/assignment-1.csv).
+Live example: [`example-course/cohort-org/grades/assignment-1.csv`](../example-course/cohort-org/grades/assignment-1.csv).
 
 `classroom-config/grades/<slug>.csv` - one per assignment. The autograder creates it and
 fills the machine columns (write-once); for hand-marked work copy the header from the seeded
@@ -134,7 +134,7 @@ anna-adams,,38/40,9/10,,,A-,Great work,
 
 ### Materials repo
 
-Live example: [`example-course/course-org/course-materials-f2026`](../../example-course/course-org/course-materials-f2026).
+Live example: [`example-course/course-org/course-materials-f2026`](../example-course/course-org/course-materials-f2026).
 
 `course-materials-<tag>` - private; students only ever see what you release. Any top-level
 directory holding ordinal-prefixed subdirectories is a releasable section.
@@ -149,7 +149,7 @@ course-materials-f2026/
 
 ### Assignment template
 
-Live example: [`example-course/course-org/assignment-1-f2026`](../../example-course/course-org/assignment-1-f2026).
+Live example: [`example-course/course-org/assignment-1-f2026`](../example-course/course-org/assignment-1-f2026).
 
 `assignment-N-<tag>` - a template repo with two branches. Student repos are generated from
 `main` only. The **New assignment** button's `format` (py/notebook) and `type`
@@ -164,7 +164,7 @@ solution branch  solution/ + grading.yml + tests/       -> faculty-only; hidden 
 
 ### `schedule.yml`
 
-Live example: [`example-course/cohort-org/schedule.yml`](../../example-course/cohort-org/schedule.yml).
+Live example: [`example-course/cohort-org/schedule.yml`](../example-course/cohort-org/schedule.yml).
 
 `classroom-config/schedule.yml` - the term plan: the **auto-release plan** the hourly cron
 runs, and the **dates** that drive the website and grading. Times are read in `timezone`

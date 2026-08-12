@@ -7,30 +7,30 @@ Central registry of the workflows that deliver courses at the Hertie Data Scienc
 
 | You are | Go to |
 |---------|-------|
-| Setting up a brand-new course | [workflow runbooks](docs/faculty-and-instructors/README.md) - [01](docs/faculty-and-instructors/01-new-course-org.md)-[03](docs/faculty-and-instructors/03-add-assignment-to-course.md) |
-| Starting a new cohort / semester of an existing course | [04 New cohort org](docs/faculty-and-instructors/04-new-cohort-org.md) onwards |
-| A TA or faculty assistant joining a cohort | [runbooks](docs/faculty-and-instructors/README.md) [05](docs/faculty-and-instructors/05-enrol-students-to-cohort.md)-[09](docs/faculty-and-instructors/09-grade-and-return-assignments.md) - skip 01-04 (setup) |
+| Setting up a brand-new course | [workflow runbooks](docs/README.md) - [01](docs/01-new-course-org.md)-[03](docs/03-add-assignment-to-course.md) |
+| Starting a new cohort / semester of an existing course | [04 New cohort org](docs/04-new-cohort-org.md) onwards |
+| A TA or faculty assistant joining a cohort | [runbooks](docs/README.md) [05](docs/05-enrol-students-to-cohort.md)-[09](docs/09-grade-and-return-assignments.md) - skip 01-04 (setup) |
 
 | Reference Materials | Go to |
 |---------|-------|
-| Chronological index of the e2e workflow | [the workflows](docs/faculty-and-instructors/README.md#the-workflows) |
+| Chronological index of the e2e workflow | [the workflows](docs/README.md#the-workflows) |
 | An example course setup | [`example course`](example-course/README.md) |
 | Template artefacts | [`templates`](templates/classroom-config/README.md) |
-| All available `.github` Actions tab buttons (course org) | [`actions reference`](docs/faculty-and-instructors/actions-reference.md) |
-| **Deployment checklist** | [`DEPLOYMENT-CHECKLIST.md`](docs/faculty-and-instructors/DEPLOYMENT-CHECKLIST.md) |
+| All available `.github` Actions tab buttons (course org) | [`actions reference`](docs/actions-reference.md) |
+| **Deployment checklist** | [`DEPLOYMENT-CHECKLIST.md`](docs/DEPLOYMENT-CHECKLIST.md) |
 
 ## Deploying a course
 
 2 phases:
-1. [**set up the course org**](docs/faculty-and-instructors/01-new-course-org.md) (once)
-   - [Add materials](docs/faculty-and-instructors/02-add-materials-to-course.md) - lectures slides, readings, labs, other
-   - [Add assignments](docs/faculty-and-instructors/03-add-assignment-to-course.md) - a template repo that is copied into student private response repos, optionally contains a solutions branch
-2. [**add a cohort org**](docs/faculty-and-instructors/04-new-cohort-org.md) (per year),
-   - [Enrol students](docs/faculty-and-instructors/05-enrol-students-to-cohort.md)
-   - [Define schedule up front](docs/faculty-and-instructors/06-schedule-releases.md) , to automate release/collect of materials, assignments & grading runs from course org -> cohort org (and/or manually release [materials](docs/faculty-and-instructors/07-release-materials-to-cohort.md) and [assignments](docs/faculty-and-instructors/08-release-assignment-to-cohort.md) on an ad hoc basis)
-   - [Grade assignments](docs/faculty-and-instructors/09-grade-and-return-assignments.md)
+1. [**set up the course org**](docs/01-new-course-org.md) (once)
+   - [Add materials](docs/02-add-materials-to-course.md) - lectures slides, readings, labs, other
+   - [Add assignments](docs/03-add-assignment-to-course.md) - a template repo that is copied into student private response repos, optionally contains a solutions branch
+2. [**add a cohort org**](docs/04-new-cohort-org.md) (per year),
+   - [Enrol students](docs/05-enrol-students-to-cohort.md)
+   - [Define schedule up front](docs/06-schedule-releases.md) , to automate release/collect of materials, assignments & grading runs from course org -> cohort org (and/or manually release [materials](docs/07-release-materials-to-cohort.md) and [assignments](docs/08-release-assignment-to-cohort.md) on an ad hoc basis)
+   - [Grade assignments](docs/09-grade-and-return-assignments.md)
       
-> The only manually-required steps are (1) creating each org in the GitHub web UI ([github.com/account/organizations/new](https://github.com/account/organizations/new)) and (2) [inviting **`hertie-dsl-bot`** as an org **Owner**](docs/faculty-and-instructors/01-new-course-org.md#steps); the DSL team must **accept** it before you bootstrap. Everything after that is automated via the scheduler / a button click.
+> The only manually-required steps are (1) creating each org in the GitHub web UI ([github.com/account/organizations/new](https://github.com/account/organizations/new)) and (2) [inviting **`hertie-dsl-bot`** as an org **Owner**](docs/01-new-course-org.md#steps); the DSL team must **accept** it before you bootstrap. Everything after that is automated via the scheduler / a button click.
 > *NB: if email integration is not currently live, then it may be necessary to email students their initial course invite codes as well.* 
 
 ## The model
@@ -103,7 +103,7 @@ open-courseware site - hosts shared lectures + readings`"]
   class mat,tmpl,cfg,cmat,repos,team,keypriv private;
 ```
 
-Each cohort gets an auto-deployed `<cohort>.github.io` site whose material links are private (enrolled students and auditors only). A course can optionally also publish a **public** `<course-org>.github.io` open-courseware site - see [**Publish course website**](docs/faculty-and-instructors/actions-reference.md#optional-public-course-website).
+Each cohort gets an auto-deployed `<cohort>.github.io` site whose material links are private (enrolled students and auditors only). A course can optionally also publish a **public** `<course-org>.github.io` open-courseware site - see [**Publish course website**](docs/actions-reference.md#optional-public-course-website).
 
 
 ## Glossary
@@ -116,9 +116,9 @@ Each cohort gets an auto-deployed `<cohort>.github.io` site whose material links
 | **Control panel** | the course org's `.github` repo - its **Actions** tab holds every workflow button, for the course org and all its cohorts. Cohort orgs have no buttons of their own. |
 | **`course-admin` team** | the course's standing owners, declared once in the course org's `.github/dsl-course.yml` (`course_admins`), mirrored into every cohort. |
 | **SSOT** | single source of truth. The course org is the SSOT for all content; each cohort's `classroom-config` is the SSOT for that specific cohort's student roster, teams, schedule and grades. |
-| **The bot** | `hertie-dsl-bot`, the machine account behind every action. Must be an **Owner** of every org - the one irreducible manual step. See [admin-setup](docs/admin/admin-setup.md#the-bot-account). |
+| **The bot** | `hertie-dsl-bot`, the machine account behind every action. Must be an **Owner** of every org - the one irreducible manual step. See [admin-setup](docs-admin-arch/admin-setup.md#the-bot-account). |
 
 ---
 
-**Admin & developer reference** (faculty & instructors delivering a course don't need this): [`docs/admin/`](docs/admin/) - the [architecture](docs/admin/architecture.md) (system design, token propagation, who-can-run access, the code map) and
-[operational setup](docs/admin/admin-setup.md) (the bot credential, PAT scopes, secret model).
+**Admin & developer reference** (faculty & instructors delivering a course don't need this): [`docs-admin-arch/`](docs-admin-arch/) - the [architecture](docs-admin-arch/architecture.md) (system design, token propagation, who-can-run access, the code map) and
+[operational setup](docs-admin-arch/admin-setup.md) (the bot credential, PAT scopes, secret model).

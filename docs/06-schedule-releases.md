@@ -13,7 +13,7 @@ autograde run.
 
 ## Write your term's plan
 
-Live example (a full term): [`example-course/cohort-org/schedule.yml`](../../example-course/cohort-org/schedule.yml).
+Live example (a full term): [`example-course/cohort-org/schedule.yml`](../example-course/cohort-org/schedule.yml).
 
 Two blocks carry the whole term:
 

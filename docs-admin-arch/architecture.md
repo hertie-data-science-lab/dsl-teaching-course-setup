@@ -1,12 +1,12 @@
 # Architecture & workflows
 
 Admin / developer reference - **how the system is built and how the pieces move**. For the
-faculty-facing overview see the [root README](../../README.md); for operational specifics (PAT
+faculty-facing overview see the [root README](../README.md); for operational specifics (PAT
 scopes, granting access) see [admin-setup.md](admin-setup.md).
 
 **You need this doc only if you're modifying `dsl_course/`, debugging a workflow failure, or
 rotating the bot.** Everything faculty do is covered by the
-[runbooks](../faculty-and-instructors/README.md).
+[runbooks](../docs/README.md).
 
 - [System overview](#system-overview)
 - [The bot identity](#the-bot-identity)

@@ -11,7 +11,7 @@ this repo. Course admins are managed at the **course org** level instead - see t
 org's `.github/dsl-course.yml`; that access is kept current automatically. Faculty & instructors/FAs
 edit these files; the buttons in the **course org's** Actions tab read them.
 Canonical, engine-wide schema:
-<https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/blob/main/docs/faculty-and-instructors/DEPLOYMENT-CHECKLIST.md>.
+<https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/blob/main/docs/DEPLOYMENT-CHECKLIST.md>.
 
 **The `.sample` pattern:** every CSV the engine ingests sits next to a `*.csv.sample`
 showing filled-out example rows (`students.csv.sample`, `teams.csv.sample`,

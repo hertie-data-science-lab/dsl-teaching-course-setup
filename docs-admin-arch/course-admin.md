@@ -3,12 +3,12 @@
 You're an admin of a course org that's already running. This page covers what that grants and
 how access is declared and revoked.
 
-- Button-by-button walkthroughs: **[runbooks](../faculty-and-instructors/README.md)**
-- New to the platform: the **[root README](../../README.md)** (routing + glossary)
+- Button-by-button walkthroughs: **[runbooks](../docs/README.md)**
+- New to the platform: the **[root README](../README.md)** (routing + glossary)
 - Input files and their schemas:
-  **[DEPLOYMENT-CHECKLIST.md](../faculty-and-instructors/DEPLOYMENT-CHECKLIST.md)**
+  **[DEPLOYMENT-CHECKLIST.md](../docs/DEPLOYMENT-CHECKLIST.md)**
 
-**Start by running [Show status](../faculty-and-instructors/actions-reference.md) on each
+**Start by running [Show status](../docs/actions-reference.md) on each
 cohort** (course org's `.github` Actions tab → **Show status**). It is read-only and prints a
 per-cohort checklist - identity, people, schedule + release plan, roster, teams, grades - with
 edit links for anything missing.

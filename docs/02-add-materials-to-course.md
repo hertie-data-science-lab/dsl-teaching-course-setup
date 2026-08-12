@@ -12,7 +12,7 @@ later copies session folders from here into a cohort. One repo per year: `course
 
 ## Steps
 
-Live example: [`example-course/course-org/course-materials-f2026/`](../../example-course/course-org/course-materials-f2026).
+Live example: [`example-course/course-org/course-materials-f2026/`](../example-course/course-org/course-materials-f2026).
 
 1. **Scaffold the repo.** Course org → `.github` → **Actions** →
    [New materials repo](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/new-materials.yml),

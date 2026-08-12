@@ -11,7 +11,7 @@ cohort website, and the schedule that runs the term. Once each year; the
 
 ## Steps
 
-Live example of every file below: [`example-course/cohort-org/`](../../example-course/cohort-org).
+Live example of every file below: [`example-course/cohort-org/`](../example-course/cohort-org).
 
 1. **Create the cohort org** in the web UI, named **`<course-name>-f/sYYYY`**
    (e.g. `DSL-Demo-f2026`). The `fYYYY`/`sYYYY` tag drives the semester label ("Fall 2026") and
