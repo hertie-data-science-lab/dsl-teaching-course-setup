@@ -8,8 +8,6 @@ private `grades-<handle>` repo, never in their assignment repo.
 - An assignment [released](08-release-assignment-to-cohort.md) to the cohort.
 - *(autograding only)* hidden tests + `grading.yml` on the template's `solution` branch. Without
   them (or with `autograde: false`), skip step 1 and grade entirely by hand.
-- *(emails only)* email sending is configured centrally by the DSL team; where it isn't live
-  yet, step 5's email stays a preview (the grades still reach each student's repo).
 
 ## 1. Grade assignment (autograde)
 
@@ -27,25 +25,18 @@ There is **no deadline input**: the deadline is the cohort schedule's
 [Release assignment → Deadlines](08-release-assignment-to-cohort.md#deadlines)). A blank sha
 there means nothing was pushed by the deadline, and that scores zero.
 
-> ⚠️ **No snapshot = a spoofable pin.** With no `snapshots/<slug>.csv`, grading falls back to
-> git committer dates, which students control - backdated late work passes. The run log says so
-> (`! no ... snapshots/<slug>.csv`). Fix: check the schedule's `assignments:` block really has a
-> `due` for this slug (a malformed one is
-> [silently dropped](06-schedule-releases.md#silent-failures), and the deadline then defaults to
-> *today*), then let the hourly cron freeze it before you grade.
-
 Nothing is written to any student repo. Auditors are never graded.
 
 ## 2. Add your marks
 
-Edit `classroom-config/grades/<slug>.csv` (web UI is fine). Columns:
-`github_handle, team, auto, manual, team_grade, adjustment, final, comments, team_comments`.
-
-- `auto` and `manual` are **faculty-internal** and never shown to the student.
-- **`final` is what the student sees, and you own it** - nothing sums `auto` + `manual` for you.
-  A hand-marked assignment just needs `final` + `comments`.
-- Group project: `team_grade` (shared), each member's private `adjustment`, shared
-  `team_comments`, plus each member's own `final`. No one sees another member's adjustment.
+- Edit `classroom-config/grades/<slug>.csv` (directly editing via web UI is fine; otherwise edit a local copy of the repo, commit & push)
+- Columns to fill: `github_handle, team, auto, manual, team_grade, adjustment, final, comments, team_comments`.
+ADD A BOX HERE WITH WHAT EACH DOES 
+- 
+  - `auto` and `manual` are faculty-internal and never shown to the student
+  - `final` is what the student sees, and you own it** - nothing sums `auto` + `manual` for you.
+    A hand-marked assignment just needs `final` + `comments`.
+  - **Group projects**: `team_grade` (shared), each member's private `adjustment`, shared `team_comments`, plus each member's own `final`. No one sees another member's adjustment.
 
 ## 3. Sync gradebooks
 
@@ -64,7 +55,9 @@ Review, then **merge**. Nothing reaches a student until you do.
 ## 5. Distribute grades
 
 Copies each merged gradebook to `grades-<handle>/grades.yml` and emails the student a "your
-grades have been updated" link (no marks in the email).
+grades have been updated" link (no marks in the email). 
+
+> *NB: the automated email functionality is configured centrally by the DSL team; if/when it isn't live, the grades still reach each student's repo, but no email notification will be dispatched.
 
 **`dry_run` defaults to `true`** - it pushes nothing and sends nothing until you untick it.
 `silent` pushes the grades without emailing.
