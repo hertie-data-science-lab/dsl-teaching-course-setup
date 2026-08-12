@@ -1,9 +1,6 @@
 # Faculty & instructors workflows
 
-Step-by-step runbooks for the faculty- and instructor-facing processes, end to end. Each is a
-button (GitHub Actions) plus, where noted, a `git push` of your own content.
-
-> NB: all workflows can be automated at the start of the semester by correctly filling out the cohort org's `schedule.yml` for that semester. This will then automatically handle all release of materials / assignments / grades etc, with manual GH action buttons in the course org's `.github` repo for ad hoc runs of specific workflows. 
+Step-by-step runbooks for instructor-facing processes, end to end. 
 
 ## The two tiers
 
@@ -63,6 +60,7 @@ autograde → marks → preview → distribute`"]
   C --> G
   D --> G
 ```
+> NB: all workflows can be automated at the start of the semester by filling out the cohort org's `schedule.yml` for that semester. This will then automatically handle the release of materials / assignments / grading runs etc, with manual GH action buttons in the course org's `.github` repo for ad hoc runs of specific workflows. 
 
 ## The workflows
 
@@ -76,48 +74,20 @@ Numbered in reading order - **course-level** (01-03) before **cohort-level** (04
 | 04 | [New cohort org](04-new-cohort-org.md) | cohort | once per year |
 | 05 | [Manage the teaching team](05-manage-teaching-team.md) | course + cohort | whenever staff join or leave - incl. **fixed-term** access for a TA or guest lecturer |
 | 06 | [Enrol students to cohort](06-enrol-students-to-cohort.md) | cohort | start of each cohort |
-| 07 | [**Schedule releases**](07-schedule-releases.md) | cohort | once per cohort, up front - **the primary release path** |
-| 08 | [Release materials to cohort](08-release-materials-to-cohort.md) | cohort | fallback: ad-hoc release |
-| 09 | [Release assignment to cohort](09-release-assignment-to-cohort.md) | cohort | fallback: ad-hoc hand-out |
+| 07 | [Schedule releases & deployed calendar](07-schedule-releases.md) | cohort | once per cohort, up front - **the primary release path** |
+| 08 | [Manual release materials to cohort](08-release-materials-to-cohort.md) | cohort | fallback/ad-hoc release |
+| 09 | [manual release assignment to cohort](09-release-assignment-to-cohort.md) | cohort | fallback/ad-hoc hand-out |
 | 10 | [Grade and return assignments](10-grade-and-return-assignments.md) | cohort | per assignment, after the deadline |
 | 11 | [Release code](11-release-code.md) | cohort | when the course ships a growing package to students |
 
-[05](05-manage-teaching-team.md) sits here because access is declared at **both** levels -
-course-wide admins on the course org, this year's instructors/TAs on the cohort - so both halves
-are actionable only once [04](04-new-cohort-org.md) has run. It is not a one-off: revisit it
-whenever the teaching team changes.
-
-The schedule (`materials_releases` in `schedule.yml`) is the primary release mechanism; the manual
-release buttons are the fallback - for demos, one-offs, and recovery. Fill in
-[07](07-schedule-releases.md)'s `schedule.yml` for the whole term and the hourly cron does 08, 09
-and the autograde half of 10 for you.
-
 For a one-page summary of **every button**, see [`actions-reference.md`](actions-reference.md);
 for who may run them, [`access-reference.md`](access-reference.md).
-
-## Who can run what (access)
-
-Two separate populations - neither ever holds the bot token:
-
-| Button | Gated by | Where it lives |
-|--------|----------|----------------|
-| **Bootstrap Course Org** | `faculty` / `admin` team in **`hertie-data-science-lab`** | [central repo Actions](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions) |
-| Every **course button** | write on the course org's `.github` - i.e. its **`course-admin`** team (`course_admins`) or an **`instructors-<tag>`** team, where `<tag>` is the cohort's `fYYYY`/`sYYYY` suffix and membership comes from that cohort's own `people.yml` | the course org's `.github` Actions tab |
-
-Central `hertie-data-science-lab` membership grants **only** the first row - a DSL faculty member
-must still be declared in a course's config before they can push or release anything there.
-`course_admins` is declared once at the **course** level and mirrored into every cohort;
-instructors/TAs are declared per **cohort**. Every person entry takes optional `start`/`end`
-dates, so access can be granted for a **fixed window** and lapses on its own.
-
-- How to add, time-box and remove people: [05 Manage the teaching team](05-manage-teaching-team.md).
-- Every team and what it grants: [`access-reference.md`](access-reference.md).
 
 ## Example org artefacts
 
 Every file these runbooks ask you to write exists, filled in, in
 [`../example-course/`](../example-course/) - a complete worked dummy course you can copy
-from or deploy wholesale ([how](../example-course/README.md#deploy-it-20-min)):
+from:
 
 | Runbook | Worked example |
 |---------|----------------|
@@ -134,12 +104,9 @@ Field-by-field rules for all of these: [`DEPLOYMENT-CHECKLIST.md`](DEPLOYMENT-CH
 
 ## Demo orgs (live reference)
 
-A standing demo you can point at while reading - one course org, two cohorts, running the
+A standing demo you can inspect at while reading - one course org, two cohorts, running the
 current engine:
 
-- Course org: **[`DSL-Demo-Course-E1234`](https://github.com/DSL-Demo-Course-E1234)** · control panel: [`.github` Actions](https://github.com/DSL-Demo-Course-E1234/.github/actions) · [public course site](https://dsl-demo-course-e1234.github.io)
-- Cohort org (current): **[`DSL-Demo-f2026`](https://github.com/DSL-Demo-f2026)** · [`classroom-config`](https://github.com/DSL-Demo-f2026/classroom-config) (the filled-in [`schedule.yml`](https://github.com/DSL-Demo-f2026/classroom-config/blob/main/schedule.yml): 10 sessions, labs, three assignments, `grading_datetime`s) · [cohort site](https://dsl-demo-f2026.github.io) · [`welcome`](https://github.com/DSL-Demo-f2026/welcome)
-- Cohort org (last year): **[`DSL-Demo-f2025`](https://github.com/DSL-Demo-f2025)** - what a persistent course org looks like with more than one cohort hanging off it
-
-To stand up your own throwaway copy instead, deploy
-[`example-course/`](../example-course/README.md#deploy-it-20-min) into orgs you create.
+- Course org: **[`DSL-Demo-Course-E1234`](https://github.com/DSL-Demo-Course-E1234)** 
+- Cohort org (current): **[`DSL-Demo-f2026`](https://github.com/DSL-Demo-f2026)** <- read here, more filled out with example files.
+- Cohort org (last year): **[`DSL-Demo-f2025`](https://github.com/DSL-Demo-f2025)**  <- empty stub, demonstrates how legacy cohort orgs remain attached to their hub course org for historical & archival reference.
