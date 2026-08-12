@@ -3,6 +3,12 @@
 # fYYYY tag; website exams at weeks 8 & 15) or simply not scheduled. Uncomment and fill
 # what you want. Times are Europe/Berlin unless you set `timezone:` or give an explicit
 # offset; the Scheduled release cron runs hourly, so times are honoured to the hour.
+#
+# Changing a date later? Just commit the edit to this file on main - the GitHub web UI
+# is the recommended way (or edit a local clone, commit, push). The hourly cron reads
+# whatever is on main at each tick, so the change simply takes effect within the hour.
+# Only already-fired ONE-SHOT actions don't rewind: a release already shipped stays
+# shipped, and a snapshot/autograde that already ran needs its marker deleted to redo.
 
 # timezone: Europe/Berlin              # optional - how the naive datetimes below are read
 
@@ -52,12 +58,9 @@
 #         dest_repo: materials
 #         dest_path: data/housing.csv
 #
-#   assignment-1-handout:               # hand an assignment out (provision one repo/student)
-#     calendar_event: {year}-09-22T09:00
-#     assignment: assignment-1-{tag}    # the assignment-*-<tag> template repo
-#
-#   (Grading needs NO entry here: each assignment is snapshotted and autograded
-#   automatically, ONCE, at its `grading_deadline` under `assignments:` below.)
+#   (Assignments need NO entry here: their whole lifecycle - handout, due date, grading -
+#   lives under `assignments:` below. Grading fires automatically, ONCE, at each
+#   assignment's `grading_deadline`.)
 
 # ---------------------------------------------------------------------------
 # The rest is for DISPLAY (website) and GRADING - not the release plan above.
@@ -65,14 +68,23 @@
 # semester_start: {year}-09-07         # YYYY-MM-DD
 # semester_end: {year}-12-18
 #
-# assignments:                          # due dates (keyed by slug, no -{tag} tag)
-#   assignment-1:
+# assignments:                          # each assignment's WHOLE lifecycle, keyed by slug
+#   assignment-1:                       # (repo name minus the -{tag} tag)
+#     handout: {year}-09-22T09:00       # OPTIONAL: when to provision one repo per student
+#                                       # (or per team - the template's grading.yml decides)
+#                                       # from the assignment-1-{tag} template
 #     due: {year}-10-13T23:59          # a bare date -> END of that day (23:59:59)
 #     grading_deadline: {year}-10-15    # OPTIONAL: when the submission snapshot freezes AND
 #                                       # the autograder fires (once). Not shown to students.
 #                                       # Defaults to `due`.
 #   assignment-2:
 #     due: {year}-11-10
+#   assignment-4-project:
+#     handout: {year}-10-20T14:00
+#     due: {year}-11-27
+#     max_team_size: 4                  # OPTIONAL, group assignments: the welcome repo's
+#                                       # "Join team" flow refuses a member beyond this
+#                                       # (default when unset: 5)
 #
 # exams:                                # `date` is a whole day, OR a full datetime when
 #   - name: MidTerm Exam                # you know the start time

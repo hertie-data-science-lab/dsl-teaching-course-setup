@@ -46,7 +46,7 @@ is_template: main + solution branch`"]
   end
   subgraph cohort["COHORT org — per year"]
     wel["`welcome
-Join issue → onboard`"]
+Join course issue → onboard`"]
     ros["`classroom-config
 roster, teams, grades, snapshots, schedule, people`"]
     cmat["`materials
@@ -204,8 +204,9 @@ released sessions exist cohort-side; everything is idempotent, so re-releasing i
 one private `<slug>-<handle>` repo per onboarded, **enrolled** student from that frozen copy.
 Solutions live on the template's `solution` branch and are never shipped unless
 `include_solution` is ticked. Whether a release fans out per student or per team is the
-workflow's `group` checkbox - not anything in `grading.yml`, whose `type:` only serves as the
-autograder's fallback.
+template's own declaration - `type: group` in its `grading.yml` - which handout, grading and
+the scheduler all read; the workflow's `group` checkbox only force-overrides a template that
+doesn't declare it.
 
 **Code** (`release_code`, rendered by `workflows_render.render_release_code`) copies one path -
 a subpackage folder or a single module - from the repo it is run in into a cohort repo, purely
@@ -224,10 +225,10 @@ buttons are for demos, one-offs, and recovery.
 ```mermaid
 sequenceDiagram
   actor St as Student
-  participant W as welcome, Join issue
+  participant W as welcome, Join course issue
   participant O as onboard.yml
   participant R as classroom-config roster
-  St->>W: open Join issue, paste the emailed enrol_code
+  St->>W: open Join course issue, paste the emailed enrol_code
   O->>R: match the code; record issue-author handle + immutable github_id
   O->>St: org membership + students (or auditors) team read
   Note over O,St: a push to students.csv triggers "Sync membership", reconciling both teams
@@ -240,7 +241,8 @@ row to their account. The handle comes from the issue **author**, so it cannot b
 ### Project teams (group assignments)
 
 `teams.csv` (in `classroom-config`, columns `assignment,team,github_handle`) is the **only
-writer surface**: students self-select by opening a "Join team" issue (`team-formation.yml`
+writer surface**: students self-select by opening a "Join team" issue (capped per assignment
+by `max_team_size` in the cohort's schedule.yml, default 5; `team-formation.yml`
 appends a row - authenticated author, one team per assignment, size-capped, auditors refused),
 and faculty can edit it directly. The cap is **5**, set by `MAX_TEAM_SIZE` in
 `templates/welcome/team-formation.yml` (edit there, then re-seed the cohort's `welcome` repo).
@@ -282,9 +284,10 @@ Each hourly tick:
    The fire-once marker is the `autograde/<slug>/` results directory: present means graded, so
    never again (a re-grade means deleting it). No `grade:` entry is needed.
 3. **Fires every action whose time has arrived** (a deploy's `deploy_datetime`, else its
-   entry's `calendar_event`) - `deploy` (copy a course-org path into a cohort repo),
-   `assignment` (provision student repos - per team when the template's grading.yml says
-   `type: group`). An entry with no actions is a display-only calendar event for the site.
+   entry's `calendar_event`) - `deploy` (copy a course-org path into a cohort repo) and
+   assignment handouts (`assignments.<slug>.handout`, synthesised into releases; per team
+   when the template's grading.yml says `type: group`). An entry with no actions is a
+   display-only calendar event for the site.
 
 Phases 1-2 run before the releases and run whether or not the cohort uses `materials_releases`
 at all.

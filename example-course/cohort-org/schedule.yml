@@ -4,60 +4,75 @@
 # that moment, except deploys carrying their own `deploy_datetime`. Sources are read from the COURSE org;
 # destinations written to this COHORT org. Full schema:
 # docs/faculty-and-instructors/DEPLOYMENT-CHECKLIST.md#scheduleyml
+#
+# Changing a date later? Just commit the edit to this file on main - the GitHub web UI
+# is the recommended way (or edit a local clone, commit, push). The hourly cron reads
+# whatever is on main at each tick, so the change simply takes effect within the hour.
+# Only already-fired ONE-SHOT actions don't rewind: a release already shipped stays
+# shipped, and a snapshot/autograde that already ran needs its marker deleted to redo.
 timezone: Europe/Berlin
 
 materials_releases:
-  week-1:
+  lecture-1:
     calendar_event: 2026-09-01T10:00
     deploy:
       # the lecture ships an hour before the class; everything else at class time
       - {source_repo: course-materials-f2026, source_path: lectures/01_week-1, dest_repo: materials,
          deploy_datetime: 2026-09-01T09:00}
       - {source_repo: course-materials-f2026, source_path: readings/01_week-1, dest_repo: materials}
-      - {source_repo: course-materials-f2026, source_path: labs/01_week-1, dest_repo: materials}
       # release the package base early so later partial releases still import:
       - {source_repo: lecture-code-f2026, source_path: mlpkg/core, dest_repo: materials}
-  week-2:
+  lab-1:
+    calendar_event: 2026-09-03T14:00
+    deploy:
+      - {source_repo: course-materials-f2026, source_path: labs/01_week-1, dest_repo: materials}
+  lecture-2:
     calendar_event: 2026-09-08T10:00
     deploy:
       - {source_repo: course-materials-f2026, source_path: lectures/02_week-2, dest_repo: materials,
          deploy_datetime: 2026-09-08T09:00}
       - {source_repo: course-materials-f2026, source_path: readings/02_week-2, dest_repo: materials}
+  lab-2:
+    calendar_event: 2026-09-10T14:00
+    deploy:
       - {source_repo: course-materials-f2026, source_path: labs/02_week-2, dest_repo: materials}
-  week-3:
+  lecture-3:
     calendar_event: 2026-09-15T10:00
     deploy:
       - {source_repo: course-materials-f2026, source_path: lectures/03_week-3, dest_repo: materials,
          deploy_datetime: 2026-09-15T09:00}
       - {source_repo: course-materials-f2026, source_path: readings/03_week-3, dest_repo: materials}
-      - {source_repo: course-materials-f2026, source_path: labs/03_week-3, dest_repo: materials}
       # phased disclosure: reveal a topic-subpackage when you teach it
       - {source_repo: lecture-code-f2026, source_path: mlpkg/simulation, dest_repo: materials}
-  assignment-1-handout:
-    calendar_event: 2026-09-15T14:00
-    assignment: assignment-1-f2026
-  week-4:
+  lab-3:
+    calendar_event: 2026-09-17T14:00
+    deploy:
+      - {source_repo: course-materials-f2026, source_path: labs/03_week-3, dest_repo: materials}
+  lecture-4:
     calendar_event: 2026-09-22T10:00
     deploy:
       - {source_repo: course-materials-f2026, source_path: lectures/04_week-4, dest_repo: materials,
          deploy_datetime: 2026-09-22T09:00}
       - {source_repo: course-materials-f2026, source_path: readings/04_week-4, dest_repo: materials}
+  lab-4:
+    calendar_event: 2026-09-24T14:00
+    deploy:
       - {source_repo: course-materials-f2026, source_path: labs/04_week-4, dest_repo: materials}
-  week-5:
+  lecture-5:
     calendar_event: 2026-09-29T10:00
     deploy:
       - {source_repo: course-materials-f2026, source_path: lectures/05_week-5, dest_repo: materials,
          deploy_datetime: 2026-09-29T09:00}
       - {source_repo: course-materials-f2026, source_path: readings/05_week-5, dest_repo: materials}
-      - {source_repo: course-materials-f2026, source_path: labs/05_week-5, dest_repo: materials}
       - {source_repo: lecture-code-f2026, source_path: mlpkg/training, dest_repo: materials}
-  assignment-2-handout:
-    calendar_event: 2026-09-29T14:00
-    assignment: assignment-2-f2026
   # No actions -> a DISPLAY-ONLY event: nothing is released, the site's schedule simply
   # shows the row. (Use `event:` on a deploy entry, as the week-N sessions above do, when
   # materials should go out before the class they belong to - or leave a session with no
   # deploy at all if its materials are never released.)
+  lab-5:
+    calendar_event: 2026-10-01T14:00
+    deploy:
+      - {source_repo: course-materials-f2026, source_path: labs/05_week-5, dest_repo: materials}
   project-clinic:
     calendar_event: 2026-11-10T10:00
     title: Project clinic
@@ -67,12 +82,19 @@ semester_end: 2026-12-18
 # Autograding needs no entry here: at each assignment's grading deadline the hourly cron
 # freezes the submission snapshot and runs the autograder once (individual/group comes from
 # the template's own grading.yml).
-assignments:
+assignments:                    # each assignment's whole lifecycle in one block
   assignment-1:
+    handout: 2026-09-15T14:00     # provision one repo per student from assignment-1-f2026
     due: 2026-10-13               # what students see
     grading_deadline: 2026-10-15  # optional grading pin - snapshot + autograde (default = due)
-  assignment-2: {due: 2026-10-27T23:59}
-  assignment-4-project: {due: 2026-11-15T23:59}
+  assignment-2:
+    handout: 2026-09-29T14:00
+    due: 2026-10-27T23:59
+  assignment-4-project:
+    handout: 2026-10-13T14:00     # per TEAM - the template's grading.yml says type: group
+    due: 2026-11-15T23:59
+    max_team_size: 3              # the welcome "Join team" flow refuses a 4th member
+
 
 exams:
   # a bare date is a whole-day entry (the website shows 09:00); give a full datetime when

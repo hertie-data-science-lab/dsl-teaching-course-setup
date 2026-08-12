@@ -61,7 +61,9 @@ one column-group per assignment) appears alongside the per-student gradebooks on
 
 `assignment, team, github_handle`. Students self-select via the welcome "Join team" issue,
 or edit directly - a push here also triggers **Sync membership**. Auditors (`role: auditor`
-above) are refused by that issue: no assignment repos means no project teams. See
+above) are refused by that issue: no assignment repos means no project teams. The issue flow
+also enforces a **team-size cap**: set `max_team_size` per assignment under `assignments:`
+in `schedule.yml` (default 5 when unset). See
 `teams.csv.sample` - **the engine only acts on a real `teams.csv`.**
 
 ## schedule.yml - the release plan + due dates + exams (optional)
@@ -79,6 +81,11 @@ event (a clinic, a guest lecture): nothing deploys, the site shows the row. Also
 assignment's `grading_deadline` - the moment its snapshot freezes and it is autograded,
 once; grading needs no release entry), and `exams`. Seeded mostly-commented - uncomment and
 fill what you want; anything left out is synthesised or simply not scheduled.
+**Changing a date later** is just committing the edit to this file on main (GitHub web
+UI recommended, or clone/commit/push) - the hourly cron reads whatever is on main at
+each tick, so it takes effect within the hour. Already-fired one-shot actions don't
+rewind: a shipped release stays shipped; a done snapshot/autograde needs its marker
+(`snapshots/<slug>.csv` / `autograde/<slug>/`) deleted to redo.
 
 ## people.yml - this cohort's instructors/TAs (optional)
 

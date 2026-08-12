@@ -75,12 +75,13 @@ Prereqs: the bot is an **owner** of both demo orgs and `DSL_BOT_TOKEN` (`repo` +
    [`schedule.yml`](cohort-org/schedule.yml), [`students.csv`](cohort-org/students.csv),
    [`people.yml`](cohort-org/people.yml), [`teams.csv`](cohort-org/teams.csv).
 9. **Send enrolment codes** for the cohort - untick `dry_run` to actually email them.
-10. Nothing else. The hourly **Scheduled release** cron works through `schedule.yml`: weeks 1-5
-    of lectures + readings + labs (each week's lecture carries a `deploy_datetime` an hour
-    before its 10:00 `calendar_event`), the `mlpkg` subpackages, and assignments 1 and 2 - and
-    autogrades each assignment once, automatically, at its grading deadline (the project grades
-    per-team; its template's `grading.yml` says `type: group`). The display-only
-    `project-clinic` entry deploys nothing - it just appears on the site's schedule. Use
+10. Nothing else. The hourly **Scheduled release** cron works through `schedule.yml`: 5 weeks
+    of lecture + lab entries (each lecture ships an hour before its 10:00 `calendar_event`;
+    labs on Thursdays), the `mlpkg` subpackages, and every assignment's whole lifecycle from
+    its own `assignments:` block - `handout` provisions the repos (the project per-team, from
+    its template's `grading.yml`), and each assignment autogrades once at its grading
+    deadline. The display-only `project-clinic` entry deploys nothing - it just appears on
+    the site's schedule. Use
     **[Release materials](../docs/faculty-and-instructors/07-release-materials-to-cohort.md)** /
     **[Release assignment](../docs/faculty-and-instructors/08-release-assignment-to-cohort.md)**
     only to jump ahead of it for a demo.
@@ -92,6 +93,6 @@ Prereqs: the bot is an **owner** of both demo orgs and `DSL_BOT_TOKEN` (`repo` +
   briefs, and a schedule with the real dates (Assignment 1 due 13 Oct, MidTerm 3 Nov, Final
   15 Dec at 14:00).
 - **The control panel:** `Hertie-DSL-Demo/.github` Actions tab - every button.
-- **Onboarding:** open a **Join** issue in `Hertie-DSL-Demo-f2026/welcome` and paste the `enrol_code`
+- **Onboarding:** open a **Join course** issue in `Hertie-DSL-Demo-f2026/welcome` and paste the `enrol_code`
   that step 9 wrote onto a roster row. Try Eve Evans' code to see the **auditor** path: read
   access to the released materials, no assignment repo, no gradebook.

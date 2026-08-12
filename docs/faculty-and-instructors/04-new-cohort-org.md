@@ -21,7 +21,7 @@ Live example of every file below: [`example-course/cohort-org/`](../../example-c
 
 3. **Run [Bootstrap cohort](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/bootstrap-cohort.yml)**
    from the **course** org's `.github` Actions tab, `cohort_org` = `DSL-Demo-f2026`. You get the
-   public **`welcome`** repo (Join issue + onboarding, plus a student-facing `README.md`
+   public **`welcome`** repo (Join course issue + onboarding, plus a student-facing `README.md`
    telling them how to join - yours to reword, it is never overwritten), the private
    **`classroom-config`** repo
    (`students.csv`, `teams.csv`, `schedule.yml`, `people.yml`, `grades/`), the `students` +
@@ -40,13 +40,12 @@ Live example of every file below: [`example-course/cohort-org/`](../../example-c
        deploy:
          - {source_repo: course-materials-f2026, source_path: lectures/01_intro, dest_repo: materials,
             deploy_datetime: 2026-09-07T13:00}   # optional: ship this copy 1h early
-     assignment-1-handout:
-       calendar_event: 2026-09-22T09:00
-       assignment: assignment-1-f2026
    semester_start: 2026-09-07
    semester_end: 2026-12-18
    assignments:
      assignment-1:
+       handout: 2026-09-22T09:00    # repos provisioned automatically (per team if the
+                                    # template's grading.yml says type: group)
        due: 2026-10-13              # due date students see; bare date -> 23:59:59
        grading_deadline: 2026-10-15 # optional; snapshot + autograde fire here (once)
    exams:

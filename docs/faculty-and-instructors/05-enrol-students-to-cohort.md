@@ -1,7 +1,7 @@
 # Enrol students
 
 Put the registrar's list into the roster, send each student an enrolment code, and they
-self-onboard via a Join issue - no by-hand invites.
+self-onboard via a Join course issue - no by-hand invites.
 
 ## Prerequisites
 
@@ -32,20 +32,22 @@ Live example roster: [`example-course/cohort-org/students.csv`](../../example-co
    > can still be written into `students.csv` by the `Send enrolment codes` workflow → then copy each student's code into an email of your own and send out manually.
 
 3. **Students self-onboard.**
-   - Each student opens a **Join** issue in the cohort's `welcome` repo and pastes their code
+   - Each student opens a **Join course** issue in the cohort's `welcome` repo and pastes their code
    - That adds them to the org and their role's team.
    - **They must accept the
    org invite** before they can see anything - chase anyone stuck on *pending*.
 
    > The cohort org's `welcome` repo is automatically seeded when the cohort org is [bootstrapped by the course org](04-new-cohort-org.md#steps).
 
-   > **Testing the flow yourself?** A Join issue from an org owner/admin gets labelled `staff`
+   > **Testing the flow yourself?** A Join course issue from an org owner/admin gets labelled `staff`
    > and stops (it would demote you). Use a non-staff account to test the student path.
 
 ## Group assignments 
 
 - Students open a **Join team** issue in `welcome`, or you edit `classroom-config/teams.csv`
 (`assignment, team, github_handle`)
+- The issue flow enforces a **team-size cap**: `max_team_size` per assignment under
+  `assignments:` in `classroom-config/schedule.yml` (default 5 when unset).
 - Either way **Sync membership** creates a GitHub team per group.
 - A **Release assignment** run with `group` ticked then grants each team its shared repo.
 
@@ -62,4 +64,4 @@ and no marks. A **Join team** issue from an auditor is refused and labelled `nee
 
 ---
 **Demo:** [Send enrolment codes](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/send-codes.yml)
-in the demo course org · Join issue in [`DSL-Demo-f2026/welcome`](https://github.com/DSL-Demo-f2026).
+in the demo course org · Join course issue in [`DSL-Demo-f2026/welcome`](https://github.com/DSL-Demo-f2026).

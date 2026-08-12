@@ -15,62 +15,84 @@ autograde run.
 
 Live example (a full term): [`example-course/cohort-org/schedule.yml`](../../example-course/cohort-org/schedule.yml).
 
-`materials_releases:` maps a free-form label to a `calendar_event` plus any mix of two actions:
+Two blocks carry the whole term:
 
-| Action | Does |
-|--------|------|
-| `deploy` | copy a source path from a course repo → a cohort repo (materials, code, datasets) |
-| `assignment` | provision one private repo per onboarded student from a template - or per **team**, when the template's `grading.yml` says `type: group` |
+- **`materials_releases:`** - teaching materials and calendar events. A free-form label maps
+  to a `calendar_event` plus, optionally, `deploy` actions (copy a source path from a course
+  repo → a cohort repo: materials, code, datasets).
+- **`assignments:`** - each assignment's **whole lifecycle in one block**, keyed by slug:
+  `handout` (when repos are provisioned - one per student, or per **team** when the
+  template's `grading.yml` says `type: group`), `due` (what students see),
+  `grading_deadline` (when it is snapshotted and autograded, once - see
+  [below](#deadline-snapshots-and-autograding)), and `max_team_size` (group assignments).
 
-Grading never appears in this plan: each assignment is snapshotted and autograded
-automatically, once, at its `grading_deadline`
-(see [below](#deadline-snapshots-and-autograding)).
+Nothing assignment-related needs a `materials_releases` entry (a legacy `assignment:` action
+there is still honoured).
 
 **The calendar event is not the release.** Each entry's `calendar_event:` is when the thing
-*happens* - that is what the cohort site's schedule shows, and the default fire time for the
-entry's actions. A deploy can carry its own `deploy_datetime:` to ship its files earlier (or
-later) than the class they belong to. And an entry with **no actions at all** is a
-display-only calendar event - a project clinic, a guest lecture: nothing deploys, the row
-simply appears on the cohort site (optionally with a `title:`). Exams work the same way, via
-the dedicated `exams:` block below.
+*happens* - that is what the cohort's `.github.io` site's deployed schedule shows (and  is the default fire time for the
+entry's actions). However, a deploy can also carry its own separate `deploy_datetime:` to ship its files earlier (or
+later) than the class they belong to. And an entry with **no deploy actions at all** is a
+display-only calendar event - e.g. an exam, a drop-in clinic, a guest lecture etc: nothing deploys, the row
+simply appears on the cohort site (optionally with a `title:`). 
+
+> Exams work the same way, viathe dedicated `exams:` block below.
 
 ```yaml
-  session-02:
+  lecture_02:
     calendar_event: 2026-09-15T10:00   # the class - what the site announces
     deploy:
       - {source_repo: course-materials-f2026, source_path: lectures/02_intro,
-         dest_repo: materials, deploy_datetime: 2026-09-15T09:00}   # slides out 1h early
+         dest_repo: lecture_materials, deploy_datetime: 2026-09-15T09:00}  # slides out 1h early
       - {source_repo: course-materials-f2026, source_path: readings/02_intro,
-         dest_repo: materials}                                      # out at class time
+         dest_repo: lecture_materials}                                     # out at class time
+
+  lab_02:
+    calendar_event: 2026-09-17T14:00   # the lab session
+    deploy:
+      - {source_repo: course-materials-f2026, source_path: labs/02_intro,
+         dest_repo: lab_materials}
 
   project-clinic:                      # no actions -> display-only site row
     calendar_event: 2026-11-17T10:00
     title: Project clinic
 ```
 
+(`dest_repo` is yours to choose - one shared `materials` repo, or one per section as here;
+the repo is created on first release.)
+
 ```yaml
 timezone: Europe/Berlin
 materials_releases:
-  week-2:
+  lecture_02:
     calendar_event: 2026-09-15T10:00
     deploy:
-      - {source_repo: course-materials-f2026, source_path: lectures/02_week-2, dest_repo: materials}
-      - {source_repo: lecture-code-f2026, source_path: mlpkg/simulation, dest_repo: materials}
-  assignment-1-handout:
-    calendar_event: 2026-09-22T09:00
-    assignment: assignment-1-f2026
+      - {source_repo: course-materials-f2026, source_path: lectures/02_week-2, dest_repo: lecture_materials}
+      - {source_repo: lecture-code-f2026, source_path: mlpkg/simulation, dest_repo: lecture_materials}
+  lab_02:
+    calendar_event: 2026-09-17T14:00
+    deploy:
+      - {source_repo: course-materials-f2026, source_path: labs/02_week-2, dest_repo: lab_materials}
 
 assignments:
   assignment-1:
+    handout: 2026-09-22T09:00       # one repo per student from assignment-1-<tag>, automatic
     due: 2026-10-13                 # what students see
     grading_deadline: 2026-10-15    # optional - when the snapshot freezes and it is autograded
 ```
 
-No `grade:` entry is needed: `assignment-1` is autograded once, at `2026-10-15T23:59:59`.
+Full schema: [the schedule](DEPLOYMENT-CHECKLIST.md#scheduleyml).
 
-Full schema: [the schedule](DEPLOYMENT-CHECKLIST.md#scheduleyml). 
+## Changing dates mid-term
 
-## Verify your schedule before trusting it
+Just commit the edit to `classroom-config/schedule.yml` on `main` - the **GitHub web UI is
+the recommended way** (or edit a local clone → commit → push). The hourly cron reads
+whatever is on `main` at each tick, so the change takes effect within the hour; there is
+nothing to re-arm or re-deploy. The one caveat: already-fired **one-shot** actions don't
+rewind - a release already shipped stays shipped, and a snapshot/autograde that already ran
+re-runs only if you delete its marker (`snapshots/<slug>.csv` / `autograde/<slug>/`).
+
+## If you want to verify your schedule before trusting it
 
 1. **Dry-run the cron.** Run **Scheduled release** by hand - `dry_run` defaults to **`true`**,
    so it lists what *would* open and releases nothing. The best preflight there is.

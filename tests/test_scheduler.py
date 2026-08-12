@@ -683,3 +683,34 @@ def test_scheduler_workflow_hourly_and_ungated():
     assert trigger["schedule"][0]["cron"] == "0 * * * *"  # hourly (was daily)
     # deliberately NOT gated by check-team (no actor on a scheduled run)
     assert "check-team" not in doc["jobs"]
+
+
+def test_handout_releases_synthesised_from_the_assignments_block(monkeypatch):
+    # The whole lifecycle lives under assignments.<slug>; a `handout:` datetime becomes a
+    # normal release (template resolved as <slug>-<tag>, like autograding), so it fires
+    # through the same due/idempotency/site-sync machinery.
+    monkeypatch.setattr(
+        scheduler,
+        "_assignment_template",
+        lambda course, cohort, slug: None if slug == "web-only" else f"{slug}-f2026",
+    )
+    sched = Schedule(
+        assignments={
+            "assignment-1": AssignmentEntry(
+                due=datetime(2026, 10, 13, 23, 59, tzinfo=BERLIN),
+                handout=datetime(2026, 9, 22, 9, 0, tzinfo=BERLIN),
+            ),
+            "web-only": AssignmentEntry(  # pinned for its site date; no template repo
+                due=datetime(2026, 11, 1, 23, 59, tzinfo=BERLIN),
+                handout=datetime(2026, 10, 1, 9, 0, tzinfo=BERLIN),
+            ),
+            "manual": AssignmentEntry(due=datetime(2026, 12, 1, 23, 59, tzinfo=BERLIN)),
+        }
+    )
+    (r,) = scheduler._handout_releases("Course-Org", "Cohort-f2026", sched)
+    assert r.label == "assignment-1-handout"
+    assert r.assignment == "assignment-1-f2026"
+    assert r.when == datetime(2026, 9, 22, 9, 0, tzinfo=BERLIN)
+    # and it is due like any release once its datetime passes - not a minute before
+    assert scheduler.due_releases([r], datetime(2026, 9, 22, 8, 0, tzinfo=BERLIN)) == []
+    assert scheduler.due_releases([r], datetime(2026, 9, 22, 10, 0, tzinfo=BERLIN)) == [r]

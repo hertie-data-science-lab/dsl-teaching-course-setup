@@ -37,7 +37,7 @@ scaffold + push brief/solution`"]
     E["`**04 New cohort org**
 create + bootstrap`"]
     F["`**05 Enrol students**
-Send enrolment codes + Join issue`"]
+Send enrolment codes + Join course issue`"]
     S["`**06 Schedule releases**
 fill schedule.yml, the whole term, up front
 (or manual release from course org's .github repo)`"]

@@ -24,11 +24,11 @@ sends stay previews and enrolment codes still land in `students.csv`.
 | | Step | Level | Where | Input | Output |
 |---|------|-------|-------|-------|--------|
 | `[required]` | 1. Create the cohort org | cohort | GitHub [web UI](https://github.com/account/organizations/new) | name `<course-name>-f/sYYYY`; invite **`hertie-dsl-bot`** as **Owner** (must accept) | an empty org the bot can bootstrap |
-| `[required]` | 2. Bootstrap | course → cohort | course `.github` → **Bootstrap cohort** | `cohort_org` | `welcome` (Join issues) + `classroom-config` (all the files below), `students`/`auditors` teams, the cohort site, cohort registered with the cron |
+| `[required]` | 2. Bootstrap | course → cohort | course `.github` → **Bootstrap cohort** | `cohort_org` | `welcome` (Join course / Join team issues) + `classroom-config` (all the files below), `students`/`auditors` teams, the cohort site, cohort registered with the cron |
 | `[do this first]` | 3. The term plan | cohort | edit [`classroom-config/schedule.yml`](#scheduleyml) | releases, due dates, exams | the hourly cron runs the whole term; site dates; grading deadlines |
 | `[required]` | 4. Roster | cohort | edit [`classroom-config/students.csv`](#studentscsv) | registrar rows | the enrolment + provisioning source of truth |
 | *(optional)* | 5. Teaching team | cohort | edit [`classroom-config/people.yml`](#peopleyml) | handles (+ card fields) | push access for this cohort's instructors/TAs + site cards |
-| `[required]` | 6. Enrol | course button, per cohort | course `.github` → **Send enrolment codes** (untick `dry_run`) | `cohort_org` | codes written to the roster + emailed; students join via the `welcome` **Join** issue |
+| `[required]` | 6. Enrol | course button, per cohort | course `.github` → **Send enrolment codes** (untick `dry_run`) | `cohort_org` | codes written to the roster + emailed; students join via the `welcome` **Join course** issue |
 | *(optional)* | 7. Ad-hoc release | course button, per cohort | **Release materials** / **Release assignment** | see [07](07-release-materials-to-cohort.md)/[08](08-release-assignment-to-cohort.md) | anything out earlier/differently than the schedule says |
 | *(optional)* | 8. Return marks | course buttons + [`grades/<slug>.csv`](#gradesslugcsv) | the [grading runbook](09-grade-and-return-assignments.md) | your marks | private per-student gradebooks |
 | *(optional)* | 9. Show status | course button, per cohort | course `.github` → **Show status** | `cohort_org` | what's configured, what's missing, an edit link per gap |
@@ -73,7 +73,7 @@ student_id,hertie_email,name,github_handle,github_id,section,enrol_code,role
 |--------|-----------|-------|
 | `student_id`, `hertie_email`, `name`, `section` | registrar | `hertie_email` receives the enrolment code + grade notices |
 | `github_handle`, `github_id` | **onboarding** | blank until the student joins; the immutable `github_id` survives handle renames |
-| `enrol_code` | **Send enrolment codes** | the token the student pastes into the Join issue |
+| `enrol_code` | **Send enrolment codes** | the token the student pastes into the Join course issue |
 | `role` | registrar | blank/`enrolled` = full participant; `auditor` = reads released materials, gets no assignments/grades, refused from teams |
 
 ### `people.yml`
@@ -106,9 +106,10 @@ shape, but there it is **display-only** (public-site cards, no access).
 Live example: [`example-course/cohort-org/teams.csv`](../../example-course/cohort-org/teams.csv).
 
 `classroom-config/teams.csv` - group membership, per assignment. Students self-select via the
-`welcome` **Join team** issue, or you edit it directly; either way a push materialises a GitHub
-team per group, and a **Release assignment** run with `group` ticked grants each team one
-shared repo.
+`welcome` **Join team** issue (which enforces the per-assignment `max_team_size` set under
+[`schedule.yml`](#scheduleyml)'s `assignments:`, default 5), or you edit it directly; either
+way a push materialises a GitHub team per group, and releasing a group assignment grants each
+team one shared repo.
 
 ```csv
 assignment,team,github_handle
@@ -186,9 +187,11 @@ repos, never orgs. Every release is idempotent - re-runs are no-ops.
 
 Per entry: `calendar_event` (required - when the thing happens; the site schedule shows it,
 and it is the default fire time; `when` is accepted as a legacy alias), `title` (optional
-row label), and the actions. A deploy item may carry its own `deploy_datetime` to ship
-earlier or later than the calendar event. An entry with no actions is a **display-only
-calendar event** - nothing deploys, the site shows the row.
+row label), and optionally `deploy` actions. A deploy item may carry its own
+`deploy_datetime` to ship earlier or later than the calendar event. An entry with no
+actions is a **display-only calendar event** - nothing deploys, the site shows the row.
+Assignments take no entry here: their whole lifecycle (handout/due/grading) lives under
+`assignments:` below (a legacy `assignment:` action is still honoured).
 
 ```yaml
 timezone: Europe/Berlin
@@ -202,9 +205,6 @@ materials_releases:
   bonus-dataset:
     calendar_event: 2026-10-20T09:30  # single copy - no list needed
     deploy: {source_repo: course-datasets-f2026, source_path: week7/housing.csv, dest_repo: materials, dest_path: datasets/housing.csv}
-  assignment-1-handout:
-    calendar_event: 2026-09-22T09:00
-    assignment: assignment-1-f2026
   project-clinic:
     calendar_event: 2026-11-17T10:00  # no actions -> display-only row on the site schedule
     title: Project clinic
@@ -216,11 +216,17 @@ materials_releases:
 ```yaml
 semester_start: 2026-09-07
 semester_end: 2026-12-18
-assignments:                          # keyed by slug (template name minus -fYYYY)
-  assignment-1:
+assignments:                          # each assignment's WHOLE lifecycle, keyed by slug
+  assignment-1:                       # (template name minus -fYYYY)
+    handout: 2026-09-22T09:00         # optional: provision one repo per student (or per
+                                      # team - the template's grading.yml decides), automatic
     due: 2026-10-13                   # what students see
     grading_deadline: 2026-10-15      # optional: the grading pin - snapshot freezes and the
                                       # autograder fires (once). Default = due.
+  assignment-4-project:
+    due: 2026-11-27
+    max_team_size: 4                  # optional, group assignments: the welcome Join team
+                                      # flow refuses members beyond this (default 5)
 exams:
   - {name: MidTerm Exam, date: 2026-11-03}
   - {name: Final Exam, date: 2026-12-15T14:00}
