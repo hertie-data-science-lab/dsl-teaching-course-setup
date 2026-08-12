@@ -204,8 +204,9 @@ released sessions exist cohort-side; everything is idempotent, so re-releasing i
 one private `<slug>-<handle>` repo per onboarded, **enrolled** student from that frozen copy.
 Solutions live on the template's `solution` branch and are never shipped unless
 `include_solution` is ticked. Whether a release fans out per student or per team is the
-workflow's `group` checkbox - not anything in `grading.yml`, whose `type:` only serves as the
-autograder's fallback.
+template's own declaration - `type: group` in its `grading.yml` - which handout, grading and
+the scheduler all read; the workflow's `group` checkbox only force-overrides a template that
+doesn't declare it.
 
 **Code** (`release_code`, rendered by `workflows_render.render_release_code`) copies one path -
 a subpackage folder or a single module - from the repo it is run in into a cohort repo, purely
