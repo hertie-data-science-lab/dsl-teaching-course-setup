@@ -35,7 +35,7 @@ One file per assignment, e.g. `grades/assignment-1.csv`:
 The autograder pre-fills `auto`/`team_grade` from hidden tests; faculty & instructors fill the
 rest, then **Sync gradebooks** -> **Render grades** -> **Distribute grades**. It runs itself
 **once** per assignment, at that assignment's grading deadline in `schedule.yml`
-(`assignments.<slug>.grading_deadline`, else `due` + optional `grace_days`) - there is no
+(`assignments.<slug>.grading_deadline`, else `due`) - there is no
 separate deadline input, and no hourly re-run. `auto`/`team`/`team_grade` are **write-once**:
 once filled, no run overwrites them, so your corrections stand. To recompute, clear those
 cells and delete `autograde/<slug>/`. A generated,

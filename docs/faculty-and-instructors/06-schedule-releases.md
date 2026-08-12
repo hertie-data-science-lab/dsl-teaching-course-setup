@@ -13,6 +13,8 @@ autograde run.
 
 ## Write your term's plan
 
+Live example (a full term): [`example-course/cohort-org/schedule.yml`](../../example-course/cohort-org/schedule.yml).
+
 `materials_releases:` maps a free-form label to a `when` plus any mix of three actions:
 
 | Action | Does |
@@ -41,7 +43,7 @@ assignments:
 
 No `grade:` entry is needed: `assignment-1` is autograded once, at `2026-10-15T23:59:59`.
 
-Full schema: [the schedule](required-input-schema.md#the-schedule). 
+Full schema: [the schedule](required-input-schema.md#scheduleyml). 
 
 ## Verify your schedule before trusting it
 
@@ -60,9 +62,7 @@ Full schema: [the schedule](required-input-schema.md#the-schedule).
 > - a malformed or missing **`when`** → that whole release is dropped;
 > - a malformed or missing **`due`** → the whole `assignments:` entry is dropped, and the
 >   grading deadline then falls back to *today* at grading time;
-> - a non-integer **`grace_days`** → silently treated as `0`;
-> - a malformed **`grading_deadline`** → ignored, and the deadline falls back to
->   `due + grace_days`;
+> - a malformed **`grading_deadline`** → ignored, and the deadline falls back to `due`;
 > - an unknown or misspelt **`timezone:`** → silently falls back to `Europe/Berlin`;
 > - a `deploy` entry missing **`source_repo`** or **`source_path`** → silently skipped.
 >
@@ -76,8 +76,8 @@ Full schema: [the schedule](required-input-schema.md#the-schedule).
 
 ## Deadline snapshots and autograding
 
-Each assignment's **grading deadline** is `grading_deadline` if you set it, else
-`due + grace_days`, else `due`. Shortly after it passes, the hourly run does two things,
+Each assignment's **grading deadline** is `grading_deadline` if you set it, else `due`.
+Shortly after it passes, the hourly run does two things,
 once each:
 
 1. **Freezes** each submission repo's HEAD into `classroom-config/snapshots/<slug>.csv`, using

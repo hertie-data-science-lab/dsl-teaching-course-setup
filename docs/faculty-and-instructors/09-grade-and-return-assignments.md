@@ -31,7 +31,7 @@ and `dry_run` (both default **off**). It runs the hidden tests and writes into
   again. Delete it to let the next hourly tick re-grade.
 
 There is **no deadline input**: the deadline is the cohort schedule's
-`assignments.<slug>.grading_deadline` (else `due + grace_days`), and the graded commit is the one frozen into
+`assignments.<slug>.grading_deadline` (default: the `due` date), and the graded commit is the one frozen into
 `classroom-config/snapshots/<slug>.csv` (see
 [Release assignment → Deadlines](08-release-assignment-to-cohort.md#deadlines)). A blank sha
 there means nothing was pushed by the deadline, and that scores zero.
@@ -39,6 +39,8 @@ there means nothing was pushed by the deadline, and that scores zero.
 Nothing is written to any student repo. Auditors are never graded.
 
 ## 2. Add your marks (on top of / instead of autograde)
+
+Live example: [`example-course/cohort-org/grades/assignment-1.csv`](../../example-course/cohort-org/grades/assignment-1.csv).
 
 Edit `classroom-config/grades/<slug>.csv` (directly editing via web UI is fine; otherwise edit a local copy of the repo, commit & push)
 

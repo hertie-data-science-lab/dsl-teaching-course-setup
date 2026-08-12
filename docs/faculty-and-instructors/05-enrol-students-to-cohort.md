@@ -9,6 +9,8 @@ self-onboard via a Join issue - no by-hand invites.
 
 ## Steps
 
+Live example roster: [`example-course/cohort-org/students.csv`](../../example-course/cohort-org/students.csv).
+
 1. **Add the students to the roster.**
    - Edit `classroom-config/students.csv` in the **cohort** org
    - Editing directly via the web UI is fine, or edit the repo locally, commit & push
@@ -35,7 +37,7 @@ self-onboard via a Join issue - no by-hand invites.
    - **They must accept the
    org invite** before they can see anything - chase anyone stuck on *pending*.
 
-   > The cohort org's `welcome` repo is automatically seeded when the cohort org is [bootstrapped by the course org](docs/faculty-and-instructors/04-new-cohort-org.md#Steps).
+   > The cohort org's `welcome` repo is automatically seeded when the cohort org is [bootstrapped by the course org](04-new-cohort-org.md#steps).
 
    > **Testing the flow yourself?** A Join issue from an org owner/admin gets labelled `staff`
    > and stops (it would demote you). Use a non-staff account to test the student path.

@@ -35,12 +35,14 @@ Other inputs, all default **off**:
 - `include_solution` (also push the template's `solution`
 branch into each student repo)
 - `group` (one shared repo per **team** from `teams.csv` instead
-of one per student - see [Enrol students → groups](05-enrol-students-to-cohort.md#group-assignments-optional))
+of one per student - see [Enrol students → groups](05-enrol-students-to-cohort.md#group-assignments))
 - `dry_run` (list the repos that *would* be created).
 
 Auditors (`role=auditor`) are skipped. The assignment brief appears on the cohort site automatically.
 
 ## Group assignments: creating the teams
+
+Live example: [`example-course/cohort-org/teams.csv`](../../example-course/cohort-org/teams.csv).
 
 Teams must exist **before** you release with `group` ticked. Two ways to form them - both end
 up in `classroom-config/teams.csv` (`assignment, team, github_handle`), and **Sync membership**
@@ -51,7 +53,7 @@ turns each into a GitHub team on push:
   and name their team; the workflow writes the row for them (team size is capped).
 
 The release then grants each team its one shared repo. Full flow:
-[Enrol students → groups](05-enrol-students-to-cohort.md#group-assignments-optional).
+[Enrol students → groups](05-enrol-students-to-cohort.md#group-assignments).
 
 ## Deadlines
 
@@ -63,12 +65,11 @@ assignments:
   assignment-1:
     due: 2026-10-13               # the due date students see
     grading_deadline: 2026-10-15  # OPTIONAL, grading-only - snapshot + autograde fire here
-    grace_days: 2                 # LEGACY alternative: grading deadline = due + N days
 ```
 
 - **The date students see** (cohort site + the brief's "due" event) is `assignments[slug].due`
   (23:59 that day). Edit → commit → **Sync site**.
-- **The grading deadline** is `grading_deadline` if set, else `due + grace_days`, else `due` -
+- **The grading deadline** is `grading_deadline` if set, else `due` -
   there is **no deadline input** on the Grade assignment button. Set it to grade later than
   the date students were told, without changing that date.
 - **Autograding fires there, once.** At that moment the hourly cron freezes the snapshot and

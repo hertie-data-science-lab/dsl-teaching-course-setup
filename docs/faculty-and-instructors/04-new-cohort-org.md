@@ -11,6 +11,8 @@ cohort website, and the schedule that runs the term. Once each year; the
 
 ## Steps
 
+Live example of every file below: [`example-course/cohort-org/`](../../example-course/cohort-org).
+
 1. **Create the cohort org** in the web UI, named **`<course-name>-f/sYYYY`**
    (e.g. `DSL-Demo-f2026`). The `fYYYY`/`sYYYY` tag drives the semester label ("Fall 2026") and
    which year's `assignment-*` templates the site lists.
@@ -28,7 +30,7 @@ cohort website, and the schedule that runs the term. Once each year; the
 4. **Fill in `classroom-config/schedule.yml` for the whole term** (edit locally or in the web UI
    → commit to `main`). Its dates drive every release, the grading deadlines and the website.
    Full guide: [Schedule releases](06-schedule-releases.md); full schema:
-   [the schedule](required-input-schema.md#the-schedule).
+   [the schedule](required-input-schema.md#scheduleyml).
 
    ```yaml
    timezone: Europe/Berlin

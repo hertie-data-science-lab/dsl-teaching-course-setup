@@ -42,23 +42,18 @@ materials_releases:
   assignment-2-handout:
     when: 2026-09-29T14:00
     assignment: assignment-2-f2026
-  # grade actions fire after each deadline (faculty-side autograde):
-  assignment-1-grade:
-    when: 2026-10-14T00:00
-    grade: {template: assignment-1-f2026, deadline: 2026-10-13T23:59}
-  assignment-2-grade:
-    when: 2026-10-28T00:00
-    grade: {template: assignment-2-f2026, deadline: 2026-10-27T23:59}
-  project-grade:
-    when: 2026-11-16T00:00
-    grade: {template: assignment-4-project-f2026, deadline: 2026-11-15T23:59, group: true}
-
 semester_start: 2026-09-07
 semester_end: 2026-12-18
 
+# Autograding needs no entry here: at each assignment's grading deadline the hourly cron
+# freezes the submission snapshot and runs the autograder once (individual/group comes from
+# the template's own grading.yml).
 assignments:
-  assignment-1: {due: 2026-10-13T23:59}
-  assignment-2: {due: 2026-11-17T23:59}
+  assignment-1:
+    due: 2026-10-13               # what students see
+    grading_deadline: 2026-10-15  # optional grading pin - snapshot + autograde (default = due)
+  assignment-2: {due: 2026-10-27T23:59}
+  assignment-4-project: {due: 2026-11-15T23:59}
 
 exams:
   # a bare date is a whole-day entry (the website shows 09:00); give a full datetime when
