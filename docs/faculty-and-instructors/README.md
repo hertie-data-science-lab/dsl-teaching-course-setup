@@ -3,14 +3,7 @@
 Step-by-step runbooks for the faculty- and instructor-facing processes, end to end. Each is a
 button (GitHub Actions) plus, where noted, a `git push` of your own content.
 
-Not setting up a course? [`../START-HERE.md`](../START-HERE.md) routes TAs, faculty assistants
-(FAs) and admins to their own page, and defines the vocabulary used throughout.
-
-> **Read these first.** They are the **how/when**. The
-> [input schema](required-input-schema.md) is the **what** (column schemas, file layouts) - a
-> reference to reach for once you know the flow, not a starting point. Each step is also
-> self-documenting at the time of use: it generates READMEs and placeholders telling you what
-> comes next.
+> NB: all workflows can be automated at the start of the semester by correctly filling out the cohort org's `schedule.yml` for that semster. This will then automatically handle all release of materials / assignments / grades etc, with manual GH action buttons in the course org's `.github` repo for ad hoc runs of specific workflows. 
 
 ## The two tiers
 
