@@ -37,8 +37,9 @@ collaborator.
 Other inputs, all default **off**: 
 - `include_solution` (also push the template's `solution`
 branch into each student repo)
-- `group` (**force** one shared repo per **team** from `teams.csv`. A template scaffolded with
-`type` = `group` - i.e. its `grading.yml` says so - provisions per team without the tick;
+- `group` (**force** one shared repo per **team** from `teams.csv`. Normally unneeded: an
+assignment declared `type: group` - in the cohort's `schedule.yml` (`assignments.<slug>.type`,
+which wins) or the template's `grading.yml` (fallback) - provisions per team without the tick;
 see [Enrol students → groups](05-enrol-students-to-cohort.md#group-assignments))
 - `dry_run` (list the repos that *would* be created).
 

@@ -31,10 +31,11 @@ Live example: [`example-course/course-org/assignment-1-f2026/`](../example-cours
 3. **Run Refresh actions** so the assignment dropdowns update.
 
 Repeat for each assignment (`number` = 2, 3, …). A group project is the same flow with
-`type` = `group`: the choice is recorded in the solution branch's `grading.yml`, and both
-handout and grading then run per team automatically (the release/grade buttons' `group`
-checkbox only force-overrides a template that doesn't declare it). Change your mind later by
-editing `grading.yml`.
+`type` = `group`: the choice is recorded in the solution branch's `grading.yml` as the
+assignment's **design-time default**, and both handout and grading then run per team
+automatically. A cohort can override it without touching the template - set
+`assignments.<slug>.type` in its `classroom-config/schedule.yml`, which wins over
+`grading.yml` (the release/grade buttons' `group` checkbox remains a last-resort force).
 
 > **Deadlines aren't set here.** The due date students see is **per cohort**, in that cohort's `schedule.yml` - see [Release assignment → Deadlines](08-release-assignment-to-cohort.md#deadlines).
 

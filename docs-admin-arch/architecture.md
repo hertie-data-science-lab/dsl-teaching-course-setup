@@ -203,10 +203,12 @@ released sessions exist cohort-side; everything is idempotent, so re-releasing i
 (so a mid-term edit to the course template can't change what a cohort was handed), then generate
 one private `<slug>-<handle>` repo per onboarded, **enrolled** student from that frozen copy.
 Solutions live on the template's `solution` branch and are never shipped unless
-`include_solution` is ticked. Whether a release fans out per student or per team is the
-template's own declaration - `type: group` in its `grading.yml` - which handout, grading and
-the scheduler all read; the workflow's `group` checkbox only force-overrides a template that
-doesn't declare it.
+`include_solution` is ticked. Whether a release fans out per student or per team resolves the
+same way everywhere (`collect.assignment_is_group`): the cohort's
+`assignments.<slug>.type` in schedule.yml wins; else the template's own `grading.yml`
+`type:` (the design-time default the scaffold wrote); else individual. Read-side only - the
+cohort setting never writes back into the course org. The workflow's `group` checkbox
+remains a last-resort force-override.
 
 **Code** (`release_code`, rendered by `workflows_render.render_release_code`) copies one path -
 a subpackage folder or a single module - from the repo it is run in into a cohort repo, purely

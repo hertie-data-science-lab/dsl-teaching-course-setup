@@ -249,6 +249,7 @@ Per assignment (`assignments.<slug>`; only `due` is required - a minimal entry i
 | `due` | **yes** | - (entry dropped without it) | what students see; bare date = 23:59:59 |
 | `handout` | no | none - hand out manually | when repos are provisioned, automatic |
 | `grading_deadline` | no | `due` | snapshot freezes + autograder fires (once) |
+| `type` | no | the template's `grading.yml` `type:` (else individual) | `group` / `individual` - the cohort-level say on how handout + grading fan out |
 | `max_team_size` | no | 5 | group assignments: Join-team cap |
 
 ```yaml
@@ -263,6 +264,8 @@ assignments:                          # each assignment's WHOLE lifecycle, keyed
                                       # autograder fires (once). Default = due.
   assignment-4-project:
     due: 2026-11-27
+    type: group                       # optional: wins over the template's grading.yml;
+                                      # unset everywhere = individual
     max_team_size: 4                  # optional, group assignments: the welcome Join team
                                       # flow refuses members beyond this (default 5)
 exams:

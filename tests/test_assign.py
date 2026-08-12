@@ -76,7 +76,7 @@ def test_group_none_infers_per_team_from_the_templates_grading_yml(
     # group=None (the default - scheduler and untick'd button alike) asks the template's
     # own grading.yml: `type: group` provisions per TEAM without anyone force-ticking.
     monkeypatch.setattr(
-        "dsl_course.collect.template_is_group", lambda org, template: True
+        "dsl_course.collect.assignment_is_group", lambda org, cohort, template: True
     )
     monkeypatch.setattr(assign.teams, "load", lambda cohort_org: {"unused": {}})
     monkeypatch.setattr(
@@ -106,8 +106,10 @@ def test_group_false_forces_individual_even_for_a_group_template(
 ):
     # An explicit False never consults grading.yml - the caller decided.
     monkeypatch.setattr(
-        "dsl_course.collect.template_is_group",
-        lambda org, template: (_ for _ in ()).throw(AssertionError("must not be read")),
+        "dsl_course.collect.assignment_is_group",
+        lambda org, cohort, template: (_ for _ in ()).throw(
+            AssertionError("must not be read")
+        ),
     )
     path = _roster_file(tmp_path, "1,ada@uni.edu,Ada,ada-l,42,A,dsl-abc,enrolled")
     rc = assign.provision_all(

@@ -20,7 +20,8 @@ private `grades-<handle>` repo, never in their assignment repo.
 **once** - no `grade:` entry, no button press. Use the button only for a deliberate re-grade.
 
 Course `.github` → **Actions** → **Grade assignment**: `cohort_org`, `assignment`, plus `group`
-(a force-override - a template whose `grading.yml` says `type: group` grades per team anyway)
+(a force-override - an assignment declared `type: group` in the cohort's `schedule.yml` or the
+template's `grading.yml` grades per team anyway)
 and `dry_run` (both default **off**). It runs the hidden tests and writes into
 `classroom-config`:
 

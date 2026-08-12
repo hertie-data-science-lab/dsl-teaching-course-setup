@@ -21,10 +21,11 @@ Two blocks carry the whole term:
   to a `calendar_event` plus, optionally, `deploy` actions (copy a source path from a course
   repo → a cohort repo: materials, code, datasets).
 - **`assignments:`** - each assignment's **whole lifecycle in one block**, keyed by slug:
-  `handout` (when repos are provisioned - one per student, or per **team** when the
-  template's `grading.yml` says `type: group`), `due` (what students see),
-  `grading_deadline` (when it is snapshotted and autograded, once - see
-  [below](#deadline-snapshots-and-autograding)), and `max_team_size` (group assignments).
+  `handout` (when repos are provisioned), `due` (what students see), `grading_deadline`
+  (when it is snapshotted and autograded, once - see
+  [below](#deadline-snapshots-and-autograding)), `type` (`group` = per-team repos and
+  grading; wins over the template's `grading.yml`, which is the design-time fallback),
+  and `max_team_size` (group assignments).
 
 Nothing assignment-related needs a `materials_releases` entry (a legacy `assignment:` action
 there is still honoured).

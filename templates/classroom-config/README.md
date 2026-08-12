@@ -87,7 +87,8 @@ fill what you want; anything left out is synthesised or simply not scheduled. Mi
 the recommended shape: on a deploy only `source_repo` + `source_path` are required
 (`dest_repo` defaults to `materials`, `dest_path` mirrors `source_path`, ship time
 defaults to the `calendar_event`; paths are relative to their repo); on an assignment
-only `due` is.
+only `due` is - `type: group` here overrides the template's grading.yml when this cohort
+runs it differently.
 **Changing a date later** is just committing the edit to this file on main (GitHub web
 UI recommended, or clone/commit/push) - the hourly cron reads whatever is on main at
 each tick, so it takes effect within the hour. Already-fired one-shot actions don't
