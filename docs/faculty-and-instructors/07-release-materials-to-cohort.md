@@ -9,12 +9,12 @@ Open sessions up to a cohort, from any section of your materials repo (lectures,
 - A course [materials repo](02-add-materials-to-course.md) with the sessions you want to release.
 - A bootstrapped [cohort](04-new-cohort-org.md).
 
-## The schedule normally does this
+## The schedule normally does this (recommended)
 
 A `deploy` entry in the cohort's `schedule.yml` releases exactly what the button below does, at the datetime you give it: [Schedule releases](06-schedule-releases.md). 
 This is the recommended method for releasing materials, as it also creates an entry in the deployed `<course>.github.io` site, so students can clearly understand the course plan in advance.
 
-## Release materials (manual)
+## Release materials via manual dispatch
 
 In the course org, use either (1) the **materials repo's own** `Release materials` button (it knows that repo's sections and
 sessions), or (2) the **course org's`.github` repo's** `release materials` button 
