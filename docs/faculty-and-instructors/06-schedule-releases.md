@@ -4,30 +4,12 @@ Write the term's plan into the cohort's `classroom-config/schedule.yml` once, an
 cron runs the term for you - every materials release, every assignment hand-out, every
 autograde run.
 
-## Why schedule instead of clicking
-
-> The schedule (`materials_releases` in `schedule.yml`) is the primary release mechanism; the
-> manual release buttons are the fallback - for demos, one-offs, and recovery.
-
-The same file is the single source of truth (SSOT) for the dates the cohort website shows and
-the deadline the autograder pins to, so filling it in is not extra work - it is the work.
-
 ## Prerequisites
 
 - A bootstrapped [cohort](04-new-cohort-org.md) - *Bootstrap cohort* seeds both
   `classroom-config/schedule.yml` and the cron.
 - The course-org repos you'll name as sources: [materials](02-add-materials-to-course.md),
   [assignment templates](03-add-assignment-to-course.md), [code](10-release-code.md).
-
-## How it runs
-
-**Scheduled release** in the course org's control panel: an hourly cron (`0 * * * *`), seeded
-at bootstrap, running the scheduler with `--all-cohorts` over every registered cohort. There is
-no per-cohort wiring - registering the cohort *is* the wiring.
-
-- A `when:` time-of-day is honoured **to the hour** (GitHub's cron is UTC and best-effort).
-- A course org with **no cohorts registered yet** is a quiet no-op: a green run logging
-  `[skip] no cohorts registered`. That's normal for a freshly bootstrapped course, not an error.
 
 ## Write your term's plan
 
@@ -55,10 +37,7 @@ materials_releases:
     grade: {template: assignment-1-f2026}
 ```
 
-Full schema: [the schedule](required-input-schema.md#the-schedule). Two shorthands the schema
-doesn't spell out but the parser accepts: `deploy:` takes a **single mapping** as well as a
-list, and `grade:` takes a **bare template name** (`grade: assignment-1-f2026`) as well as the
-`{template, deadline, group}` mapping.
+Full schema: [the schedule](required-input-schema.md#the-schedule). 
 
 ## What happens on each tick
 
@@ -67,15 +46,22 @@ has gone by and isn't frozen yet (see below) - then **fire every due release**.
 
 ```mermaid
 flowchart TB
-  cron["Scheduled release - hourly cron"] --> parse["parse the cohort's schedule.yml<br/>(malformed entries already silently dropped)"]
-  parse --> p1["1 · freeze passed deadlines<br/>every assignment past due + grace_days"]
-  p1 --> snap{"snapshot CSV<br/>already written?"}
-  snap -- no --> freeze["write snapshots/&lt;slug&gt;.csv<br/>write-once - the pin never moves again"]
+  cron["Scheduled release - hourly cron"] --> parse["parse the cohort's schedule.yml"]
+  parse --> p1["1 · freeze passed deadlines
+every assignment past due + grace_days"]
+  p1 --> snap{"snapshot CSV
+already written?"}
+  snap -- no --> freeze["write snapshots/&lt;slug&gt;.csv
+write-once - the pin never moves again"]
   snap -- yes --> skip["skip"]
-  p1 --> p2["2 · fire EVERY release whose when has passed<br/>on every tick, forever - no released state"]
-  p2 --> dep["deploy → cheap<br/>nothing changed, nothing pushed"]
-  p2 --> asg["assignment → useful<br/>a late onboarder gets their repo next tick"]
-  p2 --> grd["grade → expensive<br/>full autograder re-run, every tick"]
+  p1 --> p2["2 · fire EVERY release whose when has passed
+on every tick, forever - no released state"]
+  p2 --> dep["deploy → cheap
+nothing changed, nothing pushed"]
+  p2 --> asg["assignment → useful
+a late onboarder gets their repo next tick"]
+  p2 --> grd["grade → expensive
+full autograder re-run, every tick"]
 ```
 
 **Every entry with a past `when` fires on every tick, forever** - there is no "already released"
