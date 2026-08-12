@@ -5,7 +5,7 @@ model. Who may run what is elsewhere - **[course-admin.md](course-admin.md)** (a
 buttons) and **[central-admin.md](central-admin.md)** (central DSL authority, plus bot
 setup/rotation). How the system is built: **[architecture.md](architecture.md)**. **Faculty &
 instructors delivering a course don't need this page** - see the
-[root README](../../README.md).
+[root README](../README.md).
 
 ## The bot account
 

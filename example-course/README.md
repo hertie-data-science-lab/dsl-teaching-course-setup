@@ -6,7 +6,7 @@ auto-release schedule. Deploy it as a live reference demo, or follow the same st
 your own course.
 
 Full input reference:
-[`DEPLOYMENT-CHECKLIST.md`](../docs/faculty-and-instructors/DEPLOYMENT-CHECKLIST.md).
+[`DEPLOYMENT-CHECKLIST.md`](../docs/DEPLOYMENT-CHECKLIST.md).
 
 > **This deploys its own sandbox.** Following these steps stands up a **separate** org pair
 > that you own and can break freely. It is **not** the live demo the runbooks link to (course org
@@ -53,7 +53,7 @@ example-course/
 ## Deploy it (≈20 min)
 
 Prereqs: the bot is an **owner** of both demo orgs and `DSL_BOT_TOKEN` (`repo` + `admin:org` +
-`workflow`) is set. See [Token](../docs/faculty-and-instructors/DEPLOYMENT-CHECKLIST.md#token).
+`workflow`) is set. See [Token](../docs/DEPLOYMENT-CHECKLIST.md#token).
 
 1. **Create** `Hertie-DSL-Demo` and `Hertie-DSL-Demo-f2026` in the web UI; add the bot as owner of
    each. *(The only manual step - there is no org-creation API.)*
@@ -82,8 +82,8 @@ Prereqs: the bot is an **owner** of both demo orgs and `DSL_BOT_TOKEN` (`repo` +
     its template's `grading.yml`), and each assignment autogrades once at its grading
     deadline. The display-only `project-clinic` entry deploys nothing - it just appears on
     the site's schedule. Use
-    **[Release materials](../docs/faculty-and-instructors/07-release-materials-to-cohort.md)** /
-    **[Release assignment](../docs/faculty-and-instructors/08-release-assignment-to-cohort.md)**
+    **[Release materials](../docs/07-release-materials-to-cohort.md)** /
+    **[Release assignment](../docs/08-release-assignment-to-cohort.md)**
     only to jump ahead of it for a demo.
 
 ## What this stands up

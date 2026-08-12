@@ -59,8 +59,8 @@ PAT expiry so rotation is forced.
 - Create the org by hand in the GitHub web UI (there is no org-creation API).
 - Invite the bot as an **Owner** and have it **accept** before Bootstrap runs - an unaccepted
   invite makes the run fail. Same for cohort orgs.
-- Walkthroughs: [01-new-course-org.md](../faculty-and-instructors/01-new-course-org.md) and
-  [04-new-cohort-org.md](../faculty-and-instructors/04-new-cohort-org.md).
+- Walkthroughs: [01-new-course-org.md](../docs/01-new-course-org.md) and
+  [04-new-cohort-org.md](../docs/04-new-cohort-org.md).
 
 ## Email
 
@@ -81,7 +81,7 @@ Entra app registration is pending.
 
 ## What orgs exist
 
-**[`inventory/course-orgs.md`](../../inventory/course-orgs.md)** is the live list. It is
+**[`inventory/course-orgs.md`](../inventory/course-orgs.md)** is the live list. It is
 auto-generated **Mondays 06:00 UTC** (and on demand) and opens a PR when the list changed. Don't
 hand-edit it - a missing org means a failed or never-run bootstrap, not a forgotten edit.
 

@@ -46,7 +46,7 @@ Auditors (`role=auditor`) are skipped. The assignment brief appears on the cohor
 
 ## Group assignments: creating the teams
 
-Live example: [`example-course/cohort-org/teams.csv`](../../example-course/cohort-org/teams.csv).
+Live example: [`example-course/cohort-org/teams.csv`](../example-course/cohort-org/teams.csv).
 
 Teams must exist **before** you release a group assignment. Two ways to form them - both end
 up in `classroom-config/teams.csv` (`assignment, team, github_handle`), and **Sync membership**

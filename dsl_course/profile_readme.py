@@ -148,7 +148,7 @@ receives releases from here.
 > **Faculty & instructors - start here:** run everything from the
 > **[`.github` Actions tab](https://github.com/{org}/.github/actions)**. New to the platform?
 > Follow the step-by-step
-> **[workflow runbooks](https://github.com/{CENTRAL}/blob/{CENTRAL_REF}/docs/faculty-and-instructors/README.md)**.
+> **[workflow runbooks](https://github.com/{CENTRAL}/blob/{CENTRAL_REF}/docs/README.md)**.
 > The sections below are a live index of this org's cohorts, repositories, and actions.
 
 _This page is auto-generated; edits will be overwritten on the next refresh._

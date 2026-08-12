@@ -9,7 +9,7 @@ self-onboard via a Join course issue - no by-hand invites.
 
 ## Steps
 
-Live example roster: [`example-course/cohort-org/students.csv`](../../example-course/cohort-org/students.csv).
+Live example roster: [`example-course/cohort-org/students.csv`](../example-course/cohort-org/students.csv).
 
 1. **Add the students to the roster.**
    - Edit `classroom-config/students.csv` in the **cohort** org
