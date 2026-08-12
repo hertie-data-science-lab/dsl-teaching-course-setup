@@ -91,7 +91,7 @@ auto-deployed cohort website (material links: enrolled + auditors only)`"]
 
 open-courseware site - hosts shared lectures + readings`"]
 
-  COURSE -->|"release"| COHORT
+  COURSE -->|"cohort release"| COHORT
   gh -.->|"Publish course website (opt-in)"| pub
 
   classDef public fill:#e6f4ea,stroke:#2e7d32,color:#1b5e20;
