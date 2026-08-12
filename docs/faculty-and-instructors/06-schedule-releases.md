@@ -13,6 +13,8 @@ autograde run.
 
 ## Write your term's plan
 
+Live example (a full term): [`example-course/cohort-org/schedule.yml`](../../example-course/cohort-org/schedule.yml).
+
 `materials_releases:` maps a free-form label to a `when` plus any mix of three actions:
 
 | Action | Does |
@@ -41,7 +43,7 @@ assignments:
 
 No `grade:` entry is needed: `assignment-1` is autograded once, at `2026-10-15T23:59:59`.
 
-Full schema: [the schedule](required-input-schema.md#the-schedule). 
+Full schema: [the schedule](required-input-schema.md#scheduleyml). 
 
 ## Verify your schedule before trusting it
 

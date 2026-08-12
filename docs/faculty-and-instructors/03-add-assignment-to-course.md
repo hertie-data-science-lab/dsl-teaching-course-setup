@@ -10,6 +10,8 @@ the model solution + autograder. One per assignment: `assignment-N-{f/s}YYYY`.
 
 ## Steps
 
+Live example: [`example-course/course-org/assignment-1-f2026/`](../../example-course/course-org/assignment-1-f2026).
+
 1. **Scaffold the template.** Course org → `.github` → **Actions** →
    [New assignment](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/new-assignment.yml),
    inputs `number` = `1`, `tag` = `f2026` → creates **`assignment-1-f2026`** with two branches

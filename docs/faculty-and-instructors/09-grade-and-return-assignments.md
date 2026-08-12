@@ -40,6 +40,8 @@ Nothing is written to any student repo. Auditors are never graded.
 
 ## 2. Add your marks (on top of / instead of autograde)
 
+Live example: [`example-course/cohort-org/grades/assignment-1.csv`](../../example-course/cohort-org/grades/assignment-1.csv).
+
 Edit `classroom-config/grades/<slug>.csv` (directly editing via web UI is fine; otherwise edit a local copy of the repo, commit & push)
 
 > **Where does the CSV come from?** Step 1 creates it. If you're not autograding, create it

@@ -6,14 +6,14 @@ output, then [every input file with a copyable example](#inputs-by-file). Worked
 
 ## Course setup (once)
 
-| # | Step | Level | Where | Input | Output |
+| | Step | Level | Where | Input | Output |
 |---|------|-------|-------|-------|--------|
-| 1 | `[required]` Create the course org | course | GitHub [web UI](https://github.com/account/organizations/new) | name `<course-name>-<CODE>` (no year); invite **`hertie-dsl-bot`** as **Owner** (must accept) | an empty org the bot can bootstrap |
-| 2 | `[required]` Bootstrap | course | [central repo → Actions → **Bootstrap Course Org**](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions/workflows/bootstrap-org.yml) | `org`, `org_name`, `course_code`; optional `admin` (your handle) | the `.github` control panel with every button, the `course-admin` team, [`dsl-course.yml`](#dsl-courseyml), `DSL_BOT_TOKEN` set for you |
-| 3 | `[required]` Materials | course | course `.github` → **New materials repo**, then `git push` | `tag` (e.g. `f2026`); then your content ([layout](#materials-repo)) | `course-materials-<tag>` with run-from-repo Release buttons |
-| 4 | `[required]` Assignment(s) | course | course `.github` → **New assignment**, then `git push` | `number` + `tag`; brief + starter on `main`, optional autograding on `solution` ([layout](#assignment-template)) | one `assignment-N-<tag>` template each |
-| 5 | *(optional)* Course admins | course | edit [`dsl-course.yml`](#dsl-courseyml), commit to `main` | GitHub handles | admin on the course org + every cohort, reconciled |
-| 6 | `[required]` Refresh | course | course `.github` → **Refresh actions** | none | dropdowns populated, secrets on content repos |
+| `[required]` | 1. Create the course org | course | GitHub [web UI](https://github.com/account/organizations/new) | name `<course-name>-<CODE>` (no year); invite **`hertie-dsl-bot`** as **Owner** (must accept) | an empty org the bot can bootstrap |
+| `[required]` | 2. Bootstrap | course | [central repo → Actions → **Bootstrap Course Org**](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions/workflows/bootstrap-org.yml) | `org`, `org_name`, `course_code`; optional `admin` (your handle) | the `.github` control panel with every button, the `course-admin` team, [`dsl-course.yml`](#dsl-courseyml), `DSL_BOT_TOKEN` set for you |
+| `[required]` | 3. Materials | course | course `.github` → **New materials repo**, then `git push` | `tag` (e.g. `f2026`); then your content ([layout](#materials-repo)) | `course-materials-<tag>` with run-from-repo Release buttons |
+| `[required]` | 4. Assignment(s) | course | course `.github` → **New assignment**, then `git push` | `number` + `tag`; brief + starter on `main`, optional autograding on `solution` ([layout](#assignment-template)) | one `assignment-N-<tag>` template each |
+| *(optional)* | 5. Course admins | course | edit [`dsl-course.yml`](#dsl-courseyml), commit to `main` | GitHub handles | admin on the course org + every cohort, reconciled |
+| `[required]` | 6. Refresh | course | course `.github` → **Refresh actions** | none | dropdowns populated, secrets on content repos |
 
 Email needs nothing from you: enrolment-code + grade emails send through a centrally
 configured mailbox ([details](../admin/central-admin.md#email)). Where it isn't live yet,
@@ -21,17 +21,17 @@ sends stay previews and enrolment codes still land in `students.csv`.
 
 ## Cohort setup (per year)
 
-| # | Step | Level | Where | Input | Output |
+| | Step | Level | Where | Input | Output |
 |---|------|-------|-------|-------|--------|
-| 1 | `[required]` Create the cohort org | cohort | GitHub [web UI](https://github.com/account/organizations/new) | name `<course-name>-f/sYYYY`; invite **`hertie-dsl-bot`** as **Owner** (must accept) | an empty org the bot can bootstrap |
-| 2 | `[required]` Bootstrap | course → cohort | course `.github` → **Bootstrap cohort** | `cohort_org` | `welcome` (Join issues) + `classroom-config` (all the files below), `students`/`auditors` teams, the cohort site, cohort registered with the cron |
-| 3 | `[do this first]` The term plan | cohort | edit [`classroom-config/schedule.yml`](#scheduleyml) | releases, due dates, exams | the hourly cron runs the whole term; site dates; grading deadlines |
-| 4 | `[required]` Roster | cohort | edit [`classroom-config/students.csv`](#studentscsv) | registrar rows | the enrolment + provisioning source of truth |
-| 5 | *(optional)* Teaching team | cohort | edit [`classroom-config/people.yml`](#peopleyml) | handles (+ card fields) | push access for this cohort's instructors/TAs + site cards |
-| 6 | `[required]` Enrol | course button, per cohort | course `.github` → **Send enrolment codes** (untick `dry_run`) | `cohort_org` | codes written to the roster + emailed; students join via the `welcome` **Join** issue |
-| 7 | *(optional)* Ad-hoc release | course button, per cohort | **Release materials** / **Release assignment** | see [07](07-release-materials-to-cohort.md)/[08](08-release-assignment-to-cohort.md) | anything out earlier/differently than the schedule says |
-| 8 | *(optional)* Return marks | course buttons + [`grades/<slug>.csv`](#gradesslugcsv) | the [grading runbook](09-grade-and-return-assignments.md) | your marks | private per-student gradebooks |
-| 9 | *(optional)* Show status | course button, per cohort | course `.github` → **Show status** | `cohort_org` | what's configured, what's missing, an edit link per gap |
+| `[required]` | 1. Create the cohort org | cohort | GitHub [web UI](https://github.com/account/organizations/new) | name `<course-name>-f/sYYYY`; invite **`hertie-dsl-bot`** as **Owner** (must accept) | an empty org the bot can bootstrap |
+| `[required]` | 2. Bootstrap | course → cohort | course `.github` → **Bootstrap cohort** | `cohort_org` | `welcome` (Join issues) + `classroom-config` (all the files below), `students`/`auditors` teams, the cohort site, cohort registered with the cron |
+| `[do this first]` | 3. The term plan | cohort | edit [`classroom-config/schedule.yml`](#scheduleyml) | releases, due dates, exams | the hourly cron runs the whole term; site dates; grading deadlines |
+| `[required]` | 4. Roster | cohort | edit [`classroom-config/students.csv`](#studentscsv) | registrar rows | the enrolment + provisioning source of truth |
+| *(optional)* | 5. Teaching team | cohort | edit [`classroom-config/people.yml`](#peopleyml) | handles (+ card fields) | push access for this cohort's instructors/TAs + site cards |
+| `[required]` | 6. Enrol | course button, per cohort | course `.github` → **Send enrolment codes** (untick `dry_run`) | `cohort_org` | codes written to the roster + emailed; students join via the `welcome` **Join** issue |
+| *(optional)* | 7. Ad-hoc release | course button, per cohort | **Release materials** / **Release assignment** | see [07](07-release-materials-to-cohort.md)/[08](08-release-assignment-to-cohort.md) | anything out earlier/differently than the schedule says |
+| *(optional)* | 8. Return marks | course buttons + [`grades/<slug>.csv`](#gradesslugcsv) | the [grading runbook](09-grade-and-return-assignments.md) | your marks | private per-student gradebooks |
+| *(optional)* | 9. Show status | course button, per cohort | course `.github` → **Show status** | `cohort_org` | what's configured, what's missing, an edit link per gap |
 
 ## Inputs by file
 

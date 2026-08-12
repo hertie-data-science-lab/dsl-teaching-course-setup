@@ -55,4 +55,5 @@ code repo itself** - go to that repo → **Actions** → **Release code**:
 ---
 **Demo:** `lecture-code-f2026/mlpkg` in [`DSL-Demo-Course-E1234`](https://github.com/DSL-Demo-Course-E1234),
 released into [`DSL-Demo-f2026`](https://github.com/DSL-Demo-f2026). The worked plan is
-`example-course/cohort-org/schedule.yml`.
+[`example-course/cohort-org/schedule.yml`](../../example-course/cohort-org/schedule.yml),
+and the package itself is [`example-course/course-org/lecture-code-f2026/mlpkg/`](../../example-course/course-org/lecture-code-f2026/mlpkg).

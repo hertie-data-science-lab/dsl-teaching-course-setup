@@ -35,12 +35,14 @@ Other inputs, all default **off**:
 - `include_solution` (also push the template's `solution`
 branch into each student repo)
 - `group` (one shared repo per **team** from `teams.csv` instead
-of one per student - see [Enrol students → groups](05-enrol-students-to-cohort.md#group-assignments-optional))
+of one per student - see [Enrol students → groups](05-enrol-students-to-cohort.md#group-assignments))
 - `dry_run` (list the repos that *would* be created).
 
 Auditors (`role=auditor`) are skipped. The assignment brief appears on the cohort site automatically.
 
 ## Group assignments: creating the teams
+
+Live example: [`example-course/cohort-org/teams.csv`](../../example-course/cohort-org/teams.csv).
 
 Teams must exist **before** you release with `group` ticked. Two ways to form them - both end
 up in `classroom-config/teams.csv` (`assignment, team, github_handle`), and **Sync membership**
@@ -51,7 +53,7 @@ turns each into a GitHub team on push:
   and name their team; the workflow writes the row for them (team size is capped).
 
 The release then grants each team its one shared repo. Full flow:
-[Enrol students → groups](05-enrol-students-to-cohort.md#group-assignments-optional).
+[Enrol students → groups](05-enrol-students-to-cohort.md#group-assignments).
 
 ## Deadlines
 
