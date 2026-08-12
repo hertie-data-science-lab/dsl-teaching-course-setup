@@ -2,17 +2,10 @@
 
 A complete, ready-to-deploy **dummy course**: materials, a growing lecture package, three
 assignments (one group project), a roster with an auditor, instructor/TA cards, and a full term's
-auto-release schedule. Deploy it as a live reference demo, or follow the same steps to stand up
-your own course.
+auto-release schedule. Follow the same steps to stand up your own course.
 
 Full input reference:
 [`DEPLOYMENT-CHECKLIST.md`](../docs/DEPLOYMENT-CHECKLIST.md).
-
-> **This deploys its own sandbox.** Following these steps stands up a **separate** org pair
-> that you own and can break freely. It is **not** the live demo the runbooks link to (course org
-> [`DSL-Demo-Course-E1234`](https://github.com/DSL-Demo-Course-E1234), cohort
-> [`DSL-Demo-f2026`](https://github.com/DSL-Demo-f2026)) - that one runs a fuller variant of the
-> same shape (10 sessions with labs, three assignments, two cohorts). Don't deploy into it.
 
 ## The demo orgs
 
@@ -20,7 +13,7 @@ Names used below - create them yourself; nothing here writes to the live demo pa
 
 | Tier | Org | Role |
 |------|-----|------|
-| Course | **`Hertie-DSL-Demo`** | persistent control panel - materials, assignment templates, the buttons |
+| Course | **`Hertie-DSL-Demo C11`** | persistent control panel - materials, assignment templates, the buttons |
 | Cohort | **`Hertie-DSL-Demo-f2026`** | student-facing target - welcome, roster, released materials, the site |
 
 ## What's in this dataset
