@@ -47,36 +47,36 @@ Two org tiers:
 ```mermaid
 flowchart TB
   subgraph COURSE["COURSE org — e.g. DSL-Demo-Course-E1234 (persistent)"]
-    mat["<strong>course-materials-f2026</strong>
+    mat["`**course-materials-f2026**
 
-lectures/01_.../ + readings/01_.../ (+ syllabus, README)"]
-    tmpl["<strong>assignment-1-f2026</strong>
+lectures/01_.../ + readings/01_.../ (+ syllabus, README)`"]
+    tmpl["`**assignment-1-f2026**
 
-... · template repos (+ optional autograder)"]
-    gh["<strong>.github</strong>
+... · template repos (+ optional autograder)`"]
+    gh["`**.github**
 
-· profile (auto) + faculty & instructors buttons + cohort registry"]
+· profile (auto) + faculty & instructors buttons + cohort registry`"]
   end
 
   subgraph COHORT["COHORT org — e.g. Deep-Learning-f2026 (per-year)"]
-    welcome["<strong>welcome</strong>
+    welcome["`**welcome**
 
-Join issue → onboard.yml"]
-    cfg["<strong>classroom-config</strong>
+Join issue → onboard.yml`"]
+    cfg["`**classroom-config**
 
-student-list, teams, schedule, grades, deadlines"]
-    cmat["<strong>materials</strong>
+student-list, teams, schedule, grades, deadlines`"]
+    cmat["`**materials**
 
-released lectures/readings (students + auditors read)"]
-    repos["<strong>assignments</strong>
+released lectures/readings (students + auditors read)`"]
+    repos["`**assignments**
 
-one private repo per student (generated; autograder rides along)"]
-    team["<strong>teams</strong>
+one private repo per student (generated; autograder rides along)`"]
+    team["`**teams**
 
-student (& auditor) groups"]
+student (& auditor) groups`"]
   end
 
-  pub["&lt;course-org&gt;.github.io · open-courseware site - hosts shared lectures + readings"]
+  pub["`<course-org>.github.io · open-courseware site - hosts shared lectures + readings`"]
 
   COURSE -->|"release"| COHORT
   gh -.->|"Publish course website (opt-in)"| pub

@@ -26,15 +26,15 @@ repos on the Free plan), so rotating the token is a per-org operation, not one e
 
 ```mermaid
 flowchart TD
-  A["1 · Create hertie-dsl-bot
-own email + 2FA"] --> B["2 · Mint classic PAT
-repo + admin:org + workflow"]
-  B --> C["3 · Invite bot as Owner of each course/cohort org
-+ MEMBER of hertie-data-science-lab (bot accepts)"]
-  C --> D["4 · Set DSL_BOT_TOKEN = bot PAT
-in the CENTRAL repo (UI)"]
-  D --> E["5 · Run Bootstrap (+ Refresh) per org
-→ propagates the token"]
+  A["`1 · Create hertie-dsl-bot
+own email + 2FA`"] --> B["`2 · Mint classic PAT
+repo + admin:org + workflow`"]
+  B --> C["`3 · Invite bot as Owner of each course/cohort org
++ MEMBER of hertie-data-science-lab (bot accepts)`"]
+  C --> D["`4 · Set DSL_BOT_TOKEN = bot PAT
+in the CENTRAL repo (UI)`"]
+  D --> E["`5 · Run Bootstrap (+ Refresh) per org
+→ propagates the token`"]
   E --> F["6 · Verify green + bot-attributed"]
 ```
 

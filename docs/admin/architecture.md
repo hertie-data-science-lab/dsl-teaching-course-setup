@@ -30,31 +30,31 @@ Owner; everything after that is a button.
 ```mermaid
 flowchart TB
   subgraph central["hertie-data-science-lab (central)"]
-    repo["dsl-teaching-course-setup
-code + Bootstrap action"]
+    repo["`dsl-teaching-course-setup
+code + Bootstrap action`"]
     sec["DSL_BOT_TOKEN secret"]
   end
-  bot(["hertie-dsl-bot
-service account · Owner of every org"])
+  bot(["`hertie-dsl-bot
+service account · Owner of every org`"])
   subgraph course["COURSE org — persistent"]
-    cg[".github
-profile + faculty & instructors buttons + cohort registry"]
-    mat["course-materials-fYYYY
-lectures/ + readings/"]
-    asg["assignment-N-fYYYY
-is_template: main + solution branch"]
+    cg["`.github
+profile + faculty & instructors buttons + cohort registry`"]
+    mat["`course-materials-fYYYY
+lectures/ + readings/`"]
+    asg["`assignment-N-fYYYY
+is_template: main + solution branch`"]
   end
   subgraph cohort["COHORT org — per year"]
-    wel["welcome
-Join issue → onboard"]
-    ros["classroom-config
-roster, teams, grades, snapshots, schedule, people"]
-    cmat["materials
-released lectures/readings"]
-    stu["slug-handle
-one private repo per student"]
-    site["org.github.io
-auto-deployed website"]
+    wel["`welcome
+Join issue → onboard`"]
+    ros["`classroom-config
+roster, teams, grades, snapshots, schedule, people`"]
+    cmat["`materials
+released lectures/readings`"]
+    stu["`slug-handle
+one private repo per student`"]
+    site["`org.github.io
+auto-deployed website`"]
   end
   repo -->|"Bootstrap Course Org"| course
   cg -->|"Bootstrap cohort"| cohort
@@ -78,25 +78,25 @@ hand-edit per-org secrets.
 
 ```mermaid
 flowchart TD
-  src["central repo secret
+  src["`central repo secret
 DSL_BOT_TOKEN = bot PAT
-(set once, by hand)"]
-  src -->|"Bootstrap Course Org
---propagate-secret"| orgsec["each org's DSL_BOT_TOKEN
+(set once, by hand)`"]
+  src -->|"`Bootstrap Course Org
+--propagate-secret`"| orgsec["`each org's DSL_BOT_TOKEN
 ORG secret
-visibility = selected → .github (+ welcome, classroom-config)"]
-  src -->|"Bootstrap, same run"| infrasec["REPO secret on each
+visibility = selected → .github (+ welcome, classroom-config)`"]
+  src -->|"Bootstrap, same run"| infrasec["`REPO secret on each
 PRIVATE infra repo
-classroom-config"]
-  src -->|"Refresh actions"| reposec["REPO secret on each
+classroom-config`"]
+  src -->|"Refresh actions"| reposec["`REPO secret on each
 private content repo
-materials-* (not assignment-*)"]
-  orgsec --> pub["public .github / welcome
-workflows authenticate"]
-  infrasec --> disp["classroom-config's
-dispatch workflows authenticate"]
-  reposec --> priv["run-from-repo buttons in
-private content repos"]
+materials-* (not assignment-*)`"]
+  orgsec --> pub["`public .github / welcome
+workflows authenticate`"]
+  infrasec --> disp["`classroom-config's
+dispatch workflows authenticate`"]
+  reposec --> priv["`run-from-repo buttons in
+private content repos`"]
 ```
 
 Why three paths, and why `selected` visibility:
@@ -126,16 +126,16 @@ Two **separate** gates - do not conflate them.
 ```mermaid
 flowchart TD
   subgraph prov["1 · Provision orgs (DSL-wide)"]
-    ct["hertie-data-science-lab
-faculty / admin teams"] -->|"write/admin on"| cr["central repo"] --> ba["run Bootstrap Course Org"]
+    ct["`hertie-data-science-lab
+faculty / admin teams`"] -->|"write/admin on"| cr["central repo"] --> ba["run Bootstrap Course Org"]
   end
   subgraph run["2 · Run a course's buttons (per-course)"]
-    ca["course org people: → course-admin
-(course-wide, admin)"] -->|"mirrored to"| gh["course org .github
-+ every cohort org"]
-    it["cohort people.yml → instructors-&lt;tag&gt;
-(per-cohort, push)"] -->|"granted on"| ghtag["course org .github
-+ that tag's own content repos"]
+    ca["`course org people: → course-admin
+(course-wide, admin)`"] -->|"mirrored to"| gh["`course org .github
++ every cohort org`"]
+    it["`cohort people.yml → instructors-<tag>
+(per-cohort, push)`"] -->|"granted on"| ghtag["`course org .github
++ that tag's own content repos`"]
     gh --> rb["run Release / Refresh / Sync membership / ..."]
     ghtag --> rb
   end

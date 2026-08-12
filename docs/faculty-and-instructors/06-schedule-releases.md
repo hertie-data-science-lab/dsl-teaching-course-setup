@@ -84,21 +84,21 @@ has gone by and isn't frozen yet (see below) - then **fire every due release**.
 ```mermaid
 flowchart TB
   cron["Scheduled release - hourly cron"] --> parse["parse the cohort's schedule.yml"]
-  parse --> p1["1 · freeze passed deadlines
-every assignment past due + grace_days"]
-  p1 --> snap{"snapshot CSV
-already written?"}
-  snap -- no --> freeze["write snapshots/&lt;slug&gt;.csv
-write-once - the pin never moves again"]
+  parse --> p1["`1 · freeze passed deadlines
+every assignment past due + grace_days`"]
+  p1 --> snap{"`snapshot CSV
+already written?`"}
+  snap -- no --> freeze["`write snapshots/<slug>.csv
+write-once - the pin never moves again`"]
   snap -- yes --> skip["skip"]
-  p1 --> p2["2 · fire EVERY release whose when has passed
-on every tick, forever - no released state"]
-  p2 --> dep["deploy → cheap
-nothing changed, nothing pushed"]
-  p2 --> asg["assignment → useful
-a late onboarder gets their repo next tick"]
-  p2 --> grd["grade → expensive
-full autograder re-run, every tick"]
+  p1 --> p2["`2 · fire EVERY release whose when has passed
+on every tick, forever - no released state`"]
+  p2 --> dep["`deploy → cheap
+nothing changed, nothing pushed`"]
+  p2 --> asg["`assignment → useful
+a late onboarder gets their repo next tick`"]
+  p2 --> grd["`grade → expensive
+full autograder re-run, every tick`"]
 ```
 
 ---

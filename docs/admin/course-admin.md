@@ -44,21 +44,21 @@ membership run, which removes anyone the config doesn't name. Edit the file inst
 
 ```mermaid
 flowchart LR
-  dcy["COURSE org · .github/dsl-course.yml
-people: course_admins"] -->|Sync membership| ca["course-admin team (course org)
-admin on .github → every button, all cohorts"]
-  ca -->|mirrored down| cca["course-admin team
-(every cohort org)"]
-  py["COHORT org · classroom-config/people.yml
-instructors + teaching_assistants"] -->|Sync membership| ci["instructors team (cohort org)
-classroom-config + welcome"]
-  py -->|synced upward| itag["instructors-&lt;tag&gt; team (course org)
-push on that tag's repos + .github → the buttons"]
+  dcy["`COURSE org · .github/dsl-course.yml
+people: course_admins`"] -->|Sync membership| ca["`course-admin team (course org)
+admin on .github → every button, all cohorts`"]
+  ca -->|mirrored down| cca["`course-admin team
+(every cohort org)`"]
+  py["`COHORT org · classroom-config/people.yml
+instructors + teaching_assistants`"] -->|Sync membership| ci["`instructors team (cohort org)
+classroom-config + welcome`"]
+  py -->|synced upward| itag["`instructors-<tag> team (course org)
+push on that tag's repos + .github → the buttons`"]
   ui["GitHub Teams UI (hand-add)"] -.->|reverted on next sync| ca
   ui -.->|reverted on next sync| ci
   ui -.->|reverted on next sync| itag
-  ui -->|sticks - manual only| gen["generic instructors team (course org)
-escape hatch: invisible to config & Show status"]
+  ui -->|sticks - manual only| gen["`generic instructors team (course org)
+escape hatch: invisible to config & Show status`"]
 ```
 
 New members accept a one-time org invite (membership shows `pending` until they do), then the
