@@ -45,6 +45,24 @@ see [Enrol students → groups](05-enrol-students-to-cohort.md#group-assignments
 
 Auditors (`role=auditor`) are skipped. The assignment brief appears on the cohort site automatically.
 
+## Group or individual? How it's decided
+
+One resolution, used identically by handout (scheduled and manual) and grading:
+
+1. **The cohort's `schedule.yml`** - `assignments.<slug>.type: group | individual` - wins.
+   This is the cohort-level say: the same template can even run group one year and
+   individual the next, without touching the template.
+2. Else **the template's `grading.yml`** (`type:` on its `solution` branch) - the
+   design-time default, written by the **New assignment** button's `type` input.
+3. Else **individual**.
+
+`group` = one shared repo per team from `teams.csv` (repo `<slug>-<team>`, every member a
+collaborator), graded per team into each member's `team`/`team_grade` columns.
+`individual` = one private repo per onboarded, enrolled student (`<slug>-<handle>`),
+graded into `auto`. The resolution is read-side only - a cohort's declaration never
+writes back into the course org - and the release/grade buttons' `group` checkbox is a
+last-resort force-override for a template that declares nothing.
+
 ## Group assignments: creating the teams
 
 Live example: [`example-course/cohort-org/teams.csv`](../example-course/cohort-org/teams.csv).
