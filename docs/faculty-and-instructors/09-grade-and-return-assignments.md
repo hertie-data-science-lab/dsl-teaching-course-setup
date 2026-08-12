@@ -31,7 +31,9 @@ Nothing is written to any student repo. Auditors are never graded.
 
 Edit `classroom-config/grades/<slug>.csv` (directly editing via web UI is fine; otherwise edit a local copy of the repo, commit & push)
 
-> NB: autograding via `Grade assignments` workflow already creates `classroom-config/grades/<slug>.csv` to edit; otherwise you will need to create your own??? OR is there a scaffold already there?????
+> **Where does the CSV come from?** Step 1 creates it. If you're not autograding, create it
+> yourself: `classroom-config/grades/<slug>.csv` (the folder is seeded empty), with the header
+> row below and one row per student handle. Any column you leave out is treated as blank.
 
 | Column | You fill? | The student sees it? | What it's for |
 |--------|-----------|----------------------|---------------|
@@ -55,24 +57,39 @@ Edit `classroom-config/grades/<slug>.csv` (directly editing via web UI is fine; 
 - Values stay as you type them - a letter, a percentage, `+4` - nothing is coerced or rounded.
 
 ## 3. Sync gradebooks
-- IS THIS A WORKFLOW TO BE RUN? IF SO GIVE DIRECTIONS
-- Gives every onboarded, enrolled student a private `grades-<handle>` repo.
-- Re-run after late enrolments.
-- `dry_run` defaults **off**.
+
+Course `.github` → **Actions** → **Sync gradebooks**: pick `cohort_org`, plus `dry_run`
+(defaults **off**).
+
+- Gives every onboarded, enrolled student a **private** `grades-<handle>` repo, with that
+  student added as a read-only collaborator. Auditors get none.
+- Idempotent - re-run after late enrolments.
 
 ## 4. Render grades (preview)
-- IS THIS A WORKFLOW TO BE RUN? IF SO GIVE DIRECTIONS
+
+Course `.github` → **Actions** → **Render grades (preview)**: pick `cohort_org`. No other
+inputs - it never sends anything.
+
 - Opens **one** PR in `classroom-config` (branch `grades-update`, "Grades: review before
-distribution") with a `gradebook/<handle>.yml` per student.
-- **That diff is the preview.**
-  - Only `final`, `comments` and the group fields cross over into the students' (what????)
-  - `auto`/`manual` never do.
-  - It also regenerates the faculty-only `cohort-gradebook.csv` at the repo root.
-  - CHECK ACTUAL CODE THAT ALL OF THIS IS CORRECTLY SETUP TO BE PRIVATE / PUBLIC ETC
+  distribution") holding a `gradebook/<handle>.yml` per student - what that student will
+  receive in step 5.
+- **That diff is the preview.** Only `final`, `comments` and, for group work, `team`,
+  `team_grade`, that member's own `adjustment` and `team_comments` are copied into a student's
+  file. `auto` and `manual` never are.
+- It also regenerates `cohort-gradebook.csv` at the repo root - a wide all-students view for
+  you, which stays in `classroom-config` and is never distributed.
 - Review, then **merge**. Nothing reaches a student until you do.
 
+> **Everything here is private.** `classroom-config` and every `grades-<handle>` repo are
+> private; a student is a read-only collaborator on their own gradebook repo and has no access
+> to `classroom-config`, so they can't see the source CSVs, the preview PR, or anyone else's
+> marks.
+
 ## 5. Distribute grades
-- IS THIS A WORKFLOW TO BE RUN? IF SO GIVE DIRECTIONS
+
+Course `.github` → **Actions** → **Distribute grades**: pick `cohort_org`, plus `dry_run` and
+`silent`. Run it **after merging step 4's PR** - it distributes what was merged.
+
 Copies each merged gradebook to `grades-<handle>/grades.yml` and emails the student a "your grades have been updated" link (no marks in the email). 
 
 > *NB: the automated email functionality is configured centrally by the DSL team; if/when it isn't live, the grades still reach each student's repo, but no email notification will be dispatched.
@@ -85,8 +102,11 @@ Copies each merged gradebook to `grades-<handle>/grades.yml` and emails the stud
 - Repeat 1-5 per assignment as deadlines pass. A `grade:` entry in the schedule runs step 1 for
   you - [Schedule releases](06-schedule-releases.md).
 
-  > ⚠️ A `grade:` entry re-runs **every hour** once its `when` has passed - the full autograder,
-  > every student, every tick. Remove it from the plan once the assignment is marked. WHAT DOES THIS MEAN???? CAN WE REMOVE THIS? DO THEY REALLY NEED TO REMOVE IT?? CAN THEY NOT JUST FIRE ONCE OR SOEMTHING? ??
+  > A `grade:` entry keeps re-running each hour after its `when`. Scores don't drift - the
+  > graded commit is pinned to the deadline snapshot - but it re-runs the tests every tick, and
+  > it rewrites the `auto` column, so **anything you hand-edit in `auto` gets overwritten**
+  > (put corrections in `manual` or `final` instead). Once an assignment is marked, delete its
+  > `grade:` entry from `schedule.yml` to stop it.
 
 ---
 **Demo:** per-student `grades-<handle>` repos in [`DSL-Demo-f2026`](https://github.com/DSL-Demo-f2026).
