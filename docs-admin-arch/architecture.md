@@ -203,10 +203,12 @@ released sessions exist cohort-side; everything is idempotent, so re-releasing i
 (so a mid-term edit to the course template can't change what a cohort was handed), then generate
 one private `<slug>-<handle>` repo per onboarded, **enrolled** student from that frozen copy.
 Solutions live on the template's `solution` branch and are never shipped unless
-`include_solution` is ticked. Whether a release fans out per student or per team is the
-template's own declaration - `type: group` in its `grading.yml` - which handout, grading and
-the scheduler all read; the workflow's `group` checkbox only force-overrides a template that
-doesn't declare it.
+`include_solution` is ticked. Whether a release fans out per student or per team resolves the
+same way everywhere (`collect.assignment_is_group`): the cohort's
+`assignments.<slug>.type` in schedule.yml wins; else the template's own `grading.yml`
+`type:` (the design-time default the scaffold wrote); else individual. Read-side only - the
+cohort setting never writes back into the course org. The workflow's `group` checkbox
+remains a last-resort force-override.
 
 **Code** (`release_code`, rendered by `workflows_render.render_release_code`) copies one path -
 a subpackage folder or a single module - from the repo it is run in into a cohort repo, purely
@@ -252,7 +254,7 @@ flowchart LR
   St["Student: Join team issue"] -->|"append row"| CSV["teams.csv (SSOT)"]
   Fac["Faculty & instructors edit"] -->|"append / edit row"| CSV
   CSV -->|"Sync membership (sync_teams)"| GT["GitHub Team per assignment-team"]
-  CSV -->|"Release assignment --group"| RP["one shared repo per team, granted to that team"]
+  CSV -->|"Release assignment (type: group)"| RP["one shared repo per team, granted to that team"]
 ```
 
 `sync_teams` materialises a GitHub Team `<assignment>-<team>` from the CSV - **one-way and
@@ -276,16 +278,16 @@ the course org (which installs the cron) and bootstrapping its first cohort.
 Each hourly tick:
 
 1. **Freezes passed deadlines** - for every assignment in `assignments:` whose grading deadline
-   (`grading_deadline`, else `due`) has passed and has no snapshot yet, records the
+   (`grading_datetime`, else `due_datetime`) has passed and has no snapshot yet, records the
    commit each submission repo is at into `classroom-config/snapshots/<slug>.csv`
    (`repo,sha,recorded_at`).
 2. **Autogrades those same assignments, once each** - template `<slug>-<tag>` in the course org,
    skipped gracefully when there is no such repo, no `solution` branch, or `autograde: false`.
    The fire-once marker is the `autograde/<slug>/` results directory: present means graded, so
-   never again (a re-grade means deleting it). No `grade:` entry is needed.
+   never again (a re-grade means deleting it).
 3. **Fires every action whose time has arrived** (a deploy's `deploy_datetime`, else its
-   entry's `calendar_event`) - `deploy` (copy a course-org path into a cohort repo) and
-   assignment handouts (`assignments.<slug>.handout`, synthesised into releases; per team
+   entry's `event_datetime`) - `deploy` (copy a course-org path into a cohort repo) and
+   assignment handouts (`assignments.<slug>.handout_datetime`, synthesised into releases; per team
    when the template's grading.yml says `type: group`). An entry with no actions is a
    display-only calendar event for the site.
 

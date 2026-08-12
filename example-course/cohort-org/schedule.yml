@@ -1,5 +1,5 @@
 # Worked example - the DSL-Demo-f2026 cohort's schedule + auto-release plan, in one file
-# (classroom-config/schedule.yml). Each materials_releases entry is a `calendar_event` (when
+# (classroom-config/schedule.yml). Each materials_releases entry is a `event_datetime` (when
 # the thing happens - what the site's schedule shows); the hourly cron fires its actions at
 # that moment, except deploys carrying their own `deploy_datetime`. Sources are read from the COURSE org;
 # destinations written to this COHORT org. Full schema:
@@ -15,10 +15,10 @@ timezone: Europe/Berlin
 materials_releases:
   # Deploys are MINIMAL where the defaults fit: only source_repo + source_path are
   # required; dest_repo defaults to `materials`, dest_path mirrors source_path, and each
-  # copy ships at the entry's calendar_event. The lecture lines add ONE option -
+  # copy ships at the entry's event_datetime. The lecture lines add ONE option -
   # deploy_datetime - to ship an hour before class. (Paths are relative to their repo.)
   lecture-1:
-    calendar_event: 2026-09-01T10:00
+    event_datetime: 2026-09-01T10:00
     deploy:
       - {source_repo: course-materials-f2026, source_path: lectures/01_week-1,
          deploy_datetime: 2026-09-01T09:00}
@@ -26,21 +26,21 @@ materials_releases:
       # release the package base early so later partial releases still import:
       - {source_repo: lecture-code-f2026, source_path: mlpkg/core}
   lab-1:
-    calendar_event: 2026-09-03T14:00
+    event_datetime: 2026-09-03T14:00
     deploy:
       - {source_repo: course-materials-f2026, source_path: labs/01_week-1}
   lecture-2:
-    calendar_event: 2026-09-08T10:00
+    event_datetime: 2026-09-08T10:00
     deploy:
       - {source_repo: course-materials-f2026, source_path: lectures/02_week-2,
          deploy_datetime: 2026-09-08T09:00}
       - {source_repo: course-materials-f2026, source_path: readings/02_week-2}
   lab-2:
-    calendar_event: 2026-09-10T14:00
+    event_datetime: 2026-09-10T14:00
     deploy:
       - {source_repo: course-materials-f2026, source_path: labs/02_week-2}
   lecture-3:
-    calendar_event: 2026-09-15T10:00
+    event_datetime: 2026-09-15T10:00
     deploy:
       - {source_repo: course-materials-f2026, source_path: lectures/03_week-3,
          deploy_datetime: 2026-09-15T09:00}
@@ -48,42 +48,42 @@ materials_releases:
       # phased disclosure: reveal a topic-subpackage when you teach it
       - {source_repo: lecture-code-f2026, source_path: mlpkg/simulation}
   lab-3:
-    calendar_event: 2026-09-17T14:00
+    event_datetime: 2026-09-17T14:00
     deploy:
       - {source_repo: course-materials-f2026, source_path: labs/03_week-3}
   lecture-4:
-    calendar_event: 2026-09-22T10:00
+    event_datetime: 2026-09-22T10:00
     deploy:
       - {source_repo: course-materials-f2026, source_path: lectures/04_week-4,
          deploy_datetime: 2026-09-22T09:00}
       - {source_repo: course-materials-f2026, source_path: readings/04_week-4}
   lab-4:
-    calendar_event: 2026-09-24T14:00
+    event_datetime: 2026-09-24T14:00
     deploy:
       - {source_repo: course-materials-f2026, source_path: labs/04_week-4}
   lecture-5:
-    calendar_event: 2026-09-29T10:00
+    event_datetime: 2026-09-29T10:00
     deploy:
       - {source_repo: course-materials-f2026, source_path: lectures/05_week-5,
          deploy_datetime: 2026-09-29T09:00}
       - {source_repo: course-materials-f2026, source_path: readings/05_week-5}
       - {source_repo: lecture-code-f2026, source_path: mlpkg/training}
   # No actions -> a DISPLAY-ONLY event: nothing is released, the site's schedule simply
-  # shows the row. (Use `event:` on a deploy entry, as the week-N sessions above do, when
-  # materials should go out before the class they belong to - or leave a session with no
-  # deploy at all if its materials are never released.)
+  # shows the row. (Use `deploy_datetime:` on a deploy line, as the lecture entries above
+  # do, when materials should go out before the class they belong to - or leave a session
+  # with no deploy at all if its materials are never released.)
   lab-5:
-    calendar_event: 2026-10-01T14:00
+    event_datetime: 2026-10-01T14:00
     deploy:
       - {source_repo: course-materials-f2026, source_path: labs/05_week-5}
   project-clinic:
-    calendar_event: 2026-11-10T10:00
+    event_datetime: 2026-11-10T10:00
     title: Project clinic
 
-  # `calendar_event: tbc` -> the site shows an undated TBC row; nothing can fire until a
+  # `event_datetime: tbc` -> the site shows an undated TBC row; nothing can fire until a
   # real date replaces it. (`tbc: true` next to a real date marks it "(TBC)" instead.)
   guest-lecture:
-    calendar_event: tbc
+    event_datetime: tbc
     title: Guest lecture (industry speaker)
 semester_start: 2026-09-07
 semester_end: 2026-12-18
@@ -93,20 +93,22 @@ semester_end: 2026-12-18
 # the template's own grading.yml).
 assignments:                    # each assignment's whole lifecycle in one block
   assignment-1:
-    handout: 2026-09-15T14:00     # provision one repo per student from assignment-1-f2026
-    due: 2026-10-13               # what students see
-    grading_deadline: 2026-10-15  # optional grading pin - snapshot + autograde (default = due)
+    handout_datetime: 2026-09-15T14:00  # provision one repo per student from assignment-1-f2026
+    due_datetime: 2026-10-13            # what students see
+    grading_datetime: 2026-10-15        # optional grading pin - snapshot + autograde (default = due_datetime)
   assignment-2:
-    handout: 2026-09-29T14:00
-    due: 2026-10-27T23:59
+    handout_datetime: 2026-09-29T14:00
+    due_datetime: 2026-10-27T23:59
   assignment-4-project:
-    handout: 2026-10-13T14:00     # per TEAM - the template's grading.yml says type: group
-    due: 2026-11-15T23:59
+    handout_datetime: 2026-10-13T14:00
+    type: group                   # per-team handout + grading (also set in the
+                                  # template's grading.yml)
+    due_datetime: 2026-11-15T23:59
     max_team_size: 3              # the welcome "Join team" flow refuses a 4th member
 
 
 exams:
   # a bare date is a whole-day entry (the website shows 09:00); give a full datetime when
   # you know the real start time
-  - {name: MidTerm Exam, date: 2026-11-03, tbc: true}   # provisional - site shows "(TBC)"
-  - {name: Final Exam, date: 2026-12-15T14:00}
+  - {name: MidTerm Exam, exam_datetime: 2026-11-03, tbc: true}   # provisional - site shows "(TBC)"
+  - {name: Final Exam, exam_datetime: 2026-12-15T14:00}

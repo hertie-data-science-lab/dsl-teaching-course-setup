@@ -169,11 +169,11 @@ Live example: [`example-course/cohort-org/schedule.yml`](../example-course/cohor
 `classroom-config/schedule.yml` - the term plan: the **auto-release plan** the hourly cron
 runs, and the **dates** that drive the website and grading. Times are read in `timezone`
 (default `Europe/Berlin`) unless given an offset; a bare **release** date = 00:00, a bare
-**due**/`grading_deadline` date = 23:59:59, a bare **exam** date shows as 09:00. Times are
+**due_datetime**/`grading_datetime` date = 23:59:59, a bare **exam** date shows as 09:00. Times are
 honoured to the hour.
 
 **`materials_releases`** - the term calendar and release plan in one block: each entry is a
-label you choose, a `calendar_event:`, and optionally actions.
+label you choose, an `event_datetime:`, and optionally actions.
 Sources are read from the course org, destinations written to this cohort, so entries name
 repos, never orgs. Every release is idempotent - re-runs are no-ops.
 
@@ -183,17 +183,17 @@ repos, never orgs. Every release is idempotent - re-runs are no-ops.
 | `assignment` | one private repo per onboarded student - or per team, when the template's `grading.yml` says `type: group` | the template repo name |
 
 (Grading takes no action here - each assignment is autograded automatically, once, at its
-`grading_deadline` under `assignments:`.)
+`grading_datetime` under `assignments:`.)
 
-Per entry: `calendar_event` (required - when the thing happens; the site schedule shows it,
-and it is the default fire time; `when` is accepted as a legacy alias), `title` (optional
+Per entry: `event_datetime` (required - when the thing happens; the site schedule shows it,
+and it is the default fire time), `title` (optional
 row label), and optionally `deploy` actions. A deploy item may carry its own
 `deploy_datetime` to ship earlier or later than the calendar event. An entry with no
 actions is a **display-only calendar event** - nothing deploys, the site shows the row.
-Assignments take no entry here: their whole lifecycle (handout/due/grading) lives under
-`assignments:` below (a legacy `assignment:` action is still honoured). Uncertain dates:
-`tbc: true` beside a date = provisional, shown "(TBC)" but fires; `calendar_event: tbc`
-(or an exam's `date: tbc`) = undated TBC row, nothing fires.
+Assignments take no entry here: their whole lifecycle (handout_datetime/due_datetime/grading_datetime) lives under
+`assignments:` below (an `assignment:` action is also supported, for handing out by hand). Uncertain dates:
+`tbc: true` beside a date = provisional, shown "(TBC)" but fires; `event_datetime: tbc`
+(or an exam's `exam_datetime: tbc`) = undated TBC row, nothing fires.
 
 Deploy-item fields (paths are **relative to their repo**: `source_path` inside
 `source_repo`, `dest_path` inside `dest_repo`):
@@ -204,7 +204,7 @@ Deploy-item fields (paths are **relative to their repo**: `source_path` inside
 | `source_path` | **yes** | - | folder or file to copy, relative to `source_repo` |
 | `dest_repo` | no | `materials` | cohort repo to copy into (created on first release) |
 | `dest_path` | no | mirrors `source_path` | where it lands, relative to `dest_repo` |
-| `deploy_datetime` | no | the entry's `calendar_event` | ship this copy earlier/later |
+| `deploy_datetime` | no | the entry's `event_datetime` | ship this copy earlier/later |
 
 **Minimal** - the recommended shape; everything not stated takes its default:
 
@@ -212,7 +212,7 @@ Deploy-item fields (paths are **relative to their repo**: `source_path` inside
 timezone: Europe/Berlin
 materials_releases:
   lecture_02:
-    calendar_event: 2026-09-15T10:00
+    event_datetime: 2026-09-15T10:00
     deploy:
       - {source_repo: course-materials-f2026, source_path: lectures/02_intro}
       # -> lands at materials/lectures/02_intro, shipped at class time
@@ -223,7 +223,7 @@ materials_releases:
 ```yaml
 materials_releases:
   session_2:
-    calendar_event: 2026-09-15T10:00  # the class - what the site announces
+    event_datetime: 2026-09-15T10:00  # the class - what the site announces
     tbc: false                        # true = provisional date, shown "(TBC)"
     title: Linear regression          # site row label (default: prettified entry label)
     deploy:
@@ -231,24 +231,25 @@ materials_releases:
          dest_repo: lecture_materials, dest_path: lectures/02_intro,
          deploy_datetime: 2026-09-15T09:00}                          # ships 1h early
   bonus-dataset:
-    calendar_event: 2026-10-20T09:30  # single copy - no list needed
+    event_datetime: 2026-10-20T09:30  # single copy - no list needed
     deploy: {source_repo: course-datasets-f2026, source_path: week7/housing.csv, dest_repo: materials, dest_path: datasets/housing.csv}
   project-clinic:
-    calendar_event: 2026-11-17T10:00  # no actions -> display-only row on the site schedule
+    event_datetime: 2026-11-17T10:00  # no actions -> display-only row on the site schedule
     title: Project clinic
 ```
 
 **Dates** - the website schedule and the grading deadlines. Absent values are synthesised
 (semester from the tag, lectures weekly, assignments fortnightly, exams weeks 8 + 15).
 
-Per assignment (`assignments.<slug>`; only `due` is required - a minimal entry is one line,
-`assignment-1: {due: 2026-10-13}`):
+Per assignment (`assignments.<slug>`; only `due_datetime` is required - a minimal entry is one line,
+`assignment-1: {due_datetime: 2026-10-13}`):
 
 | Field | Required | Default | Meaning |
 |---|---|---|---|
-| `due` | **yes** | - (entry dropped without it) | what students see; bare date = 23:59:59 |
-| `handout` | no | none - hand out manually | when repos are provisioned, automatic |
-| `grading_deadline` | no | `due` | snapshot freezes + autograder fires (once) |
+| `due_datetime` | **yes** | - (entry dropped without it) | what students see; bare date = 23:59:59 |
+| `handout_datetime` | no* | - | when repos are provisioned, automatic. *Required for the schedule to release it. If you hand out via the **Release assignment** button instead, the button records the release moment here for you |
+| `grading_datetime` | no | `due_datetime` | snapshot freezes + autograder fires (once) |
+| `type` | no | individual | `group` / `individual` - how handout + grading fan out. Can also be set in the template's `grading.yml` |
 | `max_team_size` | no | 5 | group assignments: Join-team cap |
 
 ```yaml
@@ -256,29 +257,30 @@ semester_start: 2026-09-07
 semester_end: 2026-12-18
 assignments:                          # each assignment's WHOLE lifecycle, keyed by slug
   assignment-1:                       # (template name minus -fYYYY)
-    handout: 2026-09-22T09:00         # optional: provision one repo per student (or per
-                                      # team - the template's grading.yml decides), automatic
-    due: 2026-10-13                   # what students see
-    grading_deadline: 2026-10-15      # optional: the grading pin - snapshot freezes and the
-                                      # autograder fires (once). Default = due.
+    handout_datetime: 2026-09-22T09:00  # optional: provision one repo per student (or per
+                                        # team - the template's grading.yml decides), automatic
+    due_datetime: 2026-10-13            # what students see
+    grading_datetime: 2026-10-15        # optional: the grading pin - snapshot freezes and the
+                                        # autograder fires (once). Default = due_datetime.
   assignment-4-project:
-    due: 2026-11-27
+    due_datetime: 2026-11-27
+    type: group                       # optional: group | individual
     max_team_size: 4                  # optional, group assignments: the welcome Join team
                                       # flow refuses members beyond this (default 5)
 exams:
-  - {name: MidTerm Exam, date: 2026-11-03, tbc: true}   # provisional - shown "(TBC)"
-  - {name: Final Exam, date: 2026-12-15T14:00}
-  - {name: Resit Exam, date: tbc}                        # undated - shown as a TBC row
+  - {name: MidTerm Exam, exam_datetime: 2026-11-03, tbc: true}   # provisional - shown "(TBC)"
+  - {name: Final Exam, exam_datetime: 2026-12-15T14:00}
+  - {name: Resit Exam, exam_datetime: tbc}                        # undated - shown as a TBC row
 ```
 
 **Silent failures - the parser never errors.** A malformed entry is dropped, not reported:
 
 | Mistake | What happens |
 |---------|--------------|
-| `calendar_event:` (or legacy `when:`) missing/unparseable | that entry is silently dropped |
-| `deploy_datetime:` unparseable | silently ignored - that copy ships at the `calendar_event` |
-| `due:` missing/unparseable | the whole `assignments:` entry is dropped - no grading pin, no site date |
-| `grading_deadline:` unparseable | silently ignored - the grading deadline falls back to `due` |
+| `event_datetime:` missing/unparseable | that entry is silently dropped |
+| `deploy_datetime:` unparseable | silently ignored - that copy ships at the `event_datetime` |
+| `due_datetime:` missing/unparseable | the whole `assignments:` entry is dropped - no grading pin, no site date |
+| `grading_datetime:` unparseable | silently ignored - the grading deadline falls back to `due_datetime` |
 | unknown `timezone:` | silent fallback to `Europe/Berlin` |
 | `deploy` missing `source_repo`/`source_path` | that copy is silently skipped |
 

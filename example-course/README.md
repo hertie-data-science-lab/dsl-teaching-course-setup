@@ -76,9 +76,9 @@ Prereqs: the bot is an **owner** of both demo orgs and `DSL_BOT_TOKEN` (`repo` +
    [`people.yml`](cohort-org/people.yml), [`teams.csv`](cohort-org/teams.csv).
 9. **Send enrolment codes** for the cohort - untick `dry_run` to actually email them.
 10. Nothing else. The hourly **Scheduled release** cron works through `schedule.yml`: 5 weeks
-    of lecture + lab entries (each lecture ships an hour before its 10:00 `calendar_event`;
+    of lecture + lab entries (each lecture ships an hour before its 10:00 `event_datetime`;
     labs on Thursdays), the `mlpkg` subpackages, and every assignment's whole lifecycle from
-    its own `assignments:` block - `handout` provisions the repos (the project per-team, from
+    its own `assignments:` block - `handout_datetime` provisions the repos (the project per-team, from
     its template's `grading.yml`), and each assignment autogrades once at its grading
     deadline. The display-only `project-clinic` entry deploys nothing - it just appears on
     the site's schedule. Use

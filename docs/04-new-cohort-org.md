@@ -36,7 +36,7 @@ Live example of every file below: [`example-course/cohort-org/`](../example-cour
    timezone: Europe/Berlin
    materials_releases:
      session_1:
-       calendar_event: 2026-09-07T14:00   # when the class happens - shown on the site
+       event_datetime: 2026-09-07T14:00   # when the class happens - shown on the site
        deploy:
          - {source_repo: course-materials-f2026, source_path: lectures/01_intro, dest_repo: materials,
             deploy_datetime: 2026-09-07T13:00}   # optional: ship this copy 1h early
@@ -44,13 +44,13 @@ Live example of every file below: [`example-course/cohort-org/`](../example-cour
    semester_end: 2026-12-18
    assignments:
      assignment-1:
-       handout: 2026-09-22T09:00    # repos provisioned automatically (per team if the
-                                    # template's grading.yml says type: group)
-       due: 2026-10-13              # due date students see; bare date -> 23:59:59
-       grading_deadline: 2026-10-15 # optional; snapshot + autograde fire here (once)
+       handout_datetime: 2026-09-22T09:00  # repos provisioned automatically (per team if the
+                                           # template's grading.yml says type: group)
+       due_datetime: 2026-10-13         # due date students see; bare date -> 23:59:59
+       grading_datetime: 2026-10-15     # optional; snapshot + autograde fire here (once)
    exams:
-     - {name: MidTerm Exam, date: 2026-11-03}        # bare date -> shown at 09:00
-     - {name: Final Exam, date: 2026-12-15T14:00}    # real start time, shown as given
+     - {name: MidTerm Exam, exam_datetime: 2026-11-03}        # bare date -> shown at 09:00
+     - {name: Final Exam, exam_datetime: 2026-12-15T14:00}    # real start time, shown as given
    ```
 
 5. *(optional)* **Declare this cohort's instructors/TAs** in `classroom-config/people.yml`.

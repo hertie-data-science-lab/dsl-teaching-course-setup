@@ -104,7 +104,7 @@ from or deploy wholesale ([how](../example-course/README.md#deploy-it-20-min)):
 | [02](02-add-materials-to-course.md) materials tree | [`course-materials-f2026/`](../example-course/course-org/course-materials-f2026/) - `lectures/`, `readings/`, `labs/`, `syllabus.md` |
 | [03](03-add-assignment-to-course.md) assignment `main/` + `solution/` | [`assignment-1`](../example-course/course-org/assignment-1-f2026/) (`.py`), [`assignment-2`](../example-course/course-org/assignment-2-f2026/) (notebook), [`assignment-4-project`](../example-course/course-org/assignment-4-project-f2026/) (**group**) - each with `grading.yml` + hidden `tests/` |
 | [05](05-enrol-students-to-cohort.md) roster, teams, staff | [`students.csv`](../example-course/cohort-org/students.csv) (incl. an auditor), [`teams.csv`](../example-course/cohort-org/teams.csv), [`people.yml`](../example-course/cohort-org/people.yml) |
-| [06](06-schedule-releases.md) the whole term's plan | [`schedule.yml`](../example-course/cohort-org/schedule.yml) - `calendar_event`s + `deploy_datetime`s, a display-only clinic, `assignments` + `grading_deadline`, `exams` |
+| [06](06-schedule-releases.md) the whole term's plan | [`schedule.yml`](../example-course/cohort-org/schedule.yml) - `event_datetime`s + `deploy_datetime`s, a display-only clinic, `assignments` + `grading_datetime`, `exams` |
 | [09](09-grade-and-return-assignments.md) grade tables | [`grades/assignment-1.csv`](../example-course/cohort-org/grades/assignment-1.csv), [`grades/assignment-4-project.csv`](../example-course/cohort-org/grades/assignment-4-project.csv) (team grades) |
 | [10](10-release-code.md) a growing package | [`lecture-code-f2026/mlpkg/`](../example-course/course-org/lecture-code-f2026/) - disclosed module by module |
 
@@ -116,7 +116,7 @@ A standing demo you can point at while reading - one course org, two cohorts, ru
 current engine:
 
 - Course org: **[`DSL-Demo-Course-E1234`](https://github.com/DSL-Demo-Course-E1234)** · control panel: [`.github` Actions](https://github.com/DSL-Demo-Course-E1234/.github/actions) · [public course site](https://dsl-demo-course-e1234.github.io)
-- Cohort org (current): **[`DSL-Demo-f2026`](https://github.com/DSL-Demo-f2026)** · [`classroom-config`](https://github.com/DSL-Demo-f2026/classroom-config) (the filled-in [`schedule.yml`](https://github.com/DSL-Demo-f2026/classroom-config/blob/main/schedule.yml): 10 sessions, labs, three assignments, `grading_deadline`s) · [cohort site](https://dsl-demo-f2026.github.io) · [`welcome`](https://github.com/DSL-Demo-f2026/welcome)
+- Cohort org (current): **[`DSL-Demo-f2026`](https://github.com/DSL-Demo-f2026)** · [`classroom-config`](https://github.com/DSL-Demo-f2026/classroom-config) (the filled-in [`schedule.yml`](https://github.com/DSL-Demo-f2026/classroom-config/blob/main/schedule.yml): 10 sessions, labs, three assignments, `grading_datetime`s) · [cohort site](https://dsl-demo-f2026.github.io) · [`welcome`](https://github.com/DSL-Demo-f2026/welcome)
 - Cohort org (last year): **[`DSL-Demo-f2025`](https://github.com/DSL-Demo-f2025)** - what a persistent course org looks like with more than one cohort hanging off it
 
 To stand up your own throwaway copy instead, deploy

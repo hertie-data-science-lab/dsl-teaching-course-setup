@@ -14,7 +14,6 @@ import pytest
 from dsl_course.schedule import (
     Deploy,
     Exam,
-    Grade,
     Schedule,
     _coerce_date,
     _coerce_datetime,
@@ -61,7 +60,7 @@ def test_parse_full_schedule():
         "semester_end": "2026-12-18",
         "materials_releases": {
             "session_2": {
-                "when": "2026-09-15T14:00",
+                "event_datetime": "2026-09-15T14:00",
                 "deploy": [
                     {
                         "source_repo": "cm-f2026",
@@ -71,23 +70,29 @@ def test_parse_full_schedule():
                     }
                 ],
             },
-            "a1-grade": {
-                "when": "2026-10-15T00:00",
-                "grade": {"template": "assignment-1-f2026", "deadline": "2026-10-13T23:59"},
+            "a1-handout": {
+                "event_datetime": "2026-10-15T00:00",
+                "assignment": "assignment-1-f2026",
             },
         },
-        "assignments": {"assignment-1": {"due": "2026-10-13", "grace_days": 2}},
-        "exams": [{"name": "Final", "date": "2026-12-15"}],
+        "assignments": {
+            "assignment-1": {"due_datetime": "2026-10-13", "grading_datetime": "2026-10-15"}
+        },
+        "exams": [{"name": "Final", "exam_datetime": "2026-12-15"}],
     }
     sched = parse(meta)
     assert sched.semester_start == date(2026, 9, 7)
-    assert [r.label for r in sched.releases] == ["session_2", "a1-grade"]  # sorted by when
+    assert [r.label for r in sched.releases] == ["session_2", "a1-handout"]  # sorted by when
     s2 = sched.releases[0]
     assert s2.deploy == [Deploy("cm-f2026", "lectures/02_intro", "materials", "lectures/02_intro")]
-    assert sched.releases[1].grade.template == "assignment-1-f2026"
-    assert sched.assignments["assignment-1"].due.isoformat().startswith("2026-10-13T23:59:59")
-    assert sched.assignments["assignment-1"].grace_days == 2
-    assert sched.exams == [Exam(name="Final", date=date(2026, 12, 15))]
+    assert sched.releases[1].assignment == "assignment-1-f2026"
+    assert sched.assignments["assignment-1"].due_datetime.isoformat().startswith(
+        "2026-10-13T23:59:59"
+    )
+    assert sched.assignments["assignment-1"].grading_datetime.isoformat().startswith(
+        "2026-10-15"
+    )
+    assert sched.exams == [Exam(name="Final", exam_datetime=date(2026, 12, 15))]
 
 
 def test_parse_empty_is_safe():
@@ -98,7 +103,7 @@ def test_parse_empty_is_safe():
 def test_release_without_when_is_dropped():
     meta = {
         "materials_releases": {
-            "ok": {"when": "2026-09-01", "deploy": []},
+            "ok": {"event_datetime": "2026-09-01", "deploy": []},
             "nope": {"deploy": []},
         }
     }
@@ -109,7 +114,7 @@ def test_deploy_accepts_single_mapping_defaults_dest_path_none():
     meta = {
         "materials_releases": {
             "s": {
-                "when": "2026-09-01",
+                "event_datetime": "2026-09-01",
                 "deploy": {"source_repo": "cm", "source_path": "lectures/00_x"},
             }
         }
@@ -120,46 +125,32 @@ def test_deploy_accepts_single_mapping_defaults_dest_path_none():
 def test_deploy_entry_missing_source_is_skipped():
     meta = {
         "materials_releases": {
-            "s": {"when": "2026-09-01", "deploy": [{"source_repo": "cm"}, {"source_path": "x"}]}
+            "s": {
+                "event_datetime": "2026-09-01",
+                "deploy": [{"source_repo": "cm"}, {"source_path": "x"}],
+            }
         }
     }
     assert parse(meta).releases[0].deploy == []
 
 
-def test_grade_string_and_dict_forms():
-    meta = {
-        "materials_releases": {
-            "g1": {"when": "2026-10-01", "grade": "assignment-1-f2026"},
-            "g2": {
-                "when": "2026-10-02",
-                "grade": {"template": "assignment-2-f2026", "deadline": "2026-10-13", "group": True},
-            },
-        }
-    }
-    rels = {r.label: r for r in parse(meta).releases}
-    assert rels["g1"].grade == Grade(template="assignment-1-f2026", deadline=None, group=False)
-    g2 = rels["g2"].grade
-    assert g2.template == "assignment-2-f2026" and g2.group is True
-    assert g2.deadline.isoformat().startswith("2026-10-13T23:59:59")  # bare date -> end of day
-
-
 def test_exam_bare_date_stays_a_date_timed_exam_becomes_aware_datetime():
-    # `date:` doubles as "whole day" (a plain date) and "starts at" (a datetime) - the
-    # website renders its 09:00 placeholder only for the former, so the two must not
-    # collapse into one type.
+    # `exam_datetime:` doubles as "whole day" (a plain date) and "starts at" (a
+    # datetime) - the website renders its 09:00 placeholder only for the former, so the
+    # two must not collapse into one type.
     sched = parse(
         {
             "exams": [
-                {"name": "MidTerm Exam", "date": "2026-11-03"},
-                {"name": "Final Exam", "date": "2026-12-15T14:00"},
+                {"name": "MidTerm Exam", "exam_datetime": "2026-11-03"},
+                {"name": "Final Exam", "exam_datetime": "2026-12-15T14:00"},
             ]
         }
     )
     midterm, final = sched.exams
-    assert midterm.date == date(2026, 11, 3)
-    assert not isinstance(midterm.date, datetime)
-    assert final.date == datetime(2026, 12, 15, 14, 0, tzinfo=BERLIN)
-    assert final.date.utcoffset() == BERLIN.utcoffset(datetime(2026, 12, 15, 14, 0))
+    assert midterm.exam_datetime == date(2026, 11, 3)
+    assert not isinstance(midterm.exam_datetime, datetime)
+    assert final.exam_datetime == datetime(2026, 12, 15, 14, 0, tzinfo=BERLIN)
+    assert final.exam_datetime.utcoffset() == BERLIN.utcoffset(datetime(2026, 12, 15, 14, 0))
 
 
 def test_exam_yaml_native_date_and_datetime_objects():
@@ -167,69 +158,68 @@ def test_exam_yaml_native_date_and_datetime_objects():
     sched = parse(
         {
             "exams": [
-                {"name": "Whole day", "date": date(2026, 11, 3)},
-                {"name": "Timed", "date": datetime(2026, 12, 15, 14, 0)},
+                {"name": "Whole day", "exam_datetime": date(2026, 11, 3)},
+                {"name": "Timed", "exam_datetime": datetime(2026, 12, 15, 14, 0)},
             ]
         }
     )
-    assert sched.exams[0].date == date(2026, 11, 3)
-    assert sched.exams[1].date == datetime(2026, 12, 15, 14, 0, tzinfo=BERLIN)
+    assert sched.exams[0].exam_datetime == date(2026, 11, 3)
+    assert sched.exams[1].exam_datetime == datetime(2026, 12, 15, 14, 0, tzinfo=BERLIN)
 
 
 def test_exam_explicit_offset_is_honoured_not_overridden():
     sched = parse(
         {
             "timezone": "Europe/Berlin",
-            "exams": [{"name": "Remote", "date": "2026-12-15T14:00+00:00"}],
+            "exams": [{"name": "Remote", "exam_datetime": "2026-12-15T14:00+00:00"}],
         }
     )
-    assert sched.exams[0].date.utcoffset().total_seconds() == 0
+    assert sched.exams[0].exam_datetime.utcoffset().total_seconds() == 0
 
 
 def test_exam_timezone_comes_from_the_cohort_setting():
     sched = parse(
-        {"timezone": "Pacific/Niue", "exams": [{"name": "E", "date": "2026-12-15T14:00"}]}
+        {
+            "timezone": "Pacific/Niue",
+            "exams": [{"name": "E", "exam_datetime": "2026-12-15T14:00"}],
+        }
     )
-    assert sched.exams[0].date.tzinfo == ZoneInfo("Pacific/Niue")
+    assert sched.exams[0].exam_datetime.tzinfo == ZoneInfo("Pacific/Niue")
 
 
 def test_exam_without_a_usable_date_is_dropped():
-    assert parse({"exams": [{"name": "No date"}, {"name": "Bad", "date": "soon"}]}).exams == []
+    assert parse(
+        {"exams": [{"name": "No date"}, {"name": "Bad", "exam_datetime": "soon"}]}
+    ).exams == []
 
 
 def test_assignment_bare_date_is_rejected_only_the_nested_form_is_accepted():
-    # `assignments: {slug: date}` (no nested due/grace_days) is not the documented schema.
+    # `assignments: {slug: date}` (no nested due_datetime) is not the documented schema.
     assert parse({"assignments": {"assignment-1": "2026-10-13"}}).assignments == {}
 
 
 def test_assignment_without_due_is_skipped():
-    assert parse({"assignments": {"assignment-1": {"grace_days": 2}}}).assignments == {}
+    assert parse({"assignments": {"assignment-1": {"max_team_size": 2}}}).assignments == {}
 
 
-def test_calendar_event_is_the_canonical_key_when_is_a_legacy_alias():
+def test_event_datetime_is_the_only_accepted_key():
     meta = {
         "materials_releases": {
-            "new-style": {"calendar_event": "2026-09-15T10:00", "deploy": []},
-            "old-style": {"when": "2026-09-01T09:00", "deploy": []},
-            "both": {
-                # calendar_event wins - `when` is only read for schedules written
-                # before the rename
-                "calendar_event": "2026-09-22T10:00",
-                "when": "2026-09-22T09:00",
-            },
+            "new-style": {"event_datetime": "2026-09-15T10:00", "deploy": []},
+            "old-alias": {"calendar_event": "2026-09-01T09:00", "deploy": []},
+            "older-alias": {"when": "2026-08-01T09:00", "deploy": []},
         }
     }
     releases = {r.label: r for r in parse(meta).releases}
+    assert list(releases) == ["new-style"]
     assert releases["new-style"].when.isoformat().startswith("2026-09-15T10:00")
-    assert releases["old-style"].when.isoformat().startswith("2026-09-01T09:00")
-    assert releases["both"].when.isoformat().startswith("2026-09-22T10:00")
 
 
 def test_deploy_datetime_parses_and_defaults_to_none():
     meta = {
         "materials_releases": {
             "session_2": {
-                "calendar_event": "2026-09-15T10:00",
+                "event_datetime": "2026-09-15T10:00",
                 "deploy": [
                     {
                         "source_repo": "cm-f2026",
@@ -255,18 +245,18 @@ def test_deploy_datetime_parses_and_defaults_to_none():
 def test_display_only_entry_is_kept_with_its_title():
     meta = {
         "materials_releases": {
-            "project-clinic": {"calendar_event": "2026-11-17T10:00", "title": "Project clinic"}
+            "project-clinic": {"event_datetime": "2026-11-17T10:00", "title": "Project clinic"}
         }
     }
     (r,) = parse(meta).releases
     assert r.is_event_only and r.title == "Project clinic"
 
 
-def test_malformed_deploy_datetime_falls_back_to_the_calendar_event():
+def test_malformed_deploy_datetime_falls_back_to_the_event_datetime():
     meta = {
         "materials_releases": {
             "s": {
-                "calendar_event": "2026-09-15T10:00",
+                "event_datetime": "2026-09-15T10:00",
                 "deploy": [
                     {
                         "source_repo": "cm-f2026",
@@ -278,15 +268,15 @@ def test_malformed_deploy_datetime_falls_back_to_the_calendar_event():
         }
     }
     (r,) = parse(meta).releases
-    assert r.deploy[0].deploy_datetime is None  # ships at the calendar_event
+    assert r.deploy[0].deploy_datetime is None  # ships at the event_datetime
 
 
 def test_max_team_size_parses_and_defaults_to_none():
     meta = {
         "assignments": {
-            "assignment-4-project": {"due": "2026-11-15", "max_team_size": 3},
-            "assignment-1": {"due": "2026-10-13"},
-            "bad": {"due": "2026-10-20", "max_team_size": "lots"},
+            "assignment-4-project": {"due_datetime": "2026-11-15", "max_team_size": 3},
+            "assignment-1": {"due_datetime": "2026-10-13"},
+            "bad": {"due_datetime": "2026-10-20", "max_team_size": "lots"},
         }
     }
     entries = parse(meta).assignments
@@ -298,20 +288,23 @@ def test_max_team_size_parses_and_defaults_to_none():
 def test_assignment_handout_parses():
     meta = {
         "assignments": {
-            "assignment-1": {"due": "2026-10-13", "handout": "2026-09-22T09:00"},
-            "assignment-2": {"due": "2026-11-10"},
+            "assignment-1": {
+                "due_datetime": "2026-10-13",
+                "handout_datetime": "2026-09-22T09:00",
+            },
+            "assignment-2": {"due_datetime": "2026-11-10"},
         }
     }
     entries = parse(meta).assignments
-    assert entries["assignment-1"].handout.isoformat().startswith("2026-09-22T09:00")
-    assert entries["assignment-2"].handout is None
+    assert entries["assignment-1"].handout_datetime.isoformat().startswith("2026-09-22T09:00")
+    assert entries["assignment-2"].handout_datetime is None
 
 
-def test_tbc_calendar_event_keeps_an_undated_entry():
+def test_tbc_event_datetime_keeps_an_undated_entry():
     meta = {
         "materials_releases": {
-            "guest-lecture": {"calendar_event": "tbc", "title": "Guest lecture"},
-            "dated": {"calendar_event": "2026-09-15T10:00", "deploy": []},
+            "guest-lecture": {"event_datetime": "tbc", "title": "Guest lecture"},
+            "dated": {"event_datetime": "2026-09-15T10:00", "deploy": []},
             "dropped": {"deploy": []},  # no date, no tbc -> gone
         }
     }
@@ -326,17 +319,86 @@ def test_tbc_calendar_event_keeps_an_undated_entry():
 def test_tbc_flag_keeps_a_provisional_date_firing():
     meta = {
         "materials_releases": {
-            "clinic": {"calendar_event": "2026-11-17T10:00", "tbc": True},
+            "clinic": {"event_datetime": "2026-11-17T10:00", "tbc": True},
         },
         "exams": [
-            {"name": "MidTerm", "date": "2026-11-03", "tbc": True},
-            {"name": "Resit", "date": "tbc"},
-            {"name": "Broken", "date": "not-a-date"},  # no date, no tbc -> dropped
+            {"name": "MidTerm", "exam_datetime": "2026-11-03", "tbc": True},
+            {"name": "Resit", "exam_datetime": "tbc"},
+            {"name": "Broken", "exam_datetime": "not-a-date"},  # no date, no tbc -> dropped
         ],
     }
     sched = parse(meta)
     (clinic,) = sched.releases
     assert clinic.tbc and clinic.when is not None  # provisional: still fires
     midterm, resit = sched.exams
-    assert midterm.tbc and midterm.date is not None
-    assert resit.tbc and resit.date is None
+    assert midterm.tbc and midterm.exam_datetime is not None
+    assert resit.tbc and resit.exam_datetime is None
+
+
+def test_assignment_type_parses_and_rejects_unknown_values():
+    meta = {
+        "assignments": {
+            "assignment-4-project": {"due_datetime": "2026-11-15", "type": "group"},
+            "assignment-1": {"due_datetime": "2026-10-13", "type": "Individual"},
+            "assignment-2": {"due_datetime": "2026-10-27"},
+            "typo": {"due_datetime": "2026-11-01", "type": "grp"},
+        }
+    }
+    entries = parse(meta).assignments
+    assert entries["assignment-4-project"].type == "group"
+    assert entries["assignment-1"].type == "individual"  # case-normalised
+    assert entries["assignment-2"].type is None
+    assert entries["typo"].type is None  # unknown value -> silently dropped
+
+
+def test_insert_handout_records_write_once():
+    from dsl_course.schedule import _insert_handout
+
+    base = """timezone: Europe/Berlin
+
+assignments:
+  assignment-1:
+    due_datetime: 2026-10-13
+  assignment-2:
+    handout_datetime: 2026-09-29T14:00
+    due_datetime: 2026-10-27
+"""
+    # inserted into the existing entry, directly under the slug line
+    out = _insert_handout(base, "assignment-1", "2026-09-22T14:05")
+    assert "handout_datetime: 2026-09-22T14:05" in out
+    assert out.index("assignment-1:") < out.index("handout_datetime: 2026-09-22T14:05")
+    # write-once: an existing handout (scheduled or recorded) is never touched
+    assert _insert_handout(base, "assignment-2", "2026-10-01T00:00") is None
+    # unknown slug: appended into the block with a due_datetime TODO
+    out = _insert_handout(base, "assignment-9", "2026-11-01T09:00")
+    assert "assignment-9:" in out and "handout_datetime: 2026-11-01T09:00" in out
+    assert "TODO" in out
+    # no assignments block at all: one is created
+    out = _insert_handout("timezone: Europe/Berlin\n", "assignment-1", "2026-09-22T14:05")
+    assert "assignments:" in out and "handout_datetime: 2026-09-22T14:05" in out
+
+
+def test_record_handout_round_trips_through_the_parser(monkeypatch):
+    import yaml
+
+    from dsl_course import schedule as S
+
+    store = {"text": "assignments:\n  assignment-1:\n    due_datetime: 2026-10-13\n"}
+    monkeypatch.setattr(S, "get_file_content", lambda org, repo, path: store["text"])
+    writes = []
+    monkeypatch.setattr(
+        "dsl_course.utils.put_file",
+        lambda org, repo, path, content, msg: writes.append(content.decode()) or True,
+    )
+    S.record_handout("Cohort-f2026", "assignment-1", "2026-09-22T14:05")
+    (new,) = writes
+    sched = S.parse(yaml.safe_load(new))
+    assert (
+        sched.assignments["assignment-1"].handout_datetime.isoformat().startswith(
+            "2026-09-22T14:05"
+        )
+    )
+    # second call sees the recorded value and is a no-op
+    store["text"] = new
+    S.record_handout("Cohort-f2026", "assignment-1", "2026-09-23T09:00")
+    assert len(writes) == 1

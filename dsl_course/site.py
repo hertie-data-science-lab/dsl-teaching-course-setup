@@ -404,12 +404,12 @@ def _due_date(sched: schedule.Schedule, repo: str, fallback: date) -> date | dat
     """This assignment's due date from schedule.yml (keyed on the slug, repo minus its
     -fYYYY/-sYYYY tag), or `fallback` if unscheduled."""
     entry = sched.assignments.get(assignment_slug(repo))
-    return entry.due if entry else fallback
+    return entry.due_datetime if entry else fallback
 
 
 def _session_dates(sched: schedule.Schedule) -> dict[str, datetime]:
     """Map a session ordinal (e.g. '2') to when that session HAPPENS - the entry's
-    `calendar_event` from schedule.yml's `materials_releases`, keyed by the ordinal of
+    `event_datetime` from schedule.yml's `materials_releases`, keyed by the ordinal of
     each deploy's destination folder (so the site can date a released session from the
     plan that released it). Deploys may ship on their own `deploy_datetime` clocks; the
     site announces the class, not the copy. Earliest wins when several releases touch
@@ -417,7 +417,7 @@ def _session_dates(sched: schedule.Schedule) -> dict[str, datetime]:
     out: dict[str, datetime] = {}
     for release in sched.releases:
         if release.when is None:
-            continue  # calendar_event: tbc - undated, can't place a session
+            continue  # event_datetime: tbc - undated, can't place a session
         for d in release.deploy:
             folder = (d.dest_path or d.source_path).rstrip("/").rsplit("/", 1)[-1]
             n = session_number(folder)
@@ -431,10 +431,10 @@ def _session_dates(sched: schedule.Schedule) -> dict[str, datetime]:
 
 def _raw_event_entry(release: schedule.Release, fallback: date) -> str:
     """A generic schedule row (the theme's schedule_row_raw_event.html) for a display-only
-    entry - a `calendar_event` with no actions: a clinic, a guest lecture, a review
+    entry - an `event_datetime` with no actions: a clinic, a guest lecture, a review
     session. Nothing is released; the site simply shows it.
 
-    TBC: an undated entry (`calendar_event: tbc`) still needs a sortable `date:` for the
+    TBC: an undated entry (`event_datetime: tbc`) still needs a sortable `date:` for the
     theme, so it carries `fallback` (end of term) plus `dateless: true` - the theme then
     prints "TBC" instead of the placeholder. A dated entry with `tbc: true` keeps its date
     and gains a "(TBC)" marker."""
@@ -611,9 +611,9 @@ def sync_site(course_org: str, cohort_org: str) -> int:
             exam_entries = {
                 f"{i + 1:02d}-{_slug(exam.name)}.md": _exam_entry(
                     exam.name,
-                    exam.date if exam.date is not None else end,
+                    exam.exam_datetime if exam.exam_datetime is not None else end,
                     tbc=exam.tbc,
-                    dateless=exam.date is None,
+                    dateless=exam.exam_datetime is None,
                 )
                 for i, exam in enumerate(sched.exams)
             }
@@ -622,7 +622,7 @@ def sync_site(course_org: str, cohort_org: str) -> int:
                 "midterm.md": _exam_entry("MidTerm Exam", start + timedelta(weeks=8)),
                 "final.md": _exam_entry("Final Exam", end),
             }
-        # Display-only schedule rows: materials_releases entries with a calendar_event
+        # Display-only schedule rows: materials_releases entries with an event_datetime
         # but no actions (a clinic, a guest lecture). Nothing deploys; the site just
         # shows them - an undated (TBC) one sorts at end-of-term.
         exam_entries |= {

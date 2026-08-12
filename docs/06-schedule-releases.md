@@ -18,18 +18,21 @@ Live example (a full term): [`example-course/cohort-org/schedule.yml`](../exampl
 Two blocks carry the whole term:
 
 - **`materials_releases:`** - teaching materials and calendar events. A free-form label maps
-  to a `calendar_event` plus, optionally, `deploy` actions (copy a source path from a course
+  to an `event_datetime` plus, optionally, `deploy` actions (copy a source path from a course
   repo → a cohort repo: materials, code, datasets).
 - **`assignments:`** - each assignment's **whole lifecycle in one block**, keyed by slug:
-  `handout` (when repos are provisioned - one per student, or per **team** when the
-  template's `grading.yml` says `type: group`), `due` (what students see),
-  `grading_deadline` (when it is snapshotted and autograded, once - see
-  [below](#deadline-snapshots-and-autograding)), and `max_team_size` (group assignments).
+  `handout_datetime` (when repos are provisioned - without it the schedule never releases the
+  assignment; omit only if you use the manual **Release assignment** button), `due_datetime`
+  (REQUIRED - what students see), `grading_datetime`
+  (when it is snapshotted and autograded, once - see
+  [below](#deadline-snapshots-and-autograding)), `type` (`group` = per-team repos and
+  grading; also settable in the template's `grading.yml`), and `max_team_size` (group
+  assignments).
 
-Nothing assignment-related needs a `materials_releases` entry (a legacy `assignment:` action
-there is still honoured).
+Nothing assignment-related needs a `materials_releases` entry (an `assignment:` action there
+is still supported, for handing out by hand from a release entry).
 
-**The calendar event is not the release.** Each entry's `calendar_event:` is when the thing
+**The calendar event is not the release.** Each entry's `event_datetime:` is when the thing
 *happens* - that is what the cohort's `.github.io` site's deployed schedule shows (and  is the default fire time for the
 entry's actions). However, a deploy can also carry its own separate `deploy_datetime:` to ship its files earlier (or
 later) than the class they belong to. And an entry with **no deploy actions at all** is a
@@ -43,13 +46,13 @@ defaults (into the cohort's `materials` repo, at the same path, at the event tim
 
 ```yaml
   lecture_02:
-    calendar_event: 2026-09-15T10:00
+    event_datetime: 2026-09-15T10:00
     deploy:
       - {source_repo: course-materials-f2026, source_path: lectures/02_intro}
       # -> lands at materials/lectures/02_intro when the class starts
 
   lab_02:
-    calendar_event: 2026-09-17T14:00
+    event_datetime: 2026-09-17T14:00
     deploy:
       - {source_repo: course-materials-f2026, source_path: labs/02_intro}
 ```
@@ -60,7 +63,7 @@ destination repo/path, or an early ship time:
 
 ```yaml
   lecture_02:
-    calendar_event: 2026-09-15T10:00   # the class - what the site announces
+    event_datetime: 2026-09-15T10:00   # the class - what the site announces
     deploy:
       - {source_repo: course-materials-f2026, source_path: lectures/02_intro,
          dest_repo: lecture_materials, deploy_datetime: 2026-09-15T09:00}  # slides out 1h early
@@ -68,24 +71,24 @@ destination repo/path, or an early ship time:
          dest_repo: lecture_materials}                                     # out at class time
 
   lab_02:
-    calendar_event: 2026-09-17T14:00   # the lab session
+    event_datetime: 2026-09-17T14:00   # the lab session
     deploy:
       - {source_repo: course-materials-f2026, source_path: labs/02_intro,
          dest_repo: lab_materials}
 
   project-clinic:                      # no actions -> display-only site row
-    calendar_event: 2026-11-17T10:00
+    event_datetime: 2026-11-17T10:00
     title: Project clinic
     tbc: true                          # provisional date - fires as normal, site shows "(TBC)"
 
   guest-lecture:                       # not even a sketch yet: the site shows a TBC row
-    calendar_event: tbc                # (sorted end-of-term); nothing fires until a real
+    event_datetime: tbc                # (sorted end-of-term); nothing fires until a real
     title: Guest lecture               # date replaces `tbc`
 ```
 
 **Uncertain dates.** `tbc: true` next to any date (a release entry or an exam) sketches a
 provisional slot: everything fires at that date as normal, but the site marks it **(TBC)**
-so students know it may move. `calendar_event: tbc` (or an exam's `date: tbc`) is for no
+so students know it may move. `event_datetime: tbc` (or an exam's `exam_datetime: tbc`) is for no
 date at all: the row appears as **TBC** and nothing fires until you commit a real date -
 which, like any change, is just an edit to `schedule.yml` on `main`.
 
@@ -96,20 +99,21 @@ the repo is created on first release.)
 timezone: Europe/Berlin
 materials_releases:
   lecture_02:
-    calendar_event: 2026-09-15T10:00
+    event_datetime: 2026-09-15T10:00
     deploy:
       - {source_repo: course-materials-f2026, source_path: lectures/02_week-2}
       - {source_repo: lecture-code-f2026, source_path: mlpkg/simulation}
   lab_02:
-    calendar_event: 2026-09-17T14:00
+    event_datetime: 2026-09-17T14:00
     deploy:
       - {source_repo: course-materials-f2026, source_path: labs/02_week-2}
 
 assignments:
   assignment-1:
-    handout: 2026-09-22T09:00       # optional - one repo per student from assignment-1-<tag>
-    due: 2026-10-13                 # REQUIRED - what students see
-    grading_deadline: 2026-10-15    # optional - snapshot freezes + autograded (default: due)
+    handout_datetime: 2026-09-22T09:00  # optional - one repo per student from assignment-1-<tag>
+    due_datetime: 2026-10-13            # REQUIRED - what students see
+    grading_datetime: 2026-10-15        # optional - snapshot freezes + autograded (default: due_datetime)
+    type: group                         # or individual - the default if field empty
 ```
 
 Field-by-field tables (required/optional/defaults):
@@ -140,11 +144,11 @@ re-runs only if you delete its marker (`snapshots/<slug>.csv` / `autograde/<slug
 ## Silent failures
 
 > **The schedule never errors - it drops.** Nothing below fails a run:
-> - a malformed or missing **`calendar_event`** (or legacy `when`) → that whole entry is dropped;
-> - a malformed **`deploy_datetime`** → ignored, and that copy ships at the `calendar_event`;
-> - a malformed or missing **`due`** → the whole `assignments:` entry is dropped, and the
+> - a malformed or missing **`event_datetime`** → that whole entry is dropped;
+> - a malformed **`deploy_datetime`** → ignored, and that copy ships at the `event_datetime`;
+> - a malformed or missing **`due_datetime`** → the whole `assignments:` entry is dropped, and the
 >   grading deadline then falls back to *today* at grading time;
-> - a malformed **`grading_deadline`** → ignored, and the deadline falls back to `due`;
+> - a malformed **`grading_datetime`** → ignored, and the deadline falls back to `due_datetime`;
 > - an unknown or misspelt **`timezone:`** → silently falls back to `Europe/Berlin`;
 > - a `deploy` entry missing **`source_repo`** or **`source_path`** → silently skipped.
 >
@@ -154,11 +158,16 @@ re-runs only if you delete its marker (`snapshots/<slug>.csv` / `autograde/<slug
 
 - Everything naive is read in the cohort's `timezone:` (default `Europe/Berlin`).
 - An explicit offset (`2026-09-15T14:00+02:00`) is honoured as written.
-- A **bare date** with no time means **00:00** on a `calendar_event`/`deploy_datetime` (the day opens), **23:59:59** on an assignment `due` (the day closes), and a whole day for an exam `date` (the site shows a 09:00 placeholder).
+- A **bare date** with no time means **00:00** on an `event_datetime`/`deploy_datetime` (the day opens), **23:59:59** on an assignment `due_datetime` (the day closes), and a whole day for an exam `exam_datetime` (the site shows a 09:00 placeholder).
 
 ## Deadline snapshots and autograding
 
-Each assignment's **grading deadline** is `grading_deadline` if you set it, else `due`.
+> **Autograded ≠ released to students.** The scores land only in the private
+> `classroom-config` - faculty review them (and the whole-class `cohort-gradebook.csv`)
+> and nothing reaches a student until the separate **Distribute grades** button:
+> [three gates](09-grade-and-return-assignments.md).
+
+Each assignment's **grading deadline** is `grading_datetime` if you set it, else `due_datetime`.
 Shortly after it passes, the hourly run does two things,
 once each:
 
@@ -196,7 +205,7 @@ already there?`"}
 the folder it writes is the fire-once marker`"]
   mark -- yes --> skip2["skip - delete the folder to re-grade"]
   parse --> p3["`3 · fire EVERY action whose time has passed
-(deploy_datetime, else calendar_event)
+(deploy_datetime, else event_datetime)
 on every tick, forever - no released state`"]
   p3 --> dep["`deploy → cheap
 nothing changed, nothing pushed`"]

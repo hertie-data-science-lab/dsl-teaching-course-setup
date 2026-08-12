@@ -97,7 +97,7 @@ jobs:
             // classroom-config/schedule.yml:
             //   assignments:
             //     assignment-4-project:
-            //       max_team_size: 4        # (or inline: {due: ..., max_team_size: 4})
+            //       max_team_size: 4        # (or inline: {due_datetime: ..., max_team_size: 4})
             // Line-scanned (github-script has no YAML lib) tolerant of comments and both
             // block and flow styles. No file / no key -> DEFAULT_TEAM_SIZE.
             const DEFAULT_TEAM_SIZE = 5;

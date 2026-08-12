@@ -48,14 +48,16 @@ One file per assignment, e.g. `grades/assignment-1.csv` (see
 The autograder pre-fills `auto`/`team_grade` from hidden tests, creating the file if it
 doesn't exist; faculty & instructors fill the rest, then **Sync gradebooks** -> **Render
 grades** -> **Distribute grades**. It runs itself **once** per assignment, at that
-assignment's grading deadline in `schedule.yml` (`assignments.<slug>.grading_deadline`,
-else `due`) - there is no separate deadline input, and no hourly re-run. For an all-manual
+assignment's grading deadline in `schedule.yml` (`assignments.<slug>.grading_datetime`,
+else `due_datetime`) - there is no separate deadline input, and no hourly re-run. For an all-manual
 assignment (`autograde: false`), copy the sample's header into `grades/<slug>.csv` and
 fill it yourself. `auto`/`team`/`team_grade` are **write-once**: once filled, no run
 overwrites them, so your corrections stand. To recompute, clear those cells and delete
 `autograde/<slug>/`. A generated, read-only `cohort-gradebook.csv` (one row per student,
 one column-group per assignment) appears alongside the per-student gradebooks on every
-**Render grades** - never hand-edit it, it's a glance view, not a source.
+**Render grades** - never hand-edit it, it's a glance view, not a source. **Nothing in `grades/`,
+`autograde/` or the gradebooks reaches a student until the separate Distribute grades
+button** - autograding and your review happen entirely in this private repo.
 
 ## teams.csv - group membership (optional, for group assignments)
 
@@ -70,24 +72,25 @@ in `schedule.yml` (default 5 when unset). See
 
 This cohort's whole schedule in one file. `materials_releases:` is the term **calendar
 and auto-release plan** - labelled entries (`session_2`, `lab_1`, `bonus-dataset`, ...),
-each with a `calendar_event:` datetime (when the thing happens - what the site's schedule
+each with an `event_datetime:` (when the thing happens - what the site's schedule
 shows) and, optionally, actions (`deploy` a source path -> a cohort repo, `assignment`
 provision student repos). The hourly **Scheduled release** cron fires each action once its
-time has arrived (honoured to the hour): actions fire at the `calendar_event`, except a
+time has arrived (honoured to the hour): actions fire at the `event_datetime`, except a
 deploy carrying its own `deploy_datetime:` - so materials can ship an hour (or a week)
 before the class they belong to. An entry with **no actions** is a display-only calendar
 event (a clinic, a guest lecture): nothing deploys, the site shows the row. Uncertain
 dates: `tbc: true` next to a date marks it provisional ("(TBC)" on the site, still fires);
-`calendar_event: tbc` / an exam's `date: tbc` is a fully undated TBC row (nothing fires).
+`event_datetime: tbc` / an exam's `exam_datetime: tbc` is a fully undated TBC row (nothing fires).
 Also holds
 `semester_start`/`semester_end`, `assignments` (due dates for the website, plus each
-assignment's `grading_deadline` - the moment its snapshot freezes and it is autograded,
+assignment's `grading_datetime` - the moment its snapshot freezes and it is autograded,
 once; grading needs no release entry), and `exams`. Seeded mostly-commented - uncomment and
 fill what you want; anything left out is synthesised or simply not scheduled. Minimal is
 the recommended shape: on a deploy only `source_repo` + `source_path` are required
 (`dest_repo` defaults to `materials`, `dest_path` mirrors `source_path`, ship time
-defaults to the `calendar_event`; paths are relative to their repo); on an assignment
-only `due` is.
+defaults to the `event_datetime`; paths are relative to their repo); on an assignment
+only `due_datetime` is - and `type: group` makes handout + grading run per team (also settable in
+the template's grading.yml).
 **Changing a date later** is just committing the edit to this file on main (GitHub web
 UI recommended, or clone/commit/push) - the hourly cron reads whatever is on main at
 each tick, so it takes effect within the hour. Already-fired one-shot actions don't

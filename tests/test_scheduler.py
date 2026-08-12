@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 import yaml
 
 from dsl_course import collect, release_code, scheduler, seed
-from dsl_course.schedule import AssignmentEntry, Deploy, Grade, Release, Schedule
+from dsl_course.schedule import AssignmentEntry, Deploy, Release, Schedule
 
 BERLIN = ZoneInfo("Europe/Berlin")
 WHEN = datetime(2026, 9, 15, 14, 0, tzinfo=BERLIN)
@@ -52,7 +52,7 @@ def test_due_releases_honours_time_of_day_across_timezones():
 
 
 def test_display_only_entries_are_never_due():
-    # A calendar_event with no actions is a site schedule row, not work - the scheduler
+    # An event_datetime with no actions is a site schedule row, not work - the scheduler
     # must never consider it due, no matter how far past its datetime we are.
     r = _r("project-clinic", datetime(2026, 9, 15, 10, 0, tzinfo=BERLIN))
     assert r.is_event_only
@@ -60,7 +60,7 @@ def test_display_only_entries_are_never_due():
 
 
 def test_deploy_datetime_fires_on_its_own_clock():
-    # The class is announced for 10:00 (calendar_event); its materials carry a
+    # The class is announced for 10:00 (event_datetime); its materials carry a
     # deploy_datetime an hour earlier. The deploy is due at 09:00, before the entry's
     # own datetime - and a second copy without an override still waits for 10:00.
     early = Deploy(
@@ -111,13 +111,11 @@ def test_describe_lists_every_action():
             Deploy("data-f2026", "w7/housing.csv", "materials", "datasets/housing.csv"),
         ],
         assignment="assignment-1-f2026",
-        grade=Grade("assignment-2-f2026"),
     )
     lines = scheduler.describe(r)
     assert any("cm-f2026/lectures/02_intro -> materials/lectures/02_intro" in ln for ln in lines)
     assert any("materials/datasets/housing.csv" in ln for ln in lines)
     assert any(ln.startswith("assignment ") for ln in lines)
-    assert any(ln.startswith("grade ") for ln in lines)
 
 
 # _execute_nondeploy() and the deploy batching ARE pure wiring (no gh/git of their own),
@@ -172,41 +170,6 @@ def test_execute_nondeploy_assignment_calls_provision_all(monkeypatch):
     r = _r("s", WHEN, assignment="assignment-2-f2026")
     assert scheduler._execute_nondeploy("Course-Org", "Cohort-Org", r) == 0
     assert calls[0] == ("Course-Org", "assignment-2-f2026", "Cohort-Org")
-
-
-def test_execute_nondeploy_grade_calls_collect_with_iso_deadline(monkeypatch):
-    calls = []
-    monkeypatch.setattr(collect, "has_autograde_results", lambda org, slug: False)
-    monkeypatch.setattr(
-        "dsl_course.collect.collect",
-        lambda master_org, template, cohort_org, deadline, group=False: calls.append(
-            (master_org, template, cohort_org, deadline, group)
-        )
-        or 0,
-    )
-    r = _r(
-        "s",
-        WHEN,
-        grade=Grade("assignment-2-f2026", datetime(2026, 10, 13, 23, 59, tzinfo=BERLIN), True),
-    )
-    assert scheduler._execute_nondeploy("Course-Org", "Cohort-Org", r) == 0
-    org, template, cohort, deadline, group = calls[0]
-    assert (org, template, cohort, group) == ("Course-Org", "assignment-2-f2026", "Cohort-Org", True)
-    assert deadline.startswith("2026-10-13T23:59")
-
-
-def test_execute_nondeploy_grade_deadline_none_when_unset(monkeypatch):
-    # No deadline in the schedule -> pass None so collect resolves it from the SSOT.
-    calls = []
-    monkeypatch.setattr(collect, "has_autograde_results", lambda org, slug: False)
-    monkeypatch.setattr(
-        "dsl_course.collect.collect",
-        lambda m, t, c, deadline, group=False: calls.append(deadline) or 0,
-    )
-    scheduler._execute_nondeploy(
-        "Course-Org", "Cohort-Org", _r("s", WHEN, grade=Grade("assignment-1-f2026"))
-    )
-    assert calls[0] is None
 
 
 def test_deploy_many_clones_each_repo_once(monkeypatch):
@@ -323,9 +286,14 @@ def _assignments(**entries: AssignmentEntry) -> Schedule:
     return Schedule(assignments=dict(entries))
 
 
-def _due(day: int, grace: int = 0) -> AssignmentEntry:
+def _due(day: int, grading_day: int | None = None) -> AssignmentEntry:
     return AssignmentEntry(
-        due=datetime(2026, 10, day, 23, 59, 59, tzinfo=BERLIN), grace_days=grace
+        due_datetime=datetime(2026, 10, day, 23, 59, 59, tzinfo=BERLIN),
+        grading_datetime=(
+            datetime(2026, 10, grading_day, 23, 59, 59, tzinfo=BERLIN)
+            if grading_day is not None
+            else None
+        ),
     )
 
 
@@ -344,14 +312,15 @@ def test_due_snapshots_only_passed_deadlines_in_deadline_order():
     ]
 
 
-def test_due_snapshots_waits_out_grace_days_and_carries_the_pin():
-    sched = _assignments(**{"assignment-1": _due(13, grace=2)})
+def test_due_snapshots_uses_the_explicit_grading_datetime_when_set():
+    # grading_datetime wins over due_datetime, and snapshot + autograde must agree on it.
+    sched = _assignments(**{"assignment-1": _due(13, grading_day=15)})
     assert scheduler.due_snapshots(sched, datetime(2026, 10, 14, tzinfo=timezone.utc)) == []
     (slug, deadline), = scheduler.due_snapshots(
         sched, datetime(2026, 10, 16, tzinfo=timezone.utc)
     )
     assert slug == "assignment-1"
-    assert deadline.startswith("2026-10-15T23:59:59")  # due + grace_days, the grading pin
+    assert deadline.startswith("2026-10-15T23:59:59")
 
 
 def test_due_snapshots_empty_without_assignments():
@@ -444,36 +413,11 @@ def test_run_reports_a_failed_snapshot(monkeypatch):
     assert scheduler.run("Course-Org", "Cohort-Org", datetime(2026, 11, 1, tzinfo=timezone.utc)) == 1
 
 
-def test_run_snapshots_before_firing_a_grade_release(monkeypatch):
-    # Order matters: a grade release firing in the same tick must already see the snapshot.
-    order: list[str] = []
-    monkeypatch.setattr(collect, "load_snapshots", lambda org, slug: None)
-    # No marker yet and no template repo behind the slug: the automatic path skips, so this
-    # test still exercises the LEGACY grade release's ordering against the snapshot.
-    _stub_autograde(monkeypatch, marked=False)
-    monkeypatch.setattr(
-        collect,
-        "snapshot_assignment",
-        lambda org, slug, deadline: order.append("snapshot") or True,
-    )
-    monkeypatch.setattr(
-        "dsl_course.collect.collect",
-        lambda m, t, c, deadline, group=False: order.append("collect") or 0,
-    )
-    sched = Schedule(
-        assignments={"assignment-1": _due(13)},
-        releases=[_r("a1-grade", datetime(2026, 10, 14, tzinfo=BERLIN), grade=Grade("assignment-1-f2026"))],
-    )
-    monkeypatch.setattr(scheduler.schedule, "load", lambda cohort: sched)
-    assert scheduler.run("Course-Org", "Cohort-Org", datetime(2026, 10, 15, tzinfo=timezone.utc)) == 0
-    assert order == ["snapshot", "collect"]
-
-
 # ------------------------------------------------------- fire-once autograding
 # Autograding is zero-config: every assignment with a passed grading deadline is graded on
 # the next tick, exactly once. The marker is the autograde/<slug>/ results directory - so
 # what matters is that a present marker stops the run dead (an hourly re-grade would
-# recompute over a marker's hand-edits) and that the legacy `grade:` entry shares it.
+# recompute over a marker's hand-edits).
 
 
 def test_assignment_template_is_slug_plus_the_cohort_tag(monkeypatch):
@@ -551,7 +495,7 @@ def test_run_does_not_autograde_before_the_grading_deadline(monkeypatch):
     monkeypatch.setattr(
         scheduler.schedule,
         "load",
-        lambda cohort: _assignments(**{"assignment-1": _due(13, grace=2)}),
+        lambda cohort: _assignments(**{"assignment-1": _due(13, grading_day=15)}),
     )
     assert scheduler.run("Course-Org", "Cohort-f2026", datetime(2026, 10, 14, tzinfo=timezone.utc)) == 0
     assert graded == []
@@ -604,63 +548,20 @@ def test_run_dry_run_autogrades_nothing(monkeypatch):
 
 
 def test_run_autogrades_at_the_explicit_grading_deadline(monkeypatch):
-    # `grading_deadline` overrides due + grace_days, and snapshot + autograde must agree on
+    # `grading_datetime` overrides `due_datetime`, and snapshot + autograde must agree on
     # that one instant.
     _only_snapshots_taken(monkeypatch)
     graded = _stub_collect(monkeypatch, marked=set(), templates={"assignment-1-f2026"})
     entry = AssignmentEntry(
-        due=datetime(2026, 10, 13, 23, 59, 59, tzinfo=BERLIN),
-        grace_days=7,
-        grading_deadline=datetime(2026, 10, 15, 23, 59, 59, tzinfo=BERLIN),
+        due_datetime=datetime(2026, 10, 13, 23, 59, 59, tzinfo=BERLIN),
+        grading_datetime=datetime(2026, 10, 15, 23, 59, 59, tzinfo=BERLIN),
     )
     monkeypatch.setattr(
         scheduler.schedule, "load", lambda cohort: _assignments(**{"assignment-1": entry})
     )
-    # past grading_deadline (10-15) but well before due + grace_days (10-20)
+    # past grading_datetime (10-15) but well before what due_datetime alone would imply
     assert scheduler.run("Course-Org", "Cohort-f2026", datetime(2026, 10, 16, tzinfo=timezone.utc)) == 0
     assert graded[0][3].startswith("2026-10-15T23:59:59")
-
-
-def test_legacy_grade_release_shares_the_fire_once_marker(monkeypatch):
-    # The `grade:` entry keeps working, but never re-fires once autograde/<slug>/ exists.
-    called = []
-    monkeypatch.setattr(collect, "has_autograde_results", lambda org, slug: True)
-    monkeypatch.setattr(
-        "dsl_course.collect.collect",
-        lambda m, t, c, deadline=None, group=False: called.append(t) or 0,
-    )
-    r = _r("a1-grade", WHEN, grade=Grade("assignment-1-f2026"))
-    assert scheduler._execute_nondeploy("Course-Org", "Cohort-f2026", r) == 0
-    assert called == []
-
-
-def test_legacy_grade_release_does_not_double_fire_in_the_same_tick(monkeypatch):
-    # The automatic path graded this slug moments ago; its marker may not be readable yet,
-    # so the slugs fired this tick close that window.
-    called = []
-    monkeypatch.setattr(collect, "has_autograde_results", lambda org, slug: False)
-    monkeypatch.setattr(
-        "dsl_course.collect.collect",
-        lambda m, t, c, deadline=None, group=False: called.append(t) or 0,
-    )
-    r = _r("a1-grade", WHEN, grade=Grade("assignment-1-f2026"))
-    assert scheduler._execute_nondeploy(
-        "Course-Org", "Cohort-f2026", r, {"assignment-1"}
-    ) == 0
-    assert called == []
-
-
-def test_run_autogrades_once_even_with_a_legacy_grade_entry_for_the_same_slug(monkeypatch):
-    # End to end: the automatic path fires, the legacy entry for the same slug does not.
-    _only_snapshots_taken(monkeypatch)
-    graded = _stub_collect(monkeypatch, marked=set(), templates={"assignment-1-f2026"})
-    sched = Schedule(
-        assignments={"assignment-1": _due(13)},
-        releases=[_r("a1-grade", datetime(2026, 10, 14, tzinfo=BERLIN), grade=Grade("assignment-1-f2026"))],
-    )
-    monkeypatch.setattr(scheduler.schedule, "load", lambda cohort: sched)
-    assert scheduler.run("Course-Org", "Cohort-f2026", datetime(2026, 10, 15, tzinfo=timezone.utc)) == 0
-    assert [t for _m, t, _c, _d, _g in graded] == ["assignment-1-f2026"]
 
 
 def test_main_all_cohorts_with_none_registered_is_a_noop(monkeypatch):
@@ -686,9 +587,9 @@ def test_scheduler_workflow_hourly_and_ungated():
 
 
 def test_handout_releases_synthesised_from_the_assignments_block(monkeypatch):
-    # The whole lifecycle lives under assignments.<slug>; a `handout:` datetime becomes a
-    # normal release (template resolved as <slug>-<tag>, like autograding), so it fires
-    # through the same due/idempotency/site-sync machinery.
+    # The whole lifecycle lives under assignments.<slug>; a `handout_datetime:` datetime
+    # becomes a normal release (template resolved as <slug>-<tag>, like autograding), so
+    # it fires through the same due/idempotency/site-sync machinery.
     monkeypatch.setattr(
         scheduler,
         "_assignment_template",
@@ -697,14 +598,14 @@ def test_handout_releases_synthesised_from_the_assignments_block(monkeypatch):
     sched = Schedule(
         assignments={
             "assignment-1": AssignmentEntry(
-                due=datetime(2026, 10, 13, 23, 59, tzinfo=BERLIN),
-                handout=datetime(2026, 9, 22, 9, 0, tzinfo=BERLIN),
+                due_datetime=datetime(2026, 10, 13, 23, 59, tzinfo=BERLIN),
+                handout_datetime=datetime(2026, 9, 22, 9, 0, tzinfo=BERLIN),
             ),
             "web-only": AssignmentEntry(  # pinned for its site date; no template repo
-                due=datetime(2026, 11, 1, 23, 59, tzinfo=BERLIN),
-                handout=datetime(2026, 10, 1, 9, 0, tzinfo=BERLIN),
+                due_datetime=datetime(2026, 11, 1, 23, 59, tzinfo=BERLIN),
+                handout_datetime=datetime(2026, 10, 1, 9, 0, tzinfo=BERLIN),
             ),
-            "manual": AssignmentEntry(due=datetime(2026, 12, 1, 23, 59, tzinfo=BERLIN)),
+            "manual": AssignmentEntry(due_datetime=datetime(2026, 12, 1, 23, 59, tzinfo=BERLIN)),
         }
     )
     (r,) = scheduler._handout_releases("Course-Org", "Cohort-f2026", sched)

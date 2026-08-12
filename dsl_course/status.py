@@ -144,9 +144,7 @@ def collect(course_org: str, cohort_org: str) -> dict[str, dict]:
 
     sched = schedule.load(cohort_org)
 
-    n_actions = sum(
-        len(r.deploy) + bool(r.assignment) + bool(r.grade) for r in sched.releases
-    )
+    n_actions = sum(len(r.deploy) + bool(r.assignment) for r in sched.releases)
     data["C5"] = _row(
         "C5", f"Release plan ({schedule.SCHEDULE_PATH} -> materials_releases)",
         cohort_org, schedule.CONFIG_REPO, schedule.SCHEDULE_PATH, cohort_branch,
