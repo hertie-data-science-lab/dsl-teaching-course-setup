@@ -30,13 +30,25 @@ Nothing is written to any student repo. Auditors are never graded.
 ## 2. Add your marks
 
 - Edit `classroom-config/grades/<slug>.csv` (directly editing via web UI is fine; otherwise edit a local copy of the repo, commit & push)
-- Columns to fill: `github_handle, team, auto, manual, team_grade, adjustment, final, comments, team_comments`.
-ADD A BOX HERE WITH WHAT EACH DOES 
-- 
-  - `auto` and `manual` are faculty-internal and never shown to the student
-  - `final` is what the student sees, and you own it** - nothing sums `auto` + `manual` for you.
-    A hand-marked assignment just needs `final` + `comments`.
-  - **Group projects**: `team_grade` (shared), each member's private `adjustment`, shared `team_comments`, plus each member's own `final`. No one sees another member's adjustment.
+
+| Column | You fill? | The student sees it? | What it's for |
+|--------|-----------|----------------------|---------------|
+| `github_handle` | no - roster | - | which student the row is |
+| `team` | no - autograder | yes (group only) | their team, on group assignments |
+| `auto` | no - autograder | **no** | the machine score |
+| `manual` | yes | **no** | your hand-marked part - a working column |
+| `team_grade` | yes (group) | yes | the shared team mark |
+| `adjustment` | yes (group) | only their own | that member's individual adjustment |
+| `final` | **yes** | **yes** | **the mark. Nothing computes it for you** |
+| `comments` | yes | yes | feedback for that student |
+| `team_comments` | yes (group) | yes | feedback shared with the whole team |
+
+- `auto` and `manual` are faculty-internal and never shown to the student.
+- `final` is what the student sees, and you own it - nothing sums `auto` + `manual` for you.
+  A hand-marked assignment just needs `final` + `comments`.
+- **Group projects**: `team_grade` (shared), each member's private `adjustment`, shared
+  `team_comments`, plus each member's own `final`. No one sees another member's adjustment.
+- Values stay as you type them - a letter, a percentage, `+4` - nothing is coerced or rounded.
 
 ## 3. Sync gradebooks
 
