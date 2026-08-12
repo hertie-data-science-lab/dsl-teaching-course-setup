@@ -9,7 +9,7 @@ private `grades-<handle>` repo, never in their assignment repo.
 - *(autograding only)* hidden tests + `grading.yml` on the template's `solution` branch. Without
   them (or with `autograde: false`), skip step 1 and grade entirely by hand.
 
-## 1. Grade assignment (autograde)
+## 1. Grade assignment (for autograde only)
 
 Course `.github` → **Actions** → **Grade assignment**: `cohort_org`, `assignment`, plus `group`
 and `dry_run` (both default **off**). It runs the hidden tests and writes into
@@ -29,7 +29,7 @@ Nothing is written to any student repo. Auditors are never graded.
 
 ## 2. Add your marks
 
-- Edit `classroom-config/grades/<slug>.csv` (directly editing via web UI is fine; otherwise edit a local copy of the repo, commit & push)
+Edit `classroom-config/grades/<slug>.csv` (directly editing via web UI is fine; otherwise edit a local copy of the repo, commit & push)
 
 | Column | You fill? | The student sees it? | What it's for |
 |--------|-----------|----------------------|---------------|
@@ -43,17 +43,20 @@ Nothing is written to any student repo. Auditors are never graded.
 | `comments` | yes | yes | feedback for that student |
 | `team_comments` | yes (group) | yes | feedback shared with the whole team |
 
+- **For group projects**:
+  - `team_grade` (shared), each member's private `adjustment`, shared
+  `team_comments`, plus each member's own `final`.
+  - No one sees another member's adjustment.
+- **For no-autograde**: A hand-marked assignment just needs `final` + `comments`.
 - `auto` and `manual` are faculty-internal and never shown to the student.
 - `final` is what the student sees, and you own it - nothing sums `auto` + `manual` for you.
-  A hand-marked assignment just needs `final` + `comments`.
-- **Group projects**: `team_grade` (shared), each member's private `adjustment`, shared
-  `team_comments`, plus each member's own `final`. No one sees another member's adjustment.
 - Values stay as you type them - a letter, a percentage, `+4` - nothing is coerced or rounded.
 
 ## 3. Sync gradebooks
-
-Gives every onboarded, enrolled student a private `grades-<handle>` repo. Re-run after late
-enrolments. `dry_run` defaults **off**.
+- 
+- Gives every onboarded, enrolled student a private `grades-<handle>` repo.
+- Re-run after late enrolments.
+- `dry_run` defaults **off**.
 
 ## 4. Render grades (preview)
 
