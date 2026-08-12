@@ -13,7 +13,7 @@ ordinal-prefixed session folders.
 - **The package must tolerate not-yet-released submodules** - release its base early so a
   partial tree still imports.
 
-## The schedule normally does this
+## The schedule normally does this (recommended)
 
 A code release is a `deploy` entry with `source_repo` pointing at the code repo - see
 [Schedule releases](06-schedule-releases.md):
@@ -34,7 +34,7 @@ materials_releases:
 `dest_path` is optional and defaults to mirroring `source_path`. Copies are additive: an
 earlier release is never removed by a later one, and re-runs push nothing.
 
-## Release code (manual)
+## Release code via manual dispatch
 
 For a demo, a mid-lecture reveal, or recovery. The **Release code** button lives **only in the
 code repo itself** - go to that repo → **Actions** → **Release code**:
