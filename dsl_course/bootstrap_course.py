@@ -71,7 +71,8 @@ def _profile_topics(is_cohort: bool, course_code: str = "") -> list[str]:
 #
 #   USER-owned - content faculty edit, or that the running system writes live state into.
 #   In a cohort: classroom-config/{students.csv, schedule.yml, people.yml,
-#   teams.csv.sample, README.md, grades/**}. On a course org: .github/dsl-course.yml (the
+#   teams.csv.sample, README.md, grades/**} and welcome/README.md (the student landing
+#   page). On a course org: .github/dsl-course.yml (the
 #   faculty/course_admins SSOT). Seed these ONLY when absent (_seed_user_file) - rewriting
 #   them on a re-run destroys live enrolment state (roster rows, enrol codes, onboarded
 #   handles) and the faculty's schedule.
@@ -469,8 +470,9 @@ def setup_cohort_extras(org: str) -> None:
         private=False,
         description="Course front door - open a Join issue to enrol",
     ):
-        # All SYSTEM-owned: the onboarding workflows and the issue forms they parse (field
-        # ids must stay in lockstep with the workflow), so these refresh on every run.
+        # Everything under .github/ here is SYSTEM-owned: the onboarding workflows and the
+        # issue forms they parse (field ids must stay in lockstep with the workflow), so
+        # these refresh on every run.
         put_file(
             org,
             "welcome",
@@ -498,6 +500,17 @@ def setup_cohort_extras(org: str) -> None:
             ".github/ISSUE_TEMPLATE/join-team.yml",
             _template("welcome/ISSUE_TEMPLATE/join-team.yml").encode(),
             "ci: seed Join team issue form",
+        )
+        # The landing page a student sees on this public repo: what to do, and how. Its
+        # link back to the issue chooser is org-specific, so the template carries `{org}`.
+        # USER-owned (it is the cohort's front door, and faculty may reword it), so
+        # create-only - a repair re-run must not clobber their edits.
+        _seed_user_file(
+            org,
+            "welcome",
+            "README.md",
+            _template("welcome/README.md").format(org=org).encode(),
+            "docs: seed welcome README (how to join)",
         )
         log_ok("welcome repo workflows + Join forms up to date")
 

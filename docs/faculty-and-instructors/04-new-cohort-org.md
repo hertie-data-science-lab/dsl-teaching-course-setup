@@ -19,7 +19,9 @@ cohort website, and the schedule that runs the term. Once each year; the
 
 3. **Run [Bootstrap cohort](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/bootstrap-cohort.yml)**
    from the **course** org's `.github` Actions tab, `cohort_org` = `DSL-Demo-f2026`. You get the
-   public **`welcome`** repo (Join issue + onboarding), the private **`classroom-config`** repo
+   public **`welcome`** repo (Join issue + onboarding, plus a student-facing `README.md`
+   telling them how to join - yours to reword, it is never overwritten), the private
+   **`classroom-config`** repo
    (`students.csv`, `teams.csv`, `schedule.yml`, `people.yml`, `grades/`), the `students` +
    `auditors` teams, this cohort's `course-admin` team, and the site `dsl-demo-f2026.github.io`.
 
