@@ -19,8 +19,8 @@ changes; it is not a one-off step.
 | administer the **whole course**, every cohort, indefinitely | course org `.github/dsl-course.yml` → `people:` `course_admins` | **course** - once, for all years | `course-admin` (admin) on the course org **and** every cohort org |
 | push materials/assignments for **one year** and run the release buttons | that cohort's `classroom-config/people.yml` → `instructors` / `teaching_assistants` | **cohort** - per year | cohort org `instructors` team + course org `instructors-<tag>`: push on `.github` and on every course-org repo named `*-<tag>` |
 
-`course_admins` is deliberately **course-level**: a course director isn't to be re-declared every
-year, and their rights need to span every cohort. Instructors and TAs are deliberately
+`course_admins` is deliberately **course-level**: a course director and their FA isn't to be re-declared every
+year, and their rights need to span every cohort. One-off instructors and TAs are deliberately
 **cohort-level**: they change most years, so each cohort's list stands alone.
 
 **Prefer the cohort file** for anyone who isn't running the course across multiple years. It is per-year, self-retiring,
