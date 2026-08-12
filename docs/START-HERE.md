@@ -8,7 +8,7 @@ This system provisions and runs GitHub course orgs for the Hertie Data Science L
 |---------------|-------|
 | **Setting up a brand-new course** | [faculty & instructors runbooks](faculty-and-instructors/README.md) - runbooks [01](faculty-and-instructors/01-new-course-org.md)-[03](faculty-and-instructors/03-add-assignment-to-course.md) |
 | **Starting a new cohort / semester of an existing course** | [04 New cohort org](faculty-and-instructors/04-new-cohort-org.md) onwards |
-| **Joining as a TA or faculty assistant (FA)** | [`ta-fa/`](ta-fa/README.md) |
+| **Joining as a TA or faculty assistant (FA)** | [faculty & instructors runbooks](faculty-and-instructors/README.md) - skip 01-04 (setup); your work is [05](faculty-and-instructors/05-enrol-students-to-cohort.md)-[09](faculty-and-instructors/09-grade-and-return-assignments.md) |
 | **A course admin inheriting a running course** | [`admin/course-admin.md`](admin/course-admin.md) |
 
 Reference, not reading: [actions reference](faculty-and-instructors/actions-reference.md) (every

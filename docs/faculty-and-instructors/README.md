@@ -91,8 +91,8 @@ Two separate populations - neither ever holds the bot token:
 | Every **course button** | write on the course org's `.github` - i.e. its **`course-admin`** team (`course_admins`) or an **`instructors-<tag>`** team, where `<tag>` is the cohort's `fYYYY`/`sYYYY` suffix and membership comes from that cohort's own `people.yml` | the course org's `.github` Actions tab |
 
 Neither is automatic - you're declared in a config file and **Sync membership** grants it, then
-you accept a one-time org invite. Three distinct teams are called "instructors"; the
-[glossary](../START-HERE.md#glossary) tells them apart. Detail:
+you accept a one-time org invite. Three distinct teams are called "instructors";
+[course-admin.md](../admin/course-admin.md#the-three-instructors-teams) tells them apart. Detail:
 [access model](../admin/architecture.md#access-model--two-populations), and
 [`../admin/course-admin.md`](../admin/course-admin.md) for running a course day to day.
 The bot (`hertie-dsl-bot`) must be an **Owner** of every org - the one irreducible manual

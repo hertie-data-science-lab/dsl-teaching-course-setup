@@ -11,7 +11,6 @@ Here are some further useful links:
 |---------|-------|
 | Setting up a new course | [workflow runbooks](docs/faculty-and-instructors/README.md) |
 | A course admin inheriting a running course | [`course-admin.md`](docs/admin/course-admin.md) |
-| A TA or faculty assistant joining a cohort | [`docs/ta-fa/`](docs/ta-fa/README.md) |
 | An example course | [`example course`](example-course/README.md) |
 | Template artefacts| [`templates`](templates/classroom-config/README.md) |
 | Every workflow in the course org's `.github` Actions tab | [`actions reference`](docs/faculty-and-instructors/actions-reference.md) |

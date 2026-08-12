@@ -52,7 +52,7 @@ Full schema: [the schedule](required-input-schema.md#the-schedule).
 
 ## Silent failures
 
- **The schedule never errors - it drops.** Nothing below fails a run:
+> **The schedule never errors - it drops.** Nothing below fails a run:
 > - a malformed or missing **`when`** → that whole release is dropped;
 > - a malformed or missing **`due`** → the whole `assignments:` entry is dropped, and the
 >   grading deadline then falls back to *today* at grading time;
