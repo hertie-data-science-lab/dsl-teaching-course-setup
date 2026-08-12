@@ -38,6 +38,26 @@ simply appears on the cohort site (optionally with a `title:`).
 
 > Exams work the same way, viathe dedicated `exams:` block below.
 
+Start **minimal** - only `source_repo` + `source_path` are required, everything else
+defaults (into the cohort's `materials` repo, at the same path, at the event time):
+
+```yaml
+  lecture_02:
+    calendar_event: 2026-09-15T10:00
+    deploy:
+      - {source_repo: course-materials-f2026, source_path: lectures/02_intro}
+      # -> lands at materials/lectures/02_intro when the class starts
+
+  lab_02:
+    calendar_event: 2026-09-17T14:00
+    deploy:
+      - {source_repo: course-materials-f2026, source_path: labs/02_intro}
+```
+
+Paths are **relative to their repo**: `source_path` inside `source_repo`, `dest_path`
+inside `dest_repo`. Spell fields out only where a default doesn't fit - a different
+destination repo/path, or an early ship time:
+
 ```yaml
   lecture_02:
     calendar_event: 2026-09-15T10:00   # the class - what the site announces
@@ -78,19 +98,22 @@ materials_releases:
   lecture_02:
     calendar_event: 2026-09-15T10:00
     deploy:
-      - {source_repo: course-materials-f2026, source_path: lectures/02_week-2, dest_repo: lecture_materials}
-      - {source_repo: lecture-code-f2026, source_path: mlpkg/simulation, dest_repo: lecture_materials}
+      - {source_repo: course-materials-f2026, source_path: lectures/02_week-2}
+      - {source_repo: lecture-code-f2026, source_path: mlpkg/simulation}
   lab_02:
     calendar_event: 2026-09-17T14:00
     deploy:
-      - {source_repo: course-materials-f2026, source_path: labs/02_week-2, dest_repo: lab_materials}
+      - {source_repo: course-materials-f2026, source_path: labs/02_week-2}
 
 assignments:
   assignment-1:
-    handout: 2026-09-22T09:00       # one repo per student from assignment-1-<tag>, automatic
-    due: 2026-10-13                 # what students see
-    grading_deadline: 2026-10-15    # optional - when the snapshot freezes and it is autograded
+    handout: 2026-09-22T09:00       # optional - one repo per student from assignment-1-<tag>
+    due: 2026-10-13                 # REQUIRED - what students see
+    grading_deadline: 2026-10-15    # optional - snapshot freezes + autograded (default: due)
 ```
+
+Field-by-field tables (required/optional/defaults):
+[the schedule](DEPLOYMENT-CHECKLIST.md#scheduleyml).
 
 Full schema: [the schedule](DEPLOYMENT-CHECKLIST.md#scheduleyml).
 
