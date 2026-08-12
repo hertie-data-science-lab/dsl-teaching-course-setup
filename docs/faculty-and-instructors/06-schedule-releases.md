@@ -27,12 +27,13 @@ automatically, once, at its `grading_deadline`
 (see [below](#deadline-snapshots-and-autograding)).
 
 **The calendar event is not the release.** Each entry's `calendar_event:` is when the thing
-*happens* - that is what the cohort site's schedule shows, and the default fire time for the
-entry's actions. A deploy can carry its own `deploy_datetime:` to ship its files earlier (or
-later) than the class they belong to. And an entry with **no actions at all** is a
-display-only calendar event - a project clinic, a guest lecture: nothing deploys, the row
-simply appears on the cohort site (optionally with a `title:`). Exams work the same way, via
-the dedicated `exams:` block below.
+*happens* - that is what the cohort's `.github.io` site's deployed schedule shows (and  is the default fire time for the
+entry's actions). However, a deploy can also carry its own separate `deploy_datetime:` to ship its files earlier (or
+later) than the class they belong to. And an entry with **no deploy actions at all** is a
+display-only calendar event - e.g. an exam, a drop-in clinic, a guest lecture etc: nothing deploys, the row
+simply appears on the cohort site (optionally with a `title:`). 
+
+> Exams work the same way, viathe dedicated `exams:` block below.
 
 ```yaml
   session-02:
@@ -66,11 +67,9 @@ assignments:
     grading_deadline: 2026-10-15    # optional - when the snapshot freezes and it is autograded
 ```
 
-No `grade:` entry is needed: `assignment-1` is autograded once, at `2026-10-15T23:59:59`.
-
 Full schema: [the schedule](DEPLOYMENT-CHECKLIST.md#scheduleyml). 
 
-## Verify your schedule before trusting it
+## If you want to verify your schedule before trusting it
 
 1. **Dry-run the cron.** Run **Scheduled release** by hand - `dry_run` defaults to **`true`**,
    so it lists what *would* open and releases nothing. The best preflight there is.
