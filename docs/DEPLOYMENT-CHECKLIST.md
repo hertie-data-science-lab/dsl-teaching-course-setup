@@ -1,12 +1,12 @@
 # Deployment checklist
 
-Every input needed to stand up a working course + cohort: each step's workflow, inputs and
-output, then [every input file with a copyable example](#inputs-by-file). Worked example:
-[`example-course/`](../example-course/README.md).
+Full checklist for standing up working course + cohort orgs: each step's workflow, inputs w/ copyable examples and outputs. 
+
+Accompanies the e2e [worked example](../example-course/).
 
 ## Course setup (once)
 
-| | Step | Level | Where | Input | Output |
+| | Step | Org Level | Where | Input | Output |
 |---|------|-------|-------|-------|--------|
 | `[required]` | 1. Create the course org | course | GitHub [web UI](https://github.com/account/organizations/new) | name `<course-name>-<CODE>` (no year); invite **`hertie-dsl-bot`** as **Owner** (must accept) | an empty org the bot can bootstrap |
 | `[required]` | 2. Bootstrap | course | [central repo → Actions → **Bootstrap Course Org**](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions/workflows/bootstrap-org.yml) | `org`, `org_name`, `course_code`; optional `admin` (your handle) | the `.github` control panel with every button, the `course-admin` team, [`dsl-course.yml`](#dsl-courseyml), `DSL_BOT_TOKEN` set for you |
@@ -15,13 +15,11 @@ output, then [every input file with a copyable example](#inputs-by-file). Worked
 | *(optional)* | 5. Course admins | course | edit [`dsl-course.yml`](#dsl-courseyml), commit to `main` | GitHub handles | admin on the course org + every cohort, reconciled |
 | `[required]` | 6. Refresh | course | course `.github` → **Refresh actions** | none | dropdowns populated, secrets on content repos |
 
-Email needs nothing from you: enrolment-code + grade emails send through a centrally
-configured mailbox ([details](../docs-admin-arch/central-admin.md#email)). Where it isn't live yet,
-sends stay previews and enrolment codes still land in `students.csv`.
+> Enrolment-code + grade emails send through a centrally configured mailbox ([details](../docs-admin-arch/central-admin.md#email)). Where it isn't live yet, enrolment codes still land in `students.csv` (from which they need to be manually emailed), and grades are still sent to students' grades repos (just the notification email is not sent).
 
 ## Cohort setup (per year)
 
-| | Step | Level | Where | Input | Output |
+| | Step | Org Level | Where | Input | Output |
 |---|------|-------|-------|-------|--------|
 | `[required]` | 1. Create the cohort org | cohort | GitHub [web UI](https://github.com/account/organizations/new) | name `<course-name>-f/sYYYY`; invite **`hertie-dsl-bot`** as **Owner** (must accept) | an empty org the bot can bootstrap |
 | `[required]` | 2. Bootstrap | course → cohort | course `.github` → **Bootstrap cohort** | `cohort_org` | `welcome` (Join course / Join team issues) + `classroom-config` (all the files below), `students`/`auditors` teams, the cohort site, cohort registered with the cron |
@@ -35,16 +33,14 @@ sends stay previews and enrolment codes still land in `students.csv`.
 
 ## Inputs by file
 
-Anything you don't supply is synthesised or skipped, never blocks. All `classroom-config`
-files are private (PII stays there); a cohort's own `.github/dsl-course.yml` is just a pointer
-back to its course org - never edit it.
+> NB: all these `classroom-config/` files are kept in a private repo (PII stays there; not leaked publicly).
 
 ### `dsl-course.yml`
 
 Live example: [`example-course/course-org/dsl-course.yml`](../example-course/course-org/dsl-course.yml).
 
-Course org's `.github` repo - the course's identity card. Bootstrap writes it; you only ever
-touch `course_admins` (and optional display-only cards for the public course site).
+- Course org's `.github` repo - the course's identity card. 
+- Bootstrap writes it; you can optionally edit it; edits here are propagated to the course orgs' `.github` (which is mostly a series of pointers to this file).
 
 ```yaml
 org: DSL-Demo-Course-E1234
@@ -61,7 +57,7 @@ Live example: [`example-course/cohort-org/students.csv`](../example-course/cohor
 
 `classroom-config/students.csv` - one row per student, straight from the registrar (seeded
 header-only, with a filled `students.csv.sample` next to it). Leave the onboarding-owned
-columns blank. Deleting a row off-boards that student on the push.
+columns blank (`github_handle`, `github_id`, `enrol_code`). Deleting a row off-boards that student on the next push.
 
 ```csv
 student_id,hertie_email,name,github_handle,github_id,section,enrol_code,role
@@ -71,18 +67,17 @@ student_id,hertie_email,name,github_handle,github_id,section,enrol_code,role
 
 | Column | Filled by | Notes |
 |--------|-----------|-------|
-| `student_id`, `hertie_email`, `name`, `section` | registrar | `hertie_email` receives the enrolment code + grade notices |
+| `student_id`, `hertie_email`, `name`, `section` | you | `hertie_email` receives the enrolment code + grade notices |
 | `github_handle`, `github_id` | **onboarding** | blank until the student joins; the immutable `github_id` survives handle renames |
 | `enrol_code` | **Send enrolment codes** | the token the student pastes into the Join course issue |
-| `role` | registrar | blank/`enrolled` = full participant; `auditor` = reads released materials, gets no assignments/grades, refused from teams |
+| `role` | you | blank/`enrolled` = full participant; `auditor` = reads released materials, gets no assignments/grades, refused from teams |
 
 ### `people.yml`
 
 Live example: [`example-course/cohort-org/people.yml`](../example-course/cohort-org/people.yml).
 
 `classroom-config/people.yml` - this cohort's teaching team. Grants the cohort's `instructors`
-team **and** course-org push on that year's content repos (`instructors-<tag>`), and supplies
-the cohort site's cards. `github_handle` is the only required field.
+team necessary access permissions at both the course- and cohort-org levels. This includes the ability to push content from the course-org to that year's content repos (`instructors-<tag>`), and supplies the cohort site's cards. `github_handle` is the only required field, the rest are optional.
 
 ```yaml
 people:
@@ -105,11 +100,11 @@ shape, but there it is **display-only** (public-site cards, no access).
 
 Live example: [`example-course/cohort-org/teams.csv`](../example-course/cohort-org/teams.csv).
 
-`classroom-config/teams.csv` - group membership, per assignment. Students self-select via the
-`welcome` **Join team** issue (which enforces the per-assignment `max_team_size` set under
-[`schedule.yml`](#scheduleyml)'s `assignments:`, default 5), or you edit it directly; either
-way a push materialises a GitHub team per group, and releasing a group assignment grants each
-team one shared repo.
+`classroom-config/teams.csv` - group membership, per assignment. This can be popualted in 2 ways:
+1. Students self-select via the `welcome` **Join team** issue (which enforces the per-assignment `max_team_size` set under
+[`schedule.yml`](#scheduleyml)'s `assignments:`, default 5),
+2. you edit it directly;
+either way a push materialises a GitHub team per group, and releasing a group assignment grants each team one shared repo.
 
 ```csv
 assignment,team,github_handle
