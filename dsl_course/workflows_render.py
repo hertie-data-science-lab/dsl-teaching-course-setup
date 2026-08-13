@@ -96,7 +96,7 @@ _COHORT_ORG_INPUT = """\
 # The three path fields shared verbatim by both Release materials variants, in the same
 # order and with the same names as a schedule.yml `deploy:` entry's keys. source_path and
 # dest_path are comma-separated PARALLEL lists paired by index (see
-# release_code.parse_path_pairs); a blank dest_path mirrors every source_path, exactly as
+# deploy.parse_path_pairs); a blank dest_path mirrors every source_path, exactly as
 # an omitted `dest_path:` does in the schedule.
 _DEPLOY_PATH_INPUTS = """\
       source_path:
@@ -114,7 +114,7 @@ _DEPLOY_PATH_INPUTS = """\
 def _render_release(header: str, cohort_orgs: list[str], source_repo_input: str) -> str:
     """The Release materials button, shared by both variants. Its five inputs ARE a
     schedule.yml `deploy:` entry (plus the cohort org): the same names, the same order,
-    the same meaning - and the same executor, release_code.deploy_many, so a batch of
+    the same meaning - and the same executor, deploy.deploy_many, so a batch of
     paths clones each repo once whether it arrives from the cron or from this button.
     Only the `source_repo` widget differs between variants (a dropdown centrally, a
     pre-filled string inside a content repo), which is why it is passed in."""
@@ -141,7 +141,7 @@ jobs:
           DEST_PATH: ${{{{ inputs.dest_path }}}}
         run: |
           gh auth setup-git
-          python3 -m dsl_course.release_code --source-org "$SRC_ORG" \\
+          python3 -m dsl_course.deploy --source-org "$SRC_ORG" \\
             --source-repo "$SRC_REPO" --cohort-org "$COHORT_ORG" \\
             --source-path "$SRC_PATH" --dest-repo "$DEST_REPO" \\
             --dest-path "$DEST_PATH"

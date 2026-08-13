@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo
 
 import yaml
 
-from dsl_course import collect, release_code, scheduler, seed
+from dsl_course import collect, deploy, scheduler, seed
 from dsl_course.schedule import AssignmentEntry, Deploy, Release, Schedule
 
 BERLIN = ZoneInfo("Europe/Berlin")
@@ -130,7 +130,7 @@ def test_run_batches_all_deploys_through_deploy_many(monkeypatch):
     # comma-separated paths through the same call (see test_release.py).
     calls = []
     monkeypatch.setattr(
-        "dsl_course.release_code.deploy_many",
+        "dsl_course.deploy.deploy_many",
         lambda source_org, cohort_org, deploys, sync=True: calls.append(
             (source_org, cohort_org, list(deploys), sync)
         )
@@ -193,17 +193,17 @@ def test_deploy_many_clones_each_repo_once(monkeypatch):
             return (0, "")
         return (0, "")
 
-    monkeypatch.setattr(release_code, "gh", fake_gh)
-    monkeypatch.setattr(release_code, "git", lambda *a: (0, ""))  # commit + push succeed
-    monkeypatch.setattr(release_code, "create_repo", lambda *a, **k: True)
-    monkeypatch.setattr(release_code, "grant_read_teams", lambda *a, **k: None)
+    monkeypatch.setattr(deploy, "gh", fake_gh)
+    monkeypatch.setattr(deploy, "git", lambda *a: (0, ""))  # commit + push succeed
+    monkeypatch.setattr(deploy, "create_repo", lambda *a, **k: True)
+    monkeypatch.setattr(deploy, "grant_read_teams", lambda *a, **k: None)
 
     deploys = [
         Deploy("cm", "lectures/00_x", "lectures", None),
         Deploy("cm", "labs/00_y", "labs", None),
         Deploy("cm", "lectures/01_z", "lectures", None),
     ]
-    errors, changed = release_code.deploy_many("Course-Org", "Cohort-Org", deploys, sync=False)
+    errors, changed = deploy.deploy_many("Course-Org", "Cohort-Org", deploys, sync=False)
     assert (errors, changed) == (0, True)
     assert clones.count("Course-Org/cm") == 1  # source cloned once for all 3 copies
     assert clones.count("Cohort-Org/lectures") == 1
@@ -219,12 +219,12 @@ def test_deploy_many_missing_source_path_is_an_error_not_silent(monkeypatch):
             return (0, "")
         return (0, "")
 
-    monkeypatch.setattr(release_code, "gh", fake_gh)
-    monkeypatch.setattr(release_code, "git", lambda *a: (0, ""))
-    monkeypatch.setattr(release_code, "create_repo", lambda *a, **k: True)
-    monkeypatch.setattr(release_code, "grant_read_teams", lambda *a, **k: None)
+    monkeypatch.setattr(deploy, "gh", fake_gh)
+    monkeypatch.setattr(deploy, "git", lambda *a: (0, ""))
+    monkeypatch.setattr(deploy, "create_repo", lambda *a, **k: True)
+    monkeypatch.setattr(deploy, "grant_read_teams", lambda *a, **k: None)
 
-    errors, changed = release_code.deploy_many(
+    errors, changed = deploy.deploy_many(
         "Course-Org", "Cohort-Org", [Deploy("cm", "lectures/does-not-exist", "materials", None)], sync=False
     )
     assert errors == 1 and changed is False
@@ -245,17 +245,17 @@ def _clone_failing(*failing: str):
 
 
 def _no_io(monkeypatch, fake_gh):
-    monkeypatch.setattr(release_code, "gh", fake_gh)
-    monkeypatch.setattr(release_code, "git", lambda *a: (0, ""))
-    monkeypatch.setattr(release_code, "create_repo", lambda *a, **k: True)
-    monkeypatch.setattr(release_code, "grant_read_teams", lambda *a, **k: None)
+    monkeypatch.setattr(deploy, "gh", fake_gh)
+    monkeypatch.setattr(deploy, "git", lambda *a: (0, ""))
+    monkeypatch.setattr(deploy, "create_repo", lambda *a, **k: True)
+    monkeypatch.setattr(deploy, "grant_read_teams", lambda *a, **k: None)
 
 
 def test_deploy_many_counts_a_doomed_deploy_once(monkeypatch):
     # Source AND dest clone both fail: that is ONE copy lost, not two errors (a
-    # double-count made `release_code` report 2 failures for a single deploy).
+    # double-count made `deploy` report 2 failures for a single deploy).
     _no_io(monkeypatch, _clone_failing("Course-Org/cm", "Cohort-Org/materials"))
-    errors, changed = release_code.deploy_many(
+    errors, changed = deploy.deploy_many(
         "Course-Org",
         "Cohort-Org",
         [Deploy("cm", "lectures/00_x", "materials", None)],
@@ -272,7 +272,7 @@ def test_deploy_many_counts_each_unrunnable_deploy_once(monkeypatch):
         Deploy("cm", "labs/00_y", "labs", None),
         Deploy("cm", "lectures/01_z", "lectures", None),
     ]
-    assert release_code.deploy_many(
+    assert deploy.deploy_many(
         "Course-Org", "Cohort-Org", deploys, sync=False
     ) == (3, False)
 

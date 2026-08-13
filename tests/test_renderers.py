@@ -229,7 +229,7 @@ def test_both_release_buttons_take_exactly_a_deploy_entrys_fields(rendered):
     ids=["run-from-repo", "central"],
 )
 def test_both_release_buttons_run_the_same_executor_through_env(rendered):
-    # One executor for the schedule and the button (release_code.deploy_many, reached
+    # One executor for the schedule and the button (deploy.deploy_many, reached
     # via its CLI), and every user-supplied input reaches the shell as an env var.
     step = workflow_jobs(rendered)["release"]["steps"][-1]
     assert "${{" not in step["run"]
@@ -237,7 +237,7 @@ def test_both_release_buttons_run_the_same_executor_through_env(rendered):
     assert step["env"]["SRC_PATH"] == "${{ inputs.source_path }}"
     assert step["env"]["DEST_REPO"] == "${{ inputs.dest_repo }}"
     assert step["env"]["DEST_PATH"] == "${{ inputs.dest_path }}"
-    assert "python3 -m dsl_course.release_code" in step["run"]
+    assert "python3 -m dsl_course.deploy" in step["run"]
     for flag in ("--source-path", "--dest-repo", "--dest-path"):
         assert flag in step["run"]
 
