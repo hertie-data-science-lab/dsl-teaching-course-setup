@@ -1,42 +1,50 @@
 # New cohort org (once per year)
 
-Stand up the per-year, student-facing org: onboarding, the roster, released materials, the
-cohort website, and the schedule that runs the term. Once each year; the
-[course org](01-new-course-org.md) it hangs off is permanent.
+Stand up the per-year, student-facing org: 
+- onboarding, 
+- the student roster, 
+- released materials, 
+- the cohort website, 
+- and the schedule that runs the term.
+
+Once each year; the [course org](01-new-course-org.md) it hangs off is permanent.
 
 ## Prerequisites
 
-- You're in the course org's `course-admin` team (or a prior cohort's `instructors-<tag>`
-  team) - the *Bootstrap cohort* button lives in the **course** org's control panel.
+- **(Recommended)**: You're in the course org's `course-admin` team.
+- Being in a prior cohort's `instructors-<tag>` team also works. 
 
 ## Steps
 
 Live example of every file below: [`example-course/cohort-org/`](../example-course/cohort-org).
 
-1. **Create the cohort org** in the web UI, named **`<course-name>-f/sYYYY`**
-   (e.g. `DSL-Demo-f2026`). The `fYYYY`/`sYYYY` tag drives the semester label ("Fall 2026") and
-   which year's `assignment-*` templates the site lists.
+1. **Create the cohort org** in the web UI, 
+    - named **`<course-name>-f/sYYYY`** (e.g. `DSL-Demo-f2026`). 
+    - The `fYYYY`/`sYYYY` tag is necessary; it drives the semester label ("Fall 2026") and which year's `assignment-*` templates the site lists.
 
 2. **Invite `hertie-dsl-bot` as Owner** (Org → People → Invite → role *Owner*).
 
 3. **Run [Bootstrap cohort](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/bootstrap-cohort.yml)**
-   from the **course** org's `.github` Actions tab, `cohort_org` = `DSL-Demo-f2026`. You get the
-   public **`welcome`** repo (Join course issue + onboarding, plus a student-facing `README.md`
-   telling them how to join - yours to reword, it is never overwritten), the private
-   **`classroom-config`** repo
-   (`students.csv`, `teams.csv`, `schedule.yml`, `people.yml`, `grades/`), the `students` +
-   `auditors` teams, this cohort's `course-admin` team, and the site `dsl-demo-f2026.github.io`.
+    - From the **course** org's `.github` Actions tab.
+    - `cohort_org` = select the newly created `<course-name>-f/sYYYY`. 
+    - This seeds: 
+      - The public **`welcome`** repo (Join course issue + onboarding
+      - A private student-facing `README.md` telling them how to join - yours to reword, it is never overwritten)
+      - The hidden-from-students **`classroom-config`** repo, containing empty templates for `students.csv`, `teams.csv`, `schedule.yml`, `people.yml`, `grades/`
+      - The empty `students` + `auditors` teams (do not edit directly these, these will be populated by the workflow), 
+      - This cohort's `course-admin` team
+      - The site `dsl-demo-f2026.github.io`
 
-4. **Fill in `classroom-config/schedule.yml` for the whole term** (edit locally or in the web UI
-   → commit to `main`). Its dates drive every release, the grading deadlines and the website.
-   Full guide: [Schedule releases](07-schedule-releases.md); full schema:
-   [the schedule](DEPLOYMENT-CHECKLIST.md#scheduleyml).
+4. **Fill in `classroom-config/schedule.yml` for the whole term** (edit locally or in the web UI → commit to `main`).
+    - Its dates drive every release, the grading deadlines and the website
+    - Full guide:[Schedule releases](07-schedule-releases.md)
+    - Full schema: [the schedule](DEPLOYMENT-CHECKLIST.md#scheduleyml)
 
    ```yaml
    timezone: Europe/Berlin
    materials_releases:
      session_1:
-       event_datetime: 2026-09-07T14:00   # when the class happens - shown on the site
+       event_datetime: 2026-09-07T14:00   # when the class happens - shown on deployed site's schedule tab
        deploy:
          - {source_repo: course-materials-f2026, source_path: lectures/01_intro, dest_repo: materials,
             deploy_datetime: 2026-09-07T13:00}   # optional: ship this copy 1h early
@@ -44,18 +52,20 @@ Live example of every file below: [`example-course/cohort-org/`](../example-cour
    semester_end: 2026-12-18
    assignments:
      assignment-1:
-       handout_datetime: 2026-09-22T09:00  # repos provisioned automatically (per team if the
-                                           # template's grading.yml says type: group)
-       due_datetime: 2026-10-13         # due date students see; bare date -> 23:59:59
-       grading_datetime: 2026-10-15     # optional; snapshot + autograde fire here (once)
+       handout_datetime: 2026-09-22T09:00  # repos provisioned automatically 
+       type: group # repos provisioned 1 per group 
+       due_datetime: 2026-10-13         # due date students see; if bare date -> 23:59:59
+       grading_datetime: 2026-10-15     # optional; snapshot + autograde fire here 
    exams:
      - {name: MidTerm Exam, exam_datetime: 2026-11-03}        # bare date -> shown at 09:00
      - {name: Final Exam, exam_datetime: 2026-12-15T14:00}    # real start time, shown as given
    ```
+---
+
+> NB: Steps 5 & 6 are coverd in full detail in [05-manage-teaching-team.md](05-manage-teaching-team.md) & [06-enrol-students-to-cohort.md](06-manage-teaching-team.md)
 
 5. *(optional)* **Declare this cohort's instructors/TAs** in `classroom-config/people.yml`.
-   This grants them push on this cohort and on this year's course content repos, and supplies
-   the cohort site's cards.
+    - This grants them push on this cohort and on this year's course content repos, and supplies the cohort site's cards.
 
    ```yaml
    people:
@@ -67,14 +77,12 @@ Live example of every file below: [`example-course/cohort-org/`](../example-cour
          end: "2027-01-31"       # optional - omit for "indefinite"
    ```
 
-   `github_handle` is the only required field. The optional `start`/`end` dates **bound when the
-   access is live**: it is granted from `start` and revoked after `end`, automatically, with no
-   removal step to remember - which is how you hand a guest lecturer or a fixed-term TA push
-   access for one term. Course-wide admins are declared at the **course** level instead
-   (`.github/dsl-course.yml` → `course_admins`), not here. Full guide, including removing people
-   and how quickly changes land: [05 Manage the teaching team](05-manage-teaching-team.md).
+    - `github_handle` is the only required field. 
+    - The optional `start`/`end` dates **bound when the access is live**: it is granted from `start` and revoked after `end`, automatically - this is how you hand a guest lecturer or a fixed-term TA push access for one term. 
+      - Course-wide admins are declared at the **course** level instead (`.github/dsl-course.yml` → `course_admins`), not here. 
+      - Full guide, including removing people   and how quickly changes land: [05 Manage the teaching team](05-manage-teaching-team.md).
 
-6. **Load the roster.** Fill `classroom-config/students.csv` (seeded header-only) with
+6. **Load the student roster.** Fill `classroom-config/students.csv` (seeded header-only) with
    registrar data (`student_id, hertie_email, name, section`; leave `github_handle, github_id`
    blank - onboarding fills them). Add `role: auditor` for anyone who should get the released
    materials but no assignments and no grades. `students.csv.sample` next to it shows a filled
