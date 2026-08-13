@@ -122,7 +122,8 @@ Keyed by a slug you choose. As with a `deploy:`, `course_source_repo` names wher
 ```yaml
 assignments:
   assignment-1:
-    course_source_repo: assignment-1-f2026  # the course-org repo it hands out from
+    course_source_repo: assignment-1-f2026  # required: the course-org repo it hands out from
+    cohort_dest_repo: assignment-1-basics # optional: the cohort-side name. Default if undefined: the slug (i.e. assignment-1).
     handout_datetime: 2026-09-22T09:00  
     due_datetime: 2026-10-13            # what students see
     grading_datetime: 2026-10-15        # snapshot freezes + autograded (default when undefined: mirrors due_datetime)

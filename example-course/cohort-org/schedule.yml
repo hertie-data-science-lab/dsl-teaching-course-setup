@@ -117,9 +117,7 @@ assignments:                    # each assignment's whole lifecycle in one block
     grading_datetime: 2026-10-15        # optional grading pin - snapshot + autograde (default = due_datetime)
   assignment-2:
     course_source_repo: assignment-2-f2026
-    cohort_dest_repo: homework-2      # optional: the cohort-side name - student repos
-                                      # (homework-2-<handle>), teams.csv key, snapshots,
-                                      # grades. Default: the slug (assignment-2).
+    cohort_dest_repo: homework-2      # optional: the cohort-side name. Default if undefined: the slug (assignment-2).
     handout_datetime: 2026-09-29T14:00
     due_datetime: 2026-10-27T23:59
   assignment-4-project:
