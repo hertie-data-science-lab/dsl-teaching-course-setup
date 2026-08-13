@@ -105,9 +105,9 @@ releases:
 
 For the full assignment lifecyle: hand-out, due date, grading
 
-Keyed by assignment slug (i.e. the template repo name minus its `-<tag>` suffix)
-  - e.g;. for a cohort org called `demo-f2026`: an assignment in the `schedule.yml` called `assignment-1` will look for a repo called `assignment-1-f2026` in the course org.
-  - TODO: (1) check this is the case, (2) change it so that it requires an explicit `source_path` field rather than this abstraction 
+Keyed by a slug you choose. As with a `deploy:`, `course_source_repo` names where it comes from and `cohort_dest_repo` what it is called in the cohort (default: the slug). 
+
+> `teams.csv` rows and the grades/snapshot files key on the cohort name too - `cohort_dest_repo` if set, else the slug.
 
 | Field | Required | Default | Meaning |
 |---|---|---|---|
@@ -116,19 +116,26 @@ Keyed by assignment slug (i.e. the template repo name minus its `-<tag>` suffix)
 | `grading_datetime` | no | `due_datetime` | when the snapshot freezes and it is [autograded](#deadline-snapshots-and-autograding) |
 | `type` | no | `individual` | `individual` or `group`  |
 | `max_team_size` | no | `5` | group assignments only: the welcome repo's Join-team cap |
-
-
-TODO: currently missing due_datetime -> skips in deployment. Instead: have it loudly error w/ informative diagnostic message
+| `course_source_repo` | **yes** | - | the course-org repo this hands out from - one repo per student (or team) is generated from it |
+| `cohort_dest_repo` | no | the slug | what the cohort-side repos are called: `<name>-<handle>` per student (or `<name>-<team>`), and the frozen cohort template `<name>` |
 
 ```yaml
 assignments:
-  assignment-1: # this pulls from the course org's assignment-1-<tag>
+  assignment-1:
+    course_source_repo: assignment-1-f2026  # required: the course-org repo it hands out from
+    cohort_dest_repo: assignment-1-basics # optional: the cohort-side name. Default if undefined: the slug (i.e. assignment-1).
     handout_datetime: 2026-09-22T09:00  
     due_datetime: 2026-10-13            # what students see
     grading_datetime: 2026-10-15        # snapshot freezes + autograded (default when undefined: mirrors due_datetime)
     type: group                         # default: individual 
     max_team_size: 3
+
+  regression: # the slug is a label; the repo is named outright
+    course_source_repo: wk3-regression-f2026
+    due_datetime: 2026-11-10
 ```
+
+A `course_source_repo:` naming a repo that does not exist is reported loudly and the assignment is skipped - it can only be a typo, and its one other symptom is an assignment that never hands out and never grades. An entry missing the field altogether is dropped, like one missing `due_datetime:`.
 
 ## `events:` 
 

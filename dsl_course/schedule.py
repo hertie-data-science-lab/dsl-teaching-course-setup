@@ -15,11 +15,12 @@ lifecycle, `events` are display-only calendar rows.
             cohort_dest_repo: materials                  # cohort_dest_repo, cohort_dest_path
             cohort_dest_path: lectures/02_intro          # and deploy_datetime are optional.
             deploy_datetime: 2026-09-15T09:00
-    assignments:                     # each assignment's whole lifecycle. A bare
-      assignment-1:                  # due_datetime is END of day (23:59:59) - "due on the
-        handout_datetime: 2026-09-22T09:00  # 13th" closes at day's end.
-        due_datetime: 2026-10-13     # grading_datetime is the moment the snapshot
-        grading_datetime: 2026-10-15 # freezes and the autograder fires (default: due).
+    assignments:                     # each assignment's whole lifecycle. The slug is a
+      assignment-1:                  # label; course_source_repo names the COURSE-org repo
+        course_source_repo: assignment-1-f2026   # it hands out from, and is REQUIRED.
+        handout_datetime: 2026-09-22T09:00  # A bare due_datetime is END of day (23:59:59)
+        due_datetime: 2026-10-13     # - "due on the 13th" closes at day's end.
+        grading_datetime: 2026-10-15 # Snapshot freezes + autograder fires (default: due).
     events:                          # display-only rows - nothing deploys, the site just
       mid-term:                      # shows them. `type` is `exam` or `special_event`
         type: exam                   # (the default when omitted).
@@ -214,6 +215,16 @@ class AssignmentEntry:
     `max_team_size` (group assignments)."""
 
     due_datetime: datetime
+    # The COURSE-org repo this assignment hands out from - the template one repo per
+    # student (or per team) is generated from. Required and named outright: it used to be
+    # derived as `<slug>-<cohort tag>`, which was right almost always and invisible in the
+    # file that depended on it. Same meaning as a deploy's `course_source_repo`.
+    course_source_repo: str
+    # What the COHORT-side artefacts are called - the frozen cohort template repo, the
+    # `<name>-<handle>` student repos, the teams.csv key, the snapshot and grades files.
+    # None = the entry's slug, which is almost always right. Mirrors a deploy's
+    # `cohort_dest_repo`: source names the course side, dest names the cohort side.
+    cohort_dest_repo: str | None = None
     grading_datetime: datetime | None = None  # explicit pin; defaults to due_datetime
     # When to provision one repo per student (or per team - see `type`) from the
     # `<slug>-<tag>` template. The scheduler synthesises a release from this, so it fires
@@ -370,13 +381,20 @@ def _parse_assignments(
         if due is None:
             _drop(drops, where, "no valid `due_datetime`", cost)
             continue
+        source_repo = str(entry.get("course_source_repo") or "").strip()
+        if not source_repo:
+            _drop(drops, where, "no `course_source_repo`", cost)
+            continue
         try:
             cap = int(entry["max_team_size"])
         except (KeyError, TypeError, ValueError):
             cap = None
         kind = str(entry.get("type") or "").strip().lower()
+        dest = str(entry.get("cohort_dest_repo") or "").strip()
         out[str(slug)] = AssignmentEntry(
             due_datetime=due,
+            course_source_repo=source_repo,
+            cohort_dest_repo=dest or None,
             grading_datetime=_coerce_datetime(
                 entry.get("grading_datetime"), tz, end_of_day=True
             ),
@@ -460,6 +478,28 @@ def parse(meta: dict) -> Schedule:
         events=_parse_events(meta.get("events"), tz, drops),
         dropped=drops,
     )
+
+
+def cohort_name(slug: str, entry: AssignmentEntry) -> str:
+    """The ONE cohort-side name for an assignment: `cohort_dest_repo`, else its slug.
+    Every cohort-side artefact keys on it - generated repos, teams.csv, snapshots,
+    autograde markers, grades - and the scheduler's fire-once check must agree with what
+    collect writes, so both resolve it here rather than each deriving its own."""
+    return entry.cohort_dest_repo or slug
+
+
+def entry_for_repo(sched: Schedule, repo: str) -> tuple[str, AssignmentEntry] | None:
+    """(slug, entry) for the assignment that hands out from `repo`, or None.
+
+    Callers that start from a REPO name - the autograder, the website - must find its
+    schedule entry by matching `course_source_repo`, never by deriving a slug from the
+    repo name. The slug is now a free label, so `wk3-regression-f2026` may legitimately be
+    keyed `regression`; deriving would silently miss it, and the symptoms are quiet ones
+    (no due date on the site, a group assignment provisioned per student)."""
+    for slug, entry in sched.assignments.items():
+        if entry.course_source_repo == repo:
+            return slug, entry
+    return None
 
 
 def grading_datetime_at(sched: Schedule, slug: str) -> datetime | None:

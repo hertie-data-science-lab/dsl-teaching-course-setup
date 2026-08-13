@@ -330,6 +330,7 @@ def _assignments(**entries: AssignmentEntry) -> Schedule:
 
 def _due(day: int, grading_day: int | None = None) -> AssignmentEntry:
     return AssignmentEntry(
+        course_source_repo="a-f2026",
         due_datetime=datetime(2026, 10, day, 23, 59, 59, tzinfo=BERLIN),
         grading_datetime=(
             datetime(2026, 10, grading_day, 23, 59, 59, tzinfo=BERLIN)
@@ -380,7 +381,9 @@ def _stub_autograde(monkeypatch, marked: bool = True):
     phase). `marked` = every slug already has its autograde/<slug>/ marker, so nothing
     fires."""
     monkeypatch.setattr(collect, "has_autograde_results", lambda org, slug: marked)
-    monkeypatch.setattr(scheduler, "_assignment_template", lambda c, o, slug: None)
+    monkeypatch.setattr(
+        scheduler, "_assignment_template", lambda org, slug, entry: None
+    )
 
 
 def _stub_snapshots(monkeypatch, existing: set[str]):
@@ -502,25 +505,34 @@ def test_run_reports_a_failed_snapshot(monkeypatch):
 # recompute over a marker's hand-edits).
 
 
-def test_assignment_template_is_slug_plus_the_cohort_tag(monkeypatch):
+def test_assignment_template_is_the_named_course_source_repo(monkeypatch):
     monkeypatch.setattr(
-        "dsl_course.utils.repo_exists",
-        lambda org, repo: repo == "assignment-1-f2026",
+        "dsl_course.utils.repo_exists", lambda org, repo: repo == "wk3-regression-f2026"
     )
+    entry = AssignmentEntry(
+        course_source_repo="wk3-regression-f2026",
+        due_datetime=datetime(2026, 10, 13, 23, 59, 59, tzinfo=BERLIN),
+    )
+    # the repo is taken from the entry, never derived from the slug - so a slug that looks
+    # nothing like its repo resolves exactly as well as one that matches
     assert (
-        scheduler._assignment_template("Course-Org", "DSL-Demo-f2026", "assignment-1")
-        == "assignment-1-f2026"
+        scheduler._assignment_template("Course-Org", "regression", entry)
+        == "wk3-regression-f2026"
     )
-    # no such repo in the course org -> nothing to grade against
-    assert (
-        scheduler._assignment_template("Course-Org", "DSL-Demo-f2026", "assignment-9")
-        is None
+
+
+def test_a_course_source_repo_that_does_not_exist_says_so(monkeypatch, capsys):
+    # The name is required and hand-written, so one that resolves to nothing can only be a
+    # typo - and its only other symptom is an assignment that never hands out or grades.
+    monkeypatch.setattr("dsl_course.utils.repo_exists", lambda org, repo: False)
+    entry = AssignmentEntry(
+        course_source_repo="typo-repo",
+        due_datetime=datetime(2026, 10, 13, 23, 59, 59, tzinfo=BERLIN),
     )
-    # an untagged cohort org names no template - skip rather than guess
-    assert (
-        scheduler._assignment_template("Course-Org", "Cohort-Org", "assignment-1")
-        is None
-    )
+    assert scheduler._assignment_template("Course-Org", "assignment-1", entry) is None
+    err = capsys.readouterr().err
+    assert "assignments.assignment-1.course_source_repo" in err
+    assert "typo-repo" in err and "Course-Org" in err
 
 
 def _stub_collect(monkeypatch, marked: set[str], templates: set[str], rc: int = 0):
@@ -533,7 +545,7 @@ def _stub_collect(monkeypatch, marked: set[str], templates: set[str], rc: int = 
     monkeypatch.setattr(
         scheduler,
         "_assignment_template",
-        lambda course, cohort, slug: t if (t := f"{slug}-f2026") in templates else None,
+        lambda org, slug, entry: t if (t := f"{slug}-f2026") in templates else None,
     )
     monkeypatch.setattr(
         "dsl_course.collect.collect",
@@ -681,6 +693,7 @@ def test_run_autogrades_at_the_explicit_grading_deadline(monkeypatch):
     _only_snapshots_taken(monkeypatch)
     graded = _stub_collect(monkeypatch, marked=set(), templates={"assignment-1-f2026"})
     entry = AssignmentEntry(
+        course_source_repo="a-f2026",
         due_datetime=datetime(2026, 10, 13, 23, 59, 59, tzinfo=BERLIN),
         grading_datetime=datetime(2026, 10, 15, 23, 59, 59, tzinfo=BERLIN),
     )
@@ -723,31 +736,37 @@ def test_scheduler_workflow_hourly_and_ungated():
 
 def test_handout_releases_synthesised_from_the_assignments_block(monkeypatch):
     # The whole lifecycle lives under assignments.<slug>; a `handout_datetime:` datetime
-    # becomes a normal release (template resolved as <slug>-<tag>, like autograding), so
-    # it fires through the same due/idempotency/site-sync machinery.
+    # becomes a normal release (its repo named by course_source_repo, as for autograding),
+    # so it fires through the same due/idempotency/site-sync machinery.
     monkeypatch.setattr(
         scheduler,
         "_assignment_template",
-        lambda course, cohort, slug: None if slug == "web-only" else f"{slug}-f2026",
+        lambda org, slug, entry: (
+            None if slug == "missing-repo" else entry.course_source_repo
+        ),
     )
     sched = Schedule(
         assignments={
             "assignment-1": AssignmentEntry(
+                course_source_repo="a-f2026",
                 due_datetime=datetime(2026, 10, 13, 23, 59, tzinfo=BERLIN),
                 handout_datetime=datetime(2026, 9, 22, 9, 0, tzinfo=BERLIN),
             ),
-            "web-only": AssignmentEntry(  # pinned for its site date; no template repo
+            # names a repo that isn't there - skipped, not fatal to its neighbours
+            "missing-repo": AssignmentEntry(
+                course_source_repo="gone-f2026",
                 due_datetime=datetime(2026, 11, 1, 23, 59, tzinfo=BERLIN),
                 handout_datetime=datetime(2026, 10, 1, 9, 0, tzinfo=BERLIN),
             ),
             "manual": AssignmentEntry(
-                due_datetime=datetime(2026, 12, 1, 23, 59, tzinfo=BERLIN)
+                course_source_repo="a-f2026",
+                due_datetime=datetime(2026, 12, 1, 23, 59, tzinfo=BERLIN),
             ),
         }
     )
     (r,) = scheduler._handout_releases("Course-Org", "Cohort-f2026", sched)
     assert r.label == "assignment-1-handout"
-    assert r.assignment == "assignment-1-f2026"
+    assert r.assignment == "a-f2026"
     assert r.when == datetime(2026, 9, 22, 9, 0, tzinfo=BERLIN)
     # and it is due like any release once its datetime passes - not a minute before
     assert scheduler.due_releases([r], datetime(2026, 9, 22, 8, 0, tzinfo=BERLIN)) == []

@@ -111,13 +111,17 @@ releases:
 # the template's own grading.yml).
 assignments:                    # each assignment's whole lifecycle in one block
   assignment-1:
-    handout_datetime: 2026-09-15T14:00  # provision one repo per student from assignment-1-f2026
+    course_source_repo: assignment-1-f2026  # REQUIRED - the course-org repo it hands out from
+    handout_datetime: 2026-09-15T14:00  # provision one repo per student from it
     due_datetime: 2026-10-13            # what students see
     grading_datetime: 2026-10-15        # optional grading pin - snapshot + autograde (default = due_datetime)
   assignment-2:
+    course_source_repo: assignment-2-f2026
+    cohort_dest_repo: homework-2      # optional: the cohort-side name. Default if undefined: the slug (assignment-2).
     handout_datetime: 2026-09-29T14:00
     due_datetime: 2026-10-27T23:59
   assignment-4-project:
+    course_source_repo: assignment-4-project-f2026
     handout_datetime: 2026-10-13T14:00
     type: group                   # per-team handout + grading (also set in the
                                   # template's grading.yml)

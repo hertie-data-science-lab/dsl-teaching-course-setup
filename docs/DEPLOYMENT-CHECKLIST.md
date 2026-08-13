@@ -279,12 +279,13 @@ releases:
 **Dates** - the website schedule and the grading deadlines. Absent values are synthesised
 (semester from the tag, lectures weekly, assignments fortnightly, exams weeks 8 + 15).
 
-Per assignment (`assignments.<slug>`); only `due_datetime` is required, so a minimal entry is
-just a slug and a date:
+Per assignment (`assignments.<slug>`); `due_datetime` and `course_source_repo` are required,
+so a minimal entry is a slug, a date and the repo it hands out from:
 
 ```yaml
 assignments:
   assignment-1:
+    course_source_repo: assignment-1-f2026
     due_datetime: 2026-10-13
 ```
 
@@ -295,6 +296,8 @@ assignments:
 | `grading_datetime` | no | `due_datetime` | snapshot freezes + autograder fires (once) |
 | `type` | no | individual | `group` / `individual` - how handout + grading fan out. Can also be set in the template's `grading.yml` |
 | `max_team_size` | no | 5 | group assignments: Join-team cap |
+| `course_source_repo` | **yes** | - (entry dropped without it) | the course-org repo this hands out from. A name that does not exist is reported loudly |
+| `cohort_dest_repo` | no | the slug | the cohort-side name: student/team repos (`<name>-<handle>`), the frozen cohort template, the teams.csv key, snapshots and grades |
 
 ```yaml
 semester_start: 2026-09-07

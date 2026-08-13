@@ -503,7 +503,8 @@ def _assignment_dates(
     its -fYYYY/-sYYYY tag). An unscheduled assignment is due on `fallback` and has no
     handout; a scheduled one has a handout only when the plan pins (or the manual release
     button recorded) one."""
-    entry = sched.assignments.get(assignment_slug(repo))
+    found = schedule.entry_for_repo(sched, repo)
+    entry = found[1] if found else None
     if entry is None:
         return fallback, None
     return entry.due_datetime, entry.handout_datetime

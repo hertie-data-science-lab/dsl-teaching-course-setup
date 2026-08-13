@@ -232,9 +232,10 @@ def main() -> int:
         "--master-org", required=True, help="Course org (template source)"
     )
     parser.add_argument(
-        "--template",
+        "--course-source-repo",
+        dest="template",
         required=True,
-        help="Assignment template repo (e.g. assignment-1-f2026)",
+        help="COURSE-org repo to hand out from (e.g. assignment-1-f2026)",
     )
     parser.add_argument("--cohort-org", required=True, help="Cohort org (target)")
     parser.add_argument(
@@ -304,7 +305,13 @@ def provision_all(
     auditing = len(students) - len(participants)
     onboarded = [s for s in participants if s.onboarded]
     skipped = len(participants) - len(onboarded)
-    slug = assignment_slug(template)
+    # The cohort-side name: `cohort_dest_repo`, else the schedule slug, else (for a
+    # handout of an unscheduled template) the template name minus its tag. Everything
+    # downstream - repos, teams.csv, snapshots, grades - keys on this one name.
+    from . import schedule
+
+    found = schedule.entry_for_repo(schedule.load(cohort_org), template)
+    slug = schedule.cohort_name(*found) if found else assignment_slug(template)
 
     # A provisioning unit is (repo_name, [member handles]). Individual = one per student
     # (a team of one); group = one per team from teams.csv, keyed on this assignment slug.

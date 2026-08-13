@@ -196,15 +196,16 @@ def render_central_release(source_repos: list[str], cohort_orgs: list[str]) -> s
 
 
 def _assignment_input(assignments: list[str]) -> str:
-    """Assignment as a dropdown of discovered assignments/ folders, or free-text."""
+    """The course-org repo to hand out from - a dropdown of discovered assignment
+    templates, or free-text. Named as in schedule.yml: `course_source_repo`."""
     if assignments:
         return (
-            '      assignment:\n        description: "Assignment"\n'
+            '      course_source_repo:\n        description: "Course-org repo to hand out from"\n'
             "        required: true\n        type: choice\n        options:\n"
             + _choice(assignments)
         )
     return (
-        '      assignment:\n        description: "Assignment template repo (e.g. assignment-1-f2026)"\n'
+        '      course_source_repo:\n        description: "Course-org repo to hand out from (e.g. assignment-1-f2026)"\n'
         "        required: true"
     )
 
@@ -254,13 +255,13 @@ jobs:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
           MASTER_ORG: ${{{{ github.repository_owner }}}}
           COHORT_ORG: ${{{{ inputs.cohort_org }}}}
-          TEMPLATE: ${{{{ inputs.assignment }}}}
+          COURSE_SOURCE_REPO: ${{{{ inputs.course_source_repo }}}}
           INC_SOL: ${{{{ inputs.include_solution }}}}
           TYPE: ${{{{ inputs.type }}}}
           DRY_RUN: ${{{{ inputs.dry_run }}}}
         run: |
           gh auth setup-git
-          args=(--master-org "$MASTER_ORG" --template "$TEMPLATE" --cohort-org "$COHORT_ORG")
+          args=(--master-org "$MASTER_ORG" --course-source-repo "$COURSE_SOURCE_REPO" --cohort-org "$COHORT_ORG")
           [ "$INC_SOL" = "true" ] && args+=(--solution)
           args+=(--type "$TYPE")
           [ "$DRY_RUN" = "true" ] && args+=(--dry-run)
@@ -314,13 +315,13 @@ jobs:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
           MASTER_ORG: ${{{{ github.repository_owner }}}}
           COHORT_ORG: ${{{{ inputs.cohort_org }}}}
-          TEMPLATE: ${{{{ inputs.assignment }}}}
+          COURSE_SOURCE_REPO: ${{{{ inputs.course_source_repo }}}}
           GROUP: ${{{{ inputs.group }}}}
           DRY_RUN: ${{{{ inputs.dry_run }}}}
         run: |
           gh auth setup-git
           pip install --quiet pytest nbconvert
-          args=(--master-org "$MASTER_ORG" --template "$TEMPLATE" --cohort-org "$COHORT_ORG")
+          args=(--master-org "$MASTER_ORG" --course-source-repo "$COURSE_SOURCE_REPO" --cohort-org "$COHORT_ORG")
           [ "$GROUP" = "true" ] && args+=(--group)
           [ "$DRY_RUN" = "true" ] && args+=(--dry-run)
           python3 -m dsl_course.collect "${{args[@]}}"

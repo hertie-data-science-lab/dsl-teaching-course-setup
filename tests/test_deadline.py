@@ -11,26 +11,58 @@ from dsl_course.schedule import Schedule, grading_datetime_iso, parse
 
 
 def test_due_datetime_closes_end_of_day():
-    sched = parse({"assignments": {"assignment-1": {"due_datetime": "2026-10-13"}}})
+    sched = parse(
+        {
+            "assignments": {
+                "assignment-1": {
+                    "course_source_repo": "a-f2026",
+                    "due_datetime": "2026-10-13",
+                }
+            }
+        }
+    )
     assert grading_datetime_iso(sched, "assignment-1").startswith("2026-10-13T23:59:59")
 
 
 def test_due_as_yaml_date_object():
     sched = parse(
-        {"assignments": {"assignment-1": {"due_datetime": date(2026, 10, 13)}}}
+        {
+            "assignments": {
+                "assignment-1": {
+                    "course_source_repo": "a-f2026",
+                    "due_datetime": date(2026, 10, 13),
+                }
+            }
+        }
     )
     assert grading_datetime_iso(sched, "assignment-1").startswith("2026-10-13T23:59:59")
 
 
 def test_due_with_explicit_time_is_honoured():
     sched = parse(
-        {"assignments": {"assignment-1": {"due_datetime": "2026-10-13T18:00"}}}
+        {
+            "assignments": {
+                "assignment-1": {
+                    "course_source_repo": "a-f2026",
+                    "due_datetime": "2026-10-13T18:00",
+                }
+            }
+        }
     )
     assert grading_datetime_iso(sched, "assignment-1").startswith("2026-10-13T18:00")
 
 
 def test_unscheduled_assignment_is_none():
-    sched = parse({"assignments": {"assignment-1": {"due_datetime": "2026-10-13"}}})
+    sched = parse(
+        {
+            "assignments": {
+                "assignment-1": {
+                    "course_source_repo": "a-f2026",
+                    "due_datetime": "2026-10-13",
+                }
+            }
+        }
+    )
     assert grading_datetime_iso(sched, "assignment-2") is None
     assert grading_datetime_iso(Schedule(), "assignment-1") is None
 
@@ -45,6 +77,7 @@ def test_explicit_grading_datetime_wins_over_due_datetime():
         {
             "assignments": {
                 "assignment-1": {
+                    "course_source_repo": "a-f2026",
                     "due_datetime": "2026-10-13",
                     "grading_datetime": "2026-10-15",
                 }
@@ -65,6 +98,7 @@ def test_grading_datetime_bare_date_closes_end_of_day():
         {
             "assignments": {
                 "assignment-1": {
+                    "course_source_repo": "a-f2026",
                     "due_datetime": "2026-10-13",
                     "grading_datetime": "2026-10-15",
                 }
@@ -76,6 +110,7 @@ def test_grading_datetime_bare_date_closes_end_of_day():
         {
             "assignments": {
                 "assignment-1": {
+                    "course_source_repo": "a-f2026",
                     "due_datetime": "2026-10-13",
                     "grading_datetime": date(2026, 10, 15),
                 }
@@ -90,6 +125,7 @@ def test_grading_datetime_with_an_explicit_time_is_honoured():
         {
             "assignments": {
                 "assignment-1": {
+                    "course_source_repo": "a-f2026",
                     "due_datetime": "2026-10-13",
                     "grading_datetime": "2026-10-15T09:00",
                 }
@@ -105,6 +141,7 @@ def test_grading_datetime_is_not_clamped_relative_to_due_datetime():
         {
             "assignments": {
                 "assignment-1": {
+                    "course_source_repo": "a-f2026",
                     "due_datetime": "2026-10-20",
                     "grading_datetime": "2026-10-14",
                 }
@@ -121,6 +158,7 @@ def test_malformed_grading_datetime_falls_back_to_due_datetime():
         {
             "assignments": {
                 "assignment-1": {
+                    "course_source_repo": "a-f2026",
                     "due_datetime": "2026-10-13",
                     "grading_datetime": "soon-ish",
                 }
