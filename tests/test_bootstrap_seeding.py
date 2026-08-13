@@ -19,6 +19,7 @@ from __future__ import annotations
 import pytest
 
 from dsl_course import bootstrap_course as bc
+from dsl_course import seed, welcome
 
 USER_OWNED = {
     "students.csv",
@@ -74,7 +75,11 @@ def fake(monkeypatch):
     f = FakeOrg()
     monkeypatch.setattr(bc, "get_file_content", f.get_file_content)
     monkeypatch.setattr(bc, "put_file", f.put_file)
-    monkeypatch.setattr(bc, "delete_file", f.delete_file)
+    # The welcome repo's SYSTEM-owned files are written by dsl_course.welcome (so that
+    # seed.refresh can re-push them without importing bootstrap_course), so its own
+    # put_file/delete_file have to be faked too.
+    monkeypatch.setattr(welcome, "put_file", f.put_file)
+    monkeypatch.setattr(welcome, "delete_file", f.delete_file)
     monkeypatch.setattr(bc, "log_skip", lambda msg: f.skips.append(msg))
     # everything else setup_cohort_extras does is repo-level and safe to re-run; it is
     # stubbed out so these tests stay pure (no gh calls).
@@ -140,16 +145,16 @@ def test_rerun_preserves_user_config_and_refreshes_workflows(fake):
 
     # SYSTEM-owned files: re-pushed, so the stale copies are replaced by the templates.
     assert fake.files[("classroom-config", ".github/workflows/dispatch-sync.yml")] == (
-        bc._template("classroom-config/dispatch-sync.yml")
+        welcome.template("classroom-config/dispatch-sync.yml")
     )
     assert fake.files[("classroom-config", "README.md")] == (
-        bc._template("classroom-config/README.md")
+        welcome.template("classroom-config/README.md")
     )
     assert fake.files[("classroom-config", "teams.csv.sample")] == (
-        bc._template("classroom-config/teams.csv.sample")
+        welcome.template("classroom-config/teams.csv.sample")
     )
     assert fake.files[("welcome", ".github/workflows/onboard.yml")] == (
-        bc._template("welcome/onboard.yml")
+        welcome.template("welcome/onboard.yml")
     )
     assert fake.written("welcome") == WELCOME_SYSTEM_OWNED | {"README.md"}
 
@@ -207,12 +212,13 @@ def test_sample_headers_match_the_engine_schemas():
 
     roster_header = ",".join(FIELDS)
     assert (
-        bc._template("classroom-config/students.csv").splitlines()[0] == roster_header
+        welcome.template("classroom-config/students.csv").splitlines()[0]
+        == roster_header
     )
-    sample = bc._template("classroom-config/students.csv.sample").splitlines()
+    sample = welcome.template("classroom-config/students.csv.sample").splitlines()
     assert sample[0] == roster_header
     assert any(",auditor" in line for line in sample[1:])  # the auditor worked example
-    grades_sample = bc._template(
+    grades_sample = welcome.template(
         "classroom-config/grades/assignment-1.csv.sample"
     ).splitlines()
     assert grades_sample[0] == ",".join(GRADE_FIELDS)
@@ -314,3 +320,25 @@ def test_bootstrap_survives_a_failing_initial_site_sync(monkeypatch, capsys, out
 
     assert bc.main() == 0
     assert "Sync site" in capsys.readouterr().err
+
+
+# ----------------------------------------- the nightly refresh converges live cohorts
+
+
+def test_refresh_re_pushes_every_registered_cohorts_welcome_workflows(monkeypatch):
+    # A cohort's onboarding workflows are seeded once, at Bootstrap cohort, and then run
+    # against an engine that keeps moving on central main. The nightly Refresh is what
+    # closes that gap, so it has to reach EVERY registered cohort, not just the course org.
+    refreshed: list[str] = []
+    monkeypatch.setattr(
+        seed, "discover_cohorts", lambda org: ["Cohort-f2026", "Cohort-s2027"]
+    )
+    monkeypatch.setattr(seed, "discover_content_repos", lambda org: [])
+    monkeypatch.setattr(seed, "discover_assignments", lambda org: [])
+    monkeypatch.setattr(seed, "_propagate_repo_secret", lambda org, repos: None)
+    monkeypatch.setattr(seed, "seed_github_workflows", lambda org: None)
+    monkeypatch.setattr(seed, "update_profile_readme", lambda org: None)
+    monkeypatch.setattr(seed, "refresh_welcome_workflows", refreshed.append)
+
+    assert seed.refresh("Course-Org") == 0
+    assert refreshed == ["Cohort-f2026", "Cohort-s2027"]

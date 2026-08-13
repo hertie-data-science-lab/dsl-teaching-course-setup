@@ -84,6 +84,44 @@ def test_delete_file_deletes_with_the_fetched_sha(monkeypatch):
     assert "sha=deadbeef" in calls[1]
 
 
+def _blob_sha(content: bytes) -> str:
+    """What GitHub reports as a file's `.sha` - git's blob hash of its bytes."""
+    import hashlib
+
+    return hashlib.sha1(
+        b"blob " + str(len(content)).encode() + b"\0" + content
+    ).hexdigest()
+
+
+def test_put_file_skips_the_write_when_the_content_is_identical(monkeypatch):
+    # Refresh re-pushes every seeded file nightly, so an unchanged file must cost nothing:
+    # the SHA already fetched for the update is git's blob sha, and comparing it locally
+    # keeps a no-change night from filling every org's history with empty commits.
+    content = b"name: onboard\n"
+    calls = []
+
+    def fake_gh(*args, **kwargs):
+        calls.append(args)
+        return (0, _blob_sha(content))
+
+    monkeypatch.setattr(utils, "gh", fake_gh)
+    assert utils.put_file("org", "repo", "x.yml", content, "ci: seed x") is True
+    assert len(calls) == 1  # the SHA read only - no PUT
+
+
+def test_put_file_writes_with_the_fetched_sha_when_the_content_differs(monkeypatch):
+    calls = []
+
+    def fake_gh(*args, **kwargs):
+        calls.append(args)
+        return (0, _blob_sha(b"something else")) if len(calls) == 1 else (0, "")
+
+    monkeypatch.setattr(utils, "gh", fake_gh)
+    assert utils.put_file("org", "repo", "x.yml", b"new\n", "ci: seed x") is True
+    assert len(calls) == 2
+    assert f"sha={_blob_sha(b'something else')}" in calls[1]
+
+
 def test_reconcile_team_members_adds_missing_and_removes_extra(monkeypatch):
     monkeypatch.setattr(utils, "get_team_members", lambda org, team: {"alice", "bob"})
     monkeypatch.setattr(utils, "_acting_login", lambda: None)

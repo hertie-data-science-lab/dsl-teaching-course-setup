@@ -62,9 +62,9 @@ ALL_RENDERED = {
     "scheduler": workflows_render.render_scheduler(),
 }
 
-# The only renderer with no check-team gate: cron runs have no actor to check, and the
-# scheduler just re-calls the idempotent release functions.
-UNGATED = {"scheduler"}
+# The renderers with no check-team gate: cron runs have no actor to check, and both jobs
+# only re-call idempotent functions (the scheduler's releases, refresh's re-seeding).
+UNGATED = {"scheduler", "refresh"}
 
 
 @pytest.mark.parametrize("name", sorted(ALL_RENDERED))
@@ -131,6 +131,19 @@ def test_publish_site_cron_resyncs_from_persisted_settings():
     assert "python3 -m dsl_course.site public-sync --course-org" in run
     assert "--source-repo" not in run  # no inputs: the settings come from the site repo
     assert jobs["publish"]["needs"] == "check-team"
+
+
+def test_refresh_re_seeds_itself_nightly_without_a_gate():
+    # Seeded workflows are frozen at seed time while the engine they call runs from central
+    # main, so an org left alone drifts. The daily cron is what converges it - and it must
+    # run ungated, because a scheduled run has no actor for check-team to check.
+    rendered = workflows_render.render_refresh()
+    doc = yaml.safe_load(rendered)
+    trigger = doc.get("on", doc.get(True))
+    assert trigger["schedule"] == [{"cron": "27 5 * * *"}]
+    assert "workflow_dispatch" in trigger
+    assert "check-team" not in rendered
+    assert "needs" not in workflow_jobs(rendered)["refresh"]
 
 
 def test_provision_type_choice_defaults_to_auto():
