@@ -810,7 +810,26 @@ def main() -> int:
             # bootstrapping one more cohort doesn't re-touch every already-registered one.
             sync_faculty.sync(args.course, cohorts=[args.org])
             # Populate + prune + wire the freshly-scaffolded site from the org structure.
-            site.sync_site(args.course, args.org)
+            # This ONE sync is what replaces the website template's placeholders ("Fall
+            # 2025", "Course Name (Code)") with this course's identity and the cohort's
+            # inferred semester - an empty/commented schedule.yml is enough, dates are
+            # synthesised. Without it a fresh cohort site shows the template until the
+            # first successful "Sync site", which may be a while (or never).
+            #
+            # Best effort: Pages provisioning can lag right behind repo creation, and a
+            # hiccup here must not fail a bootstrap that has already configured the org -
+            # a bootstrap re-run or the "Sync site" button repairs it.
+            try:
+                if site.sync_site(args.course, args.org) != 0:
+                    log_err(
+                        f"initial site sync incomplete for {args.org} - re-run "
+                        '"Sync site" (Pages may still have been provisioning).'
+                    )
+            except Exception as exc:
+                log_err(
+                    f"initial site sync failed for {args.org} ({exc}) - re-run "
+                    '"Sync site"; the rest of the bootstrap is unaffected.'
+                )
         else:
             log(
                 f"  (no --course given - add {args.org} to its course org's "

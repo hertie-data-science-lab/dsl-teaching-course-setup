@@ -402,3 +402,74 @@ def test_record_handout_round_trips_through_the_parser(monkeypatch):
     store["text"] = new
     S.record_handout("Cohort-f2026", "assignment-1", "2026-09-23T09:00")
     assert len(writes) == 1
+
+
+# --------------------------------------------------------- a file that does not parse
+#
+# The incident: a faculty member left an unclosed flow mapping in schedule.yml, so
+# `yaml.safe_load` raised inside `schedule.load` and took down BOTH the hourly Scheduled
+# release run AND Sync site for that cohort - the site kept showing the template's
+# placeholders. `load` now treats an unparseable file exactly as an absent one (empty
+# Schedule) and says so loudly.
+#
+# NB the literal below is the incident's flow mapping. tests/ is out of scope for the
+# block-style guard (tests/test_yaml_block_style.py sweeps dsl_course/*.py, the repo's
+# *.yml and the docs' yaml fences), and this is a malformed counter-example, not a
+# faculty-facing example to copy.
+MALFORMED_SCHEDULE = """\
+materials_releases:
+  lab-1:
+    event_datetime: 2026-09-03T14:00
+    deploy:
+      - {source_repo: course-materials-f2026,
+        source_path: labs/01_lab
+"""
+
+
+def test_unparseable_schedule_loads_as_empty_and_says_so_loudly(monkeypatch, capsys):
+    from dsl_course import schedule as S
+
+    monkeypatch.setattr(S, "get_file_content", lambda org, repo, path: MALFORMED_SCHEDULE)
+
+    sched = S.load("Cohort-f2026")
+
+    # same shape a missing schedule.yml yields - nothing scheduled, nothing raised
+    assert sched == Schedule()
+    err = capsys.readouterr().err
+    # self-diagnosing: which cohort, which file, the parser's own line/column, what to do
+    assert "Cohort-f2026/classroom-config/schedule.yml is NOT valid YAML" in err
+    assert "line 5" in err and "flow mapping" in err
+    assert "fix classroom-config/schedule.yml on main" in err
+    assert "NOTHING is scheduled" in err
+
+
+def test_a_wellformed_schedule_is_untouched_by_the_yaml_guard(monkeypatch, capsys):
+    from dsl_course import schedule as S
+
+    good = (
+        "timezone: Europe/Berlin\n"
+        "semester_start: 2026-09-07\n"
+        "materials_releases:\n"
+        "  lab-1:\n"
+        "    event_datetime: 2026-09-03T14:00\n"
+        "    deploy:\n"
+        "      - source_repo: course-materials-f2026\n"
+        "        source_path: labs/01_lab\n"
+    )
+    monkeypatch.setattr(S, "get_file_content", lambda org, repo, path: good)
+
+    sched = S.load("Cohort-f2026")
+
+    assert sched.semester_start == date(2026, 9, 7)
+    assert [r.label for r in sched.releases] == ["lab-1"]
+    assert sched.releases[0].deploy[0].source_path == "labs/01_lab"
+    assert capsys.readouterr().err == ""
+
+
+def test_a_non_mapping_schedule_still_loads_as_empty(monkeypatch):
+    # parses fine, but isn't a mapping - the pre-existing isinstance guard, pinned here
+    # so the new try/except can't be mistaken for the only defence.
+    from dsl_course import schedule as S
+
+    monkeypatch.setattr(S, "get_file_content", lambda org, repo, path: "- just\n- a list\n")
+    assert S.load("Cohort-f2026") == Schedule()

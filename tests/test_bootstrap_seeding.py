@@ -238,3 +238,62 @@ def test_rerun_retires_the_pre_rename_issue_forms(fake):
     bc.setup_cohort_extras("Cohort-f2026")
     assert ("welcome", ".github/ISSUE_TEMPLATE/join.yml") in fake.deletes
     assert ("welcome", ".github/ISSUE_TEMPLATE/join.yml") not in fake.files
+
+
+# ------------------------------------------ the one initial site sync a bootstrap does
+
+
+def _stub_bootstrap(monkeypatch) -> None:
+    """Neutralise everything a cohort bootstrap does EXCEPT the site sync - the org-level
+    gh/git layer, the repo seeding (covered above) and the summary output."""
+    for name in (
+        "set_org_settings",
+        "create_default_teams",
+        "setup_cohort_extras",
+        "grant_button_access",
+        "seed_workflows",
+    ):
+        monkeypatch.setattr(bc, name, lambda *a, **k: None)
+    monkeypatch.setattr(bc, "preflight", lambda org: True)
+    monkeypatch.setattr(bc, "create_profile_repo", lambda *a, **k: None)
+    monkeypatch.setattr(bc, "add_course_admins", lambda org, handles: None)
+    monkeypatch.setattr(bc, "validate_secret_presence", lambda org, secret: True)
+    monkeypatch.setattr(bc, "put_file", lambda *a, **k: True)
+    monkeypatch.setattr(bc.seed, "register_cohort", lambda course, cohort: True)
+    monkeypatch.setattr(bc.seed, "update_profile_readme", lambda *a, **k: None)
+    monkeypatch.setattr(bc.sync_faculty, "sync", lambda course, cohorts=None: 0)
+
+
+def test_cohort_bootstrap_runs_one_initial_site_sync(monkeypatch):
+    # Without it a fresh cohort site keeps the website template's placeholders ("Fall
+    # 2025", "Course Name (Code)") until the first successful "Sync site" - which in the
+    # live incident never came, because the cohort's schedule.yml stopped parsing.
+    synced: list[tuple[str, str]] = []
+    _stub_bootstrap(monkeypatch)
+    monkeypatch.setattr(bc.site, "sync_site", lambda c, o: synced.append((c, o)) or 0)
+    monkeypatch.setattr(
+        "sys.argv",
+        ["bootstrap_course", "--org", "Cohort-f2026", "--cohort", "--course", "Course-Org"],
+    )
+
+    assert bc.main() == 0
+    assert synced == [("Course-Org", "Cohort-f2026")]
+
+
+def _raises(c, o):
+    raise RuntimeError("pages 404")
+
+
+@pytest.mark.parametrize("outcome", [lambda c, o: 1, _raises], ids=["rc=1", "raises"])
+def test_bootstrap_survives_a_failing_initial_site_sync(monkeypatch, capsys, outcome):
+    # Best effort: Pages provisioning can lag right behind repo creation, and the org is
+    # already configured by this point - a hiccup must not fail the bootstrap.
+    _stub_bootstrap(monkeypatch)
+    monkeypatch.setattr(bc.site, "sync_site", outcome)
+    monkeypatch.setattr(
+        "sys.argv",
+        ["bootstrap_course", "--org", "Cohort-f2026", "--cohort", "--course", "Course-Org"],
+    )
+
+    assert bc.main() == 0
+    assert "Sync site" in capsys.readouterr().err

@@ -617,3 +617,24 @@ def test_handout_releases_synthesised_from_the_assignments_block(monkeypatch):
     # and it is due like any release once its datetime passes - not a minute before
     assert scheduler.due_releases([r], datetime(2026, 9, 22, 8, 0, tzinfo=BERLIN)) == []
     assert scheduler.due_releases([r], datetime(2026, 9, 22, 10, 0, tzinfo=BERLIN)) == [r]
+
+
+def test_run_survives_an_unparseable_schedule_and_exits_zero(monkeypatch, capsys):
+    # The incident: unparseable schedule.yml raised inside schedule.load and killed the
+    # hourly tick for the cohort. Now the tick releases nothing (same as the crash, minus
+    # the collateral) but carries the loud error and stays green - a red run for one
+    # cohort's typo would mask the real per-cohort action failures that DO exit non-zero
+    # (--all-cohorts ORs each run's rc).
+    from tests.test_schedule import MALFORMED_SCHEDULE
+
+    _stub_snapshots(monkeypatch, existing=set())
+    monkeypatch.setattr(
+        scheduler.schedule, "get_file_content", lambda org, repo, path: MALFORMED_SCHEDULE
+    )
+    now = datetime(2026, 10, 14, tzinfo=timezone.utc)
+
+    assert scheduler.run("Course-Org", "Cohort-Org", now) == 0
+
+    captured = capsys.readouterr()
+    assert "is NOT valid YAML" in captured.err
+    assert "0/0 release(s) due" in captured.out
