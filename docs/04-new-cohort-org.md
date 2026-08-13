@@ -36,42 +36,14 @@ Live example of every file below: [`example-course/cohort-org/`](../example-cour
       - **`course-admin` team** for this cohort
       - **`hertie-dsl-demo-f2026.github.io`** auto-deployed website - what it shows, and what you must not hand-edit: [11](11-configure-cohort-site.md)
 
-4. **Fill in `classroom-config/schedule.yml` for the whole term** (edit locally or in the web UI → commit to `main`).
-    - Its dates drive every release, the grading deadlines and the website
-    - Full guide:[Schedule releases](07-schedule-releases.md)
-    - Full schema: [the schedule](DEPLOYMENT-CHECKLIST.md#scheduleyml)
+> NB: Steps 4, 5 & 6 are coverd in full detail in [07-schedule-releases.md](07-schedule-releases.md), [06-enrol-students-to-cohort.md](06-enrol-students-to-cohort.md), & [05-manage-teaching-team.md](05-manage-teaching-team.md)/
 
-   ```yaml
-   timezone: Europe/Berlin
-   semester_start: 2026-09-07
-   semester_end: 2026-12-18
-   releases:                            # entries that DEPLOY materials
-     session_1:
-       event_datetime: 2026-09-07T14:00   # when the class happens - shown on deployed site's schedule tab
-       deploy:
-         - source_repo: course-materials-f2026
-           source_path: lectures/01_intro
-           dest_repo: materials
-           deploy_datetime: 2026-09-07T13:00   # optional: ship this copy 1h early
-   assignments:
-     assignment-1:
-       handout_datetime: 2026-09-22T09:00  # repos provisioned automatically 
-       type: group # repos provisioned 1 per group 
-       due_datetime: 2026-10-13         # due date students see; if bare date -> 23:59:59
-       grading_datetime: 2026-10-15     # optional; snapshot + autograde fire here 
-   events:                              # display-only calendar rows - nothing deploys
-     mid-term:
-       type: exam                       # or special_event - the default if field empty
-       title: MidTerm Exam
-       event_datetime: 2026-11-03       # bare date -> shown at 09:00
-     final-exam:
-       type: exam
-       title: Final Exam
-       event_datetime: 2026-12-15T14:00   # real start time, shown as given
-   ```
 ---
 
-> NB: Steps 5 & 6 are coverd in full detail in [05-manage-teaching-team.md](05-manage-teaching-team.md) & [06-enrol-students-to-cohort.md](06-enrol-students-to-cohort.md)
+4. **Fill in `classroom-config/schedule.yml` for the whole term** (edit locally or in the web UI → commit to `main`).
+    - Full guide for doing so covered in [07-schedule-releases.md](07-schedule-releases.md)
+    - Full schema for the schedule [here](DEPLOYMENT-CHECKLIST.md#scheduleyml)
+
 
 5. *(optional)* **Declare this cohort's instructors/TAs** in `classroom-config/people.yml`.
     - This grants them push on this cohort and on this year's course content repos, and supplies the cohort site's cards.
@@ -81,7 +53,7 @@ Live example of every file below: [`example-course/cohort-org/`](../example-cour
      instructors:
        - github_handle: "janedoe"
      teaching_assistants:
-       - github_handle: "anOther"
+       - github_handle: "anOther-user"
          start: "2026-09-01"     # optional - omit for "active immediately"
          end: "2027-01-31"       # optional - omit for "indefinite"
    ```
@@ -91,11 +63,12 @@ Live example of every file below: [`example-course/cohort-org/`](../example-cour
       - Course-wide admins are declared at the **course** level instead (`.github/dsl-course.yml` → `course_admins`), not here. 
       - Full guide, including removing people   and how quickly changes land: [05 Manage the teaching team](05-manage-teaching-team.md).
 
-6. **Load the student roster.** Fill `classroom-config/students.csv` (seeded header-only) with
-   registrar data (`student_id, hertie_email, name, section`; leave `github_handle, github_id`
-   blank - onboarding fills them). Add `role: auditor` for anyone who should get the released
-   materials but no assignments and no grades. `students.csv.sample` next to it shows a filled
-   row of each kind, and that repo's `README.md` documents every column.
+6. **Load the student roster.** 
+  - Fill `classroom-config/students.csv` (seeded header-only) with registrar data (`student_id, hertie_email, name, section`
+  - Leave `github_handle, github_id` blank - onboarding fills them). 
+  - Add `role: auditor` for anyone who should get the released materials but no assignments and no grades. 
+  - The seeded `students.csv.sample` in each newly boostrapped shows a filled row of each kind, and that repo's `README.md` documents every column.
+  - Full details found in [06-enrol-students-to-cohort.md](06-enrol-students-to-cohort.md)
 
 ## Next
 
