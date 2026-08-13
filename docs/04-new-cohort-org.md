@@ -30,11 +30,11 @@ Live example of every file below: [`example-course/cohort-org/`](../example-cour
     - `cohort_org` = select the newly created `<course-name>-f/sYYYY`. 
     - This seeds: 
       - **`welcome`** repo (public) - for student onboarding via `join course` issue tickets.
-      - `README.md` (private student-facing) telling them how to join - yours to reword, it is never overwritten
+      - **`README.md`** (private student-facing) telling them how to join - yours to reword, it is never overwritten
       - **`classroom-config`** repo (hidden-from-students) - containing empty templates for `students.csv`, `teams.csv`, `schedule.yml`, `people.yml`, `grades/`
-      - `students` + `auditors` teams (empty) - do not edit directly these, these will be populated by the workflow, 
-      - `course-admin` team for this cohort
-      - `dsl-demo-f2026.github.io` auto-deployed website - what it shows, and what you must not hand-edit: [11](11-configure-cohort-site.md)
+      - **`students` + `auditors` teams** (empty) - do not edit directly these, these will be populated by the workflow, 
+      - **`course-admin` team** for this cohort
+      - **`dsl-demo-f2026.github.io`** auto-deployed website - what it shows, and what you must not hand-edit: [11](11-configure-cohort-site.md)
 
 4. **Fill in `classroom-config/schedule.yml` for the whole term** (edit locally or in the web UI → commit to `main`).
     - Its dates drive every release, the grading deadlines and the website

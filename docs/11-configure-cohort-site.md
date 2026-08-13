@@ -1,7 +1,6 @@
 # Configure the cohort website
 
-> Every cohort has an auto-deployed site at `<cohort-org>.github.io`, regenerated from the org's
-> config files.
+Every cohort has an auto-deployed site at `<cohort-org>.github.io`, regenerated from the org's config files.
 
 You never edit what the site shows - you edit the file it reads, and it re-syncs itself.
 
@@ -9,11 +8,11 @@ You never edit what the site shows - you edit the file it reads, and it re-syncs
 
 | To change | Edit | Field |
 |---|---|---|
-| The blurb under the title | course org `.github/dsl-course.yml` | `course_description` |
-| Course title + code | course org `.github/dsl-course.yml` | `course_name`, `course_code` - **not** `org_name`, which the site never reads |
+| Course  blurb under the title | course org `.github/dsl-course.yml` | `course_description` |
+| Course title + code | course org `.github/dsl-course.yml` | `course_name`, `course_code` - **not** `org_name` |
 | Semester + year | *nothing to set* | inferred from the cohort org's `fYYYY`/`sYYYY` tag (`DSL-Demo-f2026` → "Fall 2026") |
 | Instructor / TA cards | cohort `classroom-config/people.yml` ([05](05-manage-teaching-team.md)) | every field you declare displays, bar `github_handle`, `start`, `end` (access only); a card needs a `name` to appear at all |
-| Staff photos | site repo `<cohort-org>.github.io` | commit the image under `_images/pp/`, then `photo: /_images/pp/jane.jpg` |
+| Instructor photos | site repo `<cohort-org>.github.io` | commit the image under `_images/pp/`, then `photo: /_images/pp/jane.jpg`. Can also use a URL that allows hotlinking |
 | Schedule rows, exams, assignment due dates | cohort `classroom-config/schedule.yml` ([07](07-schedule-releases.md)) | `releases`, `events`, `exams`, `assignments` |
 | A hand-written entry in the **Updates** box | site repo | add a file under `_announcements/` with `date:` + `description:` front matter. The box shows the newest 7 items (releases feed it automatically); older ones roll off as new ones arrive - delete the file to pull one early |
 | Materials links | *nothing to set* | they appear as you [release](08-release-materials-to-cohort.md) |
