@@ -535,3 +535,96 @@ def test_a_non_mapping_schedule_still_loads_as_empty(monkeypatch):
 
     monkeypatch.setattr(S, "get_file_content", lambda org, repo, path: "- just\n- a list\n")
     assert S.load("Cohort-f2026") == Schedule()
+
+
+# --------------------------------------------------------------- dropped-entry reporting
+# A malformed entry cannot be rescued, but it must never vanish quietly: valid YAML with a
+# typo'd key is the one schedule fault that leaves a green run and a short term plan.
+
+
+def test_every_kind_of_dropped_entry_is_recorded_with_its_cost():
+    sched = parse(
+        {
+            "releases": {
+                "ok": {
+                    "event_datetime": "2026-09-15T10:00",
+                    "deploy": [
+                        {"course_source_repo": "cm", "course_source_path": "l/01"},
+                        {"source_repo": "cm", "source_path": "l/02"},  # pre-rename keys
+                    ],
+                },
+                "typo": {"evetn_datetime": "2026-09-22T10:00"},
+            },
+            "assignments": {
+                "a1": {"due_datetime": "2026-10-13"},
+                "a2": {"due_date": "2026-11-13"},
+            },
+            "events": {"mid-term": {"type": "exam"}},
+        }
+    )
+    # the well-formed entries still parse - one bad entry never poisons its neighbours
+    assert [r.label for r in sched.releases] == ["ok"]
+    assert len(sched.releases[0].deploy) == 1
+    assert list(sched.assignments) == ["a1"]
+
+    where = [d.split(":")[0] for d in sched.dropped]
+    assert where == ["releases.ok.deploy[1]", "releases.typo", "assignments.a2", "events.mid-term"]
+    # each line names the field at fault AND what the cohort loses by it
+    assert "`course_source_repo`" in sched.dropped[0] and "never ships" in sched.dropped[0]
+    assert "`event_datetime`" in sched.dropped[1] and "nothing deploys" in sched.dropped[1]
+    assert "`due_datetime`" in sched.dropped[2] and "no autograding" in sched.dropped[2]
+    assert "`event_datetime`" in sched.dropped[3] and "never appears" in sched.dropped[3]
+
+
+def test_an_unknown_timezone_is_reported_rather_than_silently_swapped():
+    sched = parse({"timezone": "Europe/Berlyn", "events": {"e": {"event_datetime": "2026-11-03"}}})
+    assert len(sched.dropped) == 1
+    assert "Europe/Berlyn" in sched.dropped[0] and "Europe/Berlin" in sched.dropped[0]
+    assert sched.events[0].when == date(2026, 11, 3)  # the event itself survives
+
+
+def test_a_clean_schedule_drops_nothing():
+    assert parse({}).dropped == []
+    assert (
+        parse(
+            {
+                "releases": {"s": {"event_datetime": "2026-09-01", "deploy": []}},
+                "assignments": {"a1": {"due_datetime": "2026-10-13"}},
+                "events": {"e": {"event_datetime": "2026-11-03"}},
+            }
+        ).dropped
+        == []
+    )
+
+
+def test_tbc_entries_are_not_drops():
+    # `tbc` is a deliberate "date not settled yet", not a malformed date
+    sched = parse(
+        {
+            "releases": {"r": {"event_datetime": "tbc"}},
+            "events": {"guest": {"event_datetime": "tbc"}},
+        }
+    )
+    assert sched.dropped == []
+    assert len(sched.releases) == 1 and len(sched.events) == 1
+
+
+def test_load_logs_every_dropped_entry_loudly(monkeypatch, capsys):
+    from dsl_course import schedule as S
+
+    monkeypatch.setattr(
+        S,
+        "get_file_content",
+        lambda org, repo, path: "assignments:\n  assignment-2:\n    due_date: 2026-11-13\n",
+    )
+
+    sched = S.load("Cohort-f2026")
+
+    assert sched.assignments == {}
+    err = capsys.readouterr().err
+    # which cohort, which file, which entry, which field, and what it costs
+    assert "Cohort-f2026/classroom-config/schedule.yml" in err
+    assert "DROPPED" in err
+    assert "assignments.assignment-2" in err
+    assert "`due_datetime`" in err
+    assert "no autograding" in err

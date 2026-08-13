@@ -37,8 +37,14 @@ as before everywhere that reads it (releases are skipped, dates synthesised).
 Times are timezone-aware: a naive datetime/date is interpreted in `timezone`; an explicit
 offset (e.g. `...T14:00+02:00`) is honoured as written.
 
+Parsing is total but never silent: an entry that is valid YAML yet not a valid schedule
+entry (a typo'd key, a missing date) is dropped so the rest of the term still parses, and
+recorded in `Schedule.dropped` for `load` to log, `--validate` to fail on, and Show status
+to count.
+
 Usage:
     python3 -m dsl_course.schedule --cohort-org Deep-Learning-EXAMPLE-f2026
+    python3 -m dsl_course.schedule --cohort-org Deep-Learning-EXAMPLE-f2026 --validate
 """
 
 from __future__ import annotations
@@ -246,20 +252,38 @@ class Schedule:
     semester_end: date | None = None
     assignments: dict[str, AssignmentEntry] = field(default_factory=dict)
     events: list[Event] = field(default_factory=list)
+    # Every entry this parse threw away, one human-readable line each, naming the YAML
+    # path and what it costs the cohort. A malformed entry can't be rescued - it has no
+    # date, or no source - but it must never vanish quietly: `load` logs each of these,
+    # `--validate` exits non-zero on them, and Show status counts them. See `_drop`.
+    dropped: list[str] = field(default_factory=list)
 
 
-def _parse_deploy(raw: object, tz: ZoneInfo) -> list[Deploy]:
+def _drop(drops: list[str], where: str, why: str, cost: str) -> None:
+    """Record a thrown-away entry: where it is in the YAML, what is wrong, and what the
+    cohort loses by it. The cost is the point - "entry dropped" alone tells faculty
+    nothing about whether their term still runs."""
+    drops.append(f"{where}: {why} - entry dropped, so {cost}")
+
+
+def _parse_deploy(raw: object, tz: ZoneInfo, drops: list[str], label: str) -> list[Deploy]:
     """Parse a release's `deploy:` - a list (or a single mapping) of source->dest copies.
     Entries missing course_source_repo/course_source_path are skipped (nothing to copy).
-    A malformed `deploy_datetime` parses to None (ship at the entry's event_datetime), in
-    keeping with this parser's silent-drop style."""
+    A malformed `deploy_datetime` parses to None (ship at the entry's event_datetime)."""
     items = [raw] if isinstance(raw, dict) else (raw or [])
     out: list[Deploy] = []
-    for d in items:
+    for i, d in enumerate(items):
+        where = f"releases.{label}.deploy[{i}]"
         if not isinstance(d, dict):
+            _drop(drops, where, "not a mapping", "this copy never ships")
             continue
         src_repo, src_path = d.get("course_source_repo"), d.get("course_source_path")
         if not src_repo or not src_path:
+            _drop(
+                drops, where,
+                "missing `course_source_repo` and/or `course_source_path`",
+                "this copy never ships",
+            )
             continue
         dest_path = d.get("cohort_dest_path")
         out.append(
@@ -278,7 +302,7 @@ def _is_tbc(value: object) -> bool:
     return isinstance(value, str) and value.strip().lower() == "tbc"
 
 
-def _parse_releases(raw: object, tz: ZoneInfo) -> list[Release]:
+def _parse_releases(raw: object, tz: ZoneInfo, drops: list[str]) -> list[Release]:
     """Parse `releases:` (label -> {event_datetime + deploys}) into Releases sorted by
     their event_datetime.
 
@@ -288,19 +312,26 @@ def _parse_releases(raw: object, tz: ZoneInfo) -> list[Release]:
     so it's dropped."""
     out: list[Release] = []
     for label, entry in (raw or {}).items():
+        where = f"releases.{label}"
         if not isinstance(entry, dict):
+            _drop(drops, where, "not a mapping", "nothing deploys and no site row appears")
             continue
         raw_when = entry.get("event_datetime")
         when = _coerce_datetime(raw_when, tz)
         tbc = _is_tbc(raw_when) or entry.get("tbc") is True
         if when is None and not tbc:
+            _drop(
+                drops, where,
+                "no valid `event_datetime` (use `tbc` if the date is not settled)",
+                "nothing deploys and no site row appears",
+            )
             continue
         assignment = entry.get("assignment")
         out.append(
             Release(
                 label=str(label),
                 when=when,
-                deploy=_parse_deploy(entry.get("deploy"), tz),
+                deploy=_parse_deploy(entry.get("deploy"), tz, drops, str(label)),
                 assignment=str(assignment) if assignment else None,
                 title=str(entry.get("title") or ""),
                 tbc=tbc,
@@ -312,17 +343,22 @@ def _parse_releases(raw: object, tz: ZoneInfo) -> list[Release]:
     return out
 
 
-def _parse_assignments(raw: object, tz: ZoneInfo) -> dict[str, AssignmentEntry]:
+def _parse_assignments(
+    raw: object, tz: ZoneInfo, drops: list[str]
+) -> dict[str, AssignmentEntry]:
     # Only the nested {due_datetime, ...} form is accepted - matching the one schema
     # documented everywhere - rather than also silently accepting a bare due-date scalar.
-    # A malformed `grading_datetime` parses to None and grading falls back to
-    # due_datetime, in keeping with this parser's silent-drop style.
+    # A malformed `grading_datetime` parses to None and grading falls back to due_datetime.
     out: dict[str, AssignmentEntry] = {}
+    cost = "no deadline for students, no submission snapshot and no autograding"
     for slug, entry in (raw or {}).items():
+        where = f"assignments.{slug}"
         if not isinstance(entry, dict):
+            _drop(drops, where, "not a mapping (it needs a nested `due_datetime:`)", cost)
             continue
         due = _coerce_datetime(entry.get("due_datetime"), tz, end_of_day=True)
         if due is None:
+            _drop(drops, where, "no valid `due_datetime`", cost)
             continue
         try:
             cap = int(entry["max_team_size"])
@@ -342,7 +378,7 @@ def _parse_assignments(raw: object, tz: ZoneInfo) -> dict[str, AssignmentEntry]:
     return out
 
 
-def _parse_events(raw: object, tz: ZoneInfo) -> list[Event]:
+def _parse_events(raw: object, tz: ZoneInfo, drops: list[str]) -> list[Event]:
     """Parse `events:` (label -> {type, title, event_datetime}) into display-only rows,
     in calendar order.
 
@@ -353,12 +389,19 @@ def _parse_events(raw: object, tz: ZoneInfo) -> list[Event]:
     dropped."""
     out: list[Event] = []
     for label, entry in (raw or {}).items():
+        where = f"events.{label}"
         if not isinstance(entry, dict):
+            _drop(drops, where, "not a mapping", "the row never appears on the site")
             continue
         raw_when = entry.get("event_datetime")
         when = _coerce_date_or_datetime(raw_when, tz)
         tbc = _is_tbc(raw_when) or entry.get("tbc") is True
         if when is None and not tbc:
+            _drop(
+                drops, where,
+                "no valid `event_datetime` (use `tbc` if the date is not settled)",
+                "the row never appears on the site",
+            )
             continue
         kind = str(entry.get("type") or "").strip().lower()
         out.append(
@@ -382,16 +425,26 @@ def _parse_events(raw: object, tz: ZoneInfo) -> list[Event]:
 
 def parse(meta: dict) -> Schedule:
     """Parse a loaded schedule.yml dict into a Schedule. Pure; tolerant of missing/blank
-    fields (a cohort with no schedule.yml behaves exactly as before)."""
+    fields (a cohort with no schedule.yml behaves exactly as before). Anything it has to
+    throw away is recorded in `Schedule.dropped` rather than vanishing - parsing stays
+    total, but never silent."""
     meta = meta if isinstance(meta, dict) else {}
-    tz = _tz(meta.get("timezone"))
+    drops: list[str] = []
+    tz_name = meta.get("timezone")
+    tz = _tz(tz_name)
+    if tz_name and str(tz_name).strip() != str(tz):
+        drops.append(
+            f"timezone: `{tz_name}` is not a known zone - falling back to {DEFAULT_TZ}, "
+            f"so every naive time below is read in {DEFAULT_TZ}"
+        )
     return Schedule(
-        timezone=str(meta.get("timezone") or DEFAULT_TZ),
-        releases=_parse_releases(meta.get("releases"), tz),
+        timezone=str(tz_name or DEFAULT_TZ),
+        releases=_parse_releases(meta.get("releases"), tz, drops),
         semester_start=_coerce_date(meta.get("semester_start")),
         semester_end=_coerce_date(meta.get("semester_end")),
-        assignments=_parse_assignments(meta.get("assignments"), tz),
-        events=_parse_events(meta.get("events"), tz),
+        assignments=_parse_assignments(meta.get("assignments"), tz, drops),
+        events=_parse_events(meta.get("events"), tz, drops),
+        dropped=drops,
     )
 
 
@@ -442,7 +495,20 @@ def load(cohort_org: str) -> Schedule:
             f"snapshots, no autograding) and the site builds without schedule data."
         )
         meta = {}
-    return parse(meta if isinstance(meta, dict) else {})
+    sched = parse(meta if isinstance(meta, dict) else {})
+    if sched.dropped:
+        # Loud, because this is the failure faculty cannot see: the file is valid YAML and
+        # the run goes green, but an entry they wrote is not in the plan. Every caller
+        # comes through here - the hourly scheduler, the site sync, Show status - so
+        # saying it once here says it everywhere.
+        log_err(
+            f"{cohort_org}/{CONFIG_REPO}/{SCHEDULE_PATH}: {len(sched.dropped)} entry/ies "
+            f"DROPPED - they parse as YAML but not as schedule entries:"
+        )
+        for line in sched.dropped:
+            log_err(f"  {line}")
+        log_err(f"fix them on main in {cohort_org}; everything else is unaffected.")
+    return sched
 
 
 def _insert_handout(text: str, slug: str, stamp: str) -> str | None:
@@ -528,8 +594,25 @@ def record_handout(cohort_org: str, slug: str, stamp: str | None = None) -> None
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cohort-org", required=True)
+    parser.add_argument(
+        "--validate",
+        action="store_true",
+        help="exit non-zero if any entry was dropped, instead of dumping the schedule",
+    )
     args = parser.parse_args()
-    print(json.dumps(asdict(load(args.cohort_org)), indent=2, default=str))
+    sched = load(args.cohort_org)
+    if not args.validate:
+        print(json.dumps(asdict(sched), indent=2, default=str))
+        return 0
+    # `load` has already logged the detail; this only reports the verdict, so the command
+    # is usable as a gate (in CI, or before trusting a term plan).
+    if sched.dropped:
+        print(f"INVALID: {len(sched.dropped)} entry/ies dropped - see the errors above")
+        return 1
+    print(
+        f"OK: {len(sched.releases)} release(s), {len(sched.assignments)} assignment(s), "
+        f"{len(sched.events)} event(s) - nothing dropped"
+    )
     return 0
 
 

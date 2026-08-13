@@ -143,14 +143,21 @@ def collect(course_org: str, cohort_org: str) -> dict[str, dict]:
     )
 
     sched = schedule.load(cohort_org)
+    # A dropped entry is the one schedule fault a count alone hides: the numbers below
+    # look plausible, they are just quietly short of what faculty wrote. Say so on both
+    # schedule rows, since a drop in either block lands in whichever row reads it.
+    dropped = (
+        f" - WARNING: {len(sched.dropped)} entry/ies DROPPED, see the run log"
+        if sched.dropped else ""
+    )
 
     n_actions = sum(len(r.deploy) + bool(r.assignment) for r in sched.releases)
     data["C5"] = _row(
         "C5", f"Release plan ({schedule.SCHEDULE_PATH} -> releases)",
         cohort_org, schedule.CONFIG_REPO, schedule.SCHEDULE_PATH, cohort_branch,
         bool(sched.releases),
-        f"{len(sched.releases)} scheduled release(s), {n_actions} action(s)"
-        if sched.releases else "",
+        f"{len(sched.releases)} scheduled release(s), {n_actions} action(s){dropped}"
+        if sched.releases else dropped.lstrip(" -"),
     )
 
     has_due_dates = bool(sched.semester_start or sched.assignments or sched.events)
@@ -159,7 +166,7 @@ def collect(course_org: str, cohort_org: str) -> dict[str, dict]:
         cohort_org, schedule.CONFIG_REPO, schedule.SCHEDULE_PATH, cohort_branch,
         has_due_dates,
         f"start={sched.semester_start}, {len(sched.assignments)} due date(s), "
-        f"{len(sched.events)} event(s)" if has_due_dates else "",
+        f"{len(sched.events)} event(s){dropped}" if has_due_dates else dropped.lstrip(" -"),
     )
 
     cohort_faculty = sync_faculty.load_cohort_faculty(cohort_org)
