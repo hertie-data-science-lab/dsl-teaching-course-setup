@@ -96,17 +96,31 @@ def test_publishes_every_discovered_section_not_just_lectures(published):
     assert f"{SERVED}/session-1/labs/lab.ipynb" in files
     assert f"{SERVED}/session-1/labs/data/rows.csv" in files  # nested file too
     assert f"{SERVED}/session-2/faq/faq.md" in files
-    s1 = files["_lectures/session-01.md"]
-    assert 'name: "lab - lab.ipynb"' in s1
-    assert 'name: "lab - data/rows.csv"' in s1
+    lab1 = files["_lectures/lab-01.md"]
+    assert 'name: "lab - lab.ipynb"' in lab1
+    assert 'name: "lab - data/rows.csv"' in lab1
     assert 'name: "faq - faq.md"' in files["_lectures/session-02.md"]
+
+
+def test_labs_are_their_own_rows_not_part_of_the_session_row(published):
+    # As on the cohort site: `type: lab` is what the theme's labs page selects on, and a
+    # lab linked from the session row too would appear twice.
+    files = published(readings_mode="none")
+    assert "type: lab" in files["_lectures/lab-02.md"]
+    assert 'title: "Lab 2"' in files["_lectures/lab-02.md"]
+    session2 = files["_lectures/session-02.md"]  # session 2 also has a faq section
+    assert "type: lecture" in session2
+    assert "lab - " not in session2
+    # session 1 has ONLY labs (and readings, off here) - so no lecture row at all
+    assert "_lectures/session-01.md" not in files
 
 
 def test_session_with_no_content_gets_no_page(published):
     files = published(readings_mode="none")
-    assert "_lectures/session-01.md" in files
+    assert "_lectures/lab-01.md" in files
     assert "_lectures/session-02.md" in files
     assert "_lectures/session-03.md" not in files  # session 3 has nothing anywhere
+    assert "_lectures/lab-03.md" not in files
 
 
 def test_reading_list_mode_publishes_citations_as_text_only(published):

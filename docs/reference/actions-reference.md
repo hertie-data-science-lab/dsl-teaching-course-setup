@@ -22,7 +22,7 @@ grants it: [`access-reference.md`](access-reference.md).
 
 | Action | Effect |
 | --- | --- |
-| **Scheduled release** | **Primary** - the hourly cron fires the cohort's `materials_releases` plan and freezes passed deadlines. Manual runs default to `dry_run=true`. See [07](../07-schedule-releases.md). |
+| **Scheduled release** | **Primary** - the hourly cron fires the cohort's `releases` plan and freezes passed deadlines. Manual runs default to `dry_run=true`. See [07](../07-schedule-releases.md). |
 | **Release materials** | Copy `source_path` (a folder, a file, or a comma-separated list) from a course-org `source_repo` into the cohort's `dest_repo` at `dest_path` - the same four fields as a `schedule.yml` `deploy`. Covers session folders, datasets, root files and code subpackages alike. _Fallback - see [07](../07-schedule-releases.md), [08](../08-release-materials-to-cohort.md)._ |
 | **Release assignment** | Freeze a cohort template from the chosen `assignment-*`, then generate one private `<slug>-<handle>` repo per onboarded student. `include_solution` / `group` / `dry_run` default off. _Fallback - see [07](../07-schedule-releases.md), [09](../09-release-assignment-to-cohort.md)._ |
 | **Send enrolment codes** | Generate an `enrol_code` per roster row, write it back to `students.csv`, email each not-yet-onboarded student theirs. **`dry_run` defaults to `true` - nothing is written or sent until you untick it.** |

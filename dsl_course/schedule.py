@@ -1,9 +1,12 @@
 """dsl-course schedule -- the per-cohort classroom-config/schedule.yml, this cohort's
 single home for the timed release plan AND the dates other tools display/enforce:
 
+Each block encodes a BEHAVIOUR: `releases` deploy materials, `assignments` have a
+lifecycle, `events` are display-only calendar rows.
+
     timezone: Europe/Berlin          # optional (default Europe/Berlin) - how naive times
                                      # below are interpreted; GitHub cron itself is UTC
-    materials_releases:              # the term calendar + auto-release plan - label ->
+    releases:                        # the auto-release plan - label ->
       lecture_02:                    # {event_datetime + deploys}. Each deploy ships at its
         event_datetime: 2026-09-15T10:00   # deploy_datetime (default: the event itself).
         deploy:                            # Labels are free identifiers.
@@ -17,11 +20,14 @@ single home for the timed release plan AND the dates other tools display/enforce
         handout_datetime: 2026-09-22T09:00  # 13th" closes at day's end.
         due_datetime: 2026-10-13     # grading_datetime is the moment the snapshot
         grading_datetime: 2026-10-15 # freezes and the autograder fires (default: due).
-    exams:                           # `exam_datetime` is a whole day, or a full datetime
-      - name: MidTerm Exam           # when the start time is known
-        exam_datetime: 2026-11-03
-      - name: Final Exam
-        exam_datetime: 2026-12-15T14:00
+    events:                          # display-only rows - nothing deploys, the site just
+      mid-term:                      # shows them. `type` is `exam` or `special_event`
+        type: exam                   # (the default when omitted).
+        title: MidTerm Exam          # `event_datetime` is a whole day, or a full datetime
+        event_datetime: 2026-11-03   # when the start time is known.
+      project-clinic:
+        title: Project Clinic
+        event_datetime: 2026-10-14T10:00
     semester_start: 2026-09-07
     semester_end: 2026-12-18
 
@@ -66,7 +72,7 @@ def _tz(name: str | None) -> ZoneInfo:
 
 def _coerce_date(value: object) -> date | None:
     """A YAML date/datetime or an ISO `YYYY-MM-DD` string -> date (None if unparseable).
-    Date-level (used for semester bounds + exams, which are whole-day)."""
+    Date-level (used for semester bounds and whole-day events)."""
     if isinstance(value, datetime):
         return value.date()
     if isinstance(value, date):
@@ -126,6 +132,15 @@ def _coerce_date_or_datetime(value: object, tz: ZoneInfo) -> date | datetime | N
     return _coerce_date(value)
 
 
+def _instant(value: date | datetime, tz: ZoneInfo) -> datetime:
+    """A sortable tz-aware instant for a value that may be whole-day or timed. Mixing the
+    two in one list is otherwise unsortable (`date` and `datetime` don't compare, nor do
+    naive and aware ones); a whole-day value sorts at the start of its day in `tz`."""
+    if isinstance(value, datetime):
+        return value if value.tzinfo is not None else value.replace(tzinfo=tz)
+    return datetime.combine(value, time(0, 0), tzinfo=tz)
+
+
 @dataclass
 class Deploy:
     """One source->dest copy: a path in a COURSE-org source repo copied into a COHORT-org
@@ -152,8 +167,8 @@ class Release:
     `when` holds the entry's `event_datetime`: what the cohort site's schedule shows AND
     the default fire time for its deploys. An individual deploy may carry its own
     `deploy_datetime` to ship earlier or later than the session it belongs to. An entry
-    with no actions at all is a pure display-only event (a clinic, a guest lecture):
-    nothing fires, the site shows the row."""
+    with no actions at all fires nothing and is only a site row - a row with nothing to
+    release belongs in `events:`, but one left here still renders."""
 
     label: str
     # None = the event_datetime is literally `tbc`: the site shows a TBC row and nothing
@@ -194,7 +209,7 @@ class AssignmentEntry:
     grading_datetime: datetime | None = None  # explicit pin; defaults to due_datetime
     # When to provision one repo per student (or per team - see `type`) from the
     # `<slug>-<tag>` template. The scheduler synthesises a release from this, so it fires
-    # exactly like a `materials_releases` entry. None = hand out manually (the button
+    # exactly like a `releases` entry. None = hand out manually (the button
     # then records the release moment here).
     handout_datetime: datetime | None = None
     # 'group' | 'individual' | None. The COHORT-level declaration of how this assignment
@@ -208,11 +223,18 @@ class AssignmentEntry:
 
 
 @dataclass
-class Exam:
-    name: str
-    # A bare date = whole day; a datetime = real start time; None = `exam_datetime: tbc`
+class Event:
+    """A display-only calendar row: an exam, or any other session the cohort should see
+    on the schedule but which releases nothing (a guest lecture, a project clinic).
+    Nothing here ever fires - the site renders the row and that is all."""
+
+    label: str
+    title: str
+    # A bare date = whole day; a datetime = real start time; None = `event_datetime: tbc`
     # (the site shows a TBC row). `tbc: true` next to a real date = provisional, "(TBC)".
-    exam_datetime: date | datetime | None
+    when: date | datetime | None
+    # 'exam' | 'special_event'. Exams render as their own (red) row on the site.
+    type: str = "special_event"
     tbc: bool = False
 
 
@@ -223,7 +245,7 @@ class Schedule:
     semester_start: date | None = None
     semester_end: date | None = None
     assignments: dict[str, AssignmentEntry] = field(default_factory=dict)
-    exams: list[Exam] = field(default_factory=list)
+    events: list[Event] = field(default_factory=list)
 
 
 def _parse_deploy(raw: object, tz: ZoneInfo) -> list[Deploy]:
@@ -257,8 +279,8 @@ def _is_tbc(value: object) -> bool:
 
 
 def _parse_releases(raw: object, tz: ZoneInfo) -> list[Release]:
-    """Parse `materials_releases:` (label -> {event_datetime + deploys}) into Releases
-    sorted by their event_datetime.
+    """Parse `releases:` (label -> {event_datetime + deploys}) into Releases sorted by
+    their event_datetime.
 
     TBC: `event_datetime: tbc` keeps the entry as an UNDATED site row (when=None -
     nothing can fire); `tbc: true` next to a real date keeps everything firing but marks
@@ -320,20 +342,41 @@ def _parse_assignments(raw: object, tz: ZoneInfo) -> dict[str, AssignmentEntry]:
     return out
 
 
-def _parse_exams(raw: object, tz: ZoneInfo) -> list[Exam]:
-    """Parse `exams:` - a list of `{name, exam_datetime}`. `exam_datetime` is a whole-day
-    date, or a full datetime when the exam's start time is known (the website then shows
-    that time instead of its 09:00 placeholder). `exam_datetime: tbc` keeps the exam as
-    an undated TBC row; `tbc: true` next to a real date marks it provisional ("(TBC)")."""
-    out: list[Exam] = []
-    for e in raw or []:
-        if not isinstance(e, dict):
+def _parse_events(raw: object, tz: ZoneInfo) -> list[Event]:
+    """Parse `events:` (label -> {type, title, event_datetime}) into display-only rows,
+    in calendar order.
+
+    `event_datetime` is a whole-day date, or a full datetime when the start time is known
+    (the website then shows that time instead of its placeholder). `event_datetime: tbc`
+    keeps the event as an undated TBC row; `tbc: true` next to a real date marks it
+    provisional ("(TBC)"). An entry with no date and no tbc can never be shown, so it's
+    dropped."""
+    out: list[Event] = []
+    for label, entry in (raw or {}).items():
+        if not isinstance(entry, dict):
             continue
-        d = _coerce_date_or_datetime(e.get("exam_datetime"), tz)
-        tbc = _is_tbc(e.get("exam_datetime")) or e.get("tbc") is True
-        if d is None and not tbc:
+        raw_when = entry.get("event_datetime")
+        when = _coerce_date_or_datetime(raw_when, tz)
+        tbc = _is_tbc(raw_when) or entry.get("tbc") is True
+        if when is None and not tbc:
             continue
-        out.append(Exam(name=str(e.get("name", "Exam")), exam_datetime=d, tbc=tbc))
+        kind = str(entry.get("type") or "").strip().lower()
+        out.append(
+            Event(
+                label=str(label),
+                title=str(entry.get("title") or ""),
+                when=when,
+                # anything other than the two known values -> the display-only default
+                # (silent-drop style): a typo'd `type` still shows the row
+                type="exam" if kind == "exam" else "special_event",
+                tbc=tbc,
+            )
+        )
+    # Undated (TBC) events sort to the end of the term, as they do in the release plan.
+    epoch = datetime.min.replace(tzinfo=timezone.utc)
+    out.sort(
+        key=lambda e: (e.when is None, epoch if e.when is None else _instant(e.when, tz))
+    )
     return out
 
 
@@ -344,11 +387,11 @@ def parse(meta: dict) -> Schedule:
     tz = _tz(meta.get("timezone"))
     return Schedule(
         timezone=str(meta.get("timezone") or DEFAULT_TZ),
-        releases=_parse_releases(meta.get("materials_releases"), tz),
+        releases=_parse_releases(meta.get("releases"), tz),
         semester_start=_coerce_date(meta.get("semester_start")),
         semester_end=_coerce_date(meta.get("semester_end")),
         assignments=_parse_assignments(meta.get("assignments"), tz),
-        exams=_parse_exams(meta.get("exams"), tz),
+        events=_parse_events(meta.get("events"), tz),
     )
 
 

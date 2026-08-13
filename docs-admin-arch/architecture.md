@@ -228,7 +228,7 @@ both the button and the scheduler, so the module name is now narrower than what 
 Materials and Assignment are exposed centrally (in `.github`) *and* run-from-repo (in each
 content repo), from the same renderer; the run-from-repo copy drops `source_repo` and knows that
 repo's own sections. All three are the **fallback path** - the schedule
-(`materials_releases` in `schedule.yml`) is the primary release mechanism; the manual release
+(`releases` in `schedule.yml`) is the primary release mechanism; the manual release
 buttons are for demos, one-offs, and recovery.
 
 ### Student onboarding
@@ -297,10 +297,10 @@ Each hourly tick:
 3. **Fires every action whose time has arrived** (a deploy's `deploy_datetime`, else its
    entry's `event_datetime`) - `deploy` (copy a course-org path into a cohort repo) and
    assignment handouts (`assignments.<slug>.handout_datetime`, synthesised into releases; per team
-   when the template's grading.yml says `type: group`). An entry with no actions is a
-   display-only calendar event for the site.
+   when the template's grading.yml says `type: group`). `events:` entries fire nothing at all -
+   they are display-only calendar rows for the site.
 
-Phases 1-2 run before the releases and run whether or not the cohort uses `materials_releases`
+Phases 1-2 run before the releases and run whether or not the cohort uses `releases`
 at all.
 
 **Why snapshots.** A git committer date is entirely client-supplied (`GIT_COMMITTER_DATE`), so
