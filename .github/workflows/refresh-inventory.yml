@@ -22,6 +22,8 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
+      # Reading ACROSS orgs is the bot's job - it is a member of every course org, and
+      # GITHUB_TOKEN sees only this repo.
       - name: Regenerate inventory/course-orgs.md
         env:
           GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
@@ -29,9 +31,12 @@ jobs:
           python3 -m dsl_course.list_orgs \
             --update-file inventory/course-orgs.md
 
+      # Writing to THIS repo is the reverse: the bot holds only `read` here, so it can
+      # neither merge nor (reliably) open a PR. GITHUB_TOKEN carries the contents +
+      # pull-requests write granted above, which is exactly the scope this step needs.
       - name: Open PR if the inventory changed
         env:
-          GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eo pipefail
           if git diff --quiet inventory/course-orgs.md; then
