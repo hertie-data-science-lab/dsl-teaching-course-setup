@@ -244,6 +244,7 @@ def test_assignment_dates_read_the_schedule():
     sched = Schedule(
         assignments={
             "assignment-1": AssignmentEntry(
+                course_source_repo="assignment-1-f2026",
                 due_datetime=datetime(2026, 10, 13, 23, 59, 59, tzinfo=BERLIN),
                 handout_datetime=datetime(2026, 9, 22, 9, 0, tzinfo=BERLIN),
             )

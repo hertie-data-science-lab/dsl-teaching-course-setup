@@ -83,9 +83,13 @@
 # semester_end: {year}-12-18
 #
 # assignments:                          # each assignment's WHOLE lifecycle, keyed by slug
-#   assignment-1:                       # (repo name minus the -{tag} tag)
+#   assignment-1:                       # the slug is yours to choose
+#     course_source_repo: assignment-1-{tag}  # REQUIRED: the COURSE-org repo it hands out
+#                                       # from - name it, it is never guessed
+#     cohort_dest_repo: homework-1      # optional: the cohort-side name (student repos,
+#                                       # teams.csv key, snapshots, grades). Default: the slug
 #     handout_datetime: {year}-09-22T09:00  # when to provision one repo per student (or per
-#                                       # team) from the assignment-1-{tag} template.
+#                                       # team) from that repo.
 #                                       # Without it the schedule never releases this
 #                                       # assignment - omit ONLY if you hand out via the
 #                                       # manual "Release assignment" button (which then
@@ -96,6 +100,7 @@
 #                                       # the autograder fires (once). Not shown to students.
 #                                       # Defaults to `due_datetime`.
 #   assignment-2:
+#     course_source_repo: assignment-2-{tag}
 #     due_datetime: {year}-11-10
 #   assignment-4-project:
 #     handout_datetime: {year}-10-20T14:00

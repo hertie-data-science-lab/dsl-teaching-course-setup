@@ -138,30 +138,35 @@ def _snapshot_passed_deadlines(
 
     errors = 0
     for slug, deadline in due_snapshots(sched, now):
-        if load_snapshots(cohort_org, slug) is not None:
+        # every cohort-side artefact keys on the assignment's cohort NAME, not its slug
+        name = schedule.cohort_name(slug, sched.assignments[slug])
+        if load_snapshots(cohort_org, name) is not None:
             continue  # already frozen - never re-snapshot, a late push must not move it
         if dry_run:
-            log(f"    DRY-RUN  snapshot {snapshot_path(slug)} (deadline {deadline})")
+            log(f"    DRY-RUN  snapshot {snapshot_path(name)} (deadline {deadline})")
             continue
-        log_step(f"  snapshot {slug} (deadline {deadline})")
-        if not snapshot_assignment(cohort_org, slug, deadline):
+        log_step(f"  snapshot {name} (deadline {deadline})")
+        if not snapshot_assignment(cohort_org, name, deadline):
             errors += 1
     return errors
 
 
-def _assignment_template(course_org: str, cohort_org: str, slug: str) -> str | None:
-    """The course-org template repo backing `slug` for this cohort: `<slug>-<tag>`, where
-    `<tag>` is the cohort org's own fYYYY/sYYYY suffix. None when the tag can't be read or
-    no such repo exists - an assignment can be pinned in `assignments:` for its website date
-    alone, with no template behind it, so that is a skip and not an error."""
-    from .site import _cohort_tag
+def _assignment_template(
+    course_org: str, slug: str, entry: schedule.AssignmentEntry
+) -> str | None:
+    """The course-org repo `slug` hands out from: its `course_source_repo`, if that repo
+    exists. None otherwise, and loudly - the name is required and written by hand, so a
+    name that resolves to nothing can only be a typo, and its one other symptom is an
+    assignment that never hands out and never grades."""
     from .utils import repo_exists
 
-    tag = _cohort_tag(cohort_org)
-    if tag is None:
-        return None
-    template = f"{slug}-{tag}"
-    return template if repo_exists(course_org, template) else None
+    if repo_exists(course_org, entry.course_source_repo):
+        return entry.course_source_repo
+    log_err(
+        f"assignments.{slug}.course_source_repo names `{entry.course_source_repo}`, which "
+        f"does not exist in {course_org} - nothing can be handed out or autograded for it"
+    )
+    return None
 
 
 def _autograde_passed_deadlines(
@@ -186,9 +191,13 @@ def _autograde_passed_deadlines(
 
     errors, fired = 0, set()
     for slug, deadline in due_snapshots(sched, now):
-        if has_autograde_results(cohort_org, slug):
+        # the fire-once marker is keyed on the cohort NAME - it must agree with what
+        # collect writes, or a passed deadline re-grades every tick
+        if has_autograde_results(
+            cohort_org, schedule.cohort_name(slug, sched.assignments[slug])
+        ):
             continue  # already machine-graded - re-grading is a deliberate act
-        template = _assignment_template(course_org, cohort_org, slug)
+        template = _assignment_template(course_org, slug, sched.assignments[slug])
         if template is None:
             log(f"  [skip] autograde {slug} - no template repo for it in {course_org}")
             continue
@@ -252,7 +261,7 @@ def _handout_releases(
     for slug, entry in sched.assignments.items():
         if entry.handout_datetime is None:
             continue
-        template = _assignment_template(course_org, cohort_org, slug)
+        template = _assignment_template(course_org, slug, entry)
         if template is None:
             log(f"  [skip] handout {slug} - no template repo for it in {course_org}")
             continue

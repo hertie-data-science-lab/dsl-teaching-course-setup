@@ -82,6 +82,7 @@ def test_parse_full_schedule():
         },
         "assignments": {
             "assignment-1": {
+                "course_source_repo": "a-f2026",
                 "due_datetime": "2026-10-13",
                 "grading_datetime": "2026-10-15",
             }
@@ -383,9 +384,20 @@ def test_malformed_deploy_datetime_falls_back_to_the_event_datetime():
 def test_max_team_size_parses_and_defaults_to_none():
     meta = {
         "assignments": {
-            "assignment-4-project": {"due_datetime": "2026-11-15", "max_team_size": 3},
-            "assignment-1": {"due_datetime": "2026-10-13"},
-            "bad": {"due_datetime": "2026-10-20", "max_team_size": "lots"},
+            "assignment-4-project": {
+                "course_source_repo": "a-f2026",
+                "due_datetime": "2026-11-15",
+                "max_team_size": 3,
+            },
+            "assignment-1": {
+                "course_source_repo": "a-f2026",
+                "due_datetime": "2026-10-13",
+            },
+            "bad": {
+                "course_source_repo": "a-f2026",
+                "due_datetime": "2026-10-20",
+                "max_team_size": "lots",
+            },
         }
     }
     entries = parse(meta).assignments
@@ -398,10 +410,14 @@ def test_assignment_handout_parses():
     meta = {
         "assignments": {
             "assignment-1": {
+                "course_source_repo": "a-f2026",
                 "due_datetime": "2026-10-13",
                 "handout_datetime": "2026-09-22T09:00",
             },
-            "assignment-2": {"due_datetime": "2026-11-10"},
+            "assignment-2": {
+                "course_source_repo": "a-f2026",
+                "due_datetime": "2026-11-10",
+            },
         }
     }
     entries = parse(meta).assignments
@@ -442,10 +458,25 @@ def test_tbc_flag_keeps_a_provisional_date_firing():
 def test_assignment_type_parses_and_rejects_unknown_values():
     meta = {
         "assignments": {
-            "assignment-4-project": {"due_datetime": "2026-11-15", "type": "group"},
-            "assignment-1": {"due_datetime": "2026-10-13", "type": "Individual"},
-            "assignment-2": {"due_datetime": "2026-10-27"},
-            "typo": {"due_datetime": "2026-11-01", "type": "grp"},
+            "assignment-4-project": {
+                "course_source_repo": "a-f2026",
+                "due_datetime": "2026-11-15",
+                "type": "group",
+            },
+            "assignment-1": {
+                "course_source_repo": "a-f2026",
+                "due_datetime": "2026-10-13",
+                "type": "Individual",
+            },
+            "assignment-2": {
+                "course_source_repo": "a-f2026",
+                "due_datetime": "2026-10-27",
+            },
+            "typo": {
+                "course_source_repo": "a-f2026",
+                "due_datetime": "2026-11-01",
+                "type": "grp",
+            },
         }
     }
     entries = parse(meta).assignments
@@ -489,7 +520,9 @@ def test_record_handout_round_trips_through_the_parser(monkeypatch):
 
     from dsl_course import schedule as S
 
-    store = {"text": "assignments:\n  assignment-1:\n    due_datetime: 2026-10-13\n"}
+    store = {
+        "text": "assignments:\n  assignment-1:\n    course_source_repo: a-f2026\n    due_datetime: 2026-10-13\n"
+    }
     monkeypatch.setattr(S, "get_file_content", lambda org, repo, path: store["text"])
     writes = []
     monkeypatch.setattr(
@@ -604,7 +637,7 @@ def test_every_kind_of_dropped_entry_is_recorded_with_its_cost():
                 "typo": {"evetn_datetime": "2026-09-22T10:00"},
             },
             "assignments": {
-                "a1": {"due_datetime": "2026-10-13"},
+                "a1": {"course_source_repo": "a-f2026", "due_datetime": "2026-10-13"},
                 "a2": {"due_date": "2026-11-13"},
             },
             "events": {"mid-term": {"type": "exam"}},
@@ -635,6 +668,76 @@ def test_every_kind_of_dropped_entry_is_recorded_with_its_cost():
     )
 
 
+def test_an_assignment_without_a_course_source_repo_is_dropped():
+    # Required, like due_datetime: the repo is never guessed from the slug, so an entry
+    # that does not name one has nothing to hand out and no way to be graded.
+    sched = parse(
+        {
+            "assignments": {
+                "ok": {"course_source_repo": "a-f2026", "due_datetime": "2026-10-13"},
+                "no-repo": {"due_datetime": "2026-10-20"},
+                "blank-repo": {
+                    "course_source_repo": "  ",
+                    "due_datetime": "2026-10-27",
+                },
+            }
+        }
+    )
+    assert list(sched.assignments) == ["ok"]
+    assert [d.split(":")[0] for d in sched.dropped] == [
+        "assignments.no-repo",
+        "assignments.blank-repo",
+    ]
+    assert "`course_source_repo`" in sched.dropped[0]
+    assert "no autograding" in sched.dropped[0]
+
+
+def test_cohort_dest_repo_parses_and_defaults_to_the_slug():
+    from dsl_course.schedule import cohort_name
+
+    sched = parse(
+        {
+            "assignments": {
+                "hw": {"course_source_repo": "a-f2026", "due_datetime": "2026-10-13"},
+                "named": {
+                    "course_source_repo": "a-f2026",
+                    "cohort_dest_repo": "homework-1",
+                    "due_datetime": "2026-10-20",
+                },
+                "blank": {
+                    "course_source_repo": "a-f2026",
+                    "cohort_dest_repo": "  ",
+                    "due_datetime": "2026-10-27",
+                },
+            }
+        }
+    )
+    # unset (and blank) -> the slug IS the cohort-side name; set -> it wins
+    assert cohort_name("hw", sched.assignments["hw"]) == "hw"
+    assert cohort_name("named", sched.assignments["named"]) == "homework-1"
+    assert cohort_name("blank", sched.assignments["blank"]) == "blank"
+
+
+def test_entry_for_repo_matches_on_course_source_repo_not_the_slug():
+    from dsl_course.schedule import entry_for_repo
+
+    sched = parse(
+        {
+            "assignments": {
+                "regression": {
+                    "course_source_repo": "wk3-regression-f2026",
+                    "due_datetime": "2026-11-10",
+                }
+            }
+        }
+    )
+    # the slug is a free label, so consumers that start from a REPO name must match on
+    # course_source_repo - deriving a slug from the repo would miss this entry entirely
+    found = entry_for_repo(sched, "wk3-regression-f2026")
+    assert found is not None and found[0] == "regression"
+    assert entry_for_repo(sched, "regression-f2026") is None
+
+
 def test_an_unknown_timezone_is_reported_rather_than_silently_swapped():
     sched = parse(
         {"timezone": "Europe/Berlyn", "events": {"e": {"event_datetime": "2026-11-03"}}}
@@ -650,7 +753,12 @@ def test_a_clean_schedule_drops_nothing():
         parse(
             {
                 "releases": {"s": {"event_datetime": "2026-09-01", "deploy": []}},
-                "assignments": {"a1": {"due_datetime": "2026-10-13"}},
+                "assignments": {
+                    "a1": {
+                        "course_source_repo": "a-f2026",
+                        "due_datetime": "2026-10-13",
+                    }
+                },
                 "events": {"e": {"event_datetime": "2026-11-03"}},
             }
         ).dropped

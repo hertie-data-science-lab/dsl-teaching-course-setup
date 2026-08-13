@@ -509,7 +509,8 @@ def test_assignment_is_group_prefers_the_cohort_schedule(monkeypatch):
     from dsl_course.schedule import AssignmentEntry, Schedule
 
     entry = AssignmentEntry(
-        due_datetime=datetime(2026, 11, 15, tzinfo=ZoneInfo("Europe/Berlin"))
+        course_source_repo="assignment-4-project-f2026",
+        due_datetime=datetime(2026, 11, 15, tzinfo=ZoneInfo("Europe/Berlin")),
     )
     sched = Schedule(assignments={"assignment-4-project": entry})
     monkeypatch.setattr(collect.schedule, "load", lambda org: sched)

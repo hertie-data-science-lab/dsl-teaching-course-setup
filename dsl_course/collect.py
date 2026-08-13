@@ -134,7 +134,8 @@ def assignment_is_group(master_org: str, cohort_org: str, template: str) -> bool
     `type:` (solution branch, written by the New assignment scaffold); else individual.
     Read-side only: the cohort setting never writes back into the course org's
     grading.yml - sources are read course-ward, state written cohort-ward."""
-    entry = schedule.load(cohort_org).assignments.get(assignment_slug(template))
+    found = schedule.entry_for_repo(schedule.load(cohort_org), template)
+    entry = found[1] if found else None
     if entry is not None and entry.type is not None:
         return entry.type == "group"
     return template_is_group(master_org, template)
@@ -498,15 +499,22 @@ def collect(
     if master_org == cohort_org:
         log_err("master-org and cohort-org must differ.")
         return 1
-    slug = assignment_slug(template)
+    # The cohort-side identity is the SCHEDULE key when the assignment is scheduled
+    # (the slug is a free label since course_source_repo), else the repo name minus its
+    # tag. Everything cohort-side keys on it - snapshots, autograde markers, grades - and
+    # the scheduler's fire-once marker uses the schedule key, so the two must agree or a
+    # passed deadline re-grades every tick.
+    sched = schedule.load(cohort_org)
+    found = schedule.entry_for_repo(sched, template)
+    key = found[0] if found else assignment_slug(template)
+    slug = schedule.cohort_name(*found) if found else key
     # SSOT: default the grading pin to the cohort schedule's grading deadline (explicit
     # `grading_datetime`, else `due_datetime`); an explicit `deadline` (CLI override)
     # wins; fall back to today - in the cohort's own timezone, like every other date here -
     # only if unscheduled.
-    sched = schedule.load(cohort_org)
     deadline = (
         deadline
-        or schedule.grading_datetime_iso(sched, slug)
+        or schedule.grading_datetime_iso(sched, key)
         or _today_in_cohort_tz(sched)
     )
 
@@ -641,7 +649,8 @@ def main() -> int:
         "--master-org", required=True, help="Course org (template source)"
     )
     parser.add_argument(
-        "--template",
+        "--course-source-repo",
+        dest="template",
         required=True,
         help="Assignment template (e.g. assignment-1-f2026)",
     )

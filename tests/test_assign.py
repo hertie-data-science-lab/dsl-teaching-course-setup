@@ -6,7 +6,10 @@ without touching gh/git.
 
 from __future__ import annotations
 
+import pytest
+
 from dsl_course import assign
+from dsl_course.schedule import Schedule
 
 HEADER = "student_id,hertie_email,name,github_handle,github_id,section,enrol_code,role"
 
@@ -15,6 +18,13 @@ def _roster_file(tmp_path, *rows: str):
     path = tmp_path / "students.csv"
     path.write_text("\n".join((HEADER, *rows)) + "\n")
     return str(path)
+
+
+@pytest.fixture(autouse=True)
+def _no_cohort_schedule(monkeypatch):
+    """provision_all resolves the cohort-side name from schedule.yml; these tests exercise
+    the provisioning mechanics, not the lookup, and must never reach for the network."""
+    monkeypatch.setattr("dsl_course.schedule.load", lambda org: Schedule())
 
 
 def test_assignment_slug_drops_the_cohort_suffix():

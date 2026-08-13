@@ -31,7 +31,7 @@ private `grades-<handle>` repo, never in their assignment repo.
 **This runs itself.** At each assignment's grading deadline the hourly cron autogrades it
 **once**, with no button press required. Use the button only for a deliberate re-grade.
 
-Course `.github` → **Actions** → **Grade assignment**: `cohort_org`, `assignment`, plus `group`
+Course `.github` → **Actions** → **Grade assignment**: `cohort_org`, `course_source_repo`, plus `group`
 (a force-override - an assignment declared `type: group` grades per team anyway)
 and `dry_run` (both default **off**). It runs the hidden tests and writes into
 `classroom-config`:
