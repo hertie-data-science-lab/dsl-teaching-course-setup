@@ -205,7 +205,7 @@ real config lives in `classroom-config`.
 from a course-org `source_repo` into the cohort's `dest_repo` at `dest_path` (default: mirror
 `source_path`). The repo is private, with read for both the `students` and `auditors` teams. Those
 four fields are deliberately the same ones a `schedule.yml` `deploy` entry carries, and both routes
-execute through the same `release_code.deploy_many`. Only released paths exist cohort-side;
+execute through the same `deploy.deploy_many`. Only released paths exist cohort-side;
 everything is idempotent and additive, so re-releasing is a no-op.
 
 **Assignment** is two stages: freeze a cohort-level template from the course template's `main`
@@ -222,7 +222,7 @@ remains a last-resort force-override.
 There is **no separate Code release**. Releasing a subpackage folder or a single module is just
 Materials with `source_path` pointing at it (e.g. `mlpkg/simulation`), which is how a package gets
 disclosed topic by topic. The old `Release code` button and `render_release_code` were removed once
-Materials took the same four fields; `release_code.deploy_many` survives as the shared executor for
+Materials took the same four fields; `deploy.deploy_many` survives as the shared executor for
 both the button and the scheduler, so the module name is now narrower than what it does.
 
 Materials and Assignment are exposed centrally (in `.github`) *and* run-from-repo (in each
@@ -324,7 +324,7 @@ READMEs.
 - **source_repo** (central only) / **assignment** - the course org's content / `assignment-*` repos.
 - **source_path / dest_path** - free text. Both accept a comma-separated list, paired by index;
   a blank `dest_path` mirrors every `source_path`, and a count mismatch fails the run loudly
-  (`release_code.parse_path_pairs`) rather than guessing. Comma-separated lists exist because
+  (`deploy.parse_path_pairs`) rather than guessing. Comma-separated lists exist because
   `workflow_dispatch` has no array input and its string fields are single-line, so a multi-line
   YAML blob cannot be entered.
 - **dest_repo** - free text, default `materials`; created on first release if missing.
@@ -418,7 +418,7 @@ Self-contained - workflows and their Python implementation both live in this rep
     - `profile_readme` - the org landing page + the `.github` repo's own README.
   - `scheduler` - the hourly cron: freeze passed deadlines, then fire due releases.
   - `schedule` - parse `schedule.yml` (timezone-aware releases, due dates, exams).
-  - `release_code` - the single release executor (`deploy_many`): copy each source path into its
+  - `deploy` - the single release executor (`deploy_many`): copy each source path into its
     cohort repo additively, cloning every repo once per run. Shared by the button and the scheduler.
   - `assign` - freeze a cohort assignment template, then fan out per-student (or per-team) repos.
   - `collect` - the faculty-side autograder: deadline snapshots, pinned checkout, sandboxed test

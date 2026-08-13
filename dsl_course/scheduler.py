@@ -216,7 +216,7 @@ def _run_releases(
     all_deploys = [d for release in due for d in release.due_deploys(now)]
     deploy_errors, changed = 0, False
     if all_deploys:
-        from .release_code import deploy_many
+        from .deploy import deploy_many
 
         deploy_errors, changed = deploy_many(
             course_org, cohort_org, all_deploys, sync=False

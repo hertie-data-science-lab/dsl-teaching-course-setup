@@ -1,4 +1,4 @@
-"""dsl-course release -- publish path(s) from a course-org source repo into a cohort-org
+"""dsl-course deploy -- publish path(s) from a course-org source repo into a cohort-org
 repo, additively + idempotently:
 
     source/<repo>/<source_path>          (a folder - e.g. lectures/02_intro - or a file)
@@ -18,7 +18,7 @@ The button's `source_path`/`dest_path` are comma-separated PARALLEL lists paired
 (parse_path_pairs) - one Deploy per pair, one deploy_many call for the batch.
 
 Usage:
-    python3 -m dsl_course.release_code \\
+    python3 -m dsl_course.deploy \\
         --source-org COURSE --source-repo course-materials-f2026 \\
         --cohort-org COHORT --dest-repo materials \\
         --source-path "lectures/02_intro,labs/02_lab" [--dest-path "week02/lecture,week02/lab"]
