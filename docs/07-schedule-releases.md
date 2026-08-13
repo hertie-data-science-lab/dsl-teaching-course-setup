@@ -1,6 +1,6 @@
 # Schedule releases
 
-Write the term's plan into the cohort's `classroom-config/schedule.yml` once, and the hourly cron runs the term for you - every materials release, every assignment hand-out, every autograde run.
+Write the term's plan into the cohort's `classroom-config/schedule.yml` once, and the hourly cron runs the term for you - every materials release, every assignment hand-out, every autograde run. 
 
 The schedule file can be updated throughout the semester.
 
@@ -10,34 +10,40 @@ The schedule file can be updated throughout the semester.
 - A bootstrapped [cohort org](04-new-cohort-org.md) 
 - Source material repos to be released (staged in course-org, released to cohort-org)
 
-## Write your term's plan
+# Write your term's plan
 
-Live example (a full term): [`example-course/cohort-org/schedule.yml`](../example-course/cohort-org/schedule.yml).
+> For a fully worked example schedule.yml (a full term) see [here](../example-course/cohort-org/schedule.yml).
 
+> An example of the automatically generated schedule on the deployed `.github.io` site can also be seen live [here](https://dsl-demo-f2026.github.io/schedule/). 
 
 Three blocks carry the whole term, and each is defined by what it **does**:
 
-- **`releases:`** - the entries that **deploy**: file(s) copied from course org staging -> the cohort org, where students can reach them.
+- **`releases:`** - the entries that **deploy**: file(s) copied from course org staging -> the cohort org, where students can access them.
 - **`assignments:`** - each assignment's whole lifecycle: hand-out, due date, grading.
 - **`events:`** - **display-only** calendar rows. Nothing deploys; the row simply appears on the cohort site.
 
-Two scalars sit alongside them - `semester_start:` and `semester_end:` - which bookend the
-term and render as rows of their own.
+Two scalars sit alongside them - `semester_start:` and `semester_end:` - which bookend the term and render as rows of their own.
 
-### `releases:` - what ships, and when
+## `releases:` 
 
-Each entry is a label you choose (`lecture-1`, `lab-1`, `bonus-dataset` - it is yours, and it
-is what the site shows unless you give a `title:`), holding:
+Use this for releasing teaching materials, code, datasets, anything else.
+
+Each entry is a label you choose (`lecture-1`, `lab-1`, `bonus-dataset` - it is yours to declare here, and it is what the site shows unless you give a `title:`). Each entry holds:
 
 | Field | Required | Default | Meaning |
 |---|---|---|---|
 | `event_datetime` | **yes** | - | when the class happens - what the site's schedule shows, and the default fire time for this entry's deploys |
-| `deploy` | no | - | the copies this entry ships (a list - see below) |
+| `deploy` (nested entry) | no | - | the copies this entry ships (a nested list - see below) |
 | `title` | no | prettified label | the row label, where this entry shows on the site |
-| `tbc` | no | `false` | the date is provisional: fires as normal, the site marks it **(TBC)** |
+| `tbc` | no | `false` | signals the date is provisional: it fires as normal just the deployed site marks it **(TBC)** |
 
-Each item under `deploy:` is one copy. Paths are **relative to their repo**: `source_path`
-inside `source_repo`, `dest_path` inside `dest_repo`.
+
+NB: **the calendar event is not the release.** 
+  - A release entry's `event_datetime:` is when the session *happens* - that is what the cohort's `.github.io` site's deployed schedule shows, and it is the default fire time for the entry's deploys. 
+  - However, a deploy can also carry its own separate `deploy_datetime:` to ship its files earlier (or later) than the class they belong to. 
+  - If nothing needs to ship at all, the row belongs under `events:`, not here.
+
+Nested under `deploy:` we havee the following:
 
 | Field | Required | Default | Meaning |
 |---|---|---|---|
@@ -47,33 +53,92 @@ inside `source_repo`, `dest_path` inside `dest_repo`.
 | `dest_path` | no | mirrors `source_path` | where it lands, relative to `dest_repo` |
 | `deploy_datetime` | no | the entry's `event_datetime` | ship this one copy earlier (or later) than the class it belongs to |
 
-Use this for teaching materials, code, datasets, anything else. Every release is idempotent -
-a re-run is a no-op.
+NB: `dest_repo` is yours to choose - one shared `materials` repo, or one repo for lectures, another for labs etc; any non-existent repo and/or directory structure specified between `dest_repo` and `dest_path` is created on release if non-exist.
 
-### `assignments:` - hand-out, due date, grading
+At a minimum only `source_repo` + `source_path` are required, everything else defaults:
 
-Keyed by assignment slug (the template repo name minus its `-<tag>` suffix):
+```yaml
+releases:
+  lecture_02:
+    event_datetime: 2026-09-15T10:00
+    deploy:
+      - source_repo: course-materials-f2026
+        source_path: lectures/02_intro
+# -> lands at materials/lectures/02_intro when the class starts (the event_datetime)
+
+  lab_02:
+    event_datetime: 2026-09-17T14:00
+    deploy:
+      - source_repo: course-materials-f2026
+        source_path: labs/02_intro
+```
+Each item under `deploy:` is one file to be deployed. Paths are **relative to their repo**: 
+- `source_path` inside `source_repo`
+- `dest_path` inside `dest_repo`. 
+
+Spell fields out only where a default doesn't fit - a different
+destination repo/path, or an early ship time:
+
+```yaml
+releases:
+  lecture_02:
+    event_datetime: 2026-09-15T10:00   # class time - what the deployed site schedule will announce
+    deploy:
+      - source_repo: course-materials-f2026 # item 1
+        source_path: lectures/02_intro
+        dest_repo: lecture_materials
+        deploy_datetime: 2026-09-15T09:00   # is released 1h early
+      - source_repo: course-materials-f2026 # item 2
+        source_path: readings/02_intro
+        dest_repo: lecture_materials   
+
+  lab_02:
+    event_datetime: 2026-09-17T14:00   # the lab session, which the undefined deploy_datetime will default to
+    deploy:
+      - source_repo: course-materials-f2026
+        source_path: labs/02_intro
+        dest_repo: lab_materials
+
+```
+TODO: change names to `course_source_path` & `course_source_repo` & `cohort_dest_repo` and `cohort_dest_path` ??? better to be explicit about org too?
+
+## `assignments:` 
+
+For the full assignment lifecyle: hand-out, due date, grading
+
+Keyed by assignment slug (i.e. the template repo name minus its `-<tag>` suffix)
+  - e.g;. for a cohort org called `demo-f2026`: an assignment in the `schedule.yml` called `assignment-1` will look for a repo called `assignment-1-f2026` in the course org.
+  - TODO: (1) check this is the case, (2) change it so that it requires an explicit `source_path` field rather than this abstraction 
 
 | Field | Required | Default | Meaning |
 |---|---|---|---|
-| `due_datetime` | **yes** | - (entry dropped without it) | the deadline students see; a bare date closes at **23:59:59** |
-| `handout_datetime` | no* | - | when repos are provisioned, automatically. *Required for the schedule to hand out - without it, use the **Release assignment** button, which records the moment here for you |
-| `grading_datetime` | no | `due_datetime` | when the snapshot freezes and it is [autograded](#deadline-snapshots-and-autograding), once |
-| `type` | no | `individual` | `individual` or `group` - how hand-out and grading fan out. Also settable in the template's `grading.yml` |
+| `handout_datetime` | no* | - | when repos are provisioned, automatically. |
+| `due_datetime` | **yes** | - | the deadline students see; a bare date closes at **23:59:59** |
+| `grading_datetime` | no | `due_datetime` | when the snapshot freezes and it is [autograded](#deadline-snapshots-and-autograding) |
+| `type` | no | `individual` | `individual` or `group`  |
 | `max_team_size` | no | `5` | group assignments only: the welcome repo's Join-team cap |
 
-Nothing assignment-related needs a `releases:` entry (an `assignment:` action there
-is still supported, for handing out by hand from a release entry).
 
-### `events:` - rows with nothing behind them
+TODO: currently missing due_datetime -> skips in deployment. Instead: have it loudly error w/ informative diagnostic message
 
-An exam, a drop-in clinic, a guest lecture, a revision session: anything students should see
-on the calendar that releases no files.
+```yaml
+assignments:
+  assignment-1: # this pulls from the course org's assignment-1-<tag>
+    handout_datetime: 2026-09-22T09:00  
+    due_datetime: 2026-10-13            # what students see
+    grading_datetime: 2026-10-15        # snapshot freezes + autograded (default when undefined: mirrors due_datetime)
+    type: group                         # default: individual 
+    max_team_size: 3
+```
+
+## `events:` 
+
+Could be an exam, a drop-in clinic, a guest lecture, a revision session: anything students should see on the calendar that releases no files.
 
 | Field | Required | Default | Meaning |
 |---|---|---|---|
-| `event_datetime` | **yes** | - | when it happens; a bare date is a whole day (the site shows a 09:00 placeholder) |
-| `type` | no | `special_event` | `exam` or `special_event` - which colour the row takes |
+| `event_datetime` | **yes** | - | when it happens; as displayed on the deployed site schedule |
+| `type` | no | `special_event` | e.g. `exam` or `special_event` - affects which colour the row takes |
 | `title` | no | prettified label | the row label on the site |
 | `tbc` | no | `false` | the date is provisional: the site marks it **(TBC)** |
 
@@ -83,169 +148,48 @@ events:
     type: exam
     title: MidTerm Exam
     event_datetime: 2026-11-03
-  project-clinic:            # no `type:` -> a special event row
-    title: Project clinic
-    event_datetime: 2026-10-14T10:00
-```
 
-**The calendar event is not the release.** A release entry's `event_datetime:` is when the
-thing *happens* - that is what the cohort's `.github.io` site's deployed schedule shows, and
-it is the default fire time for the entry's deploys. However, a deploy can also carry its own
-separate `deploy_datetime:` to ship its files earlier (or later) than the class they belong
-to. If nothing needs to ship at all, the row belongs under `events:`, not here.
-
-Start **minimal** - only `source_repo` + `source_path` are required, everything else
-defaults (into the cohort's `materials` repo, at the same path, at the event time):
-
-```yaml
-releases:
-  lecture_02:
-    event_datetime: 2026-09-15T10:00
-    deploy:
-      - source_repo: course-materials-f2026
-        source_path: lectures/02_intro
-      # -> lands at materials/lectures/02_intro when the class starts
-
-  lab_02:
-    event_datetime: 2026-09-17T14:00
-    deploy:
-      - source_repo: course-materials-f2026
-        source_path: labs/02_intro
-```
-
-Paths are **relative to their repo**: `source_path` inside `source_repo`, `dest_path`
-inside `dest_repo`. Spell fields out only where a default doesn't fit - a different
-destination repo/path, or an early ship time:
-
-```yaml
-releases:
-  lecture_02:
-    event_datetime: 2026-09-15T10:00   # the class - what the site announces
-    deploy:
-      - source_repo: course-materials-f2026
-        source_path: lectures/02_intro
-        dest_repo: lecture_materials
-        deploy_datetime: 2026-09-15T09:00   # slides out 1h early
-      - source_repo: course-materials-f2026
-        source_path: readings/02_intro
-        dest_repo: lecture_materials   # out at class time
-
-  lab_02:
-    event_datetime: 2026-09-17T14:00   # the lab session
-    deploy:
-      - source_repo: course-materials-f2026
-        source_path: labs/02_intro
-        dest_repo: lab_materials
-
-events:
-  project-clinic:                      # nothing deploys -> a display-only site row
+  project-clinic:                     
     title: Project clinic
     event_datetime: 2026-11-17T10:00
-    tbc: true                          # provisional date - the site shows "(TBC)"
+    tbc: true  # provisional' - site shows "(TBC)" next to the given date time.
 
-  guest-lecture:                       # not even a sketch yet: the site shows a TBC row
-    title: Guest lecture               # (sorted end-of-term) until a real date replaces
-    event_datetime: tbc                # `tbc`
+  guest-lecture:  
+    title: Guest lecture  
+    event_datetime: tbc # site will show just TBC, no proposed datetime
+                       # sorted end-of-term until a real date replaces
 ```
 
-**Uncertain dates.** `tbc: true` next to any date - in `releases:` or in `events:` - sketches
-a provisional slot: the site marks it **(TBC)** so students know it may move, and a release
-still fires at that date as normal. `event_datetime: tbc` is for no
-date at all: the row appears as **TBC**, and a release with no date cannot fire until you
-commit a real one - which, like any change, is just an edit to `schedule.yml` on `main`.
+---
+Full schema, field by field, see [here](DEPLOYMENT-CHECKLIST.md#scheduleyml).
 
-(`dest_repo` is yours to choose - one shared `materials` repo, or one per section as here;
-the repo is created on first release.)
+ For a fully worked example schedule.yml (a full term) see [here](../example-course/cohort-org/schedule.yml).
 
-```yaml
-timezone: Europe/Berlin
-semester_start: 2026-09-07
-semester_end: 2026-12-18
+---
 
-releases:
-  lecture_02:
-    event_datetime: 2026-09-15T10:00
-    deploy:
-      - source_repo: course-materials-f2026
-        source_path: lectures/02_week-2
-      - source_repo: lecture-code-f2026
-        source_path: mlpkg/simulation
-  lab_02:
-    event_datetime: 2026-09-17T14:00
-    deploy:
-      - source_repo: course-materials-f2026
-        source_path: labs/02_week-2
-
-assignments:
-  assignment-1:
-    handout_datetime: 2026-09-22T09:00  # optional - one repo per student from assignment-1-<tag>
-    due_datetime: 2026-10-13            # REQUIRED - what students see
-    grading_datetime: 2026-10-15        # optional - snapshot freezes + autograded (default: due_datetime)
-    type: group                         # or individual - the default if field empty
-
-events:
-  final-exam:
-    type: exam                          # or special_event - the default if field empty
-    title: Final Exam
-    event_datetime: 2026-12-15T14:00
-```
-
-Full schema, field by field: [the schedule](DEPLOYMENT-CHECKLIST.md#scheduleyml).
-
-## How the schedule renders on the site
-
-The cohort site renders **one** merged, date-sorted schedule table, and colours each row by
-its type. You never set the row type directly - it follows from where the row came from:
-
-| Row type | Comes from |
-|---|---|
-| lecture | a released session folder under `lectures/` |
-| lab | a released session folder under `labs/` |
-| assignment | an `assignments:` entry - shown on **both** its hand-out date and its due date |
-| exam | an `events:` entry with `type: exam` |
-| special_event | an `events:` entry with no `type:` (a clinic, a guest lecture, a revision session) |
-| term_date | the `semester_start:` / `semester_end:` scalars |
-
-Two consequences worth knowing:
-
-- **Lecture vs lab is not a field you set.** It derives from the section folder the materials
-  were deployed from - `lectures/...` against `labs/...`. Lectures and labs render as
-  separate rows, so a week with both shows two rows.
-- **Assignments appear twice**: once on the day the repos go out, once on the day they are due.
 
 ## Changing dates mid-term
 
-Just commit the edit to `classroom-config/schedule.yml` on `main` - the **GitHub web UI is
-the recommended way** (or edit a local clone → commit → push). The hourly cron reads
-whatever is on `main` at each tick, so the change takes effect within the hour; there is
-nothing to re-arm or re-deploy. The one caveat: already-fired **one-shot** actions don't
-rewind - a release already shipped stays shipped, and a snapshot/autograde that already ran
-re-runs only if you delete its marker (`snapshots/<slug>.csv` / `autograde/<slug>/`).
+Just commit the edit to `classroom-config/schedule.yml` on `main` - the **GitHub web UI is the recommended way** (or edit a local clone → commit → push). The hourly cron readswhatever is on `main` at each tick, so the change takes effect within the hour; there is nothing to re-arm or re-deploy. 
+
+The one caveat: already-fired **one-shot** actions don't rewind - a release already shipped stays shipped, and a snapshot/autograde that already ran re-runs only if you delete its marker (`snapshots/<slug>.csv` / `autograde/<slug>/`).
 
 ## If you want to verify your schedule before trusting it
 
-1. **Dry-run the cron.** Run **Scheduled release** by hand - `dry_run` defaults to **`true`**,
-   so it lists what *would* open and releases nothing. The best preflight there is.
+1. **Dry-run the cron.** 
+    - Run **Scheduled release** by hand 
+    - `dry_run` defaults to **`true`**, so it lists what *would* open and releases nothing
 2. **Dump the parsed schedule.**
-   `python3 -m dsl_course.schedule --cohort-org DSL-Demo-f2026` prints the schedule *as parsed*,
-   as JSON. A mistyped entry simply isn't there - which is how you catch a silent drop.
-3. **Read the counts.** **Show status** reports the release plan as
-   *"N scheduled release(s), M action(s)"*, then the term dates as a start date plus counts
-   of due dates and calendar events. Counts lower than what you wrote means something
-   didn't parse.
+    - `python3 -m dsl_course.schedule --cohort-org DSL-Demo-f2026` prints the schedule *as parsed*, as JSON. 
+    - A mistyped entry simply isn't there - which is how you catch a silent drop.
+3. **Read the counts.** 
+  - **Show status** reports the release plan as *"N scheduled release(s), M action(s)"*, then the term dates as a start date plus counts of due dates and calendar events. Counts lower than what you wrote means something didn't parse.
 
 ## Silent failures
 
 > **The schedule never errors - it drops.** Nothing below fails a run:
-<<<<<<< HEAD
-> - a file that **doesn't parse at all** (unclosed brace, bad indent) → the whole schedule is
->   treated as empty: the run log says so loudly with the offending line, nothing fires, and
->   the site still builds (synthesised dates) until you fix it;
-> - a malformed or missing **`event_datetime`** → that whole entry is dropped;
-=======
 > - a malformed or missing **`event_datetime`** → that whole entry is dropped, in
 >   `releases:` and in `events:` alike;
->>>>>>> origin/main
 > - a malformed **`deploy_datetime`** → ignored, and that copy ships at the `event_datetime`;
 > - a malformed or missing **`due_datetime`** → the whole `assignments:` entry is dropped, and the
 >   grading deadline then falls back to *today* at grading time;
@@ -253,7 +197,7 @@ re-runs only if you delete its marker (`snapshots/<slug>.csv` / `autograde/<slug
 > - an unknown or misspelt **`timezone:`** → silently falls back to `Europe/Berlin`;
 > - a `deploy` entry missing **`source_repo`** or **`source_path`** → silently skipped.
 >
-> Which is exactly why you run the three checks above rather than assuming the file is right.
+> Which is why you are recommended to run the checks above.
 
 ## Timezones and bare dates
 
@@ -263,34 +207,24 @@ re-runs only if you delete its marker (`snapshots/<slug>.csv` / `autograde/<slug
 
 ## Deadline snapshots and autograding
 
-> **Autograded ≠ released to students.** The scores land only in the private
-> `classroom-config` - faculty review them (and the whole-class `cohort-gradebook.csv`)
-> and nothing reaches a student until the separate **Distribute grades** button:
-> [three gates](10-grade-and-return-assignments.md).
+Full details of this are in [10-grade-and-return-assignments.md](10-grade-and-return-assignments.md); below is as it pertains to the `schedule.yml`.
 
-Each assignment's **grading deadline** is `grading_datetime` if you set it, else `due_datetime`.
-Shortly after it passes, the hourly run does two things,
-once each:
+> **Autograded ≠ released to students.** The scores land only in the private `classroom-config` - faculty review them (and the whole-class `cohort-gradebook.csv`) and nothing reaches a student until the separate **Distribute grades** button: [three gates](10-grade-and-return-assignments.md).
 
-1. **Freezes** each submission repo's HEAD into `classroom-config/snapshots/<slug>.csv`, using
-   the **server's** clock. **Write-once** - a later push can't move the pin. To re-freeze
-   (repos provisioned late, say), delete the CSV and the next tick rebuilds it.
-2. **Autogrades** it, against the `<slug>-<tag>` template in the course org. The marker is the
-   `classroom-config/autograde/<slug>/` folder: while it exists, no further grading happens.
-   To re-grade, delete it. An assignment with no template repo, no hidden tests, or
-   `autograde: false` is skipped, not failed.
+Each assignment's **grading deadline** is `grading_datetime` if you set it, else `due_datetime`. Shortly after it passes, the hourly run does two things, once each:
 
-If grading runs with **no snapshot at all**, it falls back to a date-based pin over
-student-supplied committer dates and says so loudly in the run log. Full flow:
-[Grade and return assignments](10-grade-and-return-assignments.md).
+1. **Freezes** each submission repo's HEAD into `classroom-config/snapshots/<slug>.csv`, using the **server's** clock.
+2. **Autogrades** it (optional).
 
 ---
+
 ## Next
 
-- [Release materials](08-release-materials-to-cohort.md) /
-  [an assignment](09-release-assignment-to-cohort.md) by hand, when you need the fallback.
-- [Grade and return assignments](10-grade-and-return-assignments.md).
+- [Manually Release materials](08-release-materials-to-cohort.md) 
+- [Manually release an assignment](09-release-assignment-to-cohort.md)
+- [Grade and return assignments](10-grade-and-return-assignments.md)
 
 ---
+
 **Demo:** `classroom-config/schedule.yml` in [`DSL-Demo-f2026`](https://github.com/DSL-Demo-f2026),
 run by [Scheduled release](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/scheduled-release.yml).

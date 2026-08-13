@@ -1,4 +1,4 @@
-# Release an assignment to a cohort
+# Manually release an assignment to a cohort
 
 > Releases assignments templates from the course org (hidden historical registry of course assignments) -> cohort org (a private repo, assigned to students/groups to complete and submit)
 

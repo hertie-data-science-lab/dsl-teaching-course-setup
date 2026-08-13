@@ -1,4 +1,4 @@
-# Release materials to a cohort
+# Manually release materials to a cohort
 
 > Releases materials from the course org (private, historical registry of course materials) -> cohort org (a single instance, available to students)
 

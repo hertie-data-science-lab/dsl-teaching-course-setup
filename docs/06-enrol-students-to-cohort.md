@@ -8,7 +8,7 @@
 
 - A bootstrapped [cohort org](04-new-cohort-org.md).
 
-## Steps
+## Steps for initial enrolement.
 
 Live example roster: [`example-course/cohort-org/students.csv`](../example-course/cohort-org/students.csv).
 
@@ -37,9 +37,17 @@ Live example roster: [`example-course/cohort-org/students.csv`](../example-cours
 
    > The cohort org's `welcome` repo is automatically seeded when the cohort org is [bootstrapped by the course org](04-new-cohort-org.md#steps).
 
-## Group assignments 
 
->This workflow can be carried out *during* course delivery, however groups needs to be formed *before* the associated group assignment is released. 
+### Auditors (optional)
+
+Set `role: auditor` on a roster row (blank means enrolled). Auditors get read on every
+released-materials repo, exactly like enrolled students, but no assignment repo, no gradebook
+and no marks. A **Join team** issue from an auditor is refused and labelled `needs-review`.
+---
+
+## Group assignments (rolling basis)
+
+>This workflow is carried out *during* course delivery, however groups needs to be formed *before* the associated group assignment is released. 
 
 - There are 2 methods to form groups:
    1. Students open a **Join team** issue in `welcome`, 
@@ -50,12 +58,6 @@ Live example roster: [`example-course/cohort-org/students.csv`](../example-cours
 - A **Release assignment** run with `group` ticked then grants each team its shared repo.
 
 > TODO: later add ability to join groups after group assignment released.
-
-## Auditors (optional)
-
-Set `role: auditor` on a roster row (blank means enrolled). Auditors get read on every
-released-materials repo, exactly like enrolled students, but no assignment repo, no gradebook
-and no marks. A **Join team** issue from an auditor is refused and labelled `needs-review`.
 
 ## Next
 
