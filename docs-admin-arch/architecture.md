@@ -377,7 +377,8 @@ path not starting with `_`) and links to those site-relative URLs.
 
 - **Lectures** are always hosted; **readings** are either a text-only reading list
   (`reading-list` - citations, no files, copyright-safe) or hosted + linked
-  (`actual-readings`). `none` skips readings. Lectures + readings only - no assignments, no
+  (`actual-readings`). `none` skips readings. A published `labs/` section renders as its own
+  `type: lab` row beside the session row. Lectures, labs + readings only - no assignments, no
   exam rows.
 - **Opt-in, then automatic.** The first run scaffolds the site; every run records its settings
   in `_publish-config.yml` at the site root (`_`-prefixed so Jekyll ignores it) and a daily cron

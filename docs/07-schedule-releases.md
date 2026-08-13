@@ -6,7 +6,7 @@ The schedule file can be updated throughout the semester.
 
 ## Prerequisites
 
-- A boostratted [course org](01-new-course-org.md)
+- A bootstrapped [course org](01-new-course-org.md)
 - A bootstrapped [cohort org](04-new-cohort-org.md) 
 - Source material repos to be released (staged in course-org, released to cohort-org)
 
@@ -141,18 +141,18 @@ events:
   project-clinic:                      # nothing deploys -> a display-only site row
     title: Project clinic
     event_datetime: 2026-11-17T10:00
-    tbc: true                          # provisional date - fires as normal, site shows "(TBC)"
+    tbc: true                          # provisional date - the site shows "(TBC)"
 
   guest-lecture:                       # not even a sketch yet: the site shows a TBC row
-    title: Guest lecture               # (sorted end-of-term); nothing fires until a real
-    event_datetime: tbc                # date replaces `tbc`
+    title: Guest lecture               # (sorted end-of-term) until a real date replaces
+    event_datetime: tbc                # `tbc`
 ```
 
 **Uncertain dates.** `tbc: true` next to any date - in `releases:` or in `events:` - sketches
-a provisional slot: everything fires at that date as normal, but the site marks it **(TBC)**
-so students know it may move. `event_datetime: tbc` is for no
-date at all: the row appears as **TBC** and nothing fires until you commit a real date -
-which, like any change, is just an edit to `schedule.yml` on `main`.
+a provisional slot: the site marks it **(TBC)** so students know it may move, and a release
+still fires at that date as normal. `event_datetime: tbc` is for no
+date at all: the row appears as **TBC**, and a release with no date cannot fire until you
+commit a real one - which, like any change, is just an edit to `schedule.yml` on `main`.
 
 (`dest_repo` is yours to choose - one shared `materials` repo, or one per section as here;
 the repo is created on first release.)
