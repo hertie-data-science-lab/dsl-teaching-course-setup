@@ -47,8 +47,14 @@ def _edit_url(org: str, repo: str, path: str, branch: str, exists: bool) -> str:
 
 
 def _row(
-    item_id: str, label: str, org: str, repo: str, path: str, branch: str,
-    present: bool, detail: str,
+    item_id: str,
+    label: str,
+    org: str,
+    repo: str,
+    path: str,
+    branch: str,
+    present: bool,
+    detail: str,
 ) -> dict:
     status = "ok" if present else ("missing" if item_id in REQUIRED else "optional")
     return {
@@ -99,8 +105,14 @@ def collect(course_org: str, cohort_org: str) -> dict[str, dict]:
 
     course_name = course_meta.get("course_name") or course_meta.get("org_name") or ""
     data["B1"] = _row(
-        "B1", "Course identity", course_org, ".github", "dsl-course.yml", course_branch,
-        bool(course_name), course_name,
+        "B1",
+        "Course identity",
+        course_org,
+        ".github",
+        "dsl-course.yml",
+        course_branch,
+        bool(course_name),
+        course_name,
     )
 
     # Access is granted by github_handle alone (sync_faculty's actual criterion) -
@@ -117,27 +129,50 @@ def collect(course_org: str, cohort_org: str) -> dict[str, dict]:
     )
     n_admins = len(course_desired.get("course-admin", set()))
     data["B6"] = _row(
-        "B6", "Course admins", course_org, ".github", "dsl-course.yml", course_branch,
-        has_people_block, f"{n_admins} active" if has_people_block else "falls back to GitHub teams",
+        "B6",
+        "Course admins",
+        course_org,
+        ".github",
+        "dsl-course.yml",
+        course_branch,
+        has_people_block,
+        f"{n_admins} active" if has_people_block else "falls back to GitHub teams",
     )
 
     students = roster.load(cohort_org)
     onboarded = sum(s.onboarded for s in students)
     data["C2"] = _row(
-        "C2", "Roster", cohort_org, roster.CONFIG_REPO, roster.ROSTER_PATH, cohort_branch,
-        bool(students), f"{len(students)} student(s), {onboarded} onboarded" if students else "",
+        "C2",
+        "Roster",
+        cohort_org,
+        roster.CONFIG_REPO,
+        roster.ROSTER_PATH,
+        cohort_branch,
+        bool(students),
+        f"{len(students)} student(s), {onboarded} onboarded" if students else "",
     )
 
     grade_sources = grades.load_grade_sources(cohort_org)
     data["C3"] = _row(
-        "C3", "Grades", cohort_org, grades.CONFIG_REPO, grades.GRADES_DIR, cohort_branch,
-        bool(grade_sources), f"{len(grade_sources)} assignment(s)" if grade_sources else "",
+        "C3",
+        "Grades",
+        cohort_org,
+        grades.CONFIG_REPO,
+        grades.GRADES_DIR,
+        cohort_branch,
+        bool(grade_sources),
+        f"{len(grade_sources)} assignment(s)" if grade_sources else "",
     )
 
     team_data = teams.load(cohort_org)
     n_teams = sum(len(t) for t in team_data.values())
     data["C4"] = _row(
-        "C4", "Teams", cohort_org, teams.CONFIG_REPO, teams.TEAMS_PATH, cohort_branch,
+        "C4",
+        "Teams",
+        cohort_org,
+        teams.CONFIG_REPO,
+        teams.TEAMS_PATH,
+        cohort_branch,
         bool(team_data),
         f"{n_teams} team(s) across {len(team_data)} assignment(s)" if team_data else "",
     )
@@ -148,25 +183,37 @@ def collect(course_org: str, cohort_org: str) -> dict[str, dict]:
     # schedule rows, since a drop in either block lands in whichever row reads it.
     dropped = (
         f" - WARNING: {len(sched.dropped)} entry/ies DROPPED, see the run log"
-        if sched.dropped else ""
+        if sched.dropped
+        else ""
     )
 
     n_actions = sum(len(r.deploy) + bool(r.assignment) for r in sched.releases)
     data["C5"] = _row(
-        "C5", f"Release plan ({schedule.SCHEDULE_PATH} -> releases)",
-        cohort_org, schedule.CONFIG_REPO, schedule.SCHEDULE_PATH, cohort_branch,
+        "C5",
+        f"Release plan ({schedule.SCHEDULE_PATH} -> releases)",
+        cohort_org,
+        schedule.CONFIG_REPO,
+        schedule.SCHEDULE_PATH,
+        cohort_branch,
         bool(sched.releases),
         f"{len(sched.releases)} scheduled release(s), {n_actions} action(s){dropped}"
-        if sched.releases else dropped.lstrip(" -"),
+        if sched.releases
+        else dropped.lstrip(" -"),
     )
 
     has_due_dates = bool(sched.semester_start or sched.assignments or sched.events)
     data["C6"] = _row(
-        "C6", f"Due dates & events ({schedule.SCHEDULE_PATH})",
-        cohort_org, schedule.CONFIG_REPO, schedule.SCHEDULE_PATH, cohort_branch,
+        "C6",
+        f"Due dates & events ({schedule.SCHEDULE_PATH})",
+        cohort_org,
+        schedule.CONFIG_REPO,
+        schedule.SCHEDULE_PATH,
+        cohort_branch,
         has_due_dates,
         f"start={sched.semester_start}, {len(sched.assignments)} due date(s), "
-        f"{len(sched.events)} event(s){dropped}" if has_due_dates else dropped.lstrip(" -"),
+        f"{len(sched.events)} event(s){dropped}"
+        if has_due_dates
+        else dropped.lstrip(" -"),
     )
 
     cohort_faculty = sync_faculty.load_cohort_faculty(cohort_org)
@@ -175,10 +222,14 @@ def collect(course_org: str, cohort_org: str) -> dict[str, dict]:
     )
     n_instructors = len(cohort_desired.get("instructors", set()))
     data["C7"] = _row(
-        "C7", f"Instructors/TAs ({sync_faculty.COHORT_PEOPLE_PATH})",
-        cohort_org, sync_faculty.COHORT_CONFIG_REPO, sync_faculty.COHORT_PEOPLE_PATH,
+        "C7",
+        f"Instructors/TAs ({sync_faculty.COHORT_PEOPLE_PATH})",
+        cohort_org,
+        sync_faculty.COHORT_CONFIG_REPO,
+        sync_faculty.COHORT_PEOPLE_PATH,
         cohort_branch,
-        bool(n_instructors), f"{n_instructors} active" if n_instructors else "",
+        bool(n_instructors),
+        f"{n_instructors} active" if n_instructors else "",
     )
 
     return data

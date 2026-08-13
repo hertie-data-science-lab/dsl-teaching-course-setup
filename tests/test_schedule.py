@@ -51,7 +51,9 @@ def test_coerce_datetime_naive_gets_default_tz_explicit_offset_kept():
     assert naive.tzinfo is not None
     assert naive.utcoffset() == BERLIN.utcoffset(naive.replace(tzinfo=None))
     aware = _coerce_datetime("2026-09-15T14:00+00:00", BERLIN)
-    assert aware.utcoffset().total_seconds() == 0  # explicit offset honoured, not overridden
+    assert (
+        aware.utcoffset().total_seconds() == 0
+    )  # explicit offset honoured, not overridden
 
 
 def test_parse_full_schedule():
@@ -77,7 +79,10 @@ def test_parse_full_schedule():
             },
         },
         "assignments": {
-            "assignment-1": {"due_datetime": "2026-10-13", "grading_datetime": "2026-10-15"}
+            "assignment-1": {
+                "due_datetime": "2026-10-13",
+                "grading_datetime": "2026-10-15",
+            }
         },
         "events": {
             "final": {"type": "exam", "title": "Final", "event_datetime": "2026-12-15"},
@@ -89,15 +94,24 @@ def test_parse_full_schedule():
     }
     sched = parse(meta)
     assert sched.semester_start == date(2026, 9, 7)
-    assert [r.label for r in sched.releases] == ["session_2", "a1-handout"]  # sorted by when
+    assert [r.label for r in sched.releases] == [
+        "session_2",
+        "a1-handout",
+    ]  # sorted by when
     s2 = sched.releases[0]
-    assert s2.deploy == [Deploy("cm-f2026", "lectures/02_intro", "materials", "lectures/02_intro")]
+    assert s2.deploy == [
+        Deploy("cm-f2026", "lectures/02_intro", "materials", "lectures/02_intro")
+    ]
     assert sched.releases[1].assignment == "assignment-1-f2026"
-    assert sched.assignments["assignment-1"].due_datetime.isoformat().startswith(
-        "2026-10-13T23:59:59"
+    assert (
+        sched.assignments["assignment-1"]
+        .due_datetime.isoformat()
+        .startswith("2026-10-13T23:59:59")
     )
-    assert sched.assignments["assignment-1"].grading_datetime.isoformat().startswith(
-        "2026-10-15"
+    assert (
+        sched.assignments["assignment-1"]
+        .grading_datetime.isoformat()
+        .startswith("2026-10-15")
     )
     # events are display-only rows, in calendar order; `type` defaults to special_event
     assert sched.events == [
@@ -131,11 +145,16 @@ def test_deploy_accepts_single_mapping_defaults_cohort_dest_path_none():
         "releases": {
             "s": {
                 "event_datetime": "2026-09-01",
-                "deploy": {"course_source_repo": "cm", "course_source_path": "lectures/00_x"},
+                "deploy": {
+                    "course_source_repo": "cm",
+                    "course_source_path": "lectures/00_x",
+                },
             }
         }
     }
-    assert parse(meta).releases[0].deploy == [Deploy("cm", "lectures/00_x", "materials", None)]
+    assert parse(meta).releases[0].deploy == [
+        Deploy("cm", "lectures/00_x", "materials", None)
+    ]
 
 
 def test_deploy_entry_missing_source_is_skipped():
@@ -158,7 +177,11 @@ def test_deploy_entry_using_the_old_unprefixed_keys_is_skipped():
             "s": {
                 "event_datetime": "2026-09-01",
                 "deploy": [
-                    {"source_repo": "cm", "source_path": "lectures/00_x", "dest_repo": "materials"}
+                    {
+                        "source_repo": "cm",
+                        "source_path": "lectures/00_x",
+                        "dest_repo": "materials",
+                    }
                 ],
             }
         }
@@ -220,9 +243,12 @@ def test_event_timezone_comes_from_the_cohort_setting():
 
 
 def test_event_without_a_usable_date_is_dropped():
-    assert parse(
-        {"events": {"no-date": {"title": "X"}, "bad": {"event_datetime": "soon"}}}
-    ).events == []
+    assert (
+        parse(
+            {"events": {"no-date": {"title": "X"}, "bad": {"event_datetime": "soon"}}}
+        ).events
+        == []
+    )
 
 
 def test_event_type_defaults_to_special_event_and_rejects_unknown_values():
@@ -236,7 +262,9 @@ def test_event_type_defaults_to_special_event_and_rejects_unknown_values():
     events = {e.label: e for e in parse(meta).events}
     assert events["mid-term"].type == "exam"  # case-normalised
     assert events["clinic"].type == "special_event"
-    assert events["typo"].type == "special_event"  # unknown value -> the display default
+    assert (
+        events["typo"].type == "special_event"
+    )  # unknown value -> the display default
 
 
 def test_events_sort_by_date_with_undated_last():
@@ -270,7 +298,9 @@ def test_assignment_bare_date_is_rejected_only_the_nested_form_is_accepted():
 
 
 def test_assignment_without_due_is_skipped():
-    assert parse({"assignments": {"assignment-1": {"max_team_size": 2}}}).assignments == {}
+    assert (
+        parse({"assignments": {"assignment-1": {"max_team_size": 2}}}).assignments == {}
+    )
 
 
 def test_event_datetime_is_the_only_accepted_key():
@@ -297,7 +327,10 @@ def test_deploy_datetime_parses_and_defaults_to_none():
                         "course_source_path": "lectures/02_intro",
                         "deploy_datetime": "2026-09-15T09:00",
                     },
-                    {"course_source_repo": "cm-f2026", "course_source_path": "readings/02_intro"},
+                    {
+                        "course_source_repo": "cm-f2026",
+                        "course_source_path": "readings/02_intro",
+                    },
                 ],
             }
         }
@@ -316,7 +349,10 @@ def test_deploy_datetime_parses_and_defaults_to_none():
 def test_display_only_entry_is_kept_with_its_title():
     meta = {
         "releases": {
-            "project-clinic": {"event_datetime": "2026-11-17T10:00", "title": "Project clinic"}
+            "project-clinic": {
+                "event_datetime": "2026-11-17T10:00",
+                "title": "Project clinic",
+            }
         }
     }
     (r,) = parse(meta).releases
@@ -367,7 +403,11 @@ def test_assignment_handout_parses():
         }
     }
     entries = parse(meta).assignments
-    assert entries["assignment-1"].handout_datetime.isoformat().startswith("2026-09-22T09:00")
+    assert (
+        entries["assignment-1"]
+        .handout_datetime.isoformat()
+        .startswith("2026-09-22T09:00")
+    )
     assert entries["assignment-2"].handout_datetime is None
 
 
@@ -436,7 +476,9 @@ assignments:
     assert "assignment-9:" in out and "handout_datetime: 2026-11-01T09:00" in out
     assert "TODO" in out
     # no assignments block at all: one is created
-    out = _insert_handout("timezone: Europe/Berlin\n", "assignment-1", "2026-09-22T14:05")
+    out = _insert_handout(
+        "timezone: Europe/Berlin\n", "assignment-1", "2026-09-22T14:05"
+    )
     assert "assignments:" in out and "handout_datetime: 2026-09-22T14:05" in out
 
 
@@ -456,9 +498,9 @@ def test_record_handout_round_trips_through_the_parser(monkeypatch):
     (new,) = writes
     sched = S.parse(yaml.safe_load(new))
     assert (
-        sched.assignments["assignment-1"].handout_datetime.isoformat().startswith(
-            "2026-09-22T14:05"
-        )
+        sched.assignments["assignment-1"]
+        .handout_datetime.isoformat()
+        .startswith("2026-09-22T14:05")
     )
     # second call sees the recorded value and is a no-op
     store["text"] = new
@@ -491,7 +533,9 @@ materials_releases:
 def test_unparseable_schedule_loads_as_empty_and_says_so_loudly(monkeypatch, capsys):
     from dsl_course import schedule as S
 
-    monkeypatch.setattr(S, "get_file_content", lambda org, repo, path: MALFORMED_SCHEDULE)
+    monkeypatch.setattr(
+        S, "get_file_content", lambda org, repo, path: MALFORMED_SCHEDULE
+    )
 
     sched = S.load("Cohort-f2026")
 
@@ -533,7 +577,9 @@ def test_a_non_mapping_schedule_still_loads_as_empty(monkeypatch):
     # so the new try/except can't be mistaken for the only defence.
     from dsl_course import schedule as S
 
-    monkeypatch.setattr(S, "get_file_content", lambda org, repo, path: "- just\n- a list\n")
+    monkeypatch.setattr(
+        S, "get_file_content", lambda org, repo, path: "- just\n- a list\n"
+    )
     assert S.load("Cohort-f2026") == Schedule()
 
 
@@ -568,16 +614,29 @@ def test_every_kind_of_dropped_entry_is_recorded_with_its_cost():
     assert list(sched.assignments) == ["a1"]
 
     where = [d.split(":")[0] for d in sched.dropped]
-    assert where == ["releases.ok.deploy[1]", "releases.typo", "assignments.a2", "events.mid-term"]
+    assert where == [
+        "releases.ok.deploy[1]",
+        "releases.typo",
+        "assignments.a2",
+        "events.mid-term",
+    ]
     # each line names the field at fault AND what the cohort loses by it
-    assert "`course_source_repo`" in sched.dropped[0] and "never ships" in sched.dropped[0]
-    assert "`event_datetime`" in sched.dropped[1] and "nothing deploys" in sched.dropped[1]
+    assert (
+        "`course_source_repo`" in sched.dropped[0] and "never ships" in sched.dropped[0]
+    )
+    assert (
+        "`event_datetime`" in sched.dropped[1] and "nothing deploys" in sched.dropped[1]
+    )
     assert "`due_datetime`" in sched.dropped[2] and "no autograding" in sched.dropped[2]
-    assert "`event_datetime`" in sched.dropped[3] and "never appears" in sched.dropped[3]
+    assert (
+        "`event_datetime`" in sched.dropped[3] and "never appears" in sched.dropped[3]
+    )
 
 
 def test_an_unknown_timezone_is_reported_rather_than_silently_swapped():
-    sched = parse({"timezone": "Europe/Berlyn", "events": {"e": {"event_datetime": "2026-11-03"}}})
+    sched = parse(
+        {"timezone": "Europe/Berlyn", "events": {"e": {"event_datetime": "2026-11-03"}}}
+    )
     assert len(sched.dropped) == 1
     assert "Europe/Berlyn" in sched.dropped[0] and "Europe/Berlin" in sched.dropped[0]
     assert sched.events[0].when == date(2026, 11, 3)  # the event itself survives
@@ -615,7 +674,9 @@ def test_load_logs_every_dropped_entry_loudly(monkeypatch, capsys):
     monkeypatch.setattr(
         S,
         "get_file_content",
-        lambda org, repo, path: "assignments:\n  assignment-2:\n    due_date: 2026-11-13\n",
+        lambda org, repo, path: (
+            "assignments:\n  assignment-2:\n    due_date: 2026-11-13\n"
+        ),
     )
 
     sched = S.load("Cohort-f2026")

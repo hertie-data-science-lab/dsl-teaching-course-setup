@@ -72,10 +72,16 @@ def test_session_dates_date_a_lab_row_from_its_own_release():
 def test_session_dates_earliest_release_wins_for_a_row():
     s = _sched(
         [
-            Release("late", datetime(2026, 9, 15, 14, 0, tzinfo=BERLIN),
-                    deploy=[Deploy("cm", "lectures/02_x", "lectures", None)]),
-            Release("early", datetime(2026, 9, 10, 9, 0, tzinfo=BERLIN),
-                    deploy=[Deploy("cm", "readings/02_y", "materials", None)]),
+            Release(
+                "late",
+                datetime(2026, 9, 15, 14, 0, tzinfo=BERLIN),
+                deploy=[Deploy("cm", "lectures/02_x", "lectures", None)],
+            ),
+            Release(
+                "early",
+                datetime(2026, 9, 10, 9, 0, tzinfo=BERLIN),
+                deploy=[Deploy("cm", "readings/02_y", "materials", None)],
+            ),
         ]
     )
     # readings are lecture material, so both land on the same row - earliest wins
@@ -87,15 +93,24 @@ def test_session_dates_earliest_release_wins_for_a_row():
 def test_session_dates_ignores_non_ordinal_deploys():
     s = _sched(
         [
-            Release("ds", datetime(2026, 10, 20, 9, 30, tzinfo=BERLIN),
-                    deploy=[Deploy("data", "week7/housing.csv", "materials", "datasets/housing.csv")]),
+            Release(
+                "ds",
+                datetime(2026, 10, 20, 9, 30, tzinfo=BERLIN),
+                deploy=[
+                    Deploy(
+                        "data", "week7/housing.csv", "materials", "datasets/housing.csv"
+                    )
+                ],
+            ),
         ]
     )
     assert site._session_dates(s) == {}  # not a numbered session folder
 
 
 def test_lecture_entry_shows_real_time_from_a_datetime():
-    md = site._lecture_entry("Cohort", "2", datetime(2026, 9, 15, 14, 30, tzinfo=BERLIN), [])
+    md = site._lecture_entry(
+        "Cohort", "2", datetime(2026, 9, 15, 14, 30, tzinfo=BERLIN), []
+    )
     assert "date: 2026-09-15T14:30:00" in md
 
 
@@ -145,7 +160,9 @@ def test_event_entry_renders_a_display_only_schedule_row():
     assert "date: 2026-11-17T10:00:00" in out
     assert 'description: ""' in out
     titled = Event(
-        "project-clinic", "Bring your data", datetime(2026, 11, 17, 10, 0, tzinfo=BERLIN)
+        "project-clinic",
+        "Bring your data",
+        datetime(2026, 11, 17, 10, 0, tzinfo=BERLIN),
     )
     assert 'name: "Bring your data"' in site._event_entry(titled, END_OF_TERM)
 
@@ -179,7 +196,9 @@ def test_tbc_rows_render_with_theme_flags():
     assert "tbc: true" in out and "dateless" not in out
     assert "date: 2026-11-17T10:00:00" in out
     # Exams: same two shapes.
-    out = site._event_entry(Event("resit", "Resit Exam", None, "exam", True), END_OF_TERM)
+    out = site._event_entry(
+        Event("resit", "Resit Exam", None, "exam", True), END_OF_TERM
+    )
     assert "type: exam" in out and "dateless: true" in out
     out = site._event_entry(
         Event("mid-term", "MidTerm Exam", date(2026, 11, 3), "exam", True), END_OF_TERM
@@ -197,7 +216,9 @@ def test_term_date_entry_hides_the_placeholder_time():
 
 
 def test_assignment_entry_dates_the_released_row_from_the_handout(monkeypatch):
-    monkeypatch.setattr(site, "get_file_content", lambda *a, **k: "# Assignment 1\nBrief.")
+    monkeypatch.setattr(
+        site, "get_file_content", lambda *a, **k: "# Assignment 1\nBrief."
+    )
     out = site._assignment_entry(
         "Course",
         "assignment-1-f2026",
@@ -245,11 +266,17 @@ def _plan(
     the per-source file listing (default: every source is empty)."""
     captured: dict = {}
     monkeypatch.setattr(
-        site, "_sync_site_repo", lambda org, build: captured.update(plan=build(tmp_path)) or 0
+        site,
+        "_sync_site_repo",
+        lambda org, build: captured.update(plan=build(tmp_path)) or 0,
     )
     monkeypatch.setattr(site.seed, "discover_cohort_repos", lambda orgs: [])
-    monkeypatch.setattr(site.seed, "discover_release_sources", lambda org, repos: list(sources))
-    monkeypatch.setattr(site.seed, "discover_assignments", lambda org: list(assignments))
+    monkeypatch.setattr(
+        site.seed, "discover_release_sources", lambda org, repos: list(sources)
+    )
+    monkeypatch.setattr(
+        site.seed, "discover_assignments", lambda org: list(assignments)
+    )
     monkeypatch.setattr(site, "_yaml_file", lambda *a: {})
     monkeypatch.setattr(site.schedule, "load", lambda org: sched)
     monkeypatch.setattr(site, "_people_yaml", lambda *a, **k: "people: []\n")
@@ -300,13 +327,17 @@ def test_a_mixed_week_becomes_a_lecture_row_and_a_lab_row(monkeypatch, tmp_path)
     assert "date: 2026-09-10T14:00:00" in lectures["lab-02.md"]  # its OWN release time
 
 
-def test_course_description_flows_from_course_metadata_into_config(monkeypatch, tmp_path):
+def test_course_description_flows_from_course_metadata_into_config(
+    monkeypatch, tmp_path
+):
     # course_description is declared once in the course org's dsl-course.yml and pushed to
     # every cohort site. Undeclared, it must not be written at all - the site repo keeps
     # whatever blurb it has.
     captured = {}
     monkeypatch.setattr(
-        site, "_sync_site_repo", lambda org, build: captured.update(plan=build(tmp_path)) or 0
+        site,
+        "_sync_site_repo",
+        lambda org, build: captured.update(plan=build(tmp_path)) or 0,
     )
     monkeypatch.setattr(site.seed, "discover_cohort_repos", lambda orgs: [])
     monkeypatch.setattr(site.seed, "discover_release_sources", lambda org, repos: [])
@@ -318,7 +349,9 @@ def test_course_description_flows_from_course_metadata_into_config(monkeypatch, 
     assert site.sync_site("Course-Org", "Cohort-f2026") == 0
     assert "course_description" not in captured["plan"].config
 
-    monkeypatch.setattr(site, "_yaml_file", lambda *a: {"course_description": "Nets, from 0."})
+    monkeypatch.setattr(
+        site, "_yaml_file", lambda *a: {"course_description": "Nets, from 0."}
+    )
     assert site.sync_site("Course-Org", "Cohort-f2026") == 0
     cfg = site._set_config(
         'course_name: "x"\ncourse_description: "old"\ncourse_code: "y"\n',
@@ -337,10 +370,15 @@ def test_set_config_writes_one_line_over_a_block_scalar():
         "course_description",
         "line one\nline two\n",
     )
-    assert yaml.safe_load(cfg) == {"course_description": "line one line two", "course_code": "y"}
+    assert yaml.safe_load(cfg) == {
+        "course_description": "line one line two",
+        "course_code": "y",
+    }
 
 
-def test_site_still_builds_when_schedule_yml_does_not_parse(monkeypatch, tmp_path, capsys):
+def test_site_still_builds_when_schedule_yml_does_not_parse(
+    monkeypatch, tmp_path, capsys
+):
     # The incident: unparseable schedule.yml crashed schedule.load, which crashed BOTH the
     # hourly Scheduled release AND Sync site - so the site kept the template's "Fall 2025"
     # placeholders. schedule.load now degrades to an empty Schedule, and the sync must
@@ -349,7 +387,9 @@ def test_site_still_builds_when_schedule_yml_does_not_parse(monkeypatch, tmp_pat
 
     captured = {}
     monkeypatch.setattr(
-        site, "_sync_site_repo", lambda org, build: captured.update(plan=build(tmp_path)) or 0
+        site,
+        "_sync_site_repo",
+        lambda org, build: captured.update(plan=build(tmp_path)) or 0,
     )
     monkeypatch.setattr(site.seed, "discover_cohort_repos", lambda orgs: [])
     monkeypatch.setattr(site.seed, "discover_release_sources", lambda org, repos: [])
@@ -369,6 +409,8 @@ def test_site_still_builds_when_schedule_yml_does_not_parse(monkeypatch, tmp_pat
     # no schedule data: the exam rows fall back to the synthesised mid/end-term stubs
     assert {"midterm.md", "final.md"} <= set(plan.collections["_events"])
     assert "is NOT valid YAML" in capsys.readouterr().err
+
+
 def test_a_week_with_only_one_kind_gets_only_that_row(monkeypatch, tmp_path):
     lab_only = _plan(
         monkeypatch,
@@ -429,7 +471,9 @@ def test_synthesised_exams_appear_when_the_schedule_names_none(monkeypatch, tmp_
     plan = _plan(
         monkeypatch,
         tmp_path,
-        Schedule(events=[Event("project-clinic", "Project clinic", date(2026, 11, 10))]),
+        Schedule(
+            events=[Event("project-clinic", "Project clinic", date(2026, 11, 10))]
+        ),
     )
     events = plan.collections["_events"]
     assert 'description: "MidTerm Exam"' in events["midterm.md"]

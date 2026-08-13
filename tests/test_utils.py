@@ -90,7 +90,9 @@ def test_reconcile_team_members_adds_missing_and_removes_extra(monkeypatch):
     monkeypatch.setattr(utils, "get_org_owners", lambda org: frozenset())
     added, removed = [], []
     monkeypatch.setattr(
-        utils, "add_team_member", lambda org, team, h, role="member": added.append(h) or True
+        utils,
+        "add_team_member",
+        lambda org, team, h, role="member": added.append(h) or True,
     )
     monkeypatch.setattr(
         utils, "remove_team_member", lambda org, team, h: removed.append(h) or True
@@ -102,7 +104,9 @@ def test_reconcile_team_members_adds_missing_and_removes_extra(monkeypatch):
 
 
 def test_reconcile_team_members_never_prunes_the_acting_login(monkeypatch):
-    monkeypatch.setattr(utils, "get_team_members", lambda org, team: {"alice", "hertie-dsl-bot"})
+    monkeypatch.setattr(
+        utils, "get_team_members", lambda org, team: {"alice", "hertie-dsl-bot"}
+    )
     monkeypatch.setattr(utils, "_acting_login", lambda: "hertie-dsl-bot")
     monkeypatch.setattr(utils, "get_org_owners", lambda org: frozenset())
     removed = []
@@ -119,11 +123,17 @@ def test_reconcile_team_members_never_prunes_any_org_owner(monkeypatch):
     # The robust fix: exclude ALL owners, not just whoever's currently running the
     # sync - so a human running this locally doesn't evict the bot (or vice versa).
     monkeypatch.setattr(
-        utils, "get_team_members", lambda org, team: {"alice", "hertie-dsl-bot", "henrycgbaker"}
+        utils,
+        "get_team_members",
+        lambda org, team: {"alice", "hertie-dsl-bot", "henrycgbaker"},
     )
-    monkeypatch.setattr(utils, "_acting_login", lambda: "henrycgbaker")  # a human, running locally
     monkeypatch.setattr(
-        utils, "get_org_owners", lambda org: frozenset({"hertie-dsl-bot", "henrycgbaker"})
+        utils, "_acting_login", lambda: "henrycgbaker"
+    )  # a human, running locally
+    monkeypatch.setattr(
+        utils,
+        "get_org_owners",
+        lambda org: frozenset({"hertie-dsl-bot", "henrycgbaker"}),
     )
     removed = []
     monkeypatch.setattr(utils, "add_team_member", lambda *a, **k: True)

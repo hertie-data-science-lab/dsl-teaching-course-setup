@@ -24,7 +24,6 @@ import re
 from pathlib import Path
 
 import pytest
-
 import yaml
 
 from dsl_course import bootstrap_course
@@ -78,14 +77,18 @@ def _fence_lines(text: str) -> list[tuple[int, str]]:
     for n, line in enumerate(text.splitlines(), 1):
         stripped = line.strip()
         if stripped.startswith("```"):
-            inside = stripped[3:].strip().lower() in {"yaml", "yml"} if not inside else False
+            inside = (
+                stripped[3:].strip().lower() in {"yaml", "yml"} if not inside else False
+            )
             continue
         if inside:
             out.append((n, line))
     return out
 
 
-YAML_FILES = sorted(p for p in ROOT.rglob("*.yml") if ".git/" not in _rel(p) and _in_scope(p))
+YAML_FILES = sorted(
+    p for p in ROOT.rglob("*.yml") if ".git/" not in _rel(p) and _in_scope(p)
+)
 MD_FILES = sorted(p for p in ROOT.rglob("*.md") if ".git/" not in _rel(p))
 PY_FILES = sorted((ROOT / "dsl_course").glob("*.py"))
 
@@ -102,7 +105,10 @@ def _gradebook() -> str:
 def _inventory_dump() -> str:
     """`list_orgs --yaml`: a list of mappings, the shape flow style would show up in."""
     return yaml.safe_dump(
-        [{"org": "A", "url": "https://a", "cohorts": ["c1"]}, {"org": "B", "url": "https://b"}],
+        [
+            {"org": "A", "url": "https://a", "cohorts": ["c1"]},
+            {"org": "B", "url": "https://b"},
+        ],
         sort_keys=False,
     )
 
@@ -131,14 +137,20 @@ SEEDED = {
     "classroom-config/people.yml (seeded)": lambda: bootstrap_course._template(
         "classroom-config/people.yml"
     ).format(year=2026, year_next=2027),
-    "course/dsl-course.yml (seeded, commented)": lambda: bootstrap_course._course_metadata(
-        "Org", "Org Name", "Course", "CODE"
+    "course/dsl-course.yml (seeded, commented)": lambda: (
+        bootstrap_course._course_metadata("Org", "Org Name", "Course", "CODE")
     ),
-    "course/dsl-course.yml (seeded, --admins)": lambda: bootstrap_course._course_metadata(
-        "Org", "Org Name", "Course", "CODE", admins=["adminhandle"]
+    "course/dsl-course.yml (seeded, --admins)": lambda: (
+        bootstrap_course._course_metadata(
+            "Org", "Org Name", "Course", "CODE", admins=["adminhandle"]
+        )
     ),
-    "cohort/dsl-course.yml (seeded)": lambda: bootstrap_course._cohort_metadata("Org", "Course"),
-    "grading.yml (scaffolded)": lambda: _GRADING_YML.format(kind="group", fmt="notebook"),
+    "cohort/dsl-course.yml (seeded)": lambda: bootstrap_course._cohort_metadata(
+        "Org", "Course"
+    ),
+    "grading.yml (scaffolded)": lambda: _GRADING_YML.format(
+        kind="group", fmt="notebook"
+    ),
 }
 
 

@@ -40,15 +40,28 @@ def test_due_releases_in_when_order():
     )
     now = datetime(2026, 9, 16, tzinfo=timezone.utc)
     assert [r.label for r in scheduler.due_releases(releases, now)] == ["a", "b"]
-    assert scheduler.due_releases(releases, datetime(2026, 8, 1, tzinfo=timezone.utc)) == []
-    assert len(scheduler.due_releases(releases, datetime(2026, 12, 1, tzinfo=timezone.utc))) == 3
+    assert (
+        scheduler.due_releases(releases, datetime(2026, 8, 1, tzinfo=timezone.utc))
+        == []
+    )
+    assert (
+        len(
+            scheduler.due_releases(releases, datetime(2026, 12, 1, tzinfo=timezone.utc))
+        )
+        == 3
+    )
 
 
 def test_due_releases_honours_time_of_day_across_timezones():
     # 14:00 Europe/Berlin (CEST) == 12:00 UTC. At 11:00 UTC not yet due; at 13:00 UTC due.
     r = _r("s", datetime(2026, 9, 15, 14, 0, tzinfo=BERLIN), assignment="x")
-    assert scheduler.due_releases([r], datetime(2026, 9, 15, 11, 0, tzinfo=timezone.utc)) == []
-    assert scheduler.due_releases([r], datetime(2026, 9, 15, 13, 0, tzinfo=timezone.utc)) == [r]
+    assert (
+        scheduler.due_releases([r], datetime(2026, 9, 15, 11, 0, tzinfo=timezone.utc))
+        == []
+    )
+    assert scheduler.due_releases(
+        [r], datetime(2026, 9, 15, 13, 0, tzinfo=timezone.utc)
+    ) == [r]
 
 
 def test_display_only_entries_are_never_due():
@@ -71,7 +84,11 @@ def test_deploy_datetime_fires_on_its_own_clock():
         deploy_datetime=datetime(2026, 9, 15, 9, 0, tzinfo=BERLIN),
     )
     at_class = Deploy("cm-f2026", "readings/02_intro", "materials", None)
-    r = _r("session-2", datetime(2026, 9, 15, 10, 0, tzinfo=BERLIN), deploy=[early, at_class])
+    r = _r(
+        "session-2",
+        datetime(2026, 9, 15, 10, 0, tzinfo=BERLIN),
+        deploy=[early, at_class],
+    )
     between = datetime(2026, 9, 15, 7, 30, tzinfo=timezone.utc)  # 09:30 Berlin
     assert scheduler.due_releases([r], between) == [r]
     assert r.due_deploys(between) == [early]
@@ -113,7 +130,10 @@ def test_describe_lists_every_action():
         assignment="assignment-1-f2026",
     )
     lines = scheduler.describe(r)
-    assert any("cm-f2026/lectures/02_intro -> materials/lectures/02_intro" in ln for ln in lines)
+    assert any(
+        "cm-f2026/lectures/02_intro -> materials/lectures/02_intro" in ln
+        for ln in lines
+    )
     assert any("materials/datasets/housing.csv" in ln for ln in lines)
     assert any(ln.startswith("assignment ") for ln in lines)
 
@@ -131,24 +151,37 @@ def test_run_batches_all_deploys_through_deploy_many(monkeypatch):
     calls = []
     monkeypatch.setattr(
         "dsl_course.deploy.deploy_many",
-        lambda source_org, cohort_org, deploys, sync=True: calls.append(
-            (source_org, cohort_org, list(deploys), sync)
-        )
-        or (0, True),
+        lambda source_org, cohort_org, deploys, sync=True: (
+            calls.append((source_org, cohort_org, list(deploys), sync)) or (0, True)
+        ),
     )
-    monkeypatch.setattr(scheduler.schedule, "load", lambda cohort: _sched_with(
-        [
-            _r("w1", datetime(2026, 9, 1, tzinfo=BERLIN), deploy=[
-                Deploy("cm", "lectures/00_x", "lectures", None),
-                Deploy("cm", "labs/00_y", "labs", None),
-            ]),
-            _r("w2", datetime(2026, 9, 8, tzinfo=BERLIN), deploy=[
-                Deploy("cm", "lectures/01_z", "lectures", None),
-            ]),
-        ]
-    ))
+    monkeypatch.setattr(
+        scheduler.schedule,
+        "load",
+        lambda cohort: _sched_with(
+            [
+                _r(
+                    "w1",
+                    datetime(2026, 9, 1, tzinfo=BERLIN),
+                    deploy=[
+                        Deploy("cm", "lectures/00_x", "lectures", None),
+                        Deploy("cm", "labs/00_y", "labs", None),
+                    ],
+                ),
+                _r(
+                    "w2",
+                    datetime(2026, 9, 8, tzinfo=BERLIN),
+                    deploy=[
+                        Deploy("cm", "lectures/01_z", "lectures", None),
+                    ],
+                ),
+            ]
+        ),
+    )
     synced = []
-    monkeypatch.setattr("dsl_course.site.sync_site", lambda c, o: synced.append((c, o)) or 0)
+    monkeypatch.setattr(
+        "dsl_course.site.sync_site", lambda c, o: synced.append((c, o)) or 0
+    )
     now = datetime(2026, 12, 1, tzinfo=timezone.utc)
     assert scheduler.run("Course-Org", "Cohort-Org", now) == 0
     # exactly ONE deploy_many call, carrying all 3 deploys across both releases, sync=False
@@ -164,10 +197,9 @@ def test_execute_nondeploy_assignment_calls_provision_all(monkeypatch):
     calls = []
     monkeypatch.setattr(
         "dsl_course.assign.provision_all",
-        lambda master_org, template, cohort_org: calls.append(
-            (master_org, template, cohort_org)
-        )
-        or 0,
+        lambda master_org, template, cohort_org: (
+            calls.append((master_org, template, cohort_org)) or 0
+        ),
     )
     r = _r("s", WHEN, assignment="assignment-2-f2026")
     assert scheduler._execute_nondeploy("Course-Org", "Cohort-Org", r) == 0
@@ -185,7 +217,9 @@ def test_deploy_many_clones_each_repo_once(monkeypatch):
             clones.append(spec)
             p = Path(dest)
             p.mkdir(parents=True, exist_ok=True)
-            if spec.startswith("Course-Org/"):  # source repo: seed the paths deploys read
+            if spec.startswith(
+                "Course-Org/"
+            ):  # source repo: seed the paths deploys read
                 for sp in ("lectures/00_x", "labs/00_y", "lectures/01_z"):
                     d = p / sp
                     d.mkdir(parents=True, exist_ok=True)
@@ -203,7 +237,9 @@ def test_deploy_many_clones_each_repo_once(monkeypatch):
         Deploy("cm", "labs/00_y", "labs", None),
         Deploy("cm", "lectures/01_z", "lectures", None),
     ]
-    errors, changed = deploy.deploy_many("Course-Org", "Cohort-Org", deploys, sync=False)
+    errors, changed = deploy.deploy_many(
+        "Course-Org", "Cohort-Org", deploys, sync=False
+    )
     assert (errors, changed) == (0, True)
     assert clones.count("Course-Org/cm") == 1  # source cloned once for all 3 copies
     assert clones.count("Cohort-Org/lectures") == 1
@@ -225,7 +261,10 @@ def test_deploy_many_missing_course_source_path_is_an_error_not_silent(monkeypat
     monkeypatch.setattr(deploy, "grant_read_teams", lambda *a, **k: None)
 
     errors, changed = deploy.deploy_many(
-        "Course-Org", "Cohort-Org", [Deploy("cm", "lectures/does-not-exist", "materials", None)], sync=False
+        "Course-Org",
+        "Cohort-Org",
+        [Deploy("cm", "lectures/does-not-exist", "materials", None)],
+        sync=False,
     )
     assert errors == 1 and changed is False
 
@@ -272,9 +311,10 @@ def test_deploy_many_counts_each_unrunnable_deploy_once(monkeypatch):
         Deploy("cm", "labs/00_y", "labs", None),
         Deploy("cm", "lectures/01_z", "lectures", None),
     ]
-    assert deploy.deploy_many(
-        "Course-Org", "Cohort-Org", deploys, sync=False
-    ) == (3, False)
+    assert deploy.deploy_many("Course-Org", "Cohort-Org", deploys, sync=False) == (
+        3,
+        False,
+    )
 
 
 # ------------------------------------------------------------- deadline snapshots
@@ -317,8 +357,11 @@ def test_due_snapshots_only_passed_deadlines_in_deadline_order():
 def test_due_snapshots_uses_the_explicit_grading_datetime_when_set():
     # grading_datetime wins over due_datetime, and snapshot + autograde must agree on it.
     sched = _assignments(**{"assignment-1": _due(13, grading_day=15)})
-    assert scheduler.due_snapshots(sched, datetime(2026, 10, 14, tzinfo=timezone.utc)) == []
-    (slug, deadline), = scheduler.due_snapshots(
+    assert (
+        scheduler.due_snapshots(sched, datetime(2026, 10, 14, tzinfo=timezone.utc))
+        == []
+    )
+    ((slug, deadline),) = scheduler.due_snapshots(
         sched, datetime(2026, 10, 16, tzinfo=timezone.utc)
     )
     assert slug == "assignment-1"
@@ -326,7 +369,10 @@ def test_due_snapshots_uses_the_explicit_grading_datetime_when_set():
 
 
 def test_due_snapshots_empty_without_assignments():
-    assert scheduler.due_snapshots(Schedule(), datetime(2030, 1, 1, tzinfo=timezone.utc)) == []
+    assert (
+        scheduler.due_snapshots(Schedule(), datetime(2030, 1, 1, tzinfo=timezone.utc))
+        == []
+    )
 
 
 def _stub_autograde(monkeypatch, marked: bool = True):
@@ -355,7 +401,9 @@ def _stub_snapshots(monkeypatch, existing: set[str]):
 def test_run_snapshots_a_passed_deadline_that_has_no_snapshot_yet(monkeypatch):
     taken = _stub_snapshots(monkeypatch, existing=set())
     monkeypatch.setattr(
-        scheduler.schedule, "load", lambda cohort: _assignments(**{"assignment-1": _due(13)})
+        scheduler.schedule,
+        "load",
+        lambda cohort: _assignments(**{"assignment-1": _due(13)}),
     )
     now = datetime(2026, 10, 14, tzinfo=timezone.utc)
     assert scheduler.run("Course-Org", "Cohort-Org", now) == 0
@@ -369,18 +417,32 @@ def test_run_never_re_snapshots_an_assignment_already_frozen(monkeypatch):
     # (backdated) replace the commit that was recorded at the deadline.
     taken = _stub_snapshots(monkeypatch, existing={"assignment-1"})
     monkeypatch.setattr(
-        scheduler.schedule, "load", lambda cohort: _assignments(**{"assignment-1": _due(13)})
+        scheduler.schedule,
+        "load",
+        lambda cohort: _assignments(**{"assignment-1": _due(13)}),
     )
-    assert scheduler.run("Course-Org", "Cohort-Org", datetime(2026, 12, 1, tzinfo=timezone.utc)) == 0
+    assert (
+        scheduler.run(
+            "Course-Org", "Cohort-Org", datetime(2026, 12, 1, tzinfo=timezone.utc)
+        )
+        == 0
+    )
     assert taken == []
 
 
 def test_run_does_not_snapshot_before_the_deadline_passes(monkeypatch):
     taken = _stub_snapshots(monkeypatch, existing=set())
     monkeypatch.setattr(
-        scheduler.schedule, "load", lambda cohort: _assignments(**{"assignment-1": _due(13)})
+        scheduler.schedule,
+        "load",
+        lambda cohort: _assignments(**{"assignment-1": _due(13)}),
     )
-    assert scheduler.run("Course-Org", "Cohort-Org", datetime(2026, 10, 1, tzinfo=timezone.utc)) == 0
+    assert (
+        scheduler.run(
+            "Course-Org", "Cohort-Org", datetime(2026, 10, 1, tzinfo=timezone.utc)
+        )
+        == 0
+    )
     assert taken == []
 
 
@@ -389,16 +451,25 @@ def test_run_snapshots_even_with_no_releases(monkeypatch):
     # early-return on `not sched.releases` would have skipped its snapshots forever.
     taken = _stub_snapshots(monkeypatch, existing=set())
     monkeypatch.setattr(
-        scheduler.schedule, "load", lambda cohort: _assignments(**{"assignment-1": _due(13)})
+        scheduler.schedule,
+        "load",
+        lambda cohort: _assignments(**{"assignment-1": _due(13)}),
     )
-    assert scheduler.run("Course-Org", "Cohort-Org", datetime(2026, 11, 1, tzinfo=timezone.utc)) == 0
+    assert (
+        scheduler.run(
+            "Course-Org", "Cohort-Org", datetime(2026, 11, 1, tzinfo=timezone.utc)
+        )
+        == 0
+    )
     assert [slug for _org, slug, _dl in taken] == ["assignment-1"]
 
 
 def test_run_dry_run_snapshots_nothing(monkeypatch):
     taken = _stub_snapshots(monkeypatch, existing=set())
     monkeypatch.setattr(
-        scheduler.schedule, "load", lambda cohort: _assignments(**{"assignment-1": _due(13)})
+        scheduler.schedule,
+        "load",
+        lambda cohort: _assignments(**{"assignment-1": _due(13)}),
     )
     now = datetime(2026, 11, 1, tzinfo=timezone.utc)
     assert scheduler.run("Course-Org", "Cohort-Org", now, dry_run=True) == 0
@@ -407,12 +478,21 @@ def test_run_dry_run_snapshots_nothing(monkeypatch):
 
 def test_run_reports_a_failed_snapshot(monkeypatch):
     monkeypatch.setattr(collect, "load_snapshots", lambda org, slug: None)
-    monkeypatch.setattr(collect, "snapshot_assignment", lambda org, slug, deadline: False)
+    monkeypatch.setattr(
+        collect, "snapshot_assignment", lambda org, slug, deadline: False
+    )
     _stub_autograde(monkeypatch)
     monkeypatch.setattr(
-        scheduler.schedule, "load", lambda cohort: _assignments(**{"assignment-1": _due(13)})
+        scheduler.schedule,
+        "load",
+        lambda cohort: _assignments(**{"assignment-1": _due(13)}),
     )
-    assert scheduler.run("Course-Org", "Cohort-Org", datetime(2026, 11, 1, tzinfo=timezone.utc)) == 1
+    assert (
+        scheduler.run(
+            "Course-Org", "Cohort-Org", datetime(2026, 11, 1, tzinfo=timezone.utc)
+        )
+        == 1
+    )
 
 
 # ------------------------------------------------------- fire-once autograding
@@ -432,29 +512,34 @@ def test_assignment_template_is_slug_plus_the_cohort_tag(monkeypatch):
         == "assignment-1-f2026"
     )
     # no such repo in the course org -> nothing to grade against
-    assert scheduler._assignment_template("Course-Org", "DSL-Demo-f2026", "assignment-9") is None
+    assert (
+        scheduler._assignment_template("Course-Org", "DSL-Demo-f2026", "assignment-9")
+        is None
+    )
     # an untagged cohort org names no template - skip rather than guess
-    assert scheduler._assignment_template("Course-Org", "Cohort-Org", "assignment-1") is None
+    assert (
+        scheduler._assignment_template("Course-Org", "Cohort-Org", "assignment-1")
+        is None
+    )
 
 
 def _stub_collect(monkeypatch, marked: set[str], templates: set[str], rc: int = 0):
     """Record collect() calls. `marked` = slugs whose autograde/<slug>/ already exists;
     `templates` = the template repos that exist in the course org."""
     graded: list[tuple[str, str, str, str, bool]] = []
-    monkeypatch.setattr(collect, "has_autograde_results", lambda org, slug: slug in marked)
+    monkeypatch.setattr(
+        collect, "has_autograde_results", lambda org, slug: slug in marked
+    )
     monkeypatch.setattr(
         scheduler,
         "_assignment_template",
-        lambda course, cohort, slug: (
-            t if (t := f"{slug}-f2026") in templates else None
-        ),
+        lambda course, cohort, slug: t if (t := f"{slug}-f2026") in templates else None,
     )
     monkeypatch.setattr(
         "dsl_course.collect.collect",
-        lambda m, t, c, deadline=None, group=False: graded.append(
-            (m, t, c, deadline, group)
-        )
-        or rc,
+        lambda m, t, c, deadline=None, group=False: (
+            graded.append((m, t, c, deadline, group)) or rc
+        ),
     )
     return graded
 
@@ -469,12 +554,18 @@ def test_run_autogrades_a_passed_deadline_with_no_marker(monkeypatch):
     _only_snapshots_taken(monkeypatch)
     graded = _stub_collect(monkeypatch, marked=set(), templates={"assignment-1-f2026"})
     monkeypatch.setattr(
-        scheduler.schedule, "load", lambda cohort: _assignments(**{"assignment-1": _due(13)})
+        scheduler.schedule,
+        "load",
+        lambda cohort: _assignments(**{"assignment-1": _due(13)}),
     )
     now = datetime(2026, 10, 14, tzinfo=timezone.utc)
     assert scheduler.run("Course-Org", "Cohort-f2026", now) == 0
-    (course, template, cohort, deadline, group), = graded
-    assert (course, template, cohort) == ("Course-Org", "assignment-1-f2026", "Cohort-f2026")
+    ((course, template, cohort, deadline, group),) = graded
+    assert (course, template, cohort) == (
+        "Course-Org",
+        "assignment-1-f2026",
+        "Cohort-f2026",
+    )
     # graded at exactly the instant the snapshot froze, and never guessed as a group run
     assert deadline.startswith("2026-10-13T23:59:59") and group is False
 
@@ -485,9 +576,16 @@ def test_run_never_autogrades_twice_the_marker_is_the_state(monkeypatch):
         monkeypatch, marked={"assignment-1"}, templates={"assignment-1-f2026"}
     )
     monkeypatch.setattr(
-        scheduler.schedule, "load", lambda cohort: _assignments(**{"assignment-1": _due(13)})
+        scheduler.schedule,
+        "load",
+        lambda cohort: _assignments(**{"assignment-1": _due(13)}),
     )
-    assert scheduler.run("Course-Org", "Cohort-f2026", datetime(2026, 12, 1, tzinfo=timezone.utc)) == 0
+    assert (
+        scheduler.run(
+            "Course-Org", "Cohort-f2026", datetime(2026, 12, 1, tzinfo=timezone.utc)
+        )
+        == 0
+    )
     assert graded == []
 
 
@@ -499,7 +597,12 @@ def test_run_does_not_autograde_before_the_grading_deadline(monkeypatch):
         "load",
         lambda cohort: _assignments(**{"assignment-1": _due(13, grading_day=15)}),
     )
-    assert scheduler.run("Course-Org", "Cohort-f2026", datetime(2026, 10, 14, tzinfo=timezone.utc)) == 0
+    assert (
+        scheduler.run(
+            "Course-Org", "Cohort-f2026", datetime(2026, 10, 14, tzinfo=timezone.utc)
+        )
+        == 0
+    )
     assert graded == []
 
 
@@ -509,9 +612,16 @@ def test_run_skips_an_assignment_with_no_template_repo(monkeypatch):
     _only_snapshots_taken(monkeypatch)
     graded = _stub_collect(monkeypatch, marked=set(), templates=set())
     monkeypatch.setattr(
-        scheduler.schedule, "load", lambda cohort: _assignments(**{"reading-week": _due(13)})
+        scheduler.schedule,
+        "load",
+        lambda cohort: _assignments(**{"reading-week": _due(13)}),
     )
-    assert scheduler.run("Course-Org", "Cohort-f2026", datetime(2026, 11, 1, tzinfo=timezone.utc)) == 0
+    assert (
+        scheduler.run(
+            "Course-Org", "Cohort-f2026", datetime(2026, 11, 1, tzinfo=timezone.utc)
+        )
+        == 0
+    )
     assert graded == []
 
 
@@ -523,9 +633,16 @@ def test_run_treats_a_non_autogradable_template_as_a_skip(monkeypatch):
         monkeypatch, marked=set(), templates={"assignment-1-f2026"}, rc=0
     )
     monkeypatch.setattr(
-        scheduler.schedule, "load", lambda cohort: _assignments(**{"assignment-1": _due(13)})
+        scheduler.schedule,
+        "load",
+        lambda cohort: _assignments(**{"assignment-1": _due(13)}),
     )
-    assert scheduler.run("Course-Org", "Cohort-f2026", datetime(2026, 11, 1, tzinfo=timezone.utc)) == 0
+    assert (
+        scheduler.run(
+            "Course-Org", "Cohort-f2026", datetime(2026, 11, 1, tzinfo=timezone.utc)
+        )
+        == 0
+    )
     assert len(graded) == 1
 
 
@@ -533,16 +650,25 @@ def test_run_reports_a_failed_autograde(monkeypatch):
     _only_snapshots_taken(monkeypatch)
     _stub_collect(monkeypatch, marked=set(), templates={"assignment-1-f2026"}, rc=1)
     monkeypatch.setattr(
-        scheduler.schedule, "load", lambda cohort: _assignments(**{"assignment-1": _due(13)})
+        scheduler.schedule,
+        "load",
+        lambda cohort: _assignments(**{"assignment-1": _due(13)}),
     )
-    assert scheduler.run("Course-Org", "Cohort-f2026", datetime(2026, 11, 1, tzinfo=timezone.utc)) == 1
+    assert (
+        scheduler.run(
+            "Course-Org", "Cohort-f2026", datetime(2026, 11, 1, tzinfo=timezone.utc)
+        )
+        == 1
+    )
 
 
 def test_run_dry_run_autogrades_nothing(monkeypatch):
     _only_snapshots_taken(monkeypatch)
     graded = _stub_collect(monkeypatch, marked=set(), templates={"assignment-1-f2026"})
     monkeypatch.setattr(
-        scheduler.schedule, "load", lambda cohort: _assignments(**{"assignment-1": _due(13)})
+        scheduler.schedule,
+        "load",
+        lambda cohort: _assignments(**{"assignment-1": _due(13)}),
     )
     now = datetime(2026, 11, 1, tzinfo=timezone.utc)
     assert scheduler.run("Course-Org", "Cohort-f2026", now, dry_run=True) == 0
@@ -559,10 +685,17 @@ def test_run_autogrades_at_the_explicit_grading_deadline(monkeypatch):
         grading_datetime=datetime(2026, 10, 15, 23, 59, 59, tzinfo=BERLIN),
     )
     monkeypatch.setattr(
-        scheduler.schedule, "load", lambda cohort: _assignments(**{"assignment-1": entry})
+        scheduler.schedule,
+        "load",
+        lambda cohort: _assignments(**{"assignment-1": entry}),
     )
     # past grading_datetime (10-15) but well before what due_datetime alone would imply
-    assert scheduler.run("Course-Org", "Cohort-f2026", datetime(2026, 10, 16, tzinfo=timezone.utc)) == 0
+    assert (
+        scheduler.run(
+            "Course-Org", "Cohort-f2026", datetime(2026, 10, 16, tzinfo=timezone.utc)
+        )
+        == 0
+    )
     assert graded[0][3].startswith("2026-10-15T23:59:59")
 
 
@@ -607,7 +740,9 @@ def test_handout_releases_synthesised_from_the_assignments_block(monkeypatch):
                 due_datetime=datetime(2026, 11, 1, 23, 59, tzinfo=BERLIN),
                 handout_datetime=datetime(2026, 10, 1, 9, 0, tzinfo=BERLIN),
             ),
-            "manual": AssignmentEntry(due_datetime=datetime(2026, 12, 1, 23, 59, tzinfo=BERLIN)),
+            "manual": AssignmentEntry(
+                due_datetime=datetime(2026, 12, 1, 23, 59, tzinfo=BERLIN)
+            ),
         }
     )
     (r,) = scheduler._handout_releases("Course-Org", "Cohort-f2026", sched)
@@ -616,7 +751,9 @@ def test_handout_releases_synthesised_from_the_assignments_block(monkeypatch):
     assert r.when == datetime(2026, 9, 22, 9, 0, tzinfo=BERLIN)
     # and it is due like any release once its datetime passes - not a minute before
     assert scheduler.due_releases([r], datetime(2026, 9, 22, 8, 0, tzinfo=BERLIN)) == []
-    assert scheduler.due_releases([r], datetime(2026, 9, 22, 10, 0, tzinfo=BERLIN)) == [r]
+    assert scheduler.due_releases([r], datetime(2026, 9, 22, 10, 0, tzinfo=BERLIN)) == [
+        r
+    ]
 
 
 def test_run_survives_an_unparseable_schedule_and_exits_zero(monkeypatch, capsys):
@@ -629,7 +766,9 @@ def test_run_survives_an_unparseable_schedule_and_exits_zero(monkeypatch, capsys
 
     _stub_snapshots(monkeypatch, existing=set())
     monkeypatch.setattr(
-        scheduler.schedule, "get_file_content", lambda org, repo, path: MALFORMED_SCHEDULE
+        scheduler.schedule,
+        "get_file_content",
+        lambda org, repo, path: MALFORMED_SCHEDULE,
     )
     now = datetime(2026, 10, 14, tzinfo=timezone.utc)
 

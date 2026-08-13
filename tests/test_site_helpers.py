@@ -139,7 +139,9 @@ def test_lecture_entry_labels_links_by_repo_or_subpath():
     def fake_session_files(org, repo, subpath, folder):
         return {
             ("labs", ""): [("intro.pdf", "https://x/1")],  # root shape: label = repo
-            ("materials", "lectures"): [("slides.pdf", "https://x/2")],  # nested: label = subpath
+            ("materials", "lectures"): [
+                ("slides.pdf", "https://x/2")
+            ],  # nested: label = subpath
         }.get((repo, subpath), [])
 
     with patch.object(site, "_session_files", side_effect=fake_session_files):
@@ -210,7 +212,7 @@ def test_singular_strips_only_a_real_trailing_s():
     assert site._singular("s") == "s"  # never empty
 
 
-_TREE = "\n".join(
+_TREE = "\n".join(  # noqa: FLY002 - a list of paths reads better than one long f-string
     [
         "README.md",
         "lectures/03_week-3/notes.pdf",

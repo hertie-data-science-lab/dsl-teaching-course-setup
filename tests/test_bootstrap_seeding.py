@@ -97,9 +97,7 @@ def test_welcome_readme_links_to_this_orgs_issue_chooser(fake):
     # unrendered placeholder would send every cohort's students to a dead link.
     bc.setup_cohort_extras("Cohort-f2026")
     readme = fake.files[("welcome", "README.md")]
-    assert (
-        "https://github.com/Cohort-f2026/welcome/issues/new/choose" in readme
-    ), readme
+    assert "https://github.com/Cohort-f2026/welcome/issues/new/choose" in readme, readme
     assert "{org}" not in readme
 
 
@@ -207,7 +205,9 @@ def test_sample_headers_match_the_engine_schemas():
     from dsl_course.roster import FIELDS
 
     roster_header = ",".join(FIELDS)
-    assert bc._template("classroom-config/students.csv").splitlines()[0] == roster_header
+    assert (
+        bc._template("classroom-config/students.csv").splitlines()[0] == roster_header
+    )
     sample = bc._template("classroom-config/students.csv.sample").splitlines()
     assert sample[0] == roster_header
     assert any(",auditor" in line for line in sample[1:])  # the auditor worked example
@@ -221,7 +221,9 @@ def test_course_dsl_course_yml_is_never_rewritten(fake, monkeypatch):
     # The course org's dsl-course.yml is the faculty SSOT (people.course_admins, instructor
     # cards): a repair re-run of "Bootstrap course" must not reset it to the template.
     monkeypatch.setattr(bc, "set_repo_topics", lambda *a, **k: True)
-    edited = "org: My-Course-E1\npeople:\n  course_admins:\n    - github_handle: alice\n"
+    edited = (
+        "org: My-Course-E1\npeople:\n  course_admins:\n    - github_handle: alice\n"
+    )
     fake.files[(".github", "dsl-course.yml")] = edited
 
     bc.create_profile_repo("My-Course-E1", "My Course", "Deep Learning", "E1")
@@ -273,7 +275,14 @@ def test_cohort_bootstrap_runs_one_initial_site_sync(monkeypatch):
     monkeypatch.setattr(bc.site, "sync_site", lambda c, o: synced.append((c, o)) or 0)
     monkeypatch.setattr(
         "sys.argv",
-        ["bootstrap_course", "--org", "Cohort-f2026", "--cohort", "--course", "Course-Org"],
+        [
+            "bootstrap_course",
+            "--org",
+            "Cohort-f2026",
+            "--cohort",
+            "--course",
+            "Course-Org",
+        ],
     )
 
     assert bc.main() == 0
@@ -292,7 +301,14 @@ def test_bootstrap_survives_a_failing_initial_site_sync(monkeypatch, capsys, out
     monkeypatch.setattr(bc.site, "sync_site", outcome)
     monkeypatch.setattr(
         "sys.argv",
-        ["bootstrap_course", "--org", "Cohort-f2026", "--cohort", "--course", "Course-Org"],
+        [
+            "bootstrap_course",
+            "--org",
+            "Cohort-f2026",
+            "--cohort",
+            "--course",
+            "Course-Org",
+        ],
     )
 
     assert bc.main() == 0

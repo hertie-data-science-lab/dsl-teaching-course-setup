@@ -15,9 +15,7 @@ from dsl_course import deploy, utils
 
 def test_a_single_path_with_no_comma_still_works():
     # The overwhelmingly common case: one folder, mirrored.
-    assert deploy.parse_path_pairs("lectures/02_intro") == [
-        ("lectures/02_intro", None)
-    ]
+    assert deploy.parse_path_pairs("lectures/02_intro") == [("lectures/02_intro", None)]
     # ...and one folder with an explicit destination.
     assert deploy.parse_path_pairs("lectures/02_intro", "week02") == [
         ("lectures/02_intro", "week02")
@@ -48,9 +46,13 @@ def test_mismatched_counts_fail_loudly_naming_both_counts():
     # A manual button run has an operator watching it, so a short dest list is an
     # error naming both counts - not a silently truncated release (the schedule, on an
     # unattended cron, is the one that drops what it can't pair).
-    with pytest.raises(ValueError, match="3 course_source_paths but 2 cohort_dest_paths"):
+    with pytest.raises(
+        ValueError, match="3 course_source_paths but 2 cohort_dest_paths"
+    ):
         deploy.parse_path_pairs("a,b,c", "x,y")
-    with pytest.raises(ValueError, match="2 course_source_paths but 3 cohort_dest_paths"):
+    with pytest.raises(
+        ValueError, match="2 course_source_paths but 3 cohort_dest_paths"
+    ):
         deploy.parse_path_pairs("a,b", "x,y,z")
 
 
@@ -80,11 +82,16 @@ def test_cli_rejects_a_count_mismatch_with_a_nonzero_exit(monkeypatch, capsys):
         "sys.argv",
         [
             "deploy",
-            "--source-org", "Course",
-            "--course-source-repo", "course-materials-f2026",
-            "--cohort-org", "Cohort-f2026",
-            "--course-source-path", "a,b,c",
-            "--cohort-dest-path", "x,y",
+            "--source-org",
+            "Course",
+            "--course-source-repo",
+            "course-materials-f2026",
+            "--cohort-org",
+            "Cohort-f2026",
+            "--course-source-path",
+            "a,b,c",
+            "--cohort-dest-path",
+            "x,y",
         ],
     )
     assert deploy.main() == 1
@@ -107,12 +114,18 @@ def test_cli_builds_one_deploy_per_pair_and_one_batch(monkeypatch):
         "sys.argv",
         [
             "deploy",
-            "--source-org", "Course",
-            "--course-source-repo", "course-materials-f2026",
-            "--cohort-org", "Cohort-f2026",
-            "--cohort-dest-repo", "materials",
-            "--course-source-path", "lectures/02,labs/02",
-            "--cohort-dest-path", "week02/lecture,",
+            "--source-org",
+            "Course",
+            "--course-source-repo",
+            "course-materials-f2026",
+            "--cohort-org",
+            "Cohort-f2026",
+            "--cohort-dest-repo",
+            "materials",
+            "--course-source-path",
+            "lectures/02,labs/02",
+            "--cohort-dest-path",
+            "week02/lecture,",
         ],
     )
     assert deploy.main() == 1  # unpaired counts (2 sources, 1 dest)
@@ -121,16 +134,25 @@ def test_cli_builds_one_deploy_per_pair_and_one_batch(monkeypatch):
         "sys.argv",
         [
             "deploy",
-            "--source-org", "Course",
-            "--course-source-repo", "course-materials-f2026",
-            "--cohort-org", "Cohort-f2026",
-            "--course-source-path", "lectures/02,labs/02",
+            "--source-org",
+            "Course",
+            "--course-source-repo",
+            "course-materials-f2026",
+            "--cohort-org",
+            "Cohort-f2026",
+            "--course-source-path",
+            "lectures/02,labs/02",
         ],
     )
     assert deploy.main() == 0
     assert seen["source_org"] == "Course" and seen["cohort_org"] == "Cohort-f2026"
     assert [
-        (d.course_source_repo, d.course_source_path, d.cohort_dest_repo, d.cohort_dest_path)
+        (
+            d.course_source_repo,
+            d.course_source_path,
+            d.cohort_dest_repo,
+            d.cohort_dest_path,
+        )
         for d in seen["deploys"]
     ] == [
         ("course-materials-f2026", "lectures/02", "materials", None),
@@ -151,11 +173,16 @@ def test_cohort_dest_repo_defaults_to_materials(monkeypatch):
         "sys.argv",
         [
             "deploy",
-            "--source-org", "Course",
-            "--course-source-repo", "course-materials-f2026",
-            "--cohort-org", "Cohort-f2026",
-            "--cohort-dest-repo", "   ",  # a blank text box must not create a repo named ""
-            "--course-source-path", "lectures/02",
+            "--source-org",
+            "Course",
+            "--course-source-repo",
+            "course-materials-f2026",
+            "--cohort-org",
+            "Cohort-f2026",
+            "--cohort-dest-repo",
+            "   ",  # a blank text box must not create a repo named ""
+            "--course-source-path",
+            "lectures/02",
         ],
     )
     assert deploy.main() == 0

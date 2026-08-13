@@ -30,7 +30,12 @@ def test_provisioning_skips_auditors(tmp_path, capsys):
         "3,bob@uni.edu,Bob,bob-b,44,B,dsl-def,",  # blank role -> enrolled
     )
     rc = assign.provision_all(
-        "COURSE", "assignment-1-f2026", "COHORT", roster_path=path, group=False, dry_run=True
+        "COURSE",
+        "assignment-1-f2026",
+        "COHORT",
+        roster_path=path,
+        group=False,
+        dry_run=True,
     )
     out = capsys.readouterr().out
     assert rc == 0
@@ -47,7 +52,12 @@ def test_provisioning_still_works_for_a_roster_without_a_role_column(tmp_path, c
         "1,ada@uni.edu,Ada,ada-l,42,A\n"
     )
     rc = assign.provision_all(
-        "COURSE", "assignment-1-f2026", "COHORT", roster_path=str(path), group=False, dry_run=True
+        "COURSE",
+        "assignment-1-f2026",
+        "COHORT",
+        roster_path=str(path),
+        group=False,
+        dry_run=True,
     )
     out = capsys.readouterr().out
     assert rc == 0
@@ -63,7 +73,12 @@ def test_not_yet_onboarded_rows_are_still_skipped_separately(tmp_path, capsys):
         "3,eve@uni.edu,Eve,eve-e,43,B,dsl-xyz,auditor",
     )
     assign.provision_all(
-        "COURSE", "assignment-1-f2026", "COHORT", roster_path=path, group=False, dry_run=True
+        "COURSE",
+        "assignment-1-f2026",
+        "COHORT",
+        roster_path=path,
+        group=False,
+        dry_run=True,
     )
     out = capsys.readouterr().out
     assert "1 not-yet-onboarded row(s) skipped" in out

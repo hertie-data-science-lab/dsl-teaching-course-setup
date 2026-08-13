@@ -102,5 +102,9 @@ def test_desired_for_filters_to_one_team():
         "instructors": [{"github_handle": "janedoe"}],
         "course_admins": [{"github_handle": "adminhandle"}],
     }
-    assert sync_faculty._desired_for(faculty, "instructors", "2026-10-01") == {"janedoe"}
-    assert sync_faculty._desired_for(faculty, "course-admin", "2026-10-01") == {"adminhandle"}
+    assert sync_faculty._desired_for(faculty, "instructors", "2026-10-01") == {
+        "janedoe"
+    }
+    assert sync_faculty._desired_for(faculty, "course-admin", "2026-10-01") == {
+        "adminhandle"
+    }

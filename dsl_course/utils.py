@@ -8,10 +8,9 @@ import re
 import subprocess
 import sys
 from collections.abc import Iterable
-from functools import lru_cache
+from functools import cache, lru_cache
 from pathlib import Path
 from typing import Any
-
 
 RATE_LIMIT_MARKERS = (
     "secondary rate limit",
@@ -32,6 +31,7 @@ def gh(*args: str, stdin: str | None = None, retries: int = 3) -> tuple[int, str
         result = subprocess.run(
             ["gh"] + list(args),
             capture_output=True,
+            check=False,
             text=True,
             input=stdin,
         )
@@ -55,6 +55,7 @@ def gh_json(*args: str) -> Any:
     result = subprocess.run(
         ["gh"] + list(args),
         capture_output=True,
+        check=False,
         text=True,
     )
     if result.returncode != 0:
@@ -67,6 +68,7 @@ def git(*args: str, cwd: str | None = None) -> tuple[int, str]:
     result = subprocess.run(
         ["git"] + list(args),
         capture_output=True,
+        check=False,
         text=True,
         cwd=cwd,
     )
@@ -226,7 +228,7 @@ def _acting_login() -> str | None:
     return out.strip() if code == 0 and out.strip() else None
 
 
-@lru_cache(maxsize=None)
+@cache
 def get_org_owners(org: str) -> frozenset[str]:
     """Active Owners of `org` - see reconcile_team_members for why these are never
     pruned from any team."""
@@ -282,7 +284,7 @@ def active_today(start: str | None, end: str | None, today: str) -> bool:
     (open-ended if omitted)."""
     if start and today < start:
         return False
-    if end and today > end:
+    if end and today > end:  # noqa: SIM103 - explicit guards mirror the docstring
         return False
     return True
 

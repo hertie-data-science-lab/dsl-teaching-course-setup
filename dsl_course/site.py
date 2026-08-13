@@ -38,7 +38,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
 from urllib.parse import quote
 
@@ -51,16 +51,16 @@ from .utils import (
     active_today,
     discover_sections,
     find_session_dir,
-    gh,
     get_default_branch,
     get_file_content,
+    gh,
     git,
     log,
     log_err,
-    session_number,
     log_ok,
     log_step,
     repo_exists,
+    session_number,
 )
 
 # Public course site: served folder for the hosted section files, and the text-file
@@ -238,7 +238,9 @@ def _people_from_meta(meta: dict) -> tuple[list[dict], list[dict]] | None:
     return rows("instructors"), rows("teaching_assistants")
 
 
-def _people_yaml(org: str, meta: dict | None = None, *, include_tas: bool = True) -> str:
+def _people_yaml(
+    org: str, meta: dict | None = None, *, include_tas: bool = True
+) -> str:
     """Build _data/people.yml. Prefer the declared `people:` block in the supplied meta
     (the course org's dsl-course.yml for the course site, a cohort's classroom-config/
     people.yml for the cohort site); else fall back to the GitHub `instructors` team of
@@ -272,7 +274,8 @@ def _people_yaml(org: str, meta: dict | None = None, *, include_tas: bool = True
             # theme can't find `profile_pic` on renders differently from one where it is
             # blank); optional fields appear only when they carry something.
             fields = [
-                f'{k}: "{_q(card.get(k, ""))}"' for k in ("name", "profile_pic", "webpage")
+                f'{k}: "{_q(card.get(k, ""))}"'
+                for k in ("name", "profile_pic", "webpage")
             ] + [
                 f'{k}: "{_q(v)}"'
                 for k, v in card.items()
@@ -292,7 +295,7 @@ def _people_yaml(org: str, meta: dict | None = None, *, include_tas: bool = True
     )
 
 
-@lru_cache(maxsize=None)
+@cache
 def _repo_tree(org: str, repo: str) -> tuple[str, tuple[str, ...]]:
     """(default branch, every blob path in it) for a repo - one recursive tree fetch,
     memoised for the run. A cohort site asks for the files of EVERY released session, and
@@ -314,7 +317,9 @@ def _repo_tree(org: str, repo: str) -> tuple[str, tuple[str, ...]]:
     return branch, tuple(sorted(out.splitlines()))
 
 
-def _session_files(org: str, repo: str, subpath: str, folder: str) -> list[tuple[str, str]]:
+def _session_files(
+    org: str, repo: str, subpath: str, folder: str
+) -> list[tuple[str, str]]:
     """(name, blob-url) for every file at ANY depth under `folder` (already confirmed by
     seed.discover_release_sources to match a session's ordinal prefix), at `subpath`
     in a repo (or the repo root when `subpath` is empty - a release destination left
@@ -527,7 +532,11 @@ def _session_dates(sched: schedule.Schedule) -> dict[tuple[str, str], datetime]:
         if release.when is None:
             continue  # event_datetime: tbc - undated, can't place a session
         for d in release.deploy:
-            folder = (d.cohort_dest_path or d.course_source_path).rstrip("/").rsplit("/", 1)[-1]
+            folder = (
+                (d.cohort_dest_path or d.course_source_path)
+                .rstrip("/")
+                .rsplit("/", 1)[-1]
+            )
             n = session_number(folder)
             if n is None:
                 continue
@@ -942,7 +951,9 @@ def sync_public_site(
                 if include_lectures
                 else []
             )
-            log(f"  sections published as files: {', '.join(file_sections) or '(none)'}")
+            log(
+                f"  sections published as files: {', '.join(file_sections) or '(none)'}"
+            )
 
             for s in sessions:
                 if not s.isdigit():
@@ -963,7 +974,9 @@ def sync_public_site(
                     shutil.copytree(sec_src, dest, dirs_exist_ok=True)
                     links = _public_links(dest, f"{url_base}/{section}")
                     if links:
-                        rows = lab_links if _row_kind(section) == "lab" else section_links
+                        rows = (
+                            lab_links if _row_kind(section) == "lab" else section_links
+                        )
                         rows.append((section, links))
 
                 read_src = find_session_dir(src / READINGS_SECTION, s)
@@ -1068,7 +1081,9 @@ def main() -> int:
     sub = parser.add_subparsers(dest="cmd", required=True)
     ps = sub.add_parser("sync")
     ps.add_argument("--course-org", required=True)
-    ps.add_argument("--cohort-org", default=None, help="One cohort; omit with --all-cohorts")
+    ps.add_argument(
+        "--cohort-org", default=None, help="One cohort; omit with --all-cohorts"
+    )
     ps.add_argument(
         "--all-cohorts",
         action="store_true",

@@ -44,7 +44,6 @@ from . import schedule
 from .schedule import Deploy, Release
 from .utils import log, log_err, log_ok, log_step
 
-
 # --------------------------------------------------------------------------- pure core
 
 
@@ -58,8 +57,7 @@ def due_releases(releases: list[Release], now: datetime) -> list[Release]:
     return [
         r
         for r in releases
-        if r.due_deploys(now)
-        or (r.assignment and r.when is not None and r.when <= now)
+        if r.due_deploys(now) or (r.assignment and r.when is not None and r.when <= now)
     ]
 
 
@@ -260,7 +258,9 @@ def _handout_releases(
             continue
         out.append(
             Release(
-                label=f"{slug}-handout", when=entry.handout_datetime, assignment=template
+                label=f"{slug}-handout",
+                when=entry.handout_datetime,
+                assignment=template,
             )
         )
     return out

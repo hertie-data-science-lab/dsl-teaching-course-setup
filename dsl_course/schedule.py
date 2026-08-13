@@ -266,7 +266,9 @@ def _drop(drops: list[str], where: str, why: str, cost: str) -> None:
     drops.append(f"{where}: {why} - entry dropped, so {cost}")
 
 
-def _parse_deploy(raw: object, tz: ZoneInfo, drops: list[str], label: str) -> list[Deploy]:
+def _parse_deploy(
+    raw: object, tz: ZoneInfo, drops: list[str], label: str
+) -> list[Deploy]:
     """Parse a release's `deploy:` - a list (or a single mapping) of source->dest copies.
     Entries missing course_source_repo/course_source_path are skipped (nothing to copy).
     A malformed `deploy_datetime` parses to None (ship at the entry's event_datetime)."""
@@ -280,7 +282,8 @@ def _parse_deploy(raw: object, tz: ZoneInfo, drops: list[str], label: str) -> li
         src_repo, src_path = d.get("course_source_repo"), d.get("course_source_path")
         if not src_repo or not src_path:
             _drop(
-                drops, where,
+                drops,
+                where,
                 "missing `course_source_repo` and/or `course_source_path`",
                 "this copy never ships",
             )
@@ -314,14 +317,17 @@ def _parse_releases(raw: object, tz: ZoneInfo, drops: list[str]) -> list[Release
     for label, entry in (raw or {}).items():
         where = f"releases.{label}"
         if not isinstance(entry, dict):
-            _drop(drops, where, "not a mapping", "nothing deploys and no site row appears")
+            _drop(
+                drops, where, "not a mapping", "nothing deploys and no site row appears"
+            )
             continue
         raw_when = entry.get("event_datetime")
         when = _coerce_datetime(raw_when, tz)
         tbc = _is_tbc(raw_when) or entry.get("tbc") is True
         if when is None and not tbc:
             _drop(
-                drops, where,
+                drops,
+                where,
                 "no valid `event_datetime` (use `tbc` if the date is not settled)",
                 "nothing deploys and no site row appears",
             )
@@ -354,7 +360,9 @@ def _parse_assignments(
     for slug, entry in (raw or {}).items():
         where = f"assignments.{slug}"
         if not isinstance(entry, dict):
-            _drop(drops, where, "not a mapping (it needs a nested `due_datetime:`)", cost)
+            _drop(
+                drops, where, "not a mapping (it needs a nested `due_datetime:`)", cost
+            )
             continue
         due = _coerce_datetime(entry.get("due_datetime"), tz, end_of_day=True)
         if due is None:
@@ -398,7 +406,8 @@ def _parse_events(raw: object, tz: ZoneInfo, drops: list[str]) -> list[Event]:
         tbc = _is_tbc(raw_when) or entry.get("tbc") is True
         if when is None and not tbc:
             _drop(
-                drops, where,
+                drops,
+                where,
                 "no valid `event_datetime` (use `tbc` if the date is not settled)",
                 "the row never appears on the site",
             )
@@ -418,7 +427,10 @@ def _parse_events(raw: object, tz: ZoneInfo, drops: list[str]) -> list[Event]:
     # Undated (TBC) events sort to the end of the term, as they do in the release plan.
     epoch = datetime.min.replace(tzinfo=timezone.utc)
     out.sort(
-        key=lambda e: (e.when is None, epoch if e.when is None else _instant(e.when, tz))
+        key=lambda e: (
+            e.when is None,
+            epoch if e.when is None else _instant(e.when, tz),
+        )
     )
     return out
 
@@ -519,12 +531,14 @@ def _insert_handout(text: str, slug: str, stamp: str) -> str | None:
     lines = text.splitlines(keepends=True)
     # locate the top-level assignments: block and, inside it, the slug's sub-block
     a_start = next(
-        (i for i, ln in enumerate(lines) if ln.split("#")[0].rstrip() == "assignments:"),
+        (
+            i
+            for i, ln in enumerate(lines)
+            if ln.split("#")[0].rstrip() == "assignments:"
+        ),
         None,
     )
-    entry_line = (
-        f"    handout_datetime: {stamp}   # set automatically by the Release assignment button\n"
-    )
+    entry_line = f"    handout_datetime: {stamp}   # set automatically by the Release assignment button\n"
     if a_start is None:
         # no assignments block at all: append one, flagging the due date still to add
         return (
@@ -575,9 +589,9 @@ def record_handout(cohort_org: str, slug: str, stamp: str | None = None) -> None
             tz_name = (yaml.safe_load(text) or {}).get("timezone")
         except yaml.YAMLError:
             tz_name = None
-        stamp = datetime.now(_tz(tz_name if isinstance(tz_name, str) else None)).strftime(
-            "%Y-%m-%dT%H:%M"
-        )
+        stamp = datetime.now(
+            _tz(tz_name if isinstance(tz_name, str) else None)
+        ).strftime("%Y-%m-%dT%H:%M")
     new = _insert_handout(text, slug, stamp)
     if new is None:
         return

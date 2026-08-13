@@ -162,7 +162,9 @@ def test_nothing_to_publish_at_all_is_an_error():
 
 
 def test_publish_persists_its_settings_in_the_site_repo(published):
-    cfg = yaml.safe_load(published(readings_mode="actual-readings")[site.PUBLISH_CONFIG])
+    cfg = yaml.safe_load(
+        published(readings_mode="actual-readings")[site.PUBLISH_CONFIG]
+    )
     assert cfg == {
         "source_repo": SOURCE,
         "readings_mode": "actual-readings",

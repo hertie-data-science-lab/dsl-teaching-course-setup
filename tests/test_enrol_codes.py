@@ -36,7 +36,7 @@ def test_make_code_shape():
 
 def test_code_message_contains_code_and_targets_university_email():
     s = _student(email="ada@uni.edu", name="Ada", code="dsl-xyz123")
-    to, subject, body = enrol_codes.code_message(
+    to, _subject, body = enrol_codes.code_message(
         s, "https://github.com/org/welcome/issues"
     )
     assert to == "ada@uni.edu"
@@ -70,7 +70,12 @@ def test_smtp_config_from_env_needs_all_three(monkeypatch):
 
 
 def test_graph_config_from_env_needs_all_four(monkeypatch):
-    for k in ("GRAPH_TENANT_ID", "GRAPH_CLIENT_ID", "GRAPH_CLIENT_SECRET", "GRAPH_SENDER"):
+    for k in (
+        "GRAPH_TENANT_ID",
+        "GRAPH_CLIENT_ID",
+        "GRAPH_CLIENT_SECRET",
+        "GRAPH_SENDER",
+    ):
         monkeypatch.delenv(k, raising=False)
     assert mailer.graph_config_from_env() is None
     monkeypatch.setenv("GRAPH_TENANT_ID", "t")
