@@ -615,7 +615,7 @@ def render_status(cohort_orgs: list[str]) -> str:
     """Per-cohort checklist of every faculty & instructors input location - identity, people,
     schedule + release plan, roster, teams, grades - with the current value and a
     direct edit link for anything missing. Read-only; changes nothing."""
-    return f"""name: Show status
+    return f"""name: Check cohort setup
 
 # A per-cohort glance view of everything configured (and everything still missing),
 # with direct links to fix it. Read-only - this button changes nothing.
@@ -628,7 +628,7 @@ on:
 jobs:
 {_CHECK_TEAM}
   status:
-{_RUN_PREAMBLE}      - name: Show status
+{_RUN_PREAMBLE}      - name: Check cohort setup
         env:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
           COURSE: ${{{{ github.repository_owner }}}}

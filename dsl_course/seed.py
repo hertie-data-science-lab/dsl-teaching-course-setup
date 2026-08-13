@@ -154,7 +154,7 @@ def seed_github_workflows(course_org: str) -> None:
         ".github/workflows/render-grades.yml": render_render_grades(cohorts),
         ".github/workflows/distribute-grades.yml": render_distribute_grades(cohorts),
         ".github/workflows/bootstrap-cohort.yml": render_bootstrap_cohort(),
-        ".github/workflows/status.yml": render_status(cohorts),
+        ".github/workflows/check-cohort-setup.yml": render_status(cohorts),
         ".github/workflows/refresh-actions.yml": render_refresh(),
         ".github/workflows/scheduled-release.yml": render_scheduler(),
     }
@@ -165,11 +165,14 @@ def seed_github_workflows(course_org: str) -> None:
         ):
             log_ok(f".github <- {path.split('/')[-1]}")
 
-    # Retired in favour of sync-membership.yml (one consolidated button) - remove any
-    # copies already seeded into orgs bootstrapped before this change.
+    # Retired buttons - remove any copies already seeded into orgs bootstrapped before
+    # the change, so faculty never see two buttons for one job. sync-enrolment/sync-teams
+    # were consolidated into sync-membership.yml; status.yml was renamed to
+    # check-cohort-setup.yml (same workflow, a name that says what it checks).
     for retired in (
         ".github/workflows/sync-enrolment.yml",
         ".github/workflows/sync-teams.yml",
+        ".github/workflows/status.yml",
     ):
         delete_file(
             course_org,

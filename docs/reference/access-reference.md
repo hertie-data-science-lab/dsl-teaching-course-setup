@@ -52,7 +52,7 @@ push on that tag's repos + .github → the buttons`"]
   ui -.->|reverted on next sync| ci
   ui -.->|reverted on next sync| itag
   ui -->|sticks - manual only| gen["`generic instructors team (course org)
-escape hatch: invisible to config & Show status`"]
+escape hatch: invisible to config & Check cohort setup`"]
 ```
 
 ## What `course-admin` grants
@@ -97,7 +97,7 @@ Three different teams share the word "instructors" - they are not interchangeabl
 | `instructors` | the **course** org (generic) | nothing - manual | a rare, permanent escape hatch |
 
 The generic course-org `instructors` team is the exception: a manual add sticks until manually
-removed, but it is **invisible to every config file and to Show status**. Use it sparingly and
+removed, but it is **invisible to every config file and to Check cohort setup**. Use it sparingly and
 record who's on it elsewhere. Route FA (faculty assistant) and TA access through `people.yml`.
 
 ## Rules that catch people out
@@ -117,7 +117,7 @@ record who's on it elsewhere. Route FA (faculty assistant) and TA access through
 
 ## Where to look when access seems wrong
 
-**Show status** (course `.github` → Actions, pick the cohort) is read-only and prints a per-cohort
+**Check cohort setup** (course `.github` → Actions, pick the cohort) is read-only and prints a per-cohort
 checklist - identity, people, schedule + release plan, roster, teams, grades - with an edit link
 for each gap. Start there. The **Sync membership** run log then lists every add and removal it
 made.

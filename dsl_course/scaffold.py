@@ -140,7 +140,7 @@ def scaffold_materials(org: str, tag: str) -> int:
         "| **New assignment** | Scaffold an assignment template (starter + hidden autograder). |\n"
         "| **Refresh actions** | Re-seed the run-from-repo buttons and repopulate dropdowns "
         "after you add sessions/sections. |\n"
-        "| **Show status** | Read-only per-cohort checklist of what's configured. |\n\n"
+        "| **Check cohort setup** | Read-only per-cohort checklist of what's configured. |\n\n"
         "(**Release materials** and **Release assignment** also appear in this repo's own "
         "Actions tab.)\n"
     )

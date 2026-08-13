@@ -29,7 +29,7 @@ Accompanies the e2e [worked example](../example-course/).
 | `[required]` | 6. Enrol | course button, per cohort | course `.github` → **Send enrolment codes** (untick `dry_run`) | `cohort_org` | codes written to the roster + emailed; students join via the `welcome` **Join course** issue |
 | *(optional)* | 7. Ad-hoc release | course button, per cohort | **Release materials** / **Release assignment** | see [08](08-release-materials-to-cohort.md)/[09](09-release-assignment-to-cohort.md) | anything out earlier/differently than the schedule says |
 | *(optional)* | 8. Return marks | course buttons + [`grades/<slug>.csv`](#gradesslugcsv) | the [grading runbook](10-grade-and-return-assignments.md) | your marks | private per-student gradebooks |
-| *(optional)* | 9. Show status | course button, per cohort | course `.github` → **Show status** | `cohort_org` | what's configured, what's missing, an edit link per gap |
+| *(optional)* | 9. Check cohort setup | course button, per cohort | course `.github` → **Check cohort setup** | `cohort_org` | what's configured, what's missing, an edit link per gap |
 
 ## Inputs by file
 
