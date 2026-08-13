@@ -14,22 +14,26 @@ The schedule file can be updated throughout the semester.
 
 Live example (a full term): [`example-course/cohort-org/schedule.yml`](../example-course/cohort-org/schedule.yml).
 
->NB: can include `tbc` labels if unsure at start of the semester... TODO write up how to do this
 
 Block-types carry the whole term:
 
-- **`materials_releases:`** - teaching materials and calendar events. 
-  - Required: a free-form label maps to an `event_datetime` 
-  - Optional `deploy` actions - copies a source path from a course repo → a cohort repo: 
-  - materials, code, datasets, other.
-- **`assignments:`** - each assignment's **whole lifecycle in one block**, keyed by slug:
-  - `handout_datetime` (when repos are provisioned - without it the schedule never releases the assignment; omit only if you use the manual **Release assignment** button), - `due_datetime` (REQUIRED - what students see), 
-  - `grading_datetime` (when it is snapshotted and autograded, once - see
-  [below](#deadline-snapshots-and-autograding)), 
-  - `type` (`group` = per-team repos and
-  grading; also settable in the template's `grading.yml`), 
-  -  `max_team_size` (group
-  assignments).
+- **`materials_releases:`** - deploy any file(s) from course org staging -> cohort org, accessible to students. 
+  - `freeform-label` - the name of the event itself; e.g. lab-1, guest-lecture, etc. This nests all the below fields, and is what is printed in the deployed `<course-name>.github.io site's schedule tab .
+  - `event_datetime` - [Required] when the associated event displays in the calendar (i.e. a lab or lecture or other)
+  - `deploy` actions - [Optional] takes the following:
+    - `deploy_datetime` TODO
+    - `source_repo` TODO
+    - `source_path` TODO
+    - `dest_repo` TODO 
+    - `dest_path` TODO
+    TODO: explain these * give a mock up snippet example here 
+  - use this deploy teaching materials, code, datasets, other.
+- **`assignments:`** - each assignment's whole lifecycle in one block:
+  - `handout_datetime` - when repos are provisioned.
+  - `due_datetime` - what students see in the deployed `<course-name>.github.io site's schedule tab 
+  - `grading_datetime` - when it is snapshotted and [autograded](#deadline-snapshots-and-autograding))
+  - `type` (`individual`|`group`; also settable in the template's `grading.yml`)
+  -  `max_team_size` (group assignments only)
 - **`exam`**
 - **`<any-freeform-description>`** - this will populate into the schedule.
 
@@ -202,8 +206,7 @@ student-supplied committer dates and says so loudly in the run log. Full flow:
 ## Next
 
 - [Release materials](08-release-materials-to-cohort.md) /
-  [an assignment](09-release-assignment-to-cohort.md) /
-  [code](11-release-code.md) by hand, when you need the fallback.
+  [an assignment](09-release-assignment-to-cohort.md) by hand, when you need the fallback.
 - [Grade and return assignments](10-grade-and-return-assignments.md).
 
 ---

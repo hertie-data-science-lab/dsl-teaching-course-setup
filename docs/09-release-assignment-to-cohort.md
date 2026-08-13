@@ -27,14 +27,7 @@ advance.
 > assignment went out - and late onboarders get their repo on the next hourly tick.
 
 
-In the course org, use either (1) the **materials repo's own** `Release materials` button (it knows that repo's sections and
-sessions), or (2) the **course org's`.github` repo's** `release materials` button 
-
-e.g. → [Release materials](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/release-materials.yml):
-
-
-
-In the course org's `.github` → **Actions** → **Release assignment** (e.g. ([Release assignment](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/release-assignment.yml)).
+In the course org's `.github` → **Actions** → **Release assignment** (e.g. [Release assignment](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/release-assignment.yml)).
 - It freezes a cohort-level copy `<slug>` of the chosen `assignment-*-fYYYY` template
 - then it creates one **private** `<slug>-<handle>` repo per onboarded student/group, with that student as
 collaborator.

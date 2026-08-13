@@ -17,6 +17,13 @@ materials_releases:
   # required; dest_repo defaults to `materials`, dest_path mirrors source_path, and each
   # copy ships at the entry's event_datetime. The lecture lines add ONE option -
   # deploy_datetime - to ship an hour before class. (Paths are relative to their repo.)
+  course-intro:
+    event_datetime: 2026-08-31T09:00   # week 0 - the course opens before teaching starts
+    title: Course opens
+    deploy:
+      # Root files are ordinary paths: name the actual file (there is no syllabus glob).
+      - source_repo: course-materials-f2026
+        source_path: syllabus.md
   lecture-1:
     event_datetime: 2026-09-01T10:00
     deploy:

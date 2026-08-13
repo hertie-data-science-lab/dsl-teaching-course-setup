@@ -78,7 +78,6 @@ Numbered in reading order - **course-level** (01-03) before **cohort-level** (04
 | 08 | [Manual release materials to cohort](08-release-materials-to-cohort.md) | cohort | fallback/ad-hoc release |
 | 09 | [manual release assignment to cohort](09-release-assignment-to-cohort.md) | cohort | fallback/ad-hoc hand-out |
 | 10 | [Grade and return assignments](10-grade-and-return-assignments.md) | cohort | per assignment, after the deadline |
-| 11 | [Release code](11-release-code.md) | cohort | when the course ships a growing package to students |
 
 For a one-page summary of **every button**, see [`actions-reference.md`](reference/actions-reference.md);
 for who may run them, [`access-reference.md`](reference/access-reference.md).
@@ -98,7 +97,7 @@ from:
 | [06](06-enrol-students-to-cohort.md) roster + project teams | [`students.csv`](../example-course/cohort-org/students.csv) (incl. an auditor), [`teams.csv`](../example-course/cohort-org/teams.csv) |
 | [07](07-schedule-releases.md) the whole term's plan | [`schedule.yml`](../example-course/cohort-org/schedule.yml) - `event_datetime`s + `deploy_datetime`s, a display-only clinic, `assignments` + `grading_datetime`, `exams` |
 | [10](10-grade-and-return-assignments.md) grade tables | [`grades/assignment-1.csv`](../example-course/cohort-org/grades/assignment-1.csv), [`grades/assignment-4-project.csv`](../example-course/cohort-org/grades/assignment-4-project.csv) (team grades) |
-| [11](11-release-code.md) a growing package | [`lecture-code-f2026/mlpkg/`](../example-course/course-org/lecture-code-f2026/) - disclosed module by module |
+| [08](08-release-materials-to-cohort.md) a growing package | [`lecture-code-f2026/mlpkg/`](../example-course/course-org/lecture-code-f2026/) - disclosed subpackage by subpackage |
 
 Field-by-field rules for all of these: [`DEPLOYMENT-CHECKLIST.md`](DEPLOYMENT-CHECKLIST.md).
 

@@ -310,7 +310,7 @@ def _session_files(org: str, repo: str, subpath: str, folder: str) -> list[tuple
     in a repo (or the repo root when `subpath` is empty - a release destination left
     at its default).
 
-    Recursive, because a release copies a session folder wholesale (release.py's
+    Recursive, because a release copies a session folder wholesale (release_code's
     copytree), so `03_week-3/handouts/notes.pdf` is just as released as a file sitting
     directly in `03_week-3/` - a non-recursive listing would silently drop it from the
     site. Filters the repo's one memoised recursive tree (`_repo_tree`) client-side, so

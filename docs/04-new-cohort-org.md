@@ -67,7 +67,7 @@ Live example of every file below: [`example-course/cohort-org/`](../example-cour
    ```
 ---
 
-> NB: Steps 5 & 6 are coverd in full detail in [05-manage-teaching-team.md](05-manage-teaching-team.md) & [06-enrol-students-to-cohort.md](06-manage-teaching-team.md)
+> NB: Steps 5 & 6 are coverd in full detail in [05-manage-teaching-team.md](05-manage-teaching-team.md) & [06-enrol-students-to-cohort.md](06-enrol-students-to-cohort.md)
 
 5. *(optional)* **Declare this cohort's instructors/TAs** in `classroom-config/people.yml`.
     - This grants them push on this cohort and on this year's course content repos, and supplies the cohort site's cards.

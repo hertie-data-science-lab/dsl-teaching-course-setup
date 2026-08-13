@@ -11,13 +11,13 @@ Shared boilerplate that repeats verbatim between renderers is extracted into the
 constants/helpers below (the check-team gate, the checkout+python job preamble, the
 dropdown builders); the prose and ordering stay per-workflow.
 
-Sections/sessions in the Release materials button are discovered from the source repo's
-own directory structure (see discovery.discover_sections_and_sessions): each section
-gets a release_<section> checkbox plus a free-text <section>_path field routing it to a
-repo (created if missing) or repo/subpath (_section_release_inputs), and sessions are a
-comma/range free-text field (_sessions_input) - GitHub's workflow_dispatch has no
-multi-select widget and a checkbox per session would blow past its 10-input cap, unlike
-the small, bounded set of sections (see release_budget).
+The Release materials button's inputs are deliberately the SAME five fields as a
+schedule.yml `deploy:` entry (source_repo, source_path, dest_repo, dest_path, plus the
+cohort org) - one vocabulary for the scheduled and the manual path, so what faculty learn
+on the button reads straight across into the schedule. Nothing about the button is
+discovered from the source repo any more: `source_path` is free text (a folder, a file, or
+a comma-separated list), so it needs no per-section checkbox and no session dropdown, and
+both variants stay well under GitHub's 10-input workflow_dispatch cap.
 """
 
 from __future__ import annotations
@@ -78,52 +78,13 @@ _MAIL_ENV = """\
           SMTP_FROM: ${{ secrets.SMTP_FROM }}"""
 
 
-# Rendered into the header comment of every MANUAL release button: the schedule is the
-# primary release path, these buttons are the fallback (demos, one-offs, recovery).
-_SCHEDULE_NUDGE = """\
-# Prefer scheduling: a `materials_releases` entry in classroom-config/schedule.yml releases this
-# automatically - this button is the manual fallback."""
-
-
 def _choice(options: list[str]) -> str:
     opts = options or ["(none-yet)"]
     return "\n".join(f"          - {o}" for o in opts)
 
 
-def _sessions_input(sessions: list[str]) -> str:
-    """Session(s) to release, as free text (comma and/or hyphen-range list, e.g.
-    "1,3,5-7" - see utils.expand_int_spec for the parser). GitHub's workflow_dispatch
-    has no multi-select widget, and a checkbox-per-session would blow past its 10-input
-    cap once a course has more than a handful of sessions (lectures alone can run to
-    15) - unlike sections, which stay small and bounded and so get real checkboxes
-    (see _section_release_inputs)."""
-    hint = f" (available: {', '.join(sessions)})" if sessions else ""
-    return (
-        "      sessions:\n"
-        f'        description: "Session(s) to release - comma and/or range list, e.g.'
-        f' 1,3,5-7{hint}"\n'
-        "        required: true"
-    )
-
-
-# Shared cohort_org + cohort_repo dropdowns and the include_* toggles - used by
-# render_release_code, which (unlike the materials releasers below) always targets one
-# repo picked from a dropdown.
-_COHORT_INPUTS = """\
-      cohort_org:
-        description: "Target cohort org"
-        required: true
-        type: choice
-        options:
-{cohort_orgs}
-      cohort_repo:
-        description: "Target repo in the cohort org"
-        required: true
-        type: choice
-        options:
-{cohort_repos}"""
-# cohort_org alone - the materials-release renderers route each section to its own
-# destination repo instead of picking one repo up front (see _section_release_inputs).
+# cohort_org alone: the destination REPO is a free-text field of its own (dest_repo), so
+# the materials button never picks a target repo from a dropdown - it can create one.
 _COHORT_ORG_INPUT = """\
       cohort_org:
         description: "Target cohort org"
@@ -131,96 +92,40 @@ _COHORT_ORG_INPUT = """\
         type: choice
         options:
 {cohort_orgs}"""
-_ROOT_INCLUDES = """\
-      include_root_files:
-        description: "Also release the syllabus + source README (root files) - overwrites"
-        type: boolean
-        default: false"""
+
+# The three path fields shared verbatim by both Release materials variants, in the same
+# order and with the same names as a schedule.yml `deploy:` entry's keys. source_path and
+# dest_path are comma-separated PARALLEL lists paired by index (see
+# release_code.parse_path_pairs); a blank dest_path mirrors every source_path, exactly as
+# an omitted `dest_path:` does in the schedule.
+_DEPLOY_PATH_INPUTS = """\
+      source_path:
+        description: "source_path - folder/file, or a comma-separated list"
+        required: true
+      dest_repo:
+        description: "dest_repo - repo in the cohort org (created if missing)"
+        required: false
+        default: materials
+      dest_path:
+        description: "dest_path - blank = mirror source_path"
+        required: false"""
 
 
-def _section_env_stub(section: str) -> str:
-    return section.upper().replace("-", "_")
-
-
-def _check_no_env_name_collisions(sections: list[str]) -> None:
-    """Shell env var names can't contain hyphens, so section names are folded to
-    match ('case-studies' and 'case_studies' both become CASE_STUDIES) - raise loudly
-    at render time rather than silently colliding two sections' env vars."""
-    seen: dict[str, str] = {}
-    for s in sections:
-        stub = _section_env_stub(s)
-        if stub in seen and seen[stub] != s:
-            raise ValueError(
-                f"sections {seen[stub]!r} and {s!r} both map to the env var stub "
-                f"{stub} - rename one (they differ only by '-' vs '_')"
-            )
-        seen[stub] = s
-
-
-def _section_release_inputs(sections: list[str]) -> str:
-    """Two fields per section DISCOVERED AT RENDER TIME: a release_<section> checkbox
-    (default on - whether to release it at all) and a free-text <section>_path
-    (optional, no default - where it lands). Leaving the path blank creates/uses a
-    repo named after the section, at its root; "repo/sub/..." routes it into "repo"
-    under a nested folder path instead - letting several sections share one repo, or
-    each get its own. The repo is created if it doesn't exist yet. Used by both the
-    run-from-repo button (this repo's own sections, known at render time) and the
-    central button (the capped org-wide union - see render_central_release)."""
-    if not sections:
-        return ""
-    lines = "\n".join(
-        f'      release_{s}:\n        description: "Release {s} this session?"\n'
-        '        type: boolean\n        default: true\n'
-        f'      {s}_path:\n        description: "Where to put it - leave blank to'
-        f" create/use a repo named '{s}' at its root. Otherwise: first segment ="
-        f' repo name, rest = folder path inside it (e.g. \'materials/{s}\')."\n'
-        "        required: false"
-        for s in sections
-    )
-    return "\n" + lines
-
-
-def _render_release(
-    header: str,
-    inputs_block: str,
-    src_repo_expr: str,
-    sections: list[str] = (),
-    sessions: list[str] = (),
-) -> str:
-    """One release_<section> checkbox + <section>_path free-text field per section
-    (routes it to a repo, or repo/subpath - see _section_release_inputs), shared
-    identically by the run-from-repo button (sections = this repo's own, known at
-    render time) and the central .github button (sections = the union discovered
-    across every content repo in the org, capped - see
-    discovery.discover_sections_union/release_budget.cap_sections). A section checked
-    on the central button that the chosen source repo doesn't actually have simply
-    finds nothing to release for it. Sessions are always free text (_sessions_input) -
-    GitHub's workflow_dispatch has no multi-select widget."""
-    _check_no_env_name_collisions(sections)
-    target_inputs = _section_release_inputs(sections)
-    target_env = "\n".join(
-        f"          RELEASE_{_section_env_stub(s)}: ${{{{ inputs.release_{s} }}}}\n"
-        f"          PATH_{_section_env_stub(s)}: ${{{{ inputs.{s}_path }}}}"
-        for s in sections
-    )
-    target_build = "\n".join(
-        [
-            f'          [ "$RELEASE_{_section_env_stub(s)}" = "true" ] && destinations="$destinations {s}=${{PATH_{_section_env_stub(s)}:-{s}}}"'
-            for s in sections
-        ]
-        + ['          [ -n "$destinations" ] && args+=(--destinations "$destinations")']
-    )
-
+def _render_release(header: str, cohort_orgs: list[str], source_repo_input: str) -> str:
+    """The Release materials button, shared by both variants. Its five inputs ARE a
+    schedule.yml `deploy:` entry (plus the cohort org): the same names, the same order,
+    the same meaning - and the same executor, release_code.deploy_many, so a batch of
+    paths clones each repo once whether it arrives from the cron or from this button.
+    Only the `source_repo` widget differs between variants (a dropdown centrally, a
+    pre-filled string inside a content repo), which is why it is passed in."""
     return f"""name: Release materials
 {header}
-{_SCHEDULE_NUDGE}
-
 on:
   workflow_dispatch:
     inputs:
-{inputs_block}{target_inputs}
-{_sessions_input(sessions)}
-{_ROOT_INCLUDES}
+{_COHORT_ORG_INPUT.format(cohort_orgs=_choice(cohort_orgs))}
+{source_repo_input}
+{_DEPLOY_PATH_INPUTS}
 
 jobs:
 {_CHECK_TEAM}
@@ -229,107 +134,62 @@ jobs:
         env:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
           SRC_ORG: ${{{{ github.repository_owner }}}}
-          SRC_REPO: {src_repo_expr}
+          SRC_REPO: ${{{{ inputs.source_repo }}}}
           COHORT_ORG: ${{{{ inputs.cohort_org }}}}
-          SESSIONS: ${{{{ inputs.sessions }}}}
-          INC_ROOT: ${{{{ inputs.include_root_files }}}}
-{target_env}
-        run: |
-          gh auth setup-git
-          args=(--source-org "$SRC_ORG" --source-repo "$SRC_REPO"
-                --cohort-org "$COHORT_ORG" --sessions "$SESSIONS")
-{target_build}
-          [ "$INC_ROOT" = "true" ] && args+=(--syllabus --readme)
-          python3 -m dsl_course.release "${{args[@]}}"
-"""
-
-
-def render_release(
-    cohort_orgs: list[str],
-    sessions: list[str] | None = None,
-    sections: list[str] | None = None,
-) -> str:
-    """Run-from-repo copy: the SOURCE is the repo it lives in. Sections (known for this
-    one repo) get real checkboxes that double as destination routing; session(s) are
-    free text - see _render_release."""
-    cohort_org_input = _COHORT_ORG_INPUT.format(cohort_orgs=_choice(cohort_orgs))
-    return _render_release(
-        header=(
-            "\n# Run from a course content repo (this repo is the SOURCE). Publishes the"
-            " chosen session(s)'\n# content into the cohort repo(s) named in each"
-            " section's destination field below.\n# Dropdowns are refreshed by the"
-            " 'Refresh actions' workflow.\n"
-        ),
-        inputs_block=cohort_org_input,
-        src_repo_expr="${{ github.event.repository.name }}",
-        sections=sections or [],
-        sessions=sessions or [],
-    )
-
-
-def render_release_code(cohort_orgs: list[str], cohort_repos: list[str]) -> str:
-    """Run-from-repo: copy a package PATH (subpackage folder or module file) from THIS
-    repo into a cohort repo's tree, additively. Phased disclosure of a growing package."""
-    cohort = _COHORT_INPUTS.format(
-        cohort_orgs=_choice(cohort_orgs), cohort_repos=_choice(cohort_repos)
-    )
-    return f"""name: Release code
-
-# Run from the repo that holds your package (this repo = SOURCE). Copies a chosen path
-# - a subpackage folder (e.g. mlpkg/simulation) or a single module (mlpkg/train/warmup.py)
-# - into the cohort repo's tree, additively. Release a topic when you teach it; the
-# package must tolerate not-yet-released submodules so partial release still imports.
-
-{_SCHEDULE_NUDGE}
-
-on:
-  workflow_dispatch:
-    inputs:
-{cohort}
-      path:
-        description: "Path to release (e.g. mlpkg/simulation or mlpkg/train/warmup.py)"
-        required: true
-
-jobs:
-{_CHECK_TEAM}
-  release-code:
-{_RUN_PREAMBLE}      - name: Release code
-        env:
-          GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
-          SRC_ORG: ${{{{ github.repository_owner }}}}
-          SRC_REPO: ${{{{ github.event.repository.name }}}}
-          COHORT_ORG: ${{{{ inputs.cohort_org }}}}
-          COHORT_REPO: ${{{{ inputs.cohort_repo }}}}
-          REL_PATH: ${{{{ inputs.path }}}}
+          SRC_PATH: ${{{{ inputs.source_path }}}}
+          DEST_REPO: ${{{{ inputs.dest_repo }}}}
+          DEST_PATH: ${{{{ inputs.dest_path }}}}
         run: |
           gh auth setup-git
           python3 -m dsl_course.release_code --source-org "$SRC_ORG" \\
             --source-repo "$SRC_REPO" --cohort-org "$COHORT_ORG" \\
-            --cohort-repo "$COHORT_REPO" --path "$REL_PATH"
+            --source-path "$SRC_PATH" --dest-repo "$DEST_REPO" \\
+            --dest-path "$DEST_PATH"
 """
 
 
-def render_central_release(
-    source_repos: list[str], cohort_orgs: list[str], sections: list[str] | None = None
-) -> str:
-    """Central copy that lives in .github: pick the source materials repo, then route
-    each section - the union discovered across every content repo in the org, capped
-    to fit GitHub's input limit (see discovery.discover_sections_union,
-    release_budget.cap_sections) - via the same checkbox+path fields as the
-    run-from-repo button (see render_release, _render_release). A section checked here
-    that the chosen source repo doesn't actually have simply finds nothing to release
-    for it."""
-    source = (
-        '      source_repo:\n        description: "Source materials repo (in this course'
-        ' org)"\n        required: true\n        type: choice\n        options:\n'
+def render_release(cohort_orgs: list[str], repo: str) -> str:
+    """Run-from-repo copy: `source_repo` is a free-text field pre-filled with `repo`
+    (the repo this workflow is being seeded into), so the common case needs no thought
+    but a different source repo in the same org can still be typed in."""
+    source_repo_input = (
+        '      source_repo:\n        description: "source_repo - repo in the COURSE'
+        ' org"\n        required: true\n'
+        f'        default: "{repo}"'
+    )
+    return _render_release(
+        header=(
+            "\n# Run from a course content repo: source_repo is pre-filled with THIS repo"
+            " (editable).\n# Copies the given path(s) into the cohort org. source_path and"
+            " dest_path are\n# comma-separated parallel lists paired by index - leave"
+            " dest_path blank to mirror\n# source_path. These are exactly a schedule.yml"
+            " `deploy:` entry's fields.\n# The cohort dropdown is refreshed by the 'Refresh"
+            " actions' workflow.\n"
+        ),
+        cohort_orgs=cohort_orgs,
+        source_repo_input=source_repo_input,
+    )
+
+
+def render_central_release(source_repos: list[str], cohort_orgs: list[str]) -> str:
+    """Central copy that lives in .github: `source_repo` is a dropdown of the course
+    org's content repos (discovery.discover_content_repos), since this button lives
+    outside any one of them. Otherwise identical to the run-from-repo button."""
+    source_repo_input = (
+        '      source_repo:\n        description: "source_repo - repo in the COURSE'
+        ' org"\n        required: true\n        type: choice\n        options:\n'
         f"{_choice(source_repos)}"
     )
-    cohort_org_input = _COHORT_ORG_INPUT.format(cohort_orgs=_choice(cohort_orgs))
     return _render_release(
-        header="",
-        inputs_block=f"{source}\n{cohort_org_input}",
-        src_repo_expr="${{ inputs.source_repo }}",
-        sections=sections or [],
+        header=(
+            "\n# Central copy: pick the SOURCE repo in this course org, then the path(s) to"
+            " copy into\n# the cohort org. source_path and dest_path are comma-separated"
+            " parallel lists paired\n# by index - leave dest_path blank to mirror"
+            " source_path. These are exactly a\n# schedule.yml `deploy:` entry's fields."
+            "\n# Dropdowns are refreshed by the 'Refresh actions' workflow.\n"
+        ),
+        cohort_orgs=cohort_orgs,
+        source_repo_input=source_repo_input,
     )
 
 
@@ -355,8 +215,6 @@ def render_provision(
 # Generates one private repo per onboarded student from the chosen assignment template
 # repo (native template-generate). The assignment dropdown lists the course org's
 # assignment-* template repos; refresh repopulates it.
-
-{_SCHEDULE_NUDGE}
 
 on:
   workflow_dispatch:

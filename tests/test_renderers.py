@@ -13,17 +13,24 @@ from conftest import workflow_inputs, workflow_jobs
 from dsl_course import (
     discovery,
     profile_readme,
-    release_budget,
     seed,
     workflows_render,
 )
+
+# GitHub's hard cap on workflow_dispatch inputs - both Release materials variants must
+# stay under it (they spend 5 of the 10, with nothing render-time-variable left to grow).
+GITHUB_MAX_DISPATCH_INPUTS = 10
+
+# The five inputs of a Release materials button, in the order they must appear: exactly a
+# schedule.yml `deploy:` entry's fields, plus the cohort org.
+RELEASE_INPUTS = ["cohort_org", "source_repo", "source_path", "dest_repo", "dest_path"]
 
 # Every workflow renderer, rendered -> a "it parses, and it's gated" sweep. Completeness
 # is enforced by test_every_renderer_is_covered_by_the_yaml_sweep below, so a new button
 # cannot ship without passing through yaml.safe_load.
 ALL_RENDERED = {
     "release": workflows_render.render_release(
-        ["Cohort-f2026"], ["1", "2"], ["lectures", "labs"]
+        ["Cohort-f2026"], "course-materials-f2026"
     ),
     "central_release": workflows_render.render_central_release(
         ["course-materials-f2026"], ["Cohort-f2026"]
@@ -34,7 +41,6 @@ ALL_RENDERED = {
     "grade_assignment": workflows_render.render_grade_assignment(
         ["Cohort-f2026"], ["assignment-1-f2026"]
     ),
-    "release_code": workflows_render.render_release_code(["Cohort-f2026"], ["materials"]),
     "sync_membership": workflows_render.render_sync_membership(["Cohort-f2026"]),
     "send_codes": workflows_render.render_send_codes(["Cohort-f2026"]),
     "sync_gradebooks": workflows_render.render_sync_gradebooks(["Cohort-f2026"]),
@@ -178,97 +184,108 @@ def test_dotgithub_readme_orients_faculty():
     assert "parent course org" in cohort
 
 
-def test_release_has_a_checkbox_and_path_field_per_section():
-    rendered = workflows_render.render_release(["Cohort-f2026"], ["1", "2"], ["lectures", "labs"])
+@pytest.mark.parametrize(
+    "rendered",
+    [
+        workflows_render.render_release(["Cohort-f2026"], "course-materials-f2026"),
+        workflows_render.render_central_release(
+            ["course-materials-f2026"], ["Cohort-f2026"]
+        ),
+    ],
+    ids=["run-from-repo", "central"],
+)
+def test_both_release_buttons_take_exactly_a_deploy_entrys_fields(rendered):
+    # The whole point of the merged button: its inputs ARE a schedule.yml `deploy:`
+    # entry (plus the cohort org), same names, same order, on BOTH variants - so what
+    # faculty learn on the button reads straight across into the schedule.
     inp = workflow_inputs(rendered)
-    assert set(inp) == {
-        "cohort_org",
-        "release_lectures",
-        "lectures_path",
-        "release_labs",
-        "labs_path",
-        "sessions",
-        "include_root_files",
+    assert list(inp) == RELEASE_INPUTS
+    assert len(inp) <= GITHUB_MAX_DISPATCH_INPUTS
+    assert inp["cohort_org"]["required"] is True
+    assert inp["source_repo"]["required"] is True
+    assert inp["source_path"]["required"] is True
+    # dest_repo defaults to the conventional single materials repo; dest_path blank
+    # mirrors source_path (no default at all - the executor treats "" as mirror).
+    assert inp["dest_repo"]["default"] == "materials"
+    assert inp["dest_repo"]["required"] is False
+    assert "default" not in inp["dest_path"]
+    assert inp["dest_path"]["required"] is False
+    # Multi-path is discoverable from the button itself, not just the docs.
+    assert "comma-separated" in inp["source_path"]["description"]
+    # Gone with the section machinery: no per-section checkboxes, no session list, no
+    # root-files toggle, no cohort_repo dropdown.
+    for retired in ("sessions", "include_root_files", "cohort_repo", "release_lectures"):
+        assert retired not in inp
+
+
+@pytest.mark.parametrize(
+    "rendered",
+    [
+        workflows_render.render_release(["Cohort-f2026"], "course-materials-f2026"),
+        workflows_render.render_central_release(
+            ["course-materials-f2026"], ["Cohort-f2026"]
+        ),
+    ],
+    ids=["run-from-repo", "central"],
+)
+def test_both_release_buttons_run_the_same_executor_through_env(rendered):
+    # One executor for the schedule and the button (release_code.deploy_many, reached
+    # via its CLI), and every user-supplied input reaches the shell as an env var.
+    step = workflow_jobs(rendered)["release"]["steps"][-1]
+    assert "${{" not in step["run"]
+    assert step["env"]["SRC_REPO"] == "${{ inputs.source_repo }}"
+    assert step["env"]["SRC_PATH"] == "${{ inputs.source_path }}"
+    assert step["env"]["DEST_REPO"] == "${{ inputs.dest_repo }}"
+    assert step["env"]["DEST_PATH"] == "${{ inputs.dest_path }}"
+    assert "python3 -m dsl_course.release_code" in step["run"]
+    for flag in ("--source-path", "--dest-repo", "--dest-path"):
+        assert flag in step["run"]
+
+
+def test_run_from_repo_button_prefills_source_repo_with_its_own_repo():
+    # Inside a content repo the source is almost always that repo, so it is pre-filled -
+    # but as free text, not a fixed expression, so another repo in the org can be typed in.
+    inp = workflow_inputs(
+        workflows_render.render_release(["Cohort-f2026"], "course-materials-f2026")
+    )
+    assert inp["source_repo"]["default"] == "course-materials-f2026"
+    assert "type" not in inp["source_repo"]  # a string field, not a choice
+
+
+def test_central_button_offers_the_orgs_content_repos_as_the_source_dropdown():
+    # Centrally there is no "own" repo to pre-fill, so source_repo is the discovered
+    # dropdown (refreshed by Refresh actions).
+    inp = workflow_inputs(
+        workflows_render.render_central_release(
+            ["course-materials-f2026", "lecture-code"], ["Cohort-f2026"]
+        )
+    )
+    assert inp["source_repo"]["type"] == "choice"
+    assert inp["source_repo"]["options"] == ["course-materials-f2026", "lecture-code"]
+    assert "default" not in inp["source_repo"]
+
+
+def test_content_repos_get_both_buttons_and_lose_the_retired_one(monkeypatch):
+    # Refresh actions re-renders every run-from-repo workflow (so a fix reaches live
+    # courses) - and removes release-code.yml, whose CLI no longer exists now that
+    # Release materials takes any path.
+    pushed, deleted = {}, []
+    monkeypatch.setattr(
+        seed, "put_file", lambda org, repo, path, content, msg: pushed.setdefault(path, content.decode())
+    )
+    monkeypatch.setattr(seed, "delete_file", lambda org, repo, path, msg: deleted.append(path))
+    seed._push_workflows("Course", "course-materials-f2026", ["Cohort-f2026"], ["assignment-1-f2026"])
+    assert set(pushed) == set(seed.WORKFLOWS) == {
+        ".github/workflows/release-materials.yml",
+        ".github/workflows/release-assignment.yml",
     }
-    # Checkbox defaults on; path has no default (blank means "use the section's own name").
-    assert inp["release_lectures"]["type"] == "boolean"
-    assert inp["release_lectures"]["default"] is True
-    assert "default" not in inp["lectures_path"]
-    # Syllabus + README are one merged toggle (each section already costs 2 inputs,
-    # so this saves a slot rather than keeping them separate).
-    assert inp["include_root_files"]["type"] == "boolean"
-    # Sessions is free text (no multi-select widget in workflow_dispatch), with the
-    # discovered sessions surfaced in the description for reference.
-    assert "type" not in inp["sessions"]
-    assert "1, 2" in inp["sessions"]["description"]
-    # No standalone cohort_repo dropdown - destination routing replaces it.
-    assert "cohort_repo" not in inp
-
-
-def test_release_builds_destinations_from_checkbox_and_path_fields():
-    rendered = workflows_render.render_release(["Cohort-f2026"], ["1"], ["lectures", "labs"])
-    assert "RELEASE_LECTURES: ${{ inputs.release_lectures }}" in rendered
-    assert "PATH_LECTURES: ${{ inputs.lectures_path }}" in rendered
-    # Unchecked -> not released regardless of path; checked with a blank path ->
-    # falls back to the section's own name via bash parameter expansion.
-    assert (
-        '[ "$RELEASE_LECTURES" = "true" ] && destinations="$destinations lectures=${PATH_LECTURES:-lectures}"'
-        in rendered
-    )
-    assert '--destinations "$destinations"' in rendered
-    assert "--sessions \"$SESSIONS\"" in rendered
-
-
-def test_release_rejects_sections_that_collide_on_env_var_name():
-    # Shell env var names can't hold hyphens, so section names are folded ('-' -> '_')
-    # to build them - two sections differing only by hyphen vs underscore would
-    # otherwise silently share one env var and drop a destination.
-    with pytest.raises(ValueError, match="case-studies.*case_studies|case_studies.*case-studies"):
-        workflows_render.render_release(["Cohort-f2026"], ["1"], ["case-studies", "case_studies"])
-
-
-def test_central_release_shares_checkbox_and_path_fields_with_the_repo_button():
-    # sections here represent the union discovered across every content repo in the
-    # org (computed by the caller, seed_github_workflows) - the central button no
-    # longer has a separate cohort_repo/exclude fallback.
-    rendered = workflows_render.render_central_release(
-        ["course-materials-f2026"], ["Cohort-f2026"], ["lectures", "labs"]
-    )
-    inp = workflow_inputs(rendered)
-    assert {"source_repo", "cohort_org", "release_lectures", "lectures_path", "sessions"} <= set(inp)
-    assert "cohort_repo" not in inp
-    assert "exclude" not in inp
-
-
-def test_max_release_sections_caps_at_ten_input_budget():
-    # 4 fixed inputs (cohort_org, sessions, include_root_files, source_repo) + 2 per
-    # section must not exceed GitHub's 10-input cap on the tighter (central) button.
-    assert 4 + 2 * release_budget.MAX_RELEASE_SECTIONS <= 10
-
-
-def test_release_input_budget_matches_what_the_central_button_renders():
-    # The whole point of deriving MAX_RELEASE_SECTIONS (rather than hard-coding 3) is
-    # that adding a fixed input can't silently eat a section slot. This is the tripwire:
-    # the fixed-input list is checked against the inputs the tighter (central) button
-    # ACTUALLY renders, and the section slots are checked against GitHub's 10-input cap.
-    fixed = workflow_inputs(
-        workflows_render.render_central_release(["m"], ["Cohort-f2026"], [])
-    )
-    assert set(fixed) == set(release_budget.FIXED_RELEASE_INPUTS), (
-        "the central Release button's fixed inputs changed - update "
-        "release_budget.FIXED_RELEASE_INPUTS so the section budget is recomputed"
-    )
-    sections = [f"section{i}" for i in range(release_budget.MAX_RELEASE_SECTIONS)]
-    full = workflow_inputs(
-        workflows_render.render_central_release(["m"], ["Cohort-f2026"], sections)
-    )
-    assert len(full) == len(fixed) + release_budget.INPUTS_PER_SECTION * len(sections)
-    assert len(full) <= release_budget.GITHUB_MAX_DISPATCH_INPUTS
-    # ...and the budget is saturated: one more section would break the button outright.
-    over = workflow_inputs(
-        workflows_render.render_central_release(["m"], ["Cohort-f2026"], sections + ["extra"])
-    )
-    assert len(over) > release_budget.GITHUB_MAX_DISPATCH_INPUTS
+    assert deleted == [".github/workflows/release-code.yml"]
+    # The materials button seeded into a content repo is that repo's own variant.
+    materials = yaml.safe_load(pushed[".github/workflows/release-materials.yml"])
+    trigger = materials.get("on", materials.get(True))
+    inputs = trigger["workflow_dispatch"]["inputs"]
+    assert list(inputs) == RELEASE_INPUTS
+    assert inputs["source_repo"]["default"] == "course-materials-f2026"
 
 
 def test_seed_exports_exactly_what_its_callers_reach_for():
@@ -293,15 +310,6 @@ def test_seed_exports_exactly_what_its_callers_reach_for():
     # ...and they are the real thing, not a stale copy.
     assert seed.discover_release_sources is discovery.discover_release_sources
     assert seed.update_profile_readme is profile_readme.update_profile_readme
-
-
-def test_cap_sections_logs_and_truncates_past_the_limit(capsys):
-    capped = release_budget.cap_sections(
-        ["lectures", "labs", "readings", "handouts"], "org/repo"
-    )
-    assert capped == ["handouts", "labs", "lectures"]  # sorted, first 3
-    err = capsys.readouterr().err
-    assert "readings" in err and "org/repo" in err
 
 
 def test_scaffold_buttons_route_inputs_through_env_not_the_shell():

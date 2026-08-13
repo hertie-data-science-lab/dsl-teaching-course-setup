@@ -125,7 +125,9 @@ def test_describe_lists_every_action():
 
 def test_run_batches_all_deploys_through_deploy_many(monkeypatch):
     # The clone-once win: every due release's deploys go through ONE deploy_many call
-    # (which clones each source/dest once), not one release_code call per copy.
+    # (which clones each source/dest once), not one call per copy. deploy_many is now the
+    # single executor for both paths - the manual Release materials button batches its
+    # comma-separated paths through the same call (see test_release.py).
     calls = []
     monkeypatch.setattr(
         "dsl_course.release_code.deploy_many",
