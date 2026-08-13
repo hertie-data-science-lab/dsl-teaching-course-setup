@@ -26,7 +26,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from dsl_course import bootstrap_course
+from dsl_course import bootstrap_course, welcome
 from dsl_course.grades import GradeRow, build_gradebooks, render_yaml
 from dsl_course.scaffold import _GRADING_YML
 
@@ -131,10 +131,10 @@ DUMPED = {
 # constants: the `.format()`ed seed templates (whose doubled `{{ }}` braces can hide a flow
 # item until bootstrap renders them) and the grading.yml written to each solution branch.
 SEEDED = {
-    "classroom-config/schedule.yml (seeded)": lambda: bootstrap_course._template(
+    "classroom-config/schedule.yml (seeded)": lambda: welcome.template(
         "classroom-config/schedule.yml"
     ).format(tag="f2026", year=2026),
-    "classroom-config/people.yml (seeded)": lambda: bootstrap_course._template(
+    "classroom-config/people.yml (seeded)": lambda: welcome.template(
         "classroom-config/people.yml"
     ).format(year=2026, year_next=2027),
     "course/dsl-course.yml (seeded, commented)": lambda: (

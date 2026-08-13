@@ -442,7 +442,7 @@ Self-contained - workflows and their Python implementation both live in this rep
   - `list_orgs` - enumerate DSL course orgs by topic; drives `refresh-inventory.yml`.
   - `utils` - shared `gh`/git helpers with rate-limit backoff.
 - `templates/` - the files bootstrap seeds into a fresh org, verbatim from disk
-  (`bootstrap_course._template`), one subdirectory per destination:
+  (`welcome.template`), one subdirectory per destination:
   - `welcome/` - the cohort onboarding + team-formation workflows and their issue forms.
   - `classroom-config/` - that repo's starter roster, README contract, tag-rendered
     `schedule.yml` / `people.yml` scaffolds, the `*.csv.sample` worked examples

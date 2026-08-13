@@ -23,14 +23,12 @@ import argparse
 import os
 import re
 import sys
-from pathlib import Path
 
 from . import scaffold, seed, site, sync_faculty
 from .utils import (
     COURSE_TEAM_ACCESS,
     create_repo,
     create_team,
-    delete_file,
     get_file_content,
     gh,
     grant_team_repo_access,
@@ -44,6 +42,7 @@ from .utils import (
     repo_is_private,
     set_repo_topics,
 )
+from .welcome import refresh_welcome_workflows, template
 
 COURSE_HUB_TOPIC = "dsl-course-hub"
 COHORT_TOPIC = "dsl-cohort"
@@ -283,19 +282,6 @@ def add_course_admins(org: str, handles: str) -> None:
             log_err(f"  ! could not add {login}: {out[:120]}")
 
 
-TEMPLATES = Path(__file__).resolve().parents[1] / "templates"
-
-
-def _template(rel: str) -> str:
-    """Read a seeded template file (templates/<rel>) as text.
-
-    Everything under templates/ is content pushed into a course/cohort repo, kept in real
-    files rather than Python literals so faculty & instructors can read (and PR) the thing
-    they'll actually receive. Most are seeded verbatim; the few that carry `{placeholders}`
-    are rendered with str.format (see _course_metadata / _cohort_metadata)."""
-    return (TEMPLATES / rel).read_text(encoding="utf-8")
-
-
 def _validate_schedule_workflow() -> str:
     """The classroom-config schedule validator, with the central repo pinned into it.
 
@@ -304,7 +290,7 @@ def _validate_schedule_workflow() -> str:
     from .central import CENTRAL, CENTRAL_REF
 
     return (
-        _template("classroom-config/validate-schedule.yml")
+        template("classroom-config/validate-schedule.yml")
         .replace("__CENTRAL_REF__", CENTRAL_REF)
         .replace("__CENTRAL__", CENTRAL)
     )
@@ -332,10 +318,10 @@ def _course_admins_block(admins: list[str] | None) -> str:
     they're declared in the SSOT from day one, not just given a one-time direct team
     invite (add_course_admins) that the next sync would otherwise revert for not
     being declared here."""
-    header = _template("course/people-header.yml")
-    cards = _template("course/people-cards.yml")
+    header = template("course/people-header.yml")
+    cards = template("course/people-cards.yml")
     if not admins:
-        return f"{header}\n{_template('course/people-commented.yml')}\n{cards}"
+        return f"{header}\n{template('course/people-commented.yml')}\n{cards}"
     entries = "\n".join(
         f'    - github_handle: "{a}"    # grants the `course-admin` team'
         for a in admins
@@ -355,7 +341,7 @@ def _course_metadata(
     org's own course-admin team by sync_faculty). Instructors/TAs and the schedule
     both stay per-cohort instead (they change year to year and, for instructors/TAs,
     usually the people too)."""
-    identity = _template("course/dsl-course.yml").format(
+    identity = template("course/dsl-course.yml").format(
         org=org,
         org_name=org_name,
         course_name=course_name,
@@ -369,7 +355,7 @@ def _cohort_metadata(org: str, course: str) -> str:
     course org. This is the single source the cohort's classroom-config dispatchers
     (dispatch-sync / dispatch-sync-site) read to find where to fire Sync membership /
     Sync site - so without it those auto-triggers can't resolve the course org."""
-    return _template("cohort/dsl-course.yml").format(course=course, org=org)
+    return template("cohort/dsl-course.yml").format(course=course, org=org)
 
 
 def create_profile_repo(
@@ -503,44 +489,7 @@ def setup_cohort_extras(org: str) -> None:
         private=False,
         description="Course front door - open a Join issue to enrol",
     ):
-        # Everything under .github/ here is SYSTEM-owned: the onboarding workflows and the
-        # issue forms they parse (field ids must stay in lockstep with the workflow), so
-        # these refresh on every run.
-        put_file(
-            org,
-            "welcome",
-            ".github/workflows/onboard.yml",
-            _template("welcome/onboard.yml").encode(),
-            "ci: seed onboard workflow",
-        )
-        put_file(
-            org,
-            "welcome",
-            ".github/ISSUE_TEMPLATE/01-join-course.yml",
-            _template("welcome/ISSUE_TEMPLATE/01-join-course.yml").encode(),
-            "ci: seed Join course issue form",
-        )
-        put_file(
-            org,
-            "welcome",
-            ".github/workflows/team-formation.yml",
-            _template("welcome/team-formation.yml").encode(),
-            "ci: seed team-formation workflow",
-        )
-        put_file(
-            org,
-            "welcome",
-            ".github/ISSUE_TEMPLATE/02-join-team.yml",
-            _template("welcome/ISSUE_TEMPLATE/02-join-team.yml").encode(),
-            "ci: seed Join team issue form",
-        )
-        # The forms were renamed to control the issue-chooser ordering (01-/02- prefix);
-        # retire the old filenames on live cohorts or the chooser shows both generations.
-        for stale in (
-            ".github/ISSUE_TEMPLATE/join.yml",
-            ".github/ISSUE_TEMPLATE/join-team.yml",
-        ):
-            delete_file(org, "welcome", stale, "ci: retire renamed issue form")
+        refresh_welcome_workflows(org)
         # The landing page a student sees on this public repo: what to do, and how. Its
         # link back to the issue chooser is org-specific, so the template carries `{org}`.
         # USER-owned (it is the cohort's front door, and faculty may reword it), so
@@ -549,10 +498,9 @@ def setup_cohort_extras(org: str) -> None:
             org,
             "welcome",
             "README.md",
-            _template("welcome/README.md").format(org=org).encode(),
+            template("welcome/README.md").format(org=org).encode(),
             "docs: seed welcome README (how to join)",
         )
-        log_ok("welcome repo workflows + Join forms up to date")
 
     if create_repo(
         org,
@@ -573,7 +521,7 @@ def setup_cohort_extras(org: str) -> None:
             org,
             "classroom-config",
             "students.csv",
-            _template("classroom-config/students.csv").encode(),
+            template("classroom-config/students.csv").encode(),
             "init: starter roster (fill with registrar data - see students.csv.sample)",
         )
         _seed_user_file(
@@ -591,7 +539,7 @@ def setup_cohort_extras(org: str) -> None:
             org,
             "classroom-config",
             "schedule.yml",
-            _template("classroom-config/schedule.yml")
+            template("classroom-config/schedule.yml")
             .format(tag=tag, year=year)
             .encode(),
             "docs: seed schedule.yml (release plan + due dates + exams)",
@@ -600,7 +548,7 @@ def setup_cohort_extras(org: str) -> None:
             org,
             "classroom-config",
             "people.yml",
-            _template("classroom-config/people.yml")
+            template("classroom-config/people.yml")
             .format(year=year, year_next=year + 1)
             .encode(),
             "docs: seed people.yml (this cohort's instructors/TAs)",
@@ -613,28 +561,28 @@ def setup_cohort_extras(org: str) -> None:
             org,
             "classroom-config",
             "README.md",
-            _template("classroom-config/README.md").encode(),
+            template("classroom-config/README.md").encode(),
             "docs: classroom-config schema + contract",
         )
         put_file(
             org,
             "classroom-config",
             "students.csv.sample",
-            _template("classroom-config/students.csv.sample").encode(),
+            template("classroom-config/students.csv.sample").encode(),
             "docs: sample students.csv (an enrolled student + an auditor)",
         )
         put_file(
             org,
             "classroom-config",
             "teams.csv.sample",
-            _template("classroom-config/teams.csv.sample").encode(),
+            template("classroom-config/teams.csv.sample").encode(),
             "docs: sample teams.csv (group assignments)",
         )
         put_file(
             org,
             "classroom-config",
             "grades/assignment-1.csv.sample",
-            _template("classroom-config/grades/assignment-1.csv.sample").encode(),
+            template("classroom-config/grades/assignment-1.csv.sample").encode(),
             "docs: sample grade table (individual + team-graded rows)",
         )
         # SYSTEM-owned dispatchers: refreshed on every run so fixes reach running cohorts.
@@ -642,14 +590,14 @@ def setup_cohort_extras(org: str) -> None:
             org,
             "classroom-config",
             ".github/workflows/dispatch-sync.yml",
-            _template("classroom-config/dispatch-sync.yml").encode(),
+            template("classroom-config/dispatch-sync.yml").encode(),
             "ci: seed dispatch-sync workflow",
         )
         put_file(
             org,
             "classroom-config",
             ".github/workflows/dispatch-sync-site.yml",
-            _template("classroom-config/dispatch-sync-site.yml").encode(),
+            template("classroom-config/dispatch-sync-site.yml").encode(),
             "ci: seed dispatch-sync-site workflow",
         )
         put_file(

@@ -640,16 +640,26 @@ jobs:
 
 def render_refresh() -> str:
     """Repopulate dropdowns, re-seed content actions, propagate the repo secret, and
-    rebuild the profile README across the course org."""
+    rebuild the profile README across the course org - on demand, and nightly.
+
+    No check-team gate: the cron has no actor to check, and manual dispatch already needs
+    write on this repo, which is the same thing check-team verifies."""
     return f"""name: Refresh actions
 
+# Every seeded workflow is frozen at the moment it was seeded, while the engine it calls is
+# always checked out from central main - so an org left alone drifts, until a stale button
+# calls engine code that has since moved. This re-seeds the org daily, so every org
+# converges on central within 24h with nobody pressing anything. The refresh is idempotent
+# and skips files whose content is unchanged, so a night with no central changes is silent.
+
 on:
+  schedule:
+    - cron: "27 5 * * *"
   workflow_dispatch: {{}}
 
 jobs:
-{_CHECK_TEAM}
   refresh:
-{_RUN_PREAMBLE}      - name: Refresh
+{_UNGATED_PREAMBLE}      - name: Refresh
         env:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
           DSL_BOT_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}

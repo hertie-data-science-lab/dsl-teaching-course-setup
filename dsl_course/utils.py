@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import re
 import subprocess
@@ -505,7 +506,11 @@ def create_repo(
 def put_file(org: str, repo: str, path: str, content: bytes, message: str) -> bool:
     """Create or update a file via the Contents API.
 
-    Updates require the existing file's SHA; we fetch it first if present.
+    Updates require the existing file's SHA; we fetch it first if present. That SHA is
+    git's blob sha, so comparing it with the blob sha of `content` computed locally tells
+    us - with no extra API call - whether the write would change anything: an identical
+    file is left alone. Callers may therefore run on a schedule without filling repos with
+    no-op commits.
     """
     b64 = base64.b64encode(content).decode()
     args = [
@@ -526,6 +531,11 @@ def put_file(org: str, repo: str, path: str, content: bytes, message: str) -> bo
         ".sha",
     )
     if code == 0 and sha:
+        blob_sha = hashlib.sha1(
+            b"blob " + str(len(content)).encode() + b"\0" + content
+        ).hexdigest()
+        if sha == blob_sha:
+            return True
         args += ["--field", f"sha={sha}"]
     code, out = gh(*args)
     if code == 0:

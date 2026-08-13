@@ -20,9 +20,12 @@ it, and are imported from there (see `__all__` for the few names still reached f
 
 CLI:
   refresh --course-org X   re-render the content actions into every course repo with
-                           fresh cohort/course-source-repo/assignment dropdowns, and rebuild
-                           the org profile README. (Run by the Refresh-actions and
-                           Bootstrap-cohort workflows.)
+                           fresh cohort/course-source-repo/assignment dropdowns, rebuild
+                           the org profile README, and re-push each registered cohort's
+                           welcome workflows. (Run by the Bootstrap-cohort workflow, and by
+                           Refresh actions - on demand and on its nightly cron, which is
+                           how an org converges on central without anyone pressing
+                           anything.)
 """
 
 from __future__ import annotations
@@ -43,6 +46,7 @@ from .discovery import (
 )
 from .profile_readme import update_profile_readme
 from .utils import delete_file, gh, log_ok, log_step, put_file
+from .welcome import refresh_welcome_workflows
 from .workflows_render import (
     render_bootstrap_cohort,
     render_central_release,
@@ -206,8 +210,9 @@ def _propagate_repo_secret(course_org: str, repos: list[str]) -> None:
 def refresh(course_org: str) -> int:
     """Refresh both layers: the run-from-repo content actions in every content repo,
     AND the central org-level workflows in .github; repopulate dropdowns; rebuild the
-    org profile README; and (Free-plan workaround) propagate the token as a repo secret
-    so private content repos can authenticate."""
+    org profile README; re-push every registered cohort's welcome workflows; and
+    (Free-plan workaround) propagate the token as a repo secret so private content repos
+    can authenticate."""
     cohorts = discover_cohorts(course_org)
     targets = discover_content_repos(course_org)
     assignments = discover_assignments(
@@ -221,6 +226,11 @@ def refresh(course_org: str) -> int:
     _propagate_repo_secret(course_org, targets)
     seed_github_workflows(course_org)
     update_profile_readme(course_org)
+    # A cohort's onboarding workflows are seeded once, at Bootstrap cohort, and would
+    # otherwise stay frozen for the whole semester while the engine they call moves on.
+    log_step(f"Refreshing welcome workflows in {len(cohorts)} cohort org(s)")
+    for cohort in cohorts:
+        refresh_welcome_workflows(cohort)
     return 0
 
 

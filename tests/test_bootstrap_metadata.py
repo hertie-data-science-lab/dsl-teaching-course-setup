@@ -4,7 +4,7 @@ org's .github/dsl-course.yml is only a pointer back to it - its schedule lives i
 classroom-config/schedule.yml (seeded from templates/classroom-config/schedule.yml).
 
 The seeded content itself lives in real files under templates/, read at runtime by
-bc._template - so these also pin what a fresh cohort's config repo actually receives."""
+welcome.template - so these also pin what a fresh cohort's config repo actually receives."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import re
 from pathlib import Path
 
 from dsl_course import bootstrap_course as bc
-from dsl_course import roster
+from dsl_course import roster, welcome
 
 
 def test_course_metadata_carries_faculty_block():
@@ -52,7 +52,7 @@ def test_parse_handles_splits_comma_and_space():
 def test_schedule_yml_seed_is_commented_and_covers_every_field():
     # Mostly-commented, like the old cohort dsl-course.yml schedule block - faculty
     # uncomment what they want to pin.
-    schedule = bc._template("classroom-config/schedule.yml")
+    schedule = welcome.template("classroom-config/schedule.yml")
     assert all(
         line.startswith("#") or not line.strip() for line in schedule.splitlines()
     )
@@ -78,7 +78,7 @@ def test_schedule_yml_seed_is_commented_and_covers_every_field():
 def test_classroom_readme_points_to_course_org_for_people():
     # There is no cohort dsl-course.yml any more - the README is the one place that
     # still tells faculty where people/instructors are actually managed.
-    readme = bc._template("classroom-config/README.md")
+    readme = welcome.template("classroom-config/README.md")
     assert "course org" in readme
     assert "schedule.yml" in readme
     assert "schedule.csv" not in readme
@@ -89,11 +89,11 @@ def test_starter_roster_seeds_the_full_column_set():
     # must be exactly roster.FIELDS - a short header (no `enrol_code`/`role`) sends faculty
     # looking for code-based onboarding and auditors that the columns don't offer. The
     # live file is header-only; the worked example rows live in students.csv.sample.
-    starter = bc._template("classroom-config/students.csv")
+    starter = welcome.template("classroom-config/students.csv")
     assert tuple(starter.splitlines()[0].split(",")) == roster.FIELDS
     assert roster.parse(starter) == []  # header-only: nobody to enrol by accident
     enrolled, auditor = roster.parse(
-        bc._template("classroom-config/students.csv.sample")
+        welcome.template("classroom-config/students.csv.sample")
     )
     assert enrolled.is_enrolled and not enrolled.onboarded
     assert auditor.is_auditor and not auditor.onboarded
@@ -102,7 +102,7 @@ def test_starter_roster_seeds_the_full_column_set():
 def test_classroom_readme_documents_every_roster_column():
     # The README's roster table is what faculty read instead of the schema doc; a column
     # missing from it is a column nobody fills in.
-    readme = bc._template("classroom-config/README.md")
+    readme = welcome.template("classroom-config/README.md")
     documented = set(re.findall(r"^\| (\w+) \|", readme, re.MULTILINE))
     assert set(roster.FIELDS) <= documented
 
@@ -110,11 +110,13 @@ def test_classroom_readme_documents_every_roster_column():
 def test_every_seeded_template_path_resolves():
     # The seeded content is read from disk at bootstrap time, so a typo'd or renamed path
     # would only surface mid-bootstrap against a real org.
-    source = Path(bc.__file__).read_text()
-    rels = set(re.findall(r"_template\(\s*[\"']([^\"']+)[\"']\s*\)", source))
+    # Both seeding modules read templates: bootstrap_course for the course/classroom-config
+    # files, welcome for the onboarding workflows it also re-pushes on every refresh.
+    source = Path(bc.__file__).read_text() + Path(welcome.__file__).read_text()
+    rels = set(re.findall(r"\btemplate\(\s*[\"']([^\"']+)[\"']\s*\)", source))
     assert len(rels) >= 12
     for rel in sorted(rels):
-        assert (bc.TEMPLATES / rel).is_file(), f"missing template: {rel}"
+        assert (welcome.TEMPLATES / rel).is_file(), f"missing template: {rel}"
 
 
 def test_cohort_metadata_carries_course_pointer():
