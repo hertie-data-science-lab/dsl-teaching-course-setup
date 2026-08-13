@@ -18,7 +18,7 @@ import argparse
 import json
 import sys
 
-from .utils import gh, gh_json, log_err, log_ok, put_file, set_repo_topics
+from .utils import gh, gh_json, log_err
 
 COURSE_HUB_TOPIC = "dsl-course-hub"
 
@@ -144,71 +144,6 @@ def update_file(path: str, new_section: str) -> bool:
     return True
 
 
-def _existing_topics(org: str) -> list[str]:
-    """Return the current topic list on an org's .github repo (empty on 404)."""
-    code, out = gh(
-        "api",
-        f"repos/{org}/.github/topics",
-        "-H",
-        "Accept: application/vnd.github+json",
-        "--jq",
-        ".names",
-    )
-    if code != 0 or not out:
-        return []
-    try:
-        parsed = json.loads(out)
-        return parsed if isinstance(parsed, list) else []
-    except json.JSONDecodeError:
-        return []
-
-
-def tag_org(
-    org: str,
-    org_name: str = "",
-    course_name: str = "",
-    course_code: str = "",
-) -> bool:
-    """Retroactively mark an existing course org as discoverable.
-
-    Ensures:
-      - `<org>/.github` repo exists (created empty if not)
-      - `dsl-course.yml` is present with the supplied metadata
-      - topics on `<org>/.github` include `dsl-course-hub` (additive, not replacing)
-    """
-    # Check / create .github repo
-    code, _ = gh("api", f"repos/{org}/.github")
-    if code != 0:
-        log_err(f"{org}/.github does not exist - bootstrap the org first")
-        return False
-
-    metadata = (
-        f"org: {org}\n"
-        f"org_name: {org_name or org}\n"
-        f"course_name: {course_name}\n"
-        f"course_code: {course_code or ''}\n"
-    )
-    if not put_file(
-        org,
-        ".github",
-        "dsl-course.yml",
-        metadata.encode(),
-        "chore: add DSL course metadata for discovery tooling",
-    ):
-        return False
-
-    merged = set(_existing_topics(org))
-    merged.add(COURSE_HUB_TOPIC)
-    if course_code:
-        merged.add(f"course-{course_code.lower()}")
-
-    if not set_repo_topics(org, ".github", list(merged)):
-        return False
-
-    log_ok(f"tagged {org}")
-    return True
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -223,32 +158,7 @@ def main() -> int:
         help="Path to a Markdown file. Replaces content between "
         f"{AUTOGEN_START} and {AUTOGEN_END}.",
     )
-    parser.add_argument(
-        "--retrofit",
-        default=None,
-        help="Path to a YAML file listing orgs to tag (one-shot). "
-        "Each entry needs keys: org, org_name, course_name, course_code.",
-    )
     args = parser.parse_args()
-
-    if args.retrofit:
-        from pathlib import Path
-
-        import yaml
-
-        entries = yaml.safe_load(Path(args.retrofit).read_text()) or []
-        failed = 0
-        for e in entries:
-            ok = tag_org(
-                e["org"],
-                e.get("org_name", ""),
-                e.get("course_name", ""),
-                e.get("course_code", ""),
-            )
-            if not ok:
-                failed += 1
-        print(f"retrofit complete: {len(entries) - failed}/{len(entries)} tagged")
-        return 0 if failed == 0 else 1
 
     orgs = discover_course_orgs()
 
