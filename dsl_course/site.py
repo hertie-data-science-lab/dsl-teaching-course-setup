@@ -457,7 +457,7 @@ def _assignment_entry(
         f"due_event:\n"
         f"    type: due\n"
         f"    date: {due}\n"
-        f'    description: "{title} due"\n'
+        f'    description: "{title}"\n'
         f"---\n"
         f"{body or 'Assignment brief.'}\n\n"
         f"_Your private `{slug}-<your-handle>` repo appears in `{course_org}`'s cohort "
@@ -580,16 +580,18 @@ def _event_entry(event: schedule.Event, fallback: date) -> str:
     )
 
 
-def _term_date_entry(description: str, when: date) -> str:
-    """A semester-boundary row (the theme's schedule_row_term_date.html). `description` is
-    the only text the row shows, and `hide_time` suppresses the placeholder clock time - a
-    term boundary is a whole day, not a 09:00 appointment."""
+def _term_date_entry(name: str, when: date) -> str:
+    """A semester-boundary row (the theme's schedule_row_term_date.html). `name` fills the
+    row's event column and is the only text it shows, so the description stays empty;
+    `hide_time` suppresses the placeholder clock time - a term boundary is a whole day,
+    not a 09:00 appointment."""
     return (
         f"---\n"
         f"type: term_date\n"
         f"date: {_iso_when(when)}\n"
         f"hide_time: true\n"
-        f'description: "{_q(description)}"\n'
+        f'name: "{_q(name)}"\n'
+        f'description: ""\n'
         f"---\n"
     )
 
@@ -771,11 +773,11 @@ def sync_site(course_org: str, cohort_org: str) -> int:
         # The term's own boundaries, when the schedule pins them.
         if sched.semester_start:
             event_entries["term-start.md"] = _term_date_entry(
-                "Semester begins", sched.semester_start
+                "Term starts", sched.semester_start
             )
         if sched.semester_end:
             event_entries["term-end.md"] = _term_date_entry(
-                "Semester ends", sched.semester_end
+                "Term ends", sched.semester_end
             )
 
         return _SitePlan(
