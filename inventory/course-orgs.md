@@ -12,15 +12,13 @@ _Auto-generated from GitHub. Discovered via topic `dsl-course-hub` on each org's
 
 | Org | Course | Code |
 | --- | --- | --- |
-| [DSL-Demo-Course-E1234](https://github.com/DSL-Demo-Course-E1234) | DSL-Demo-Course-E1234 | E1234 |
-| [DSL-Demo-f2025](https://github.com/DSL-Demo-f2025) | DSL-Demo-f2025 | - |
-| [DSL-Demo-f2027](https://github.com/DSL-Demo-f2027) | DSL-Demo-f2027 | - |
+| [DSL-Demo-Course-E1234](https://github.com/DSL-Demo-Course-E1234) | Machine Learning Fundamentals (Demo) | E1234 |
 | [Hertie-DSL-Demo](https://github.com/Hertie-DSL-Demo) | Deep Learning (Demo) | GRAD-DEMO |
 | [Hertie-School-Deep-Learning-EXAMPLE](https://github.com/Hertie-School-Deep-Learning-EXAMPLE) | Deep Learning | - |
 | [Hertie-School-Example-Course](https://github.com/Hertie-School-Example-Course) | Example Course (prototype) | - |
+| [Hertie-School-Maths-Data-Science-C23](https://github.com/Hertie-School-Maths-Data-Science-C23) | Maths for Data Science | GRAD-C23 |
+| [intro-to-data-science-c11](https://github.com/intro-to-data-science-c11) | Introduction to Data Science | C11 |
 | [Intro-to-Data-Science-E1339](https://github.com/Intro-to-Data-Science-E1339) | Intro to Data Science | GRAD-E1339 |
-| [Intro-to-Data-Science-f2025](https://github.com/Intro-to-Data-Science-f2025) | - | - |
-| [Intro-to-Data-Science-f2026](https://github.com/Intro-to-Data-Science-f2026) | - | - |
 | [THROWAWAY-HERTIE-1](https://github.com/THROWAWAY-HERTIE-1) | THROWAWAY-HERTIE-1 | - |
 | [THROWAWAY-HERTIE-COURSE-2](https://github.com/THROWAWAY-HERTIE-COURSE-2) | THROWAWAY-HERTIE-COURSE-2 | - |
 | [THROWAWAY-HERTIE-F2026](https://github.com/THROWAWAY-HERTIE-F2026) | THROWAWAY-HERTIE-F2026 | - |
