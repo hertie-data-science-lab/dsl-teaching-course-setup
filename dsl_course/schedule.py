@@ -39,7 +39,7 @@ offset (e.g. `...T14:00+02:00`) is honoured as written.
 
 Parsing is total but never silent: an entry that is valid YAML yet not a valid schedule
 entry (a typo'd key, a missing date) is dropped so the rest of the term still parses, and
-recorded in `Schedule.dropped` for `load` to log, `--validate` to fail on, and Show status
+recorded in `Schedule.dropped` for `load` to log, `--validate` to fail on, and Check cohort setup
 to count.
 
 Usage:
@@ -255,7 +255,7 @@ class Schedule:
     # Every entry this parse threw away, one human-readable line each, naming the YAML
     # path and what it costs the cohort. A malformed entry can't be rescued - it has no
     # date, or no source - but it must never vanish quietly: `load` logs each of these,
-    # `--validate` exits non-zero on them, and Show status counts them. See `_drop`.
+    # `--validate` exits non-zero on them, and Check cohort setup counts them. See `_drop`.
     dropped: list[str] = field(default_factory=list)
 
 
@@ -511,7 +511,7 @@ def load(cohort_org: str) -> Schedule:
     if sched.dropped:
         # Loud, because this is the failure faculty cannot see: the file is valid YAML and
         # the run goes green, but an entry they wrote is not in the plan. Every caller
-        # comes through here - the hourly scheduler, the site sync, Show status - so
+        # comes through here - the hourly scheduler, the site sync, Check cohort setup - so
         # saying it once here says it everywhere.
         log_err(
             f"{cohort_org}/{CONFIG_REPO}/{SCHEDULE_PATH}: {len(sched.dropped)} entry/ies "

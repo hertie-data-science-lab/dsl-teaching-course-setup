@@ -438,7 +438,7 @@ Self-contained - workflows and their Python implementation both live in this rep
   - `sync_membership` - the one consolidated entrypoint (roster + teams + faculty) behind the
     **Sync membership** button/cron/dispatch.
   - `roster` / `teams` - read `students.csv` / `teams.csv`.
-  - `status` - the **Show status** per-cohort checklist.
+  - `status` - the **Check cohort setup** per-cohort checklist.
   - `list_orgs` - enumerate DSL course orgs by topic; drives `refresh-inventory.yml`.
   - `utils` - shared `gh`/git helpers with rate-limit backoff.
 - `templates/` - the files bootstrap seeds into a fresh org, verbatim from disk

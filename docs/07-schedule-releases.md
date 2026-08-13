@@ -179,14 +179,14 @@ The one caveat: already-fired **one-shot** actions don't rewind - a release alre
     - `python3 -m dsl_course.schedule --cohort-org DSL-Demo-f2026 --validate` names every dropped entry and exits non-zero if there is one.
     - Without `--validate` it prints the schedule *as parsed*, as JSON.
 2. **Read the counts.** 
-    - **Show status** reports the release plan and the term dates, and flags `N entry/ies DROPPED` on both schedule rows.
+    - **Check cohort setup** reports the release plan and the term dates, and flags `N entry/ies DROPPED` on both schedule rows.
 3. **Dry-run the cron.** 
     - Run **Scheduled release** by hand 
     - `dry_run` defaults to **`true`**, so it lists what *would* open and releases nothing
 
 ## Dropped entries
 
-An entry that is valid YAML but not a valid *schedule* entry is **dropped**: it cannot be run, so the rest of the term parses without it. This is the one fault a green run hides, so every drop is named in the run log, counted on **Show status**, and turned into a non-zero exit by `--validate`.
+An entry that is valid YAML but not a valid *schedule* entry is **dropped**: it cannot be run, so the rest of the term parses without it. This is the one fault a green run hides, so every drop is named in the run log, counted on **Check cohort setup**, and turned into a non-zero exit by `--validate`.
 
 | Fault | What the cohort loses |
 |---|---|

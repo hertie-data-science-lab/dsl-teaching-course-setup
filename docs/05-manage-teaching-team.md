@@ -102,7 +102,7 @@ Worked example: [`example-course/cohort-org/people.yml`](../example-course/cohor
 ## What the access actually reaches
 
 `instructors-<tag>` gets:
-1. **push** on the course org's **`.github`** - which is what makes the workflow buttons (Release materials, Release assignment, Refresh actions, Show status…) visible and runnable for them
+1. **push** on the course org's **`.github`** - which is what makes the workflow buttons (Release materials, Release assignment, Refresh actions, Check cohort setup…) visible and runnable for them
 2. every course-org repo whose **name ends their associated `-<tag>`** (`course-materials-f2026`, `assignment-1-f2026`, `lecture-code-f2026`).
 3. Cohort-side they also get write on `classroom-config` and `welcome`, so they can edit the roster, schedule and team lists.
 
