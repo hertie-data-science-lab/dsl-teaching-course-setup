@@ -175,28 +175,26 @@ The one caveat: already-fired **one-shot** actions don't rewind - a release alre
 
 ## If you want to verify your schedule before trusting it
 
-1. **Dry-run the cron.** 
+1. **Validate it.**
+    - `python3 -m dsl_course.schedule --cohort-org DSL-Demo-f2026 --validate` names every dropped entry and exits non-zero if there is one.
+    - Without `--validate` it prints the schedule *as parsed*, as JSON.
+2. **Read the counts.** 
+    - **Show status** reports the release plan and the term dates, and flags `N entry/ies DROPPED` on both schedule rows.
+3. **Dry-run the cron.** 
     - Run **Scheduled release** by hand 
     - `dry_run` defaults to **`true`**, so it lists what *would* open and releases nothing
-2. **Dump the parsed schedule.**
-    - `python3 -m dsl_course.schedule --cohort-org DSL-Demo-f2026` prints the schedule *as parsed*, as JSON. 
-    - A mistyped entry simply isn't there - which is how you catch a silent drop.
-3. **Read the counts.** 
-  - **Show status** reports the release plan as *"N scheduled release(s), M action(s)"*, then the term dates as a start date plus counts of due dates and calendar events. Counts lower than what you wrote means something didn't parse.
 
-## Silent failures
+## Dropped entries
 
-> **The schedule never errors - it drops.** Nothing below fails a run:
-> - a malformed or missing **`event_datetime`** → that whole entry is dropped, in
->   `releases:` and in `events:` alike;
-> - a malformed **`deploy_datetime`** → ignored, and that copy ships at the `event_datetime`;
-> - a malformed or missing **`due_datetime`** → the whole `assignments:` entry is dropped, and the
->   grading deadline then falls back to *today* at grading time;
-> - a malformed **`grading_datetime`** → ignored, and the deadline falls back to `due_datetime`;
-> - an unknown or misspelt **`timezone:`** → silently falls back to `Europe/Berlin`;
-> - a `deploy` entry missing **`course_source_repo`** or **`course_source_path`** → silently skipped.
->
-> Which is why you are recommended to run the checks above.
+An entry that is valid YAML but not a valid *schedule* entry is **dropped**: it cannot be run, so the rest of the term parses without it. This is the one fault a green run hides, so every drop is named in the run log, counted on **Show status**, and turned into a non-zero exit by `--validate`.
+
+| Fault | What the cohort loses |
+|---|---|
+| no valid `event_datetime` on a `releases:` or `events:` entry | nothing deploys, and no row appears on the site |
+| no valid `due_datetime` on an `assignments:` entry | no deadline, no submission snapshot, no autograding |
+| a `deploy` item missing `course_source_repo` or `course_source_path` | that one copy never ships |
+
+Tolerated rather than dropped: a malformed `deploy_datetime` (the copy ships at the `event_datetime`), a malformed `grading_datetime` (falls back to `due_datetime`), and an unknown `timezone:` (falls back to `Europe/Berlin`, and is reported alongside the drops).
 
 ## Timezones and bare dates
 
