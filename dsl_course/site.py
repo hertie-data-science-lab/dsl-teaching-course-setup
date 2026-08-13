@@ -509,9 +509,9 @@ def _deploy_section(deploy: schedule.Deploy) -> str:
     or the destination repo itself when the path is a bare session folder (a release into
     a repo that IS one section). The same `subpath or repo` shape discovery reports for
     an already-released folder, so both sides classify a row the same way."""
-    dest = (deploy.dest_path or deploy.source_path).strip("/")
+    dest = (deploy.cohort_dest_path or deploy.course_source_path).strip("/")
     head, sep, _ = dest.partition("/")
-    return head if sep else deploy.dest_repo
+    return head if sep else deploy.cohort_dest_repo
 
 
 def _session_dates(sched: schedule.Schedule) -> dict[tuple[str, str], datetime]:
@@ -527,7 +527,7 @@ def _session_dates(sched: schedule.Schedule) -> dict[tuple[str, str], datetime]:
         if release.when is None:
             continue  # event_datetime: tbc - undated, can't place a session
         for d in release.deploy:
-            folder = (d.dest_path or d.source_path).rstrip("/").rsplit("/", 1)[-1]
+            folder = (d.cohort_dest_path or d.course_source_path).rstrip("/").rsplit("/", 1)[-1]
             n = session_number(folder)
             if n is None:
                 continue

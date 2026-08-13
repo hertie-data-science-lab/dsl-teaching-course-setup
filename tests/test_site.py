@@ -42,7 +42,8 @@ def test_session_dates_maps_folder_ordinal_and_section_to_release_when():
     sw = site._session_dates(s)
     assert sw[("2", "lecture")] == datetime(2026, 9, 15, 14, 0, tzinfo=BERLIN)
     assert sw[("2", "lab")] == datetime(2026, 9, 15, 14, 0, tzinfo=BERLIN)
-    # keyed off the dest_path ordinal; a bare dest folder takes its section from dest_repo
+    # keyed off the cohort_dest_path ordinal; a bare dest folder takes its section from
+    # cohort_dest_repo
     assert sw[("1", "lecture")] == datetime(2026, 9, 8, 14, 0, tzinfo=BERLIN)
 
 

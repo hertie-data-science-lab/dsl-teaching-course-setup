@@ -64,10 +64,10 @@ def test_parse_full_schedule():
                 "event_datetime": "2026-09-15T14:00",
                 "deploy": [
                     {
-                        "source_repo": "cm-f2026",
-                        "source_path": "lectures/02_intro",
-                        "dest_repo": "materials",
-                        "dest_path": "lectures/02_intro",
+                        "course_source_repo": "cm-f2026",
+                        "course_source_path": "lectures/02_intro",
+                        "cohort_dest_repo": "materials",
+                        "cohort_dest_path": "lectures/02_intro",
                     }
                 ],
             },
@@ -126,12 +126,12 @@ def test_release_without_when_is_dropped():
     assert [r.label for r in parse(meta).releases] == ["ok"]
 
 
-def test_deploy_accepts_single_mapping_defaults_dest_path_none():
+def test_deploy_accepts_single_mapping_defaults_cohort_dest_path_none():
     meta = {
         "releases": {
             "s": {
                 "event_datetime": "2026-09-01",
-                "deploy": {"source_repo": "cm", "source_path": "lectures/00_x"},
+                "deploy": {"course_source_repo": "cm", "course_source_path": "lectures/00_x"},
             }
         }
     }
@@ -143,7 +143,23 @@ def test_deploy_entry_missing_source_is_skipped():
         "releases": {
             "s": {
                 "event_datetime": "2026-09-01",
-                "deploy": [{"source_repo": "cm"}, {"source_path": "x"}],
+                "deploy": [{"course_source_repo": "cm"}, {"course_source_path": "x"}],
+            }
+        }
+    }
+    assert parse(meta).releases[0].deploy == []
+
+
+def test_deploy_entry_using_the_old_unprefixed_keys_is_skipped():
+    # The org prefixes are a hard rename with no alias handling, so a cohort whose
+    # schedule.yml predates it must lose the copy outright rather than half-parse it.
+    meta = {
+        "releases": {
+            "s": {
+                "event_datetime": "2026-09-01",
+                "deploy": [
+                    {"source_repo": "cm", "source_path": "lectures/00_x", "dest_repo": "materials"}
+                ],
             }
         }
     }
@@ -277,11 +293,11 @@ def test_deploy_datetime_parses_and_defaults_to_none():
                 "event_datetime": "2026-09-15T10:00",
                 "deploy": [
                     {
-                        "source_repo": "cm-f2026",
-                        "source_path": "lectures/02_intro",
+                        "course_source_repo": "cm-f2026",
+                        "course_source_path": "lectures/02_intro",
                         "deploy_datetime": "2026-09-15T09:00",
                     },
-                    {"source_repo": "cm-f2026", "source_path": "readings/02_intro"},
+                    {"course_source_repo": "cm-f2026", "course_source_path": "readings/02_intro"},
                 ],
             }
         }
@@ -314,8 +330,8 @@ def test_malformed_deploy_datetime_falls_back_to_the_event_datetime():
                 "event_datetime": "2026-09-15T10:00",
                 "deploy": [
                     {
-                        "source_repo": "cm-f2026",
-                        "source_path": "lectures/02_intro",
+                        "course_source_repo": "cm-f2026",
+                        "course_source_path": "lectures/02_intro",
                         "deploy_datetime": "not-a-date",
                     }
                 ],
@@ -467,8 +483,8 @@ materials_releases:
   lab-1:
     event_datetime: 2026-09-03T14:00
     deploy:
-      - {source_repo: course-materials-f2026,
-        source_path: labs/01_lab
+      - {course_source_repo: course-materials-f2026,
+        course_source_path: labs/01_lab
 """
 
 
@@ -499,8 +515,8 @@ def test_a_wellformed_schedule_is_untouched_by_the_yaml_guard(monkeypatch, capsy
         "  lab-1:\n"
         "    event_datetime: 2026-09-03T14:00\n"
         "    deploy:\n"
-        "      - source_repo: course-materials-f2026\n"
-        "        source_path: labs/01_lab\n"
+        "      - course_source_repo: course-materials-f2026\n"
+        "        course_source_path: labs/01_lab\n"
     )
     monkeypatch.setattr(S, "get_file_content", lambda org, repo, path: good)
 
@@ -508,7 +524,7 @@ def test_a_wellformed_schedule_is_untouched_by_the_yaml_guard(monkeypatch, capsy
 
     assert sched.semester_start == date(2026, 9, 7)
     assert [r.label for r in sched.releases] == ["lab-1"]
-    assert sched.releases[0].deploy[0].source_path == "labs/01_lab"
+    assert sched.releases[0].deploy[0].course_source_path == "labs/01_lab"
     assert capsys.readouterr().err == ""
 
 

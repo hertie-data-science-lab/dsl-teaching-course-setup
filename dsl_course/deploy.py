@@ -1,10 +1,10 @@
 """dsl-course deploy -- publish path(s) from a course-org source repo into a cohort-org
 repo, additively + idempotently:
 
-    source/<repo>/<source_path>          (a folder - e.g. lectures/02_intro - or a file)
+    source/<repo>/<course_source_path>          (a folder - e.g. lectures/02_intro - or a file)
             |  copy that path
             v
-    cohort/<dest_repo>/<dest_path>       (private + students read; accumulates over time)
+    cohort/<cohort_dest_repo>/<cohort_dest_path>       (private + students read; accumulates over time)
 
 `deploy_many` is the batch core AND the single executor of every release in the system:
 it clones each unique source repo and each unique dest repo ONCE per run and applies every
@@ -14,14 +14,14 @@ clones it once, not 27 times. Both callers arrive here - the hourly scheduler
 manual "Release materials" button (via `main` below, whose five inputs are deliberately the
 same five fields as a `deploy:` entry).
 
-The button's `source_path`/`dest_path` are comma-separated PARALLEL lists paired by index
-(parse_path_pairs) - one Deploy per pair, one deploy_many call for the batch.
+The button's `course_source_path`/`cohort_dest_path` are comma-separated PARALLEL lists
+paired by index (parse_path_pairs) - one Deploy per pair, one deploy_many call for the batch.
 
 Usage:
     python3 -m dsl_course.deploy \\
-        --source-org COURSE --source-repo course-materials-f2026 \\
-        --cohort-org COHORT --dest-repo materials \\
-        --source-path "lectures/02_intro,labs/02_lab" [--dest-path "week02/lecture,week02/lab"]
+        --source-org COURSE --course-source-repo course-materials-f2026 \\
+        --cohort-org COHORT --cohort-dest-repo materials \\
+        --course-source-path "lectures/02_intro,labs/02_lab" [--cohort-dest-path "week02/lecture,week02/lab"]
 """
 
 from __future__ import annotations
@@ -56,8 +56,9 @@ def deploy_many(
 ) -> tuple[int, bool]:
     """Apply a batch of Deploy copies, cloning each unique source and dest repo ONCE.
 
-    Every deploy's `source_path` is copied from its (course-org) `source_repo` into its
-    (cohort-org) `dest_repo` at `dest_path` (default: mirror `source_path`). Each touched
+    Every deploy's `course_source_path` is copied from its (course-org) `course_source_repo`
+    into its (cohort-org) `cohort_dest_repo` at `cohort_dest_path` (default: mirror
+    `course_source_path`). Each touched
     dest repo gets a single commit+push covering all its copies; a dest with no net change
     is left alone (idempotent). Returns `(errors, changed)` - `errors` counts copies that
     could not be applied, `changed` is True if anything was actually pushed. `sync` runs a
@@ -74,7 +75,7 @@ def deploy_many(
 
         # 1. clone each unique source repo once (course org)
         src_dirs: dict[str, Path] = {}
-        for repo in sorted({d.source_repo for d in deploys}):
+        for repo in sorted({d.course_source_repo for d in deploys}):
             sd = root / "src" / repo
             if gh("repo", "clone", f"{source_org}/{repo}", str(sd), "--", "-q")[0] != 0:
                 log_err(f"could not clone source {source_org}/{repo}")
@@ -83,7 +84,7 @@ def deploy_many(
 
         # 2. clone (create if needed) each unique dest repo once (cohort org)
         dest_dirs: dict[str, Path] = {}
-        for repo in sorted({d.dest_repo for d in deploys}):
+        for repo in sorted({d.cohort_dest_repo for d in deploys}):
             create_repo(
                 cohort_org,
                 repo,
@@ -102,31 +103,31 @@ def deploy_many(
         errors += sum(
             1
             for d in deploys
-            if d.source_repo not in src_dirs or d.dest_repo not in dest_dirs
+            if d.course_source_repo not in src_dirs or d.cohort_dest_repo not in dest_dirs
         )
 
         # 3. apply every copy against the already-cloned trees
         touched: set[str] = set()
         for d in deploys:
-            if d.source_repo not in src_dirs or d.dest_repo not in dest_dirs:
+            if d.course_source_repo not in src_dirs or d.cohort_dest_repo not in dest_dirs:
                 continue  # its source/dest failed to clone (already counted)
-            src_path = d.source_path.strip("/")
-            dest_path = (d.dest_path or d.source_path).strip("/") or src_path
-            srcp = src_dirs[d.source_repo] / src_path
+            src_path = d.course_source_path.strip("/")
+            dest_path = (d.cohort_dest_path or d.course_source_path).strip("/") or src_path
+            srcp = src_dirs[d.course_source_repo] / src_path
             if not srcp.exists():
                 log_err(
-                    f"`{src_path}` not found in {source_org}/{d.source_repo} - skipped."
+                    f"`{src_path}` not found in {source_org}/{d.course_source_repo} - skipped."
                 )
                 errors += 1
                 continue
-            destp = dest_dirs[d.dest_repo] / dest_path
+            destp = dest_dirs[d.cohort_dest_repo] / dest_path
             if srcp.is_dir():
                 shutil.copytree(srcp, destp, dirs_exist_ok=True)
             else:
                 destp.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(srcp, destp)
-            log_ok(f"+ {d.dest_repo}/{dest_path}")
-            touched.add(d.dest_repo)
+            log_ok(f"+ {d.cohort_dest_repo}/{dest_path}")
+            touched.add(d.cohort_dest_repo)
 
         # 4. one commit + push per touched dest (skip if it has no net change)
         for repo in sorted(touched):
@@ -163,22 +164,22 @@ def parse_path_pairs(source_paths: str, dest_paths: str = "") -> list[tuple[str,
     """Pair the Release materials button's two comma-separated lists by index.
 
     A blank `dest_paths` mirrors every source path (`None` dest, exactly what an omitted
-    `dest_path:` means in schedule.yml). Otherwise the counts MUST match: unlike the
+    `cohort_dest_path:` means in schedule.yml). Otherwise the counts MUST match: unlike the
     schedule (which drops what it can't pair, on an unattended cron), a button run has an
     operator watching it, so a mismatch is a loud ValueError naming both counts rather
     than a silently short release. Surrounding whitespace is stripped and empty items
     (a trailing comma) are ignored on both sides."""
     sources = _items(source_paths)
     if not sources:
-        raise ValueError("--source-path is empty")
+        raise ValueError("--course-source-path is empty")
     dests = _items(dest_paths)
     if not dests:
         return [(s, None) for s in sources]
     if len(dests) != len(sources):
         raise ValueError(
-            f"{len(sources)} source_paths but {len(dests)} dest_paths - give one "
-            f"dest_path per source_path (paired in order), or leave dest_path blank "
-            f"to mirror every source_path"
+            f"{len(sources)} course_source_paths but {len(dests)} cohort_dest_paths - give "
+            f"one cohort_dest_path per course_source_path (paired in order), or leave "
+            f"cohort_dest_path blank to mirror every course_source_path"
         )
     return list(zip(sources, dests))
 
@@ -187,45 +188,45 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source-org", required=True, help="Course org (source)")
     parser.add_argument(
-        "--source-repo", required=True, help="Source repo holding the path(s)"
+        "--course-source-repo", required=True, help="Source repo holding the path(s)"
     )
     parser.add_argument("--cohort-org", required=True, help="Cohort org (target)")
     parser.add_argument(
-        "--dest-repo",
+        "--cohort-dest-repo",
         default="materials",
         help="Target repo in the cohort org, created if missing (default: materials)",
     )
     parser.add_argument(
-        "--source-path",
+        "--course-source-path",
         required=True,
         help="Source path(s) to release - a folder/file, or a comma-separated list",
     )
     parser.add_argument(
-        "--dest-path",
+        "--cohort-dest-path",
         default="",
-        help="Destination path(s), paired with --source-path by index "
-        "(default: mirror each --source-path)",
+        help="Destination path(s), paired with --course-source-path by index "
+        "(default: mirror each --course-source-path)",
     )
     args = parser.parse_args()
 
-    dest_repo = args.dest_repo.strip() or "materials"
-    if (args.source_org, args.source_repo) == (args.cohort_org, dest_repo):
+    dest_repo = args.cohort_dest_repo.strip() or "materials"
+    if (args.source_org, args.course_source_repo) == (args.cohort_org, dest_repo):
         log_err("source and target must differ.")
         return 1
     try:
-        pairs = parse_path_pairs(args.source_path, args.dest_path)
+        pairs = parse_path_pairs(args.course_source_path, args.cohort_dest_path)
     except ValueError as e:
         log_err(f"{e}.")
         return 1
 
     log_step(
-        f"Releasing {len(pairs)} path(s) from {args.source_org}/{args.source_repo} -> "
+        f"Releasing {len(pairs)} path(s) from {args.source_org}/{args.course_source_repo} -> "
         f"{args.cohort_org}/{dest_repo}"
     )
     errors, _ = deploy_many(
         args.source_org,
         args.cohort_org,
-        [Deploy(args.source_repo, src, dest_repo, dest) for src, dest in pairs],
+        [Deploy(args.course_source_repo, src, dest_repo, dest) for src, dest in pairs],
     )
     if errors:
         return 1

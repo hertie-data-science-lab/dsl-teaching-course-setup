@@ -1,6 +1,6 @@
 """deploy.parse_path_pairs turns the Release materials button's two
-comma-separated inputs into (source_path, dest_path) pairs, and the read grant covers
-both cohort role teams.
+comma-separated inputs into (course_source_path, cohort_dest_path) pairs, and the read
+grant covers both cohort role teams.
 
 (Session-directory discovery/matching lives in utils.py - see test_utils.py; the deploy
 batching itself is exercised in test_scheduler.py, which drives the same
@@ -25,7 +25,7 @@ def test_a_single_path_with_no_comma_still_works():
 
 
 def test_blank_dest_path_mirrors_every_source_path():
-    # Blank dest_path means the same thing here as an omitted `dest_path:` in
+    # Blank dest path means the same thing here as an omitted `cohort_dest_path:` in
     # schedule.yml: mirror the source path (None = let deploy_many mirror it).
     assert deploy.parse_path_pairs("lectures/02,labs/02,readings/02") == [
         ("lectures/02", None),
@@ -48,9 +48,9 @@ def test_mismatched_counts_fail_loudly_naming_both_counts():
     # A manual button run has an operator watching it, so a short dest list is an
     # error naming both counts - not a silently truncated release (the schedule, on an
     # unattended cron, is the one that drops what it can't pair).
-    with pytest.raises(ValueError, match="3 source_paths but 2 dest_paths"):
+    with pytest.raises(ValueError, match="3 course_source_paths but 2 cohort_dest_paths"):
         deploy.parse_path_pairs("a,b,c", "x,y")
-    with pytest.raises(ValueError, match="2 source_paths but 3 dest_paths"):
+    with pytest.raises(ValueError, match="2 course_source_paths but 3 cohort_dest_paths"):
         deploy.parse_path_pairs("a,b", "x,y,z")
 
 
@@ -66,7 +66,7 @@ def test_whitespace_and_trailing_commas_are_tolerated():
 
 
 def test_an_empty_source_path_is_an_error_not_an_empty_batch():
-    with pytest.raises(ValueError, match="source-path is empty"):
+    with pytest.raises(ValueError, match="course-source-path is empty"):
         deploy.parse_path_pairs("  ,  ")
 
 
@@ -81,14 +81,14 @@ def test_cli_rejects_a_count_mismatch_with_a_nonzero_exit(monkeypatch, capsys):
         [
             "deploy",
             "--source-org", "Course",
-            "--source-repo", "course-materials-f2026",
+            "--course-source-repo", "course-materials-f2026",
             "--cohort-org", "Cohort-f2026",
-            "--source-path", "a,b,c",
-            "--dest-path", "x,y",
+            "--course-source-path", "a,b,c",
+            "--cohort-dest-path", "x,y",
         ],
     )
     assert deploy.main() == 1
-    assert "3 source_paths but 2 dest_paths" in capsys.readouterr().err
+    assert "3 course_source_paths but 2 cohort_dest_paths" in capsys.readouterr().err
 
 
 def test_cli_builds_one_deploy_per_pair_and_one_batch(monkeypatch):
@@ -108,11 +108,11 @@ def test_cli_builds_one_deploy_per_pair_and_one_batch(monkeypatch):
         [
             "deploy",
             "--source-org", "Course",
-            "--source-repo", "course-materials-f2026",
+            "--course-source-repo", "course-materials-f2026",
             "--cohort-org", "Cohort-f2026",
-            "--dest-repo", "materials",
-            "--source-path", "lectures/02,labs/02",
-            "--dest-path", "week02/lecture,",
+            "--cohort-dest-repo", "materials",
+            "--course-source-path", "lectures/02,labs/02",
+            "--cohort-dest-path", "week02/lecture,",
         ],
     )
     assert deploy.main() == 1  # unpaired counts (2 sources, 1 dest)
@@ -122,14 +122,17 @@ def test_cli_builds_one_deploy_per_pair_and_one_batch(monkeypatch):
         [
             "deploy",
             "--source-org", "Course",
-            "--source-repo", "course-materials-f2026",
+            "--course-source-repo", "course-materials-f2026",
             "--cohort-org", "Cohort-f2026",
-            "--source-path", "lectures/02,labs/02",
+            "--course-source-path", "lectures/02,labs/02",
         ],
     )
     assert deploy.main() == 0
     assert seen["source_org"] == "Course" and seen["cohort_org"] == "Cohort-f2026"
-    assert [(d.source_repo, d.source_path, d.dest_repo, d.dest_path) for d in seen["deploys"]] == [
+    assert [
+        (d.course_source_repo, d.course_source_path, d.cohort_dest_repo, d.cohort_dest_path)
+        for d in seen["deploys"]
+    ] == [
         ("course-materials-f2026", "lectures/02", "materials", None),
         ("course-materials-f2026", "labs/02", "materials", None),
     ]
@@ -137,7 +140,7 @@ def test_cli_builds_one_deploy_per_pair_and_one_batch(monkeypatch):
     assert seen["sync"] is True
 
 
-def test_dest_repo_defaults_to_materials(monkeypatch):
+def test_cohort_dest_repo_defaults_to_materials(monkeypatch):
     captured = []
     monkeypatch.setattr(
         deploy,
@@ -149,14 +152,14 @@ def test_dest_repo_defaults_to_materials(monkeypatch):
         [
             "deploy",
             "--source-org", "Course",
-            "--source-repo", "course-materials-f2026",
+            "--course-source-repo", "course-materials-f2026",
             "--cohort-org", "Cohort-f2026",
-            "--dest-repo", "   ",  # a blank text box must not create a repo named ""
-            "--source-path", "lectures/02",
+            "--cohort-dest-repo", "   ",  # a blank text box must not create a repo named ""
+            "--course-source-path", "lectures/02",
         ],
     )
     assert deploy.main() == 0
-    assert captured[0][0].dest_repo == "materials"
+    assert captured[0][0].cohort_dest_repo == "materials"
 
 
 def test_released_repos_are_read_by_both_cohort_role_teams():

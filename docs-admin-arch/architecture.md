@@ -201,9 +201,10 @@ real config lives in `classroom-config`.
 
 ### Release
 
-**Materials** copies `source_path` - a folder, a single file, or a comma-separated list of either -
-from a course-org `source_repo` into the cohort's `dest_repo` at `dest_path` (default: mirror
-`source_path`). The repo is private, with read for both the `students` and `auditors` teams. Those
+**Materials** copies `course_source_path` - a folder, a single file, or a comma-separated list of
+either - from a course-org `course_source_repo` into the cohort's `cohort_dest_repo` at
+`cohort_dest_path` (default: mirror `course_source_path`). The repo is private, with read for both
+the `students` and `auditors` teams. Those
 four fields are deliberately the same ones a `schedule.yml` `deploy` entry carries, and both routes
 execute through the same `deploy.deploy_many`. Only released paths exist cohort-side;
 everything is idempotent and additive, so re-releasing is a no-op.
@@ -220,14 +221,14 @@ cohort setting never writes back into the course org. The workflow's `group` che
 remains a last-resort force-override.
 
 There is **no separate Code release**. Releasing a subpackage folder or a single module is just
-Materials with `source_path` pointing at it (e.g. `mlpkg/simulation`), which is how a package gets
+Materials with `course_source_path` pointing at it (e.g. `mlpkg/simulation`), which is how a package gets
 disclosed topic by topic. The old `Release code` button and `render_release_code` were removed once
 Materials took the same four fields; `deploy.deploy_many` survives as the shared executor for
 both the button and the scheduler, so the module name is now narrower than what it does.
 
 Materials and Assignment are exposed centrally (in `.github`) *and* run-from-repo (in each
-content repo), from the same renderer; the run-from-repo copy drops `source_repo` and knows that
-repo's own sections. All three are the **fallback path** - the schedule
+content repo), from the same renderer; the run-from-repo copy drops `course_source_repo` and knows
+that repo's own sections. All three are the **fallback path** - the schedule
 (`releases` in `schedule.yml`) is the primary release mechanism; the manual release
 buttons are for demos, one-offs, and recovery.
 
@@ -321,13 +322,13 @@ same run re-seeds the run-from-repo buttons, propagates the repo secret, and reb
 READMEs.
 
 - **cohort_org** - from the `.github/cohort-courses-pages.yml` registry.
-- **source_repo** (central only) / **assignment** - the course org's content / `assignment-*` repos.
-- **source_path / dest_path** - free text. Both accept a comma-separated list, paired by index;
-  a blank `dest_path` mirrors every `source_path`, and a count mismatch fails the run loudly
-  (`deploy.parse_path_pairs`) rather than guessing. Comma-separated lists exist because
-  `workflow_dispatch` has no array input and its string fields are single-line, so a multi-line
-  YAML blob cannot be entered.
-- **dest_repo** - free text, default `materials`; created on first release if missing.
+- **course_source_repo** (central only) / **assignment** - the course org's content / `assignment-*` repos.
+- **course_source_path / cohort_dest_path** - free text. Both accept a comma-separated list,
+  paired by index; a blank `cohort_dest_path` mirrors every `course_source_path`, and a count
+  mismatch fails the run loudly (`deploy.parse_path_pairs`) rather than guessing. Comma-separated
+  lists exist because `workflow_dispatch` has no array input and its string fields are
+  single-line, so a multi-line YAML blob cannot be entered.
+- **cohort_dest_repo** - free text, default `materials`; created on first release if missing.
 - Sections are **no longer an input**. The button takes five fixed inputs whatever the repo's
   shape, which is well inside `workflow_dispatch`'s 10-input limit - so the per-section checkbox
   fields, the derived `MAX_RELEASE_SECTIONS` cap and `release_budget.py` were all deleted. The

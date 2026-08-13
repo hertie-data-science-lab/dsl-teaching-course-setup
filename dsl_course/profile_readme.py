@@ -193,7 +193,7 @@ _(automatically bootstrapped from the central
 - [**Release assignment**](https://github.com/{org}/.github/actions/workflows/release-assignment.yml) - generate one private repo per student from a chosen `assignment-*` template repo.
 
 NB: alternatively each materials repo *also* carries its own **Release** buttons (run from inside the
-repo; there `source_repo` is pre-filled with that repo instead of being a dropdown).
+repo; there `course_source_repo` is pre-filled with that repo instead of being a dropdown).
 
 ### Grades (private, previewable):
 - [**Grade assignment**](https://github.com/{org}/.github/actions/workflows/grade-assignment.yml) - faculty-side autograder: after the deadline, run the HIDDEN tests (from the template's `solution` branch) against each submission and record the machine score into `classroom-config/grades/<assignment>.csv`. Nothing is written to student repos; faculty & instructors then add manual marks. Optional per assignment (skipped if `grading.yml` sets `autograde: false`).
@@ -207,15 +207,16 @@ repo; there `source_repo` is pre-filled with that repo instead of being a dropdo
 
 ## How the actions behave
 
-**Release materials** - run it from the materials repo (`source_repo` pre-filled with that
-repo) or from the course org's central `.github` control panel (`source_repo` is a dropdown).
-**Both** take the same five fields, which are exactly a `schedule.yml` `deploy:` entry:
-`cohort_org`, `source_repo`, `source_path`, `dest_repo`, `dest_path` - so the manual button
-and the scheduled release plan share one vocabulary. `source_path` is any folder or file
-(`lectures/03_regression`, `mlpkg/simulation`, `SYLLABUS.md`); a folder is copied whole,
-**every file** in it. `source_path` and `dest_path` accept comma-separated lists paired in
-order, so one click can release several paths at once; a blank `dest_path` mirrors each
-source path. `dest_repo` (default `materials`) is created on demand, private, with
+**Release materials** - run it from the materials repo (`course_source_repo` pre-filled with
+that repo) or from the course org's central `.github` control panel (`course_source_repo` is
+a dropdown). **Both** take the same five fields, which are exactly a `schedule.yml` `deploy:`
+entry: `cohort_org`, `course_source_repo`, `course_source_path`, `cohort_dest_repo`,
+`cohort_dest_path` - so the manual button and the scheduled release plan share one
+vocabulary. `course_source_path` is any folder or file (`lectures/03_regression`,
+`mlpkg/simulation`, `SYLLABUS.md`); a folder is copied whole, **every file** in it.
+`course_source_path` and `cohort_dest_path` accept comma-separated lists paired in order, so
+one click can release several paths at once; a blank `cohort_dest_path` mirrors each source
+path. `cohort_dest_repo` (default `materials`) is created on demand, private, with
 `students` **and** `auditors` read. Copies are additive and idempotent: only what you have
 released appears, and re-releasing changes nothing.
 
@@ -268,7 +269,7 @@ lists whatever sits in an ordinal-prefixed (`01_`, `02_`, `03_`, ...) folder:
 - `readings/01_.../` - one folder per session's readings;
 - add more sections freely (e.g. `labs/01_.../`) - nothing declares them;
 - root files (`SYLLABUS.md`, `README.md`) release like any other path - name the file as the
-  `source_path`.
+  `course_source_path`.
 
 **Assignment repo** (`assignment-N-<year>`, an `is_template` repo) - the source for Release assignment:
 - **`main` branch** - the starter code only (no tests, no autograder). This is exactly what students receive (native template-generate copies `main` only).

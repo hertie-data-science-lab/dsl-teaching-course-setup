@@ -23,7 +23,13 @@ GITHUB_MAX_DISPATCH_INPUTS = 10
 
 # The five inputs of a Release materials button, in the order they must appear: exactly a
 # schedule.yml `deploy:` entry's fields, plus the cohort org.
-RELEASE_INPUTS = ["cohort_org", "source_repo", "source_path", "dest_repo", "dest_path"]
+RELEASE_INPUTS = [
+    "cohort_org",
+    "course_source_repo",
+    "course_source_path",
+    "cohort_dest_repo",
+    "cohort_dest_path",
+]
 
 # Every workflow renderer, rendered -> a "it parses, and it's gated" sweep. Completeness
 # is enforced by test_every_renderer_is_covered_by_the_yaml_sweep below, so a new button
@@ -202,16 +208,16 @@ def test_both_release_buttons_take_exactly_a_deploy_entrys_fields(rendered):
     assert list(inp) == RELEASE_INPUTS
     assert len(inp) <= GITHUB_MAX_DISPATCH_INPUTS
     assert inp["cohort_org"]["required"] is True
-    assert inp["source_repo"]["required"] is True
-    assert inp["source_path"]["required"] is True
-    # dest_repo defaults to the conventional single materials repo; dest_path blank
-    # mirrors source_path (no default at all - the executor treats "" as mirror).
-    assert inp["dest_repo"]["default"] == "materials"
-    assert inp["dest_repo"]["required"] is False
-    assert "default" not in inp["dest_path"]
-    assert inp["dest_path"]["required"] is False
+    assert inp["course_source_repo"]["required"] is True
+    assert inp["course_source_path"]["required"] is True
+    # cohort_dest_repo defaults to the conventional single materials repo; cohort_dest_path
+    # blank mirrors course_source_path (no default at all - the executor treats "" as mirror).
+    assert inp["cohort_dest_repo"]["default"] == "materials"
+    assert inp["cohort_dest_repo"]["required"] is False
+    assert "default" not in inp["cohort_dest_path"]
+    assert inp["cohort_dest_path"]["required"] is False
     # Multi-path is discoverable from the button itself, not just the docs.
-    assert "comma-separated" in inp["source_path"]["description"]
+    assert "comma-separated" in inp["course_source_path"]["description"]
     # Gone with the section machinery: no per-section checkboxes, no session list, no
     # root-files toggle, no cohort_repo dropdown.
     for retired in ("sessions", "include_root_files", "cohort_repo", "release_lectures"):
@@ -233,36 +239,36 @@ def test_both_release_buttons_run_the_same_executor_through_env(rendered):
     # via its CLI), and every user-supplied input reaches the shell as an env var.
     step = workflow_jobs(rendered)["release"]["steps"][-1]
     assert "${{" not in step["run"]
-    assert step["env"]["SRC_REPO"] == "${{ inputs.source_repo }}"
-    assert step["env"]["SRC_PATH"] == "${{ inputs.source_path }}"
-    assert step["env"]["DEST_REPO"] == "${{ inputs.dest_repo }}"
-    assert step["env"]["DEST_PATH"] == "${{ inputs.dest_path }}"
+    assert step["env"]["COURSE_SOURCE_REPO"] == "${{ inputs.course_source_repo }}"
+    assert step["env"]["COURSE_SOURCE_PATH"] == "${{ inputs.course_source_path }}"
+    assert step["env"]["COHORT_DEST_REPO"] == "${{ inputs.cohort_dest_repo }}"
+    assert step["env"]["COHORT_DEST_PATH"] == "${{ inputs.cohort_dest_path }}"
     assert "python3 -m dsl_course.deploy" in step["run"]
-    for flag in ("--source-path", "--dest-repo", "--dest-path"):
+    for flag in ("--course-source-path", "--cohort-dest-repo", "--cohort-dest-path"):
         assert flag in step["run"]
 
 
-def test_run_from_repo_button_prefills_source_repo_with_its_own_repo():
+def test_run_from_repo_button_prefills_course_source_repo_with_its_own_repo():
     # Inside a content repo the source is almost always that repo, so it is pre-filled -
     # but as free text, not a fixed expression, so another repo in the org can be typed in.
     inp = workflow_inputs(
         workflows_render.render_release(["Cohort-f2026"], "course-materials-f2026")
     )
-    assert inp["source_repo"]["default"] == "course-materials-f2026"
-    assert "type" not in inp["source_repo"]  # a string field, not a choice
+    assert inp["course_source_repo"]["default"] == "course-materials-f2026"
+    assert "type" not in inp["course_source_repo"]  # a string field, not a choice
 
 
 def test_central_button_offers_the_orgs_content_repos_as_the_source_dropdown():
-    # Centrally there is no "own" repo to pre-fill, so source_repo is the discovered
+    # Centrally there is no "own" repo to pre-fill, so course_source_repo is the discovered
     # dropdown (refreshed by Refresh actions).
     inp = workflow_inputs(
         workflows_render.render_central_release(
             ["course-materials-f2026", "lecture-code"], ["Cohort-f2026"]
         )
     )
-    assert inp["source_repo"]["type"] == "choice"
-    assert inp["source_repo"]["options"] == ["course-materials-f2026", "lecture-code"]
-    assert "default" not in inp["source_repo"]
+    assert inp["course_source_repo"]["type"] == "choice"
+    assert inp["course_source_repo"]["options"] == ["course-materials-f2026", "lecture-code"]
+    assert "default" not in inp["course_source_repo"]
 
 
 def test_content_repos_get_both_buttons_and_lose_the_retired_one(monkeypatch):
@@ -285,7 +291,7 @@ def test_content_repos_get_both_buttons_and_lose_the_retired_one(monkeypatch):
     trigger = materials.get("on", materials.get(True))
     inputs = trigger["workflow_dispatch"]["inputs"]
     assert list(inputs) == RELEASE_INPUTS
-    assert inputs["source_repo"]["default"] == "course-materials-f2026"
+    assert inputs["course_source_repo"]["default"] == "course-materials-f2026"
 
 
 def test_seed_exports_exactly_what_its_callers_reach_for():

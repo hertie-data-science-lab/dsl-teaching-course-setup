@@ -58,7 +58,7 @@ def test_schedule_yml_seed_is_commented_and_covers_every_field():
     )
     for key in (
         "timezone", "releases", "event_datetime", "deploy",
-        "source_repo", "source_path", "dest_repo", "dest_path",
+        "course_source_repo", "course_source_path", "cohort_dest_repo", "cohort_dest_path",
         "semester_start", "semester_end",
         "assignments", "handout_datetime", "grading_datetime", "events",
     ):

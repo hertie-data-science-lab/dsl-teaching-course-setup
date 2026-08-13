@@ -87,7 +87,7 @@ TREES = {
 
 
 def test_discover_release_sources_detects_root_and_nested_shapes(monkeypatch):
-    # root shape: a deploy landed with no dest_path, so session folders sit directly at
+    # root shape: a deploy landed with no cohort_dest_path, so session folders sit directly at
     # the dest repo's root (labs/lectures in a live course).
     # nested shape: a deploy routed its session folders under a shared repo's subfolder.
     monkeypatch.setattr(discovery, "_repo_tree_dirs", lambda org, repo: TREES[repo])

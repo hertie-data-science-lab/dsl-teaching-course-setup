@@ -22,23 +22,23 @@ type here is exactly what you would have written in the schedule:
 | Input | Required | Default | Meaning |
 |---|---|---|---|
 | `cohort_org` | yes | - | target cohort org (dropdown) |
-| `source_repo` | yes | *(pre-filled with the repo you run it from)* | repo in the COURSE org |
-| `source_path` | yes | - | folder or file to copy - or a **comma-separated list** |
-| `dest_repo` | no | `materials` | repo in the cohort org (created if missing, private, `students` + `auditors` read) |
-| `dest_path` | no | mirrors `source_path` | where to put it |
+| `course_source_repo` | yes | *(pre-filled with the repo you run it from)* | repo in the COURSE org |
+| `course_source_path` | yes | - | folder or file to copy - or a **comma-separated list** |
+| `cohort_dest_repo` | no | `materials` | repo in the cohort org (created if missing, private, `students` + `auditors` read) |
+| `cohort_dest_path` | no | mirrors `course_source_path` | where to put it |
 
 In the course org, run it from either (1) the **materials repo's own** `Release materials` button
-(`source_repo` pre-filled, editable), or (2) the **course org's `.github` repo's** button
-(`source_repo` is a dropdown of the org's content repos).
+(`course_source_repo` pre-filled, editable), or (2) the **course org's `.github` repo's** button
+(`course_source_repo` is a dropdown of the org's content repos).
 
 e.g. → [Release materials](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/release-materials.yml):
 
-- One copy: `source_path` = `lectures/02_intro` → lands at `materials/lectures/02_intro`.
-- A whole session in one press: `source_path` = `lectures/02_intro, readings/02_intro, labs/02_intro`
-  (each path mirrors itself into `dest_repo`).
-- If you set `dest_path` for a list, give **one per source path, in the same order** - a count
+- One copy: `course_source_path` = `lectures/02_intro` → lands at `materials/lectures/02_intro`.
+- A whole session in one press: `course_source_path` = `lectures/02_intro, readings/02_intro, labs/02_intro`
+  (each path mirrors itself into `cohort_dest_repo`).
+- If you set `cohort_dest_path` for a list, give **one per source path, in the same order** - a count
   mismatch fails the run loudly rather than guessing.
-- Root files are just paths too: `source_path` = `SYLLABUS.md` (name the actual file - there is
+- Root files are just paths too: `course_source_path` = `SYLLABUS.md` (name the actual file - there is
   no syllabus glob) or `README.md`.
 
 Re-releasing is safe to re-run - copies are additive and idempotent.
@@ -47,7 +47,7 @@ Re-releasing is safe to re-run - copies are additive and idempotent.
 
 The same button releases **code**, because code is just another path. Keep a growing package in
 a course-org repo (e.g. `lecture-code-f2026`) and disclose it topic by topic as you teach:
-`source_path` = `mlpkg/simulation` (a subpackage folder) or `mlpkg/train/warmup.py` (a single
+`course_source_path` = `mlpkg/simulation` (a subpackage folder) or `mlpkg/train/warmup.py` (a single
 module). Copies are additive, so each release extends what students already have - release the
 package base early (e.g. `mlpkg/core`) so partial releases still import. The
 [example schedule](../example-course/cohort-org/schedule.yml) shows the scheduled version of the

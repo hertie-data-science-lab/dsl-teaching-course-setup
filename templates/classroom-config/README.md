@@ -88,8 +88,9 @@ the website, shown alongside each handout date, plus each
 assignment's `grading_datetime` - the moment its snapshot freezes and it is autograded,
 once; grading needs no release entry). Seeded mostly-commented - uncomment and
 fill what you want; anything left out is synthesised or simply not scheduled. Minimal is
-the recommended shape: on a deploy only `source_repo` + `source_path` are required
-(`dest_repo` defaults to `materials`, `dest_path` mirrors `source_path`, ship time
+the recommended shape: on a deploy only `course_source_repo` + `course_source_path` are
+required (`cohort_dest_repo` defaults to `materials`, `cohort_dest_path` mirrors
+`course_source_path`, ship time
 defaults to the `event_datetime`; paths are relative to their repo); on an assignment
 only `due_datetime` is - and `type: group` makes handout + grading run per team (also settable in
 the template's grading.yml).
