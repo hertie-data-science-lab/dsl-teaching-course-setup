@@ -150,6 +150,22 @@ def test_deploy_entry_missing_source_is_skipped():
     assert parse(meta).releases[0].deploy == []
 
 
+def test_deploy_entry_using_the_old_unprefixed_keys_is_skipped():
+    # The org prefixes are a hard rename with no alias handling, so a cohort whose
+    # schedule.yml predates it must lose the copy outright rather than half-parse it.
+    meta = {
+        "releases": {
+            "s": {
+                "event_datetime": "2026-09-01",
+                "deploy": [
+                    {"source_repo": "cm", "source_path": "lectures/00_x", "dest_repo": "materials"}
+                ],
+            }
+        }
+    }
+    assert parse(meta).releases[0].deploy == []
+
+
 def test_event_bare_date_stays_a_date_timed_event_becomes_aware_datetime():
     # `event_datetime:` doubles as "whole day" (a plain date) and "starts at" (a
     # datetime) - the website renders its placeholder time only for the former, so the
