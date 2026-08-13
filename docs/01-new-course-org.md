@@ -1,8 +1,12 @@
 # New course org (one-time setup)
 
-Create the persistent org for a course: its control panel (`.github`, holding every action
-button) and its teams. Once per course - it serves every future cohort. Per-year setup is
-[New cohort org](04-new-cohort-org.md).
+Create the persistent org for a course: 
+- Its control panel (`.github`, holding every action
+button), 
+- Its teams,
+- Later teaching materials and assignment templates are added here
+
+This is setup once per course - it serves every future cohort. Per-semester setup of the student-facing org is [New cohort org](04-new-cohort-org.md).
 
 ## Prerequisites
 

@@ -1,33 +1,37 @@
 # Schedule releases
 
-Write the term's plan into the cohort's `classroom-config/schedule.yml` once, and the hourly
-cron runs the term for you - every materials release, every assignment hand-out, every
-autograde run.
+Write the term's plan into the cohort's `classroom-config/schedule.yml` once, and the hourly cron runs the term for you - every materials release, every assignment hand-out, every autograde run.
+
+The schedule file can be updated throughout the semester.
 
 ## Prerequisites
 
-- A bootstrapped [cohort](04-new-cohort-org.md) - *Bootstrap cohort* seeds both
-  `classroom-config/schedule.yml` and the cron.
-- The course-org repos you'll name as sources: [materials](02-add-materials-to-course.md),
-  [assignment templates](03-add-assignment-to-course.md), [code](11-release-code.md).
+- A boostratted [course org](01-new-course-org.md)
+- A bootstrapped [cohort org](04-new-cohort-org.md) 
+- Source material repos to be released (staged in course-org, released to cohort-org)
 
 ## Write your term's plan
 
 Live example (a full term): [`example-course/cohort-org/schedule.yml`](../example-course/cohort-org/schedule.yml).
 
-Two blocks carry the whole term:
+>NB: can include `tbc` labels if unsure at start of the semester... TODO write up how to do this
 
-- **`materials_releases:`** - teaching materials and calendar events. A free-form label maps
-  to an `event_datetime` plus, optionally, `deploy` actions (copy a source path from a course
-  repo → a cohort repo: materials, code, datasets).
+Block-types carry the whole term:
+
+- **`materials_releases:`** - teaching materials and calendar events. 
+  - Required: a free-form label maps to an `event_datetime` 
+  - Optional `deploy` actions - copies a source path from a course repo → a cohort repo: 
+  - materials, code, datasets, other.
 - **`assignments:`** - each assignment's **whole lifecycle in one block**, keyed by slug:
-  `handout_datetime` (when repos are provisioned - without it the schedule never releases the
-  assignment; omit only if you use the manual **Release assignment** button), `due_datetime`
-  (REQUIRED - what students see), `grading_datetime`
-  (when it is snapshotted and autograded, once - see
-  [below](#deadline-snapshots-and-autograding)), `type` (`group` = per-team repos and
-  grading; also settable in the template's `grading.yml`), and `max_team_size` (group
+  - `handout_datetime` (when repos are provisioned - without it the schedule never releases the assignment; omit only if you use the manual **Release assignment** button), - `due_datetime` (REQUIRED - what students see), 
+  - `grading_datetime` (when it is snapshotted and autograded, once - see
+  [below](#deadline-snapshots-and-autograding)), 
+  - `type` (`group` = per-team repos and
+  grading; also settable in the template's `grading.yml`), 
+  -  `max_team_size` (group
   assignments).
+- **`exam`**
+- **`<freeform description>`**
 
 Nothing assignment-related needs a `materials_releases` entry (an `assignment:` action there
 is still supported, for handing out by hand from a release entry).
