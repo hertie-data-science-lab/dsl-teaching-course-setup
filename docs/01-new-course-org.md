@@ -27,8 +27,8 @@ This is setup once per course - it serves every future cohort. Per-semester setu
 
    > ⚠️ **The bot must accept the invite before you can bootstrap.** Ask the DSL team (h.baker) to accept it - until they do, the *Bootstrap Course Org* run fails.
 
-3. **Run [Bootstrap Course Org](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions/workflows/bootstrap-org.yml)**
-   - from the central DSL's [`teaching-dsl-course-setup` repo](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions) 
+3. **Run [Bootstrap Course Org](https://github.com/hertie-data-science-lab/dsl-teaching-toolkit/actions/workflows/bootstrap-org.yml)**
+   - from the central DSL's [`dsl-teaching-toolkit` repo](https://github.com/hertie-data-science-lab/dsl-teaching-toolkit/actions) 
    - Go to the `Actions` tab → select `Boostrap Course Org` 
    - *Run workflow* with the following:
 

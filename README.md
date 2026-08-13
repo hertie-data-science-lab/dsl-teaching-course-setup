@@ -1,4 +1,4 @@
-# DSL Teaching & Course Setup (GitHub delivery)
+# DSL Teaching Toolkit (GitHub delivery)
 
 Central registry of the workflows that deliver courses at the Hertie Data Science Lab. 
 

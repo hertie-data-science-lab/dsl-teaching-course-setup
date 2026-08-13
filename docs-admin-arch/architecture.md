@@ -30,7 +30,7 @@ Owner; everything after that is a button.
 ```mermaid
 flowchart TB
   subgraph central["hertie-data-science-lab (central)"]
-    repo["`dsl-teaching-course-setup
+    repo["`dsl-teaching-toolkit
 code + Bootstrap action`"]
     sec["DSL_BOT_TOKEN secret"]
   end

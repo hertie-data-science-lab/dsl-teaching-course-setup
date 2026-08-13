@@ -7,6 +7,6 @@ both sides must name the same repo/ref. One definition, imported by both.
 
 from __future__ import annotations
 
-CENTRAL = "hertie-data-science-lab/dsl-teaching-course-setup"
+CENTRAL = "hertie-data-science-lab/dsl-teaching-toolkit"
 # Seeded workflows run the engine code from this ref of the central repo.
 CENTRAL_REF = "main"
