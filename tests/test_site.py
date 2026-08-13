@@ -1,6 +1,7 @@
-"""site.py schedule wiring: the cohort website's session rows take their dates from
-schedule.yml's materials_releases (not a synthesised weekly guess), joined to the released
-folders by ordinal. A wrong mapping here silently mis-dates the whole schedule page."""
+"""site.py schedule wiring: the cohort website's rows take their dates and their types
+from schedule.yml (not a synthesised weekly guess), joined to the released folders by
+ordinal AND section - a week's lecture and its lab are separate rows. A wrong mapping here
+silently mis-dates the whole schedule page, or hides a lab inside a lecture row."""
 
 from __future__ import annotations
 
@@ -8,16 +9,17 @@ from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from dsl_course import site
-from dsl_course.schedule import Deploy, Release, Schedule
+from dsl_course.schedule import Deploy, Event, Release, Schedule
 
 BERLIN = ZoneInfo("Europe/Berlin")
+END_OF_TERM = date(2026, 12, 18)
 
 
 def _sched(releases: list[Release]) -> Schedule:
     return Schedule(releases=releases)
 
 
-def test_session_dates_maps_folder_ordinal_to_release_when():
+def test_session_dates_maps_folder_ordinal_and_section_to_release_when():
     s = _sched(
         [
             Release(
@@ -36,11 +38,35 @@ def test_session_dates_maps_folder_ordinal_to_release_when():
         ]
     )
     sw = site._session_dates(s)
-    assert sw["2"] == datetime(2026, 9, 15, 14, 0, tzinfo=BERLIN)
-    assert sw["1"] == datetime(2026, 9, 8, 14, 0, tzinfo=BERLIN)  # keyed off dest_path ordinal
+    assert sw[("2", "lecture")] == datetime(2026, 9, 15, 14, 0, tzinfo=BERLIN)
+    assert sw[("2", "lab")] == datetime(2026, 9, 15, 14, 0, tzinfo=BERLIN)
+    # keyed off the dest_path ordinal; a bare dest folder takes its section from dest_repo
+    assert sw[("1", "lecture")] == datetime(2026, 9, 8, 14, 0, tzinfo=BERLIN)
 
 
-def test_session_dates_earliest_release_wins_for_an_ordinal():
+def test_session_dates_date_a_lab_row_from_its_own_release():
+    # Monday's lecture and Wednesday's lab are two entries; the lab row must carry its own
+    # time rather than inheriting the (earlier) lecture's.
+    s = _sched(
+        [
+            Release(
+                "lecture-3",
+                datetime(2026, 9, 15, 10, 0, tzinfo=BERLIN),
+                deploy=[Deploy("cm", "lectures/03_week-3", "materials", None)],
+            ),
+            Release(
+                "lab-3",
+                datetime(2026, 9, 17, 14, 0, tzinfo=BERLIN),
+                deploy=[Deploy("cm", "labs/03_week-3", "materials", None)],
+            ),
+        ]
+    )
+    sw = site._session_dates(s)
+    assert sw[("3", "lecture")] == datetime(2026, 9, 15, 10, 0, tzinfo=BERLIN)
+    assert sw[("3", "lab")] == datetime(2026, 9, 17, 14, 0, tzinfo=BERLIN)
+
+
+def test_session_dates_earliest_release_wins_for_a_row():
     s = _sched(
         [
             Release("late", datetime(2026, 9, 15, 14, 0, tzinfo=BERLIN),
@@ -49,7 +75,10 @@ def test_session_dates_earliest_release_wins_for_an_ordinal():
                     deploy=[Deploy("cm", "readings/02_y", "materials", None)]),
         ]
     )
-    assert site._session_dates(s)["2"] == datetime(2026, 9, 10, 9, 0, tzinfo=BERLIN)
+    # readings are lecture material, so both land on the same row - earliest wins
+    assert site._session_dates(s)[("2", "lecture")] == datetime(
+        2026, 9, 10, 9, 0, tzinfo=BERLIN
+    )
 
 
 def test_session_dates_ignores_non_ordinal_deploys():
@@ -72,6 +101,15 @@ def test_lecture_entry_falls_back_to_0900_for_a_bare_date():
     assert "date: 2026-09-15T09:00:00" in md
 
 
+def test_lecture_entry_renders_a_lab_row_as_its_own_type():
+    md = site._lecture_entry("Cohort", "3", date(2026, 9, 17), [], "lab")
+    assert "type: lab" in md
+    assert 'title: "Lab 3"' in md
+    assert "Session 3" not in md
+    lec = site._lecture_entry("Cohort", "3", date(2026, 9, 15), [])
+    assert "type: lecture" in lec and 'title: "Session 3"' in lec
+
+
 def test_session_dates_use_the_event_datetime_not_the_deploy_datetime():
     # The site announces the class; the copies may ship on their own clocks.
     s = Schedule(
@@ -91,58 +129,266 @@ def test_session_dates_use_the_event_datetime_not_the_deploy_datetime():
             )
         ]
     )
-    assert site._session_dates(s)["2"] == datetime(2026, 9, 15, 10, 0, tzinfo=BERLIN)
+    assert site._session_dates(s)[("2", "lecture")] == datetime(
+        2026, 9, 15, 10, 0, tzinfo=BERLIN
+    )
 
 
-def test_raw_event_entry_renders_a_display_only_schedule_row():
-    from datetime import date as date_cls
-
-    r = Release("project-clinic", datetime(2026, 11, 17, 10, 0, tzinfo=BERLIN))
-    out = site._raw_event_entry(r, date_cls(2026, 12, 18))
-    assert "type: raw_event" in out
+def test_event_entry_renders_a_display_only_schedule_row():
+    e = Event("project-clinic", "", datetime(2026, 11, 17, 10, 0, tzinfo=BERLIN))
+    out = site._event_entry(e, END_OF_TERM)
+    assert "type: special_event" in out
     assert 'name: "Project Clinic"' in out  # prettified from the label
     assert "date: 2026-11-17T10:00:00" in out
-    titled = Release(
-        "project-clinic", datetime(2026, 11, 17, 10, 0, tzinfo=BERLIN), title="Bring your data"
+    assert 'description: ""' in out
+    titled = Event(
+        "project-clinic", "Bring your data", datetime(2026, 11, 17, 10, 0, tzinfo=BERLIN)
     )
-    assert 'name: "Bring your data"' in site._raw_event_entry(titled, date_cls(2026, 12, 18))
+    assert 'name: "Bring your data"' in site._event_entry(titled, END_OF_TERM)
+
+
+def test_event_entry_renders_an_exam_as_an_exam_row():
+    e = Event("mid-term", "MidTerm Exam", date(2026, 11, 3), type="exam")
+    out = site._event_entry(e, END_OF_TERM)
+    assert "type: exam" in out
+    assert 'description: "MidTerm Exam"' in out
+    assert "date: 2026-11-03T09:00:00" in out  # whole day -> the placeholder time
+    assert "name:" not in out  # the exam row reads `description`, not `name`
+
+
+def test_event_entry_title_falls_back_to_the_prettified_label():
+    e = Event("resit_exam", "", date(2026, 12, 20), type="exam")
+    assert 'description: "Resit Exam"' in site._event_entry(e, END_OF_TERM)
+
+
+def test_tbc_rows_render_with_theme_flags():
+    # Undated (event_datetime: tbc): sortable end-of-term placeholder + dateless flag,
+    # so the theme prints "TBC" instead of the placeholder date.
+    undated = Event("guest-lecture", "Guest lecture", None, tbc=True)
+    out = site._event_entry(undated, END_OF_TERM)
+    assert "tbc: true" in out and "dateless: true" in out
+    assert "date: 2026-12-18T09:00:00" in out
+    # Provisionally dated (tbc: true): real date kept, marker only.
+    dated = Event(
+        "project-clinic", "", datetime(2026, 11, 17, 10, 0, tzinfo=BERLIN), tbc=True
+    )
+    out = site._event_entry(dated, END_OF_TERM)
+    assert "tbc: true" in out and "dateless" not in out
+    assert "date: 2026-11-17T10:00:00" in out
+    # Exams: same two shapes.
+    out = site._event_entry(Event("resit", "Resit Exam", None, "exam", True), END_OF_TERM)
+    assert "type: exam" in out and "dateless: true" in out
+    out = site._event_entry(
+        Event("mid-term", "MidTerm Exam", date(2026, 11, 3), "exam", True), END_OF_TERM
+    )
+    assert "tbc: true" in out and "dateless" not in out
+
+
+def test_term_date_entry_hides_the_placeholder_time():
+    out = site._term_date_entry("Semester begins", date(2026, 9, 7))
+    assert "type: term_date" in out
+    assert "date: 2026-09-07T09:00:00" in out
+    assert "hide_time: true" in out  # a term boundary is a whole day, not a 09:00 slot
+    assert 'description: "Semester begins"' in out
+
+
+def test_assignment_entry_dates_the_released_row_from_the_handout(monkeypatch):
+    monkeypatch.setattr(site, "get_file_content", lambda *a, **k: "# Assignment 1\nBrief.")
+    out = site._assignment_entry(
+        "Course",
+        "assignment-1-f2026",
+        datetime(2026, 10, 13, 23, 59, 59, tzinfo=BERLIN),
+        datetime(2026, 9, 22, 9, 0, tzinfo=BERLIN),
+    )
+    # the entry's own row is the "released!" row; the due row lives in due_event
+    assert "date: 2026-09-22T09:00:00" in out.split("due_event:")[0]
+    assert "    date: 2026-10-13T23:59:59" in out
+
+
+def test_assignment_entry_falls_back_to_the_due_date_without_a_handout(monkeypatch):
+    monkeypatch.setattr(site, "get_file_content", lambda *a, **k: "")
+    out = site._assignment_entry("Course", "assignment-2-f2026", date(2026, 11, 10))
+    assert out.count("date: 2026-11-10T23:59:00") == 2  # both rows on the due date
+
+
+def test_assignment_dates_read_the_schedule():
+    from dsl_course.schedule import AssignmentEntry
+
+    sched = Schedule(
+        assignments={
+            "assignment-1": AssignmentEntry(
+                due_datetime=datetime(2026, 10, 13, 23, 59, 59, tzinfo=BERLIN),
+                handout_datetime=datetime(2026, 9, 22, 9, 0, tzinfo=BERLIN),
+            )
+        }
+    )
+    due, handout = site._assignment_dates(sched, "assignment-1-f2026", date(2026, 1, 1))
+    assert due == datetime(2026, 10, 13, 23, 59, 59, tzinfo=BERLIN)
+    assert handout == datetime(2026, 9, 22, 9, 0, tzinfo=BERLIN)
+    # unscheduled: the synthesised fallback, and no handout row
+    assert site._assignment_dates(sched, "assignment-9-f2026", date(2026, 1, 1)) == (
+        date(2026, 1, 1),
+        None,
+    )
+
+
+def _plan(
+    monkeypatch, tmp_path, sched: Schedule, sources=(), assignments=(), files=None
+):
+    """Run sync_site against a faked org and return the _SitePlan it built. `files` fakes
+    the per-source file listing (default: every source is empty)."""
+    captured: dict = {}
+    monkeypatch.setattr(
+        site, "_sync_site_repo", lambda org, build: captured.update(plan=build(tmp_path)) or 0
+    )
+    monkeypatch.setattr(site.seed, "discover_cohort_repos", lambda orgs: [])
+    monkeypatch.setattr(site.seed, "discover_release_sources", lambda org, repos: list(sources))
+    monkeypatch.setattr(site.seed, "discover_assignments", lambda org: list(assignments))
+    monkeypatch.setattr(site, "_yaml_file", lambda *a: {})
+    monkeypatch.setattr(site.schedule, "load", lambda org: sched)
+    monkeypatch.setattr(site, "_people_yaml", lambda *a, **k: "people: []\n")
+    monkeypatch.setattr(
+        site, "_session_files", files or (lambda org, repo, subpath, folder: [])
+    )
+    monkeypatch.setattr(site, "get_file_content", lambda *a, **k: "")
+    assert site.sync_site("Course-Org", "Cohort-f2026") == 0
+    return captured["plan"]
 
 
 def test_cohort_site_links_back_to_the_cohort_org(monkeypatch, tmp_path):
     # The footer's GitHub link (site.github_org) is the cohort site's only click-back; it
     # must point at THIS cohort org, not the template default or the course org.
-    captured = {}
-    monkeypatch.setattr(
-        site, "_sync_site_repo", lambda org, build: captured.update(plan=build(tmp_path)) or 0
+    plan = _plan(monkeypatch, tmp_path, Schedule())
+    assert plan.config["github_org"] == "Cohort-f2026"
+
+
+def test_a_mixed_week_becomes_a_lecture_row_and_a_lab_row(monkeypatch, tmp_path):
+    plan = _plan(
+        monkeypatch,
+        tmp_path,
+        Schedule(
+            releases=[
+                Release(
+                    "lecture-2",
+                    datetime(2026, 9, 8, 10, 0, tzinfo=BERLIN),
+                    deploy=[Deploy("cm", "lectures/02_week-2", "materials", None)],
+                ),
+                Release(
+                    "lab-2",
+                    datetime(2026, 9, 10, 14, 0, tzinfo=BERLIN),
+                    deploy=[Deploy("cm", "labs/02_week-2", "materials", None)],
+                ),
+            ]
+        ),
+        sources=[
+            ("materials", "lectures", "02_week-2", 2),
+            ("materials", "readings", "02_week-2", 2),
+            ("materials", "labs", "02_week-2", 2),
+        ],
     )
-    monkeypatch.setattr(site.seed, "discover_cohort_repos", lambda orgs: [])
-    monkeypatch.setattr(site.seed, "discover_release_sources", lambda org, repos: [])
-    monkeypatch.setattr(site.seed, "discover_assignments", lambda org: [])
-    monkeypatch.setattr(site, "_yaml_file", lambda *a: {})
-    monkeypatch.setattr(site.schedule, "load", lambda org: Schedule())
-    monkeypatch.setattr(site, "_people_yaml", lambda *a, **k: "people: []\n")
-    assert site.sync_site("Course-Org", "Cohort-f2026") == 0
-    assert captured["plan"].config["github_org"] == "Cohort-f2026"
+    lectures = plan.collections["_lectures"]
+    assert sorted(lectures) == ["lab-02.md", "session-02.md"]
+    assert "type: lecture" in lectures["session-02.md"]
+    assert "date: 2026-09-08T10:00:00" in lectures["session-02.md"]
+    assert "type: lab" in lectures["lab-02.md"]
+    assert "date: 2026-09-10T14:00:00" in lectures["lab-02.md"]  # its OWN release time
 
 
-def test_tbc_rows_render_with_theme_flags():
-    from datetime import date as date_cls
-
-    # Undated (event_datetime: tbc): sortable end-of-term placeholder + dateless flag,
-    # so the theme prints "TBC" instead of the placeholder date.
-    undated = Release("guest-lecture", None, title="Guest lecture", tbc=True)
-    out = site._raw_event_entry(undated, date_cls(2026, 12, 18))
-    assert "tbc: true" in out and "dateless: true" in out
-    assert "date: 2026-12-18T09:00:00" in out
-    # Provisionally dated (tbc: true): real date kept, marker only.
-    dated = Release(
-        "project-clinic", datetime(2026, 11, 17, 10, 0, tzinfo=BERLIN), tbc=True
+def test_a_week_with_only_one_kind_gets_only_that_row(monkeypatch, tmp_path):
+    lab_only = _plan(
+        monkeypatch,
+        tmp_path,
+        Schedule(),
+        sources=[("materials", "labs", "03_week-3", 3)],
     )
-    out = site._raw_event_entry(dated, date_cls(2026, 12, 18))
-    assert "tbc: true" in out and "dateless" not in out
-    assert "date: 2026-11-17T10:00:00" in out
-    # Exams: same two shapes.
-    out = site._exam_entry("Resit Exam", date_cls(2026, 12, 18), tbc=True, dateless=True)
-    assert "dateless: true" in out
-    out = site._exam_entry("MidTerm Exam", date_cls(2026, 11, 3), tbc=True)
-    assert "tbc: true" in out and "dateless" not in out
+    assert sorted(lab_only.collections["_lectures"]) == ["lab-03.md"]
+    lecture_only = _plan(
+        monkeypatch,
+        tmp_path,
+        Schedule(),
+        sources=[("materials", "lectures", "04_week-4", 4)],
+    )
+    assert sorted(lecture_only.collections["_lectures"]) == ["session-04.md"]
+
+
+def test_the_lecture_row_never_carries_the_weeks_lab_links(monkeypatch, tmp_path):
+    # Labs are their own entries; a lab file linked from the lecture row too would show
+    # the lab twice (schedule + the theme's labs page).
+    plan = _plan(
+        monkeypatch,
+        tmp_path,
+        Schedule(),
+        sources=[
+            ("materials", "lectures", "02_week-2", 2),
+            ("materials", "labs", "02_week-2", 2),
+        ],
+        files=lambda org, repo, subpath, folder: [
+            (f"{subpath}.pdf", f"https://x/{subpath}")
+        ],
+    )
+    session = plan.collections["_lectures"]["session-02.md"]
+    assert 'name: "lecture - lectures.pdf"' in session
+    assert "lab - " not in session
+    assert 'name: "lab - labs.pdf"' in plan.collections["_lectures"]["lab-02.md"]
+
+
+def test_events_render_as_their_declared_types(monkeypatch, tmp_path):
+    plan = _plan(
+        monkeypatch,
+        tmp_path,
+        Schedule(
+            events=[
+                Event("mid-term", "MidTerm Exam", date(2026, 11, 3), "exam"),
+                Event("project-clinic", "Project clinic", date(2026, 11, 10)),
+            ]
+        ),
+    )
+    events = plan.collections["_events"]
+    assert "type: exam" in events["01-mid-term.md"]
+    assert "type: special_event" in events["02-project-clinic.md"]
+    # a schedule that names its own exams gets no synthesised stubs
+    assert "midterm.md" not in events and "final.md" not in events
+
+
+def test_synthesised_exams_appear_when_the_schedule_names_none(monkeypatch, tmp_path):
+    plan = _plan(
+        monkeypatch,
+        tmp_path,
+        Schedule(events=[Event("project-clinic", "Project clinic", date(2026, 11, 10))]),
+    )
+    events = plan.collections["_events"]
+    assert 'description: "MidTerm Exam"' in events["midterm.md"]
+    assert 'description: "Final Exam"' in events["final.md"]
+    assert "type: special_event" in events["01-project-clinic.md"]
+
+
+def test_term_date_rows_only_when_the_schedule_pins_the_bounds(monkeypatch, tmp_path):
+    plan = _plan(
+        monkeypatch,
+        tmp_path,
+        Schedule(semester_start=date(2026, 9, 7), semester_end=date(2026, 12, 18)),
+    )
+    events = plan.collections["_events"]
+    assert 'description: "Semester begins"' in events["term-start.md"]
+    assert "date: 2026-09-07T09:00:00" in events["term-start.md"]
+    assert 'description: "Semester ends"' in events["term-end.md"]
+    assert "date: 2026-12-18T09:00:00" in events["term-end.md"]
+
+    unbounded = _plan(monkeypatch, tmp_path, Schedule())
+    assert "term-start.md" not in unbounded.collections["_events"]
+    assert "term-end.md" not in unbounded.collections["_events"]
+
+
+def test_display_only_rows_come_from_events_alone(monkeypatch, tmp_path):
+    # `releases:` is the deploy plan; a row with nothing to release belongs in `events:`,
+    # and an action-less release entry is NOT a second way to write one.
+    plan = _plan(
+        monkeypatch,
+        tmp_path,
+        Schedule(
+            releases=[
+                Release("guest-lecture", datetime(2026, 11, 17, 10, 0, tzinfo=BERLIN))
+            ]
+        ),
+    )
+    assert "Guest Lecture" not in "".join(plan.collections["_events"].values())

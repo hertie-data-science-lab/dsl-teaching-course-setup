@@ -579,7 +579,7 @@ def render_scheduler() -> str:
 # Reads each cohort's classroom-config/schedule.yml and, every hour: freezes the submission
 # snapshot for each assignment whose grading deadline has passed, autogrades that assignment
 # ONCE (marker: classroom-config/autograde/<slug>/ - delete it to re-grade), then fires every
-# `materials_releases:` release whose `when` datetime has arrived. Releases are idempotent, so
+# `releases:` release whose `when` datetime has arrived. Releases are idempotent, so
 # re-releasing on the next hour is a no-op; grading is not re-run. On the cron it releases for
 # real; manual runs default to dry-run.
 # Hourly so a `when` time-of-day is honoured to the hour (GitHub cron is UTC and best-effort).

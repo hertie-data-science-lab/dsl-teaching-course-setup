@@ -384,7 +384,7 @@ def test_run_does_not_snapshot_before_the_deadline_passes(monkeypatch):
     assert taken == []
 
 
-def test_run_snapshots_even_with_no_materials_releases(monkeypatch):
+def test_run_snapshots_even_with_no_releases(monkeypatch):
     # A cohort can pin due dates without using the auto-release plan at all - the old
     # early-return on `not sched.releases` would have skipped its snapshots forever.
     taken = _stub_snapshots(monkeypatch, existing=set())

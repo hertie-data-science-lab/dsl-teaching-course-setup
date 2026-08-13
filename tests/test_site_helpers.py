@@ -152,7 +152,6 @@ def test_lecture_entry_labels_links_by_repo_or_subpath():
     assert "https://x/1" in entry and "https://x/2" in entry
     assert 'name: "lab - intro.pdf"' in entry
     assert 'name: "lecture - slides.pdf"' in entry
-    assert 'name: "lecture - slides.pdf"' in entry
 
 
 def test_public_lecture_entry_actual_readings_mode_links_are_local():
@@ -163,6 +162,29 @@ def test_public_lecture_entry_actual_readings_mode_links_are_local():
     )
     assert "lecture - s.pdf" in e and "reading - r.pdf" in e
     assert "github.com" not in e and "raw." not in e
+
+
+def test_public_lecture_entry_renders_a_lab_row_as_its_own_type():
+    # Same split as the cohort site: the labs section is its own row, so the theme's labs
+    # page finds it and the session row doesn't list it twice.
+    e = site._public_lecture_entry(
+        "2",
+        date(2025, 1, 1),
+        [("labs", [("lab.ipynb", "/public-materials/m/session-2/labs/lab.ipynb")])],
+        "",
+        "lab",
+    )
+    assert "type: lab" in e
+    assert 'title: "Lab 2"' in e
+    assert 'name: "lab - lab.ipynb"' in e
+
+
+def test_row_kind_and_file_split_labs_from_lectures():
+    assert site._row_kind("labs") == "lab"
+    for section in ("lectures", "readings", "faq", ""):
+        assert site._row_kind(section) == "lecture"
+    assert site._row_file("2", "lab") == "lab-02.md"
+    assert site._row_file("2", "lecture") == "session-02.md"
 
 
 def test_public_lecture_entry_labels_any_discovered_section():

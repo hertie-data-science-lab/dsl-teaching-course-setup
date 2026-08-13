@@ -68,23 +68,25 @@ also enforces a **team-size cap**: set `max_team_size` per assignment under `ass
 in `schedule.yml` (default 5 when unset). See
 `teams.csv.sample` - **the engine only acts on a real `teams.csv`.**
 
-## schedule.yml - the release plan + due dates + exams (optional)
+## schedule.yml - the release plan + due dates + events (optional)
 
-This cohort's whole schedule in one file. `materials_releases:` is the term **calendar
-and auto-release plan** - labelled entries (`session_2`, `lab_1`, `bonus-dataset`, ...),
-each with an `event_datetime:` (when the thing happens - what the site's schedule
-shows) and, optionally, actions (`deploy` a source path -> a cohort repo, `assignment`
-provision student repos). The hourly **Scheduled release** cron fires each action once its
+This cohort's whole schedule in one file, in blocks that encode what they **do**.
+`releases:` is the term **calendar and auto-release plan** - labelled entries (`session_2`,
+`lab_1`, `bonus-dataset`, ...), each with an `event_datetime:` (when the thing happens - what
+the site's schedule shows) and the actions it ships (`deploy` a source path -> a cohort repo,
+`assignment` provision student repos). The hourly **Scheduled release** cron fires each action once its
 time has arrived (honoured to the hour): actions fire at the `event_datetime`, except a
 deploy carrying its own `deploy_datetime:` - so materials can ship an hour (or a week)
-before the class they belong to. An entry with **no actions** is a display-only calendar
-event (a clinic, a guest lecture): nothing deploys, the site shows the row. Uncertain
+before the class they belong to. Anything that deploys nothing - an exam, a clinic, a guest
+lecture - is an `events:` entry instead: a display-only row, coloured by `type: exam` or
+`special_event` (the default). Uncertain
 dates: `tbc: true` next to a date marks it provisional ("(TBC)" on the site, still fires);
-`event_datetime: tbc` / an exam's `exam_datetime: tbc` is a fully undated TBC row (nothing fires).
+`event_datetime: tbc` is a fully undated TBC row (nothing fires).
 Also holds
-`semester_start`/`semester_end`, `assignments` (due dates for the website, plus each
+`semester_start`/`semester_end` (term-date rows on the site) and `assignments` (due dates for
+the website, shown alongside each handout date, plus each
 assignment's `grading_datetime` - the moment its snapshot freezes and it is autograded,
-once; grading needs no release entry), and `exams`. Seeded mostly-commented - uncomment and
+once; grading needs no release entry). Seeded mostly-commented - uncomment and
 fill what you want; anything left out is synthesised or simply not scheduled. Minimal is
 the recommended shape: on a deploy only `source_repo` + `source_path` are required
 (`dest_repo` defaults to `materials`, `dest_path` mirrors `source_path`, ship time

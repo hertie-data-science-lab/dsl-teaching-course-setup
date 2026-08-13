@@ -57,10 +57,10 @@ def test_schedule_yml_seed_is_commented_and_covers_every_field():
         line.startswith("#") or not line.strip() for line in schedule.splitlines()
     )
     for key in (
-        "timezone", "materials_releases", "event_datetime", "deploy",
+        "timezone", "releases", "event_datetime", "deploy",
         "source_repo", "source_path", "dest_repo", "dest_path",
-        "assignment", "semester_start", "semester_end",
-        "assignments", "grading_datetime", "exams",
+        "semester_start", "semester_end",
+        "assignments", "handout_datetime", "grading_datetime", "events",
     ):
         assert key in schedule
 
