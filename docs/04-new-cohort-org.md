@@ -43,7 +43,9 @@ Live example of every file below: [`example-course/cohort-org/`](../example-cour
 
    ```yaml
    timezone: Europe/Berlin
-   materials_releases:
+   semester_start: 2026-09-07
+   semester_end: 2026-12-18
+   releases:                            # entries that DEPLOY materials
      session_1:
        event_datetime: 2026-09-07T14:00   # when the class happens - shown on deployed site's schedule tab
        deploy:
@@ -51,19 +53,21 @@ Live example of every file below: [`example-course/cohort-org/`](../example-cour
            source_path: lectures/01_intro
            dest_repo: materials
            deploy_datetime: 2026-09-07T13:00   # optional: ship this copy 1h early
-   semester_start: 2026-09-07
-   semester_end: 2026-12-18
    assignments:
      assignment-1:
        handout_datetime: 2026-09-22T09:00  # repos provisioned automatically 
        type: group # repos provisioned 1 per group 
        due_datetime: 2026-10-13         # due date students see; if bare date -> 23:59:59
        grading_datetime: 2026-10-15     # optional; snapshot + autograde fire here 
-   exams:
-     - name: MidTerm Exam
-       exam_datetime: 2026-11-03        # bare date -> shown at 09:00
-     - name: Final Exam
-       exam_datetime: 2026-12-15T14:00    # real start time, shown as given
+   events:                              # display-only calendar rows - nothing deploys
+     mid-term:
+       type: exam                       # or special_event - the default if field empty
+       title: MidTerm Exam
+       event_datetime: 2026-11-03       # bare date -> shown at 09:00
+     final-exam:
+       type: exam
+       title: Final Exam
+       event_datetime: 2026-12-15T14:00   # real start time, shown as given
    ```
 ---
 

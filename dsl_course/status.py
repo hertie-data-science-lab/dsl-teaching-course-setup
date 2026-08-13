@@ -146,20 +146,20 @@ def collect(course_org: str, cohort_org: str) -> dict[str, dict]:
 
     n_actions = sum(len(r.deploy) + bool(r.assignment) for r in sched.releases)
     data["C5"] = _row(
-        "C5", f"Release plan ({schedule.SCHEDULE_PATH} -> materials_releases)",
+        "C5", f"Release plan ({schedule.SCHEDULE_PATH} -> releases)",
         cohort_org, schedule.CONFIG_REPO, schedule.SCHEDULE_PATH, cohort_branch,
         bool(sched.releases),
         f"{len(sched.releases)} scheduled release(s), {n_actions} action(s)"
         if sched.releases else "",
     )
 
-    has_due_dates = bool(sched.semester_start or sched.assignments or sched.exams)
+    has_due_dates = bool(sched.semester_start or sched.assignments or sched.events)
     data["C6"] = _row(
-        "C6", f"Due dates & exams ({schedule.SCHEDULE_PATH})",
+        "C6", f"Due dates & events ({schedule.SCHEDULE_PATH})",
         cohort_org, schedule.CONFIG_REPO, schedule.SCHEDULE_PATH, cohort_branch,
         has_due_dates,
         f"start={sched.semester_start}, {len(sched.assignments)} due date(s), "
-        f"{len(sched.exams)} exam(s)" if has_due_dates else "",
+        f"{len(sched.events)} event(s)" if has_due_dates else "",
     )
 
     cohort_faculty = sync_faculty.load_cohort_faculty(cohort_org)

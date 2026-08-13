@@ -14,7 +14,8 @@ You never edit what the site shows - you edit the file it reads, and it re-syncs
 | Semester + year | *nothing to set* | inferred from the cohort org's `fYYYY`/`sYYYY` tag (`DSL-Demo-f2026` → "Fall 2026") |
 | Instructor / TA cards | cohort `classroom-config/people.yml` ([05](05-manage-teaching-team.md)) | every field you declare displays, bar `github_handle`, `start`, `end` (access only); a card needs a `name` to appear at all |
 | Staff photos | site repo `<cohort-org>.github.io` | commit the image under `_images/pp/`, then `photo: /_images/pp/jane.jpg` |
-| Schedule rows, exams, assignment due dates | cohort `classroom-config/schedule.yml` ([07](07-schedule-releases.md)) | `materials_releases`, `exams`, `assignments` |
+| Schedule rows, exams, assignment due dates | cohort `classroom-config/schedule.yml` ([07](07-schedule-releases.md)) | `releases`, `events`, `exams`, `assignments` |
+| A hand-written entry in the **Updates** box | site repo | add a file under `_announcements/` with `date:` + `description:` front matter. The box shows the newest 7 items (releases feed it automatically); older ones roll off as new ones arrive - delete the file to pull one early |
 | Materials links | *nothing to set* | they appear as you [release](08-release-materials-to-cohort.md) |
 
 ## What never to touch

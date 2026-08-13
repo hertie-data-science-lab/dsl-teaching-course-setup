@@ -198,11 +198,15 @@ Live example: [`example-course/cohort-org/schedule.yml`](../example-course/cohor
 `classroom-config/schedule.yml` - the term plan: the **auto-release plan** the hourly cron
 runs, and the **dates** that drive the website and grading. Times are read in `timezone`
 (default `Europe/Berlin`) unless given an offset; a bare **release** date = 00:00, a bare
-**due_datetime**/`grading_datetime` date = 23:59:59, a bare **exam** date shows as 09:00. Times are
+**due_datetime**/`grading_datetime` date = 23:59:59, a bare **events** date shows as 09:00. Times are
 honoured to the hour.
 
-**`materials_releases`** - the term calendar and release plan in one block: each entry is a
-label you choose, an `event_datetime:`, and optionally actions.
+Blocks encode behaviour: **`releases:`** deploys materials, **`assignments:`** runs the
+handout/due/grading lifecycle, **`events:`** is display-only calendar rows. Colour is a
+display concern only - see [row types](#schedule-row-types) below.
+
+**`releases`** - the term calendar and release plan in one block: each entry is a
+label you choose, an `event_datetime:`, and the deploys it ships.
 Sources are read from the course org, destinations written to this cohort, so entries name
 repos, never orgs. Every release is idempotent - re-runs are no-ops.
 
@@ -216,13 +220,14 @@ repos, never orgs. Every release is idempotent - re-runs are no-ops.
 
 Per entry: `event_datetime` (required - when the thing happens; the site schedule shows it,
 and it is the default fire time), `title` (optional
-row label), and optionally `deploy` actions. A deploy item may carry its own
-`deploy_datetime` to ship earlier or later than the calendar event. An entry with no
-actions is a **display-only calendar event** - nothing deploys, the site shows the row.
+row label), and the `deploy` actions. A deploy item may carry its own
+`deploy_datetime` to ship earlier or later than the calendar event.
 Assignments take no entry here: their whole lifecycle (handout_datetime/due_datetime/grading_datetime) lives under
-`assignments:` below (an `assignment:` action is also supported, for handing out by hand). Uncertain dates:
+`assignments:` below (an `assignment:` action is also supported, for handing out by hand).
+Anything that ships nothing - an exam, a clinic, a guest lecture - goes under `events:`.
+Uncertain dates:
 `tbc: true` beside a date = provisional, shown "(TBC)" but fires; `event_datetime: tbc`
-(or an exam's `exam_datetime: tbc`) = undated TBC row, nothing fires.
+= undated TBC row, nothing fires.
 
 Deploy-item fields (paths are **relative to their repo**: `source_path` inside
 `source_repo`, `dest_path` inside `dest_repo`):
@@ -239,7 +244,7 @@ Deploy-item fields (paths are **relative to their repo**: `source_path` inside
 
 ```yaml
 timezone: Europe/Berlin
-materials_releases:
+releases:
   lecture_02:
     event_datetime: 2026-09-15T10:00
     deploy:
@@ -251,7 +256,7 @@ materials_releases:
 **Full** - every field spelled out, when the defaults aren't what you want:
 
 ```yaml
-materials_releases:
+releases:
   session_2:
     event_datetime: 2026-09-15T10:00  # the class - what the site announces
     tbc: false                        # true = provisional date, shown "(TBC)"
@@ -269,9 +274,6 @@ materials_releases:
         source_path: week7/housing.csv
         dest_repo: materials
         dest_path: datasets/housing.csv
-  project-clinic:
-    event_datetime: 2026-11-17T10:00  # no actions -> display-only row on the site schedule
-    title: Project clinic
 ```
 
 **Dates** - the website schedule and the grading deadlines. Absent values are synthesised
@@ -309,15 +311,54 @@ assignments:                          # each assignment's WHOLE lifecycle, keyed
     type: group                       # optional: group | individual
     max_team_size: 4                  # optional, group assignments: the welcome Join team
                                       # flow refuses members beyond this (default 5)
-exams:
-  - name: MidTerm Exam
-    exam_datetime: 2026-11-03
-    tbc: true   # provisional - shown "(TBC)"
-  - name: Final Exam
-    exam_datetime: 2026-12-15T14:00
-  - name: Resit Exam
-    exam_datetime: tbc   # undated - shown as a TBC row
 ```
+
+**`events`** - display-only calendar rows, keyed by a label you choose. Nothing deploys;
+the row simply appears on the site's schedule.
+
+| Field | Required | Default | Meaning |
+|---|---|---|---|
+| `event_datetime` | **yes** | - (entry dropped without it) | when it happens; a bare date is a whole day, shown as 09:00 |
+| `type` | no | `special_event` | `exam` / `special_event` - which colour the row takes |
+| `title` | no | prettified label | site row label |
+| `tbc` | no | `false` | provisional date - shown "(TBC)" |
+
+```yaml
+events:
+  mid-term:
+    type: exam
+    title: MidTerm Exam
+    event_datetime: 2026-11-03
+    tbc: true   # provisional - shown "(TBC)"
+  final-exam:
+    type: exam
+    title: Final Exam
+    event_datetime: 2026-12-15T14:00
+  resit-exam:
+    type: exam
+    title: Resit Exam
+    event_datetime: tbc   # undated - shown as a TBC row
+  project-clinic:         # no type -> special_event
+    title: Project clinic
+    event_datetime: 2026-11-17T10:00
+```
+
+#### Schedule row types
+
+The cohort site renders one merged, date-sorted schedule table; each row is colour-coded by
+type, and the type is never a field you set - it follows from where the row came from:
+
+| Row type | Comes from |
+|---|---|
+| lecture | a released session folder under `lectures/` |
+| lab | a released session folder under `labs/` |
+| assignment | an `assignments:` entry - shown on **both** its handout date and its due date |
+| exam | an `events:` entry with `type: exam` |
+| special_event | an `events:` entry with no `type` (clinic, guest lecture, revision session) |
+| term_date | the `semester_start` / `semester_end` scalars |
+
+So lecture vs lab is decided by the deployed section folder, not by the entry label, and a
+week with both a lecture and a lab renders two rows.
 
 **Silent failures - the parser never errors.** A malformed entry is dropped, not reported:
 
@@ -337,7 +378,7 @@ simply absent from the dump. Workflow: [Schedule releases](07-schedule-releases.
 commit into `classroom-config/snapshots/<slug>.csv` (write-once - delete it to re-freeze),
 then autogrades **once** against the `<slug>-<tag>` template (`classroom-config/autograde/<slug>/`
 is the fired marker - delete it to re-grade). Machine grade columns are write-once too. All of
-this happens whether or not the cohort uses `materials_releases`.
+this happens whether or not the cohort uses `releases`.
 
 ## Token
 

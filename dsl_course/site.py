@@ -337,6 +337,25 @@ def _session_files(org: str, repo: str, subpath: str, folder: str) -> list[tuple
     ]
 
 
+# A week's lecture and its lab are two separate rows of the theme's schedule table, and
+# the labs page selects `type: lab` out of the `_lectures` collection - so which row a
+# released folder lands in is decided by its section (the directory it was released into),
+# never by anything faculty declare. Everything that isn't `labs` is lecture material.
+LAB_SECTION = "labs"
+_ROW_NOUN = {"lecture": "Session", "lab": "Lab"}
+
+
+def _row_kind(section: str) -> str:
+    """The schedule-row type a released section belongs to: 'lab' or 'lecture'."""
+    return "lab" if section == LAB_SECTION else "lecture"
+
+
+def _row_file(session: str, kind: str) -> str:
+    """The collection filename for one session row - lecture and lab rows of the same
+    week are distinct files (`session-02.md`, `lab-02.md`) in the same collection."""
+    return f"{'lab' if kind == 'lab' else 'session'}-{int(session):02d}.md"
+
+
 def _singular(label: str) -> str:
     """A section label as a single-item noun for a link name: 'lectures' -> 'lecture',
     'labs' -> 'lab', 'faq' -> 'faq'. Sections are free-form directory names, so a bare
@@ -372,8 +391,13 @@ def _lecture_entry(
     session: str,
     when: date | datetime,
     sources: list[tuple[str, str, str]],
+    kind: str = "lecture",
 ) -> str:
-    """`sources` is (repo, subpath, folder) triples already confirmed (by
+    """One row of a teaching week: the lecture (`kind='lecture'`) or the lab
+    (`kind='lab'`), which the theme renders as separate schedule lines out of the same
+    `_lectures` collection.
+
+    `sources` is (repo, subpath, folder) triples already confirmed (by
     seed.discover_release_sources) to hold this exact session - callers pass only the
     sources known to match, so every call here is a real hit, not a probe. `when` is the
     release datetime from schedule.yml (its real time is shown) or a synthesised date
@@ -384,20 +408,33 @@ def _lecture_entry(
             for repo, subpath, folder in sources
         ]
     )
+    title = f"{_ROW_NOUN[kind]} {session}"
     return (
         f"---\n"
-        f"type: lecture\n"
+        f"type: {kind}\n"
         f"date: {_iso_when(when)}\n"
-        f'title: "Session {session}"\n'
-        f'tldr: "Released materials for session {session} (enrolled students only)."\n'
+        f'title: "{title}"\n'
+        f'tldr: "Released materials for {title.lower()} (enrolled students only)."\n'
         f"{links_block}\n"
         f"---\n"
-        f"Materials for session {session}. Open the links above (you must be an "
+        f"Materials for {title.lower()}. Open the links above (you must be an "
         f"enrolled member of `{cohort_org}`).\n"
     )
 
 
-def _assignment_entry(course_org: str, repo: str, when: date | datetime) -> str:
+def _assignment_entry(
+    course_org: str,
+    repo: str,
+    when: date | datetime,
+    handout: datetime | None = None,
+) -> str:
+    """An assignment's page, plus the two schedule rows it drives: the entry's own
+    `date:` is the "released!" row and its `due_event:` sub-block the due row.
+
+    `when` is the due date (a real one from schedule.yml, or a synthesised fallback);
+    `handout` the scheduled provisioning moment when there is one. A handout dates the
+    released-row where it belongs - at hand-out, not at the deadline - while an
+    unscheduled assignment keeps both rows on the due date (the only date known)."""
     slug = assignment_slug(repo)
     readme = get_file_content(course_org, repo, "README.md") or ""
     title = slug.replace("-", " ").title()
@@ -411,10 +448,11 @@ def _assignment_entry(course_org: str, repo: str, when: date | datetime) -> str:
     ).strip()
     # An unscheduled assignment's synthesised fallback date is due end-of-day.
     due = _iso_when(when, "23:59:00")
+    released = _iso_when(handout) if handout is not None else due
     return (
         f"---\n"
         f"type: assignment\n"
-        f"date: {due}\n"
+        f"date: {released}\n"
         f'title: "{title}"\n'
         f"due_event:\n"
         f"    type: due\n"
@@ -447,27 +485,44 @@ def _exam_entry(
         f"type: exam\n"
         f"date: {_iso_when(when)}\n"
         f"{flags}"
-        f'description: "{title}"\n'
+        f'description: "{_q(title)}"\n'
         f"---\n"
         f"Details to be confirmed.\n"
     )
 
 
-def _due_date(sched: schedule.Schedule, repo: str, fallback: date) -> date | datetime:
-    """This assignment's due date from schedule.yml (keyed on the slug, repo minus its
-    -fYYYY/-sYYYY tag), or `fallback` if unscheduled."""
+def _assignment_dates(
+    sched: schedule.Schedule, repo: str, fallback: date
+) -> tuple[date | datetime, datetime | None]:
+    """(due, handout) for an assignment from schedule.yml (keyed on the slug, repo minus
+    its -fYYYY/-sYYYY tag). An unscheduled assignment is due on `fallback` and has no
+    handout; a scheduled one has a handout only when the plan pins (or the manual release
+    button recorded) one."""
     entry = sched.assignments.get(assignment_slug(repo))
-    return entry.due_datetime if entry else fallback
+    if entry is None:
+        return fallback, None
+    return entry.due_datetime, entry.handout_datetime
 
 
-def _session_dates(sched: schedule.Schedule) -> dict[str, datetime]:
-    """Map a session ordinal (e.g. '2') to when that session HAPPENS - the entry's
-    `event_datetime` from schedule.yml's `materials_releases`, keyed by the ordinal of
-    each deploy's destination folder (so the site can date a released session from the
-    plan that released it). Deploys may ship on their own `deploy_datetime` clocks; the
-    site announces the class, not the copy. Earliest wins when several releases touch
-    the same ordinal."""
-    out: dict[str, datetime] = {}
+def _deploy_section(deploy: schedule.Deploy) -> str:
+    """The section a deploy lands in - the top-level directory of its destination path,
+    or the destination repo itself when the path is a bare session folder (a release into
+    a repo that IS one section). The same `subpath or repo` shape discovery reports for
+    an already-released folder, so both sides classify a row the same way."""
+    dest = (deploy.dest_path or deploy.source_path).strip("/")
+    head, sep, _ = dest.partition("/")
+    return head if sep else deploy.dest_repo
+
+
+def _session_dates(sched: schedule.Schedule) -> dict[tuple[str, str], datetime]:
+    """Map a session row - (ordinal, 'lecture'|'lab') - to when that session HAPPENS: the
+    entry's `event_datetime` from schedule.yml's `releases`, keyed by the ordinal and
+    section of each deploy's destination folder (so the site can date a released row from
+    the plan that released it). Keying on the row, not the week, is what lets Wednesday's
+    lab carry its own time rather than inheriting Monday's lecture. Deploys may ship on
+    their own `deploy_datetime` clocks; the site announces the class, not the copy.
+    Earliest wins when several releases touch the same row."""
+    out: dict[tuple[str, str], datetime] = {}
     for release in sched.releases:
         if release.when is None:
             continue  # event_datetime: tbc - undated, can't place a session
@@ -476,33 +531,65 @@ def _session_dates(sched: schedule.Schedule) -> dict[str, datetime]:
             n = session_number(folder)
             if n is None:
                 continue
-            key = str(n)
+            key = (str(n), _row_kind(_deploy_section(d)))
             if key not in out or release.when < out[key]:
                 out[key] = release.when
     return out
 
 
-def _raw_event_entry(release: schedule.Release, fallback: date) -> str:
-    """A generic schedule row (the theme's schedule_row_raw_event.html) for a display-only
-    entry - an `event_datetime` with no actions: a clinic, a guest lecture, a review
-    session. Nothing is released; the site simply shows it.
+def _pretty(label: str) -> str:
+    """A schedule label as a display name, for an entry that declared no title."""
+    return label.replace("-", " ").replace("_", " ").title()
+
+
+def _special_event_entry(
+    title: str, when: date | datetime, tbc: bool = False, dateless: bool = False
+) -> str:
+    """A generic schedule row (the theme's schedule_row_special_event.html) for a
+    display-only entry: a clinic, a guest lecture, a review session. Nothing is released;
+    the site simply shows it.
 
     TBC: an undated entry (`event_datetime: tbc`) still needs a sortable `date:` for the
-    theme, so it carries `fallback` (end of term) plus `dateless: true` - the theme then
-    prints "TBC" instead of the placeholder. A dated entry with `tbc: true` keeps its date
-    and gains a "(TBC)" marker."""
-    title = (release.title or release.label.replace("-", " ").replace("_", " ").title())
-    title = title.replace('"', "'")
+    theme, so the caller passes end-of-term as `when` plus `dateless=True` - the theme
+    then prints "TBC" instead of the placeholder. A dated entry with `tbc=True` keeps its
+    date and gains a "(TBC)" marker."""
     flags = ""
-    if release.tbc:
-        flags = "tbc: true\n" + ("dateless: true\n" if release.when is None else "")
+    if tbc or dateless:
+        flags = "tbc: true\n" + ("dateless: true\n" if dateless else "")
     return (
         f"---\n"
-        f"type: raw_event\n"
-        f'name: "{title}"\n'
-        f"date: {_iso_when(release.when or fallback, '09:00:00')}\n"
+        f"type: special_event\n"
+        f'name: "{_q(title)}"\n'
+        f"date: {_iso_when(when)}\n"
         f"{flags}"
         f'description: ""\n'
+        f"---\n"
+    )
+
+
+def _event_entry(event: schedule.Event, fallback: date) -> str:
+    """One `events:` row, rendered as the type it declared - an exam or a special event.
+    An event with no title of its own falls back to its prettified label, and an undated
+    one (`event_datetime: tbc`) sorts at `fallback` (end of term) as a dateless row."""
+    render = _exam_entry if event.type == "exam" else _special_event_entry
+    return render(
+        event.title or _pretty(event.label),
+        event.when if event.when is not None else fallback,
+        event.tbc,
+        event.when is None,
+    )
+
+
+def _term_date_entry(description: str, when: date) -> str:
+    """A semester-boundary row (the theme's schedule_row_term_date.html). `description` is
+    the only text the row shows, and `hide_time` suppresses the placeholder clock time - a
+    term boundary is a whole day, not a 09:00 appointment."""
+    return (
+        f"---\n"
+        f"type: term_date\n"
+        f"date: {_iso_when(when)}\n"
+        f"hide_time: true\n"
+        f'description: "{_q(description)}"\n'
         f"---\n"
     )
 
@@ -612,16 +699,20 @@ def _sync_site_repo(
 
 def sync_site(course_org: str, cohort_org: str) -> int:
     """Regenerate the cohort's student-facing site from the live org state: released
-    sessions (linked into the private content repos), this year's assignments and the
-    exam rows."""
+    lecture and lab rows (linked into the private content repos), this year's assignments,
+    and the display-only rows of the schedule (exams, special events, term dates)."""
 
     def build(_wd: Path) -> _SitePlan:
         content_repos = seed.discover_cohort_repos([cohort_org])
         release_sources = seed.discover_release_sources(cohort_org, content_repos)
-        sources_by_session: dict[str, list[tuple[str, str, str]]] = {}
+        # One row per (ordinal, kind): a week's lecture materials and its lab are separate
+        # rows on the schedule, so a lab released into `labs/` never folds into the
+        # lecture's row (and never shows up twice, on the schedule and the labs page).
+        sources_by_row: dict[tuple[str, str], list[tuple[str, str, str]]] = {}
         for repo, subpath, folder, n in release_sources:
-            sources_by_session.setdefault(str(n), []).append((repo, subpath, folder))
-        sessions = sorted(sources_by_session, key=int)
+            key = (str(n), _row_kind(subpath or repo))
+            sources_by_row.setdefault(key, []).append((repo, subpath, folder))
+        rows = sorted(sources_by_row, key=lambda k: (int(k[0]), k[1]))
         assignments = seed.discover_assignments(course_org)
         # A persistent course org holds per-year templates (assignment-*-fYYYY); a cohort
         # site should list only its own year's, matched on the cohort's fYYYY/sYYYY tag.
@@ -629,8 +720,8 @@ def sync_site(course_org: str, cohort_org: str) -> int:
         if tag:
             assignments = [a for a in assignments if a.lower().endswith(tag)]
         log_step(
-            f"Syncing {cohort_org}/{_site_repo(cohort_org)}: {len(sessions)} released "
-            f"session(s), {len(assignments)} assignment(s)"
+            f"Syncing {cohort_org}/{_site_repo(cohort_org)}: {len(rows)} released "
+            f"session row(s), {len(assignments)} assignment(s)"
         )
 
         # Course identity comes from the course org metadata, semester from the cohort tag.
@@ -641,8 +732,8 @@ def sync_site(course_org: str, cohort_org: str) -> int:
         # dsl-course.yml carries only the multi-year instructor cards).
         sched = schedule.load(cohort_org)
         start = sched.semester_start or _semester_start(cohort_org)
-        # Real per-session release datetimes from schedule.yml's materials_releases; a
-        # session not in the plan falls back to a synthesised weekly date below.
+        # Real per-row release datetimes from schedule.yml's releases; a row not in the
+        # plan falls back to a synthesised weekly date below.
         session_when = _session_dates(sched)
 
         config = {}
@@ -662,33 +753,30 @@ def sync_site(course_org: str, cohort_org: str) -> int:
         # repos live - never the course org (faculty-side) or the template's default.
         config["github_org"] = cohort_org
 
-        # Exam rows render red via the template's schedule_row_exam.html. Use faculty
-        # dates from schedule.yml; else stub mid/end dates of a ~15-week semester
-        # (bounded by semester_end when set).
+        # The display-only half of the schedule. `events:` rows render as what they
+        # declared (exam or special event); an undated (TBC) one sorts at end-of-term.
         end = sched.semester_end or start + timedelta(weeks=15)
-        if sched.exams:
-            exam_entries = {
-                f"{i + 1:02d}-{_slug(exam.name)}.md": _exam_entry(
-                    exam.name,
-                    exam.exam_datetime if exam.exam_datetime is not None else end,
-                    tbc=exam.tbc,
-                    dateless=exam.exam_datetime is None,
-                )
-                for i, exam in enumerate(sched.exams)
-            }
-        else:
-            exam_entries = {
+        event_entries = {
+            f"{i + 1:02d}-{_slug(e.label)}.md": _event_entry(e, end)
+            for i, e in enumerate(sched.events)
+        }
+        # Every course has exams, so a schedule that names none still gets stub mid/end
+        # dates of a ~15-week semester (bounded by semester_end when set) - a placeholder
+        # faculty replace, rather than a schedule page with no exams on it at all.
+        if not any(e.type == "exam" for e in sched.events):
+            event_entries |= {
                 "midterm.md": _exam_entry("MidTerm Exam", start + timedelta(weeks=8)),
                 "final.md": _exam_entry("Final Exam", end),
             }
-        # Display-only schedule rows: materials_releases entries with an event_datetime
-        # but no actions (a clinic, a guest lecture). Nothing deploys; the site just
-        # shows them - an undated (TBC) one sorts at end-of-term.
-        exam_entries |= {
-            f"ev-{_slug(r.label)}.md": _raw_event_entry(r, end)
-            for r in sched.releases
-            if r.is_event_only
-        }
+        # The term's own boundaries, when the schedule pins them.
+        if sched.semester_start:
+            event_entries["term-start.md"] = _term_date_entry(
+                "Semester begins", sched.semester_start
+            )
+        if sched.semester_end:
+            event_entries["term-end.md"] = _term_date_entry(
+                "Semester ends", sched.semester_end
+            )
 
         return _SitePlan(
             config=config,
@@ -700,28 +788,30 @@ def sync_site(course_org: str, cohort_org: str) -> int:
                     cohort_org, _yaml_file(cohort_org, "classroom-config", "people.yml")
                 )
             },
-            # Assignment due dates come from schedule.yml when set (keyed on the
+            # Assignment handout/due dates come from schedule.yml when set (keyed on the
             # assignment slug), else a synthesised fortnightly cadence.
             collections={
                 "_lectures": {
-                    f"session-{int(s):02d}.md": _lecture_entry(
+                    _row_file(s, kind): _lecture_entry(
                         cohort_org,
                         s,
-                        session_when.get(s, start + timedelta(days=int(s) * 7)),
-                        sources_by_session[s],
+                        session_when.get((s, kind), start + timedelta(days=int(s) * 7)),
+                        sources_by_row[(s, kind)],
+                        kind,
                     )
-                    for s in sessions
-                    if s.isdigit()
+                    for s, kind in rows
                 },
                 "_assignments": {
                     f"{i + 1:02d}-{a}.md": _assignment_entry(
                         course_org,
                         a,
-                        _due_date(sched, a, start + timedelta(days=(i + 1) * 14)),
+                        *_assignment_dates(
+                            sched, a, start + timedelta(days=(i + 1) * 14)
+                        ),
                     )
                     for i, a in enumerate(assignments)
                 },
-                "_events": exam_entries,
+                "_events": event_entries,
             },
             commit="site: sync from org structure",
         )
@@ -768,24 +858,27 @@ def _public_lecture_entry(
     when: date,
     section_links: list[tuple[str, list[tuple[str, str]]]],
     reading_list_md: str,
+    kind: str = "lecture",
 ) -> str:
     """A public session entry: hosted links for every published section (whatever this
-    repo's sections are - `lectures`, `labs`, ... - plus `readings` in actual-readings
+    repo's sections are - `lectures`, `faq`, ... - plus `readings` in actual-readings
     mode), plus the reading list as inline text when in reading-list mode. Public-facing
-    body - no 'enrolled students only' gate.
+    body - no 'enrolled students only' gate. The week's `labs` section is a `lab` row of
+    its own (`kind`), exactly as on the cohort site.
 
     `section_links` is `(section, [(name, url), ...])` in publication order; each link is
     named `<section-singular> - <file>`, as on the cohort site."""
     links_block = _links_block(section_links)
-    body = f"Materials for session {session}."
+    title = f"{_ROW_NOUN[kind]} {session}"
+    body = f"Materials for {title.lower()}."
     if reading_list_md:
         body += "\n\n### Reading list\n\n" + reading_list_md
     return (
         f"---\n"
-        f"type: lecture\n"
+        f"type: {kind}\n"
         f"date: {_iso_when(when)}\n"
-        f'title: "Session {session}"\n'
-        f'tldr: "Materials for session {session}."\n'
+        f'title: "{title}"\n'
+        f'tldr: "Materials for {title.lower()}."\n'
         f"{links_block}\n"
         f"---\n"
         f"{body}\n"
@@ -854,7 +947,10 @@ def sync_public_site(
                     continue
                 site_session = served_root / f"session-{s}"
                 url_base = f"/{PUBLIC_MATERIALS_DIR}/{source_repo}/session-{s}"
+                # Links per row: the week's `labs` section becomes its own lab row,
+                # everything else (lectures, faq, readings) the session row.
                 section_links: list[tuple[str, list[tuple[str, str]]]] = []
+                lab_links: list[tuple[str, list[tuple[str, str]]]] = []
                 reading_list_md = ""
 
                 for section in file_sections:
@@ -865,7 +961,8 @@ def sync_public_site(
                     shutil.copytree(sec_src, dest, dirs_exist_ok=True)
                     links = _public_links(dest, f"{url_base}/{section}")
                     if links:
-                        section_links.append((section, links))
+                        rows = lab_links if _row_kind(section) == "lab" else section_links
+                        rows.append((section, links))
 
                 read_src = find_session_dir(src / READINGS_SECTION, s)
                 if read_src is not None:
@@ -878,15 +975,20 @@ def sync_public_site(
                     elif readings_mode == "reading-list":
                         reading_list_md = _reading_list_md(read_src)
 
-                # A session with nothing published in any section gets no page at all,
-                # rather than an empty one the public would click through to.
-                if not section_links and not reading_list_md:
+                # A row with nothing published gets no page at all, rather than an empty
+                # one the public would click through to.
+                if not section_links and not lab_links and not reading_list_md:
                     log(f"  (session {s}: nothing to publish - no page)")
                     continue
                 when = start + timedelta(days=int(s) * 7)
-                lecture_entries[f"session-{int(s):02d}.md"] = _public_lecture_entry(
-                    s, when, section_links, reading_list_md
-                )
+                if section_links or reading_list_md:
+                    lecture_entries[_row_file(s, "lecture")] = _public_lecture_entry(
+                        s, when, section_links, reading_list_md
+                    )
+                if lab_links:
+                    lecture_entries[_row_file(s, "lab")] = _public_lecture_entry(
+                        s, when, lab_links, "", "lab"
+                    )
 
         config = {}
         if meta.get("course_name"):

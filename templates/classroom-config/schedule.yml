@@ -4,6 +4,11 @@
 # what you want. Times are Europe/Berlin unless you set `timezone:` or give an explicit
 # offset; the Scheduled release cron runs hourly, so times are honoured to the hour.
 #
+# Each block encodes BEHAVIOUR:
+#   releases:     entries that DEPLOY materials (course org -> this cohort org)
+#   assignments:  each assignment's handout / due / grading lifecycle
+#   events:       display-only calendar rows - nothing deploys
+#
 # Changing a date later? Just commit the edit to this file on main - the GitHub web UI
 # is the recommended way (or edit a local clone, commit, push). The hourly cron reads
 # whatever is on main at each tick, so the change simply takes effect within the hour.
@@ -13,15 +18,19 @@
 # timezone: Europe/Berlin              # optional - how the naive datetimes below are read
 
 # ---------------------------------------------------------------------------
-# materials_releases: the term CALENDAR and the AUTO-RELEASE plan, in one block. Each
-# entry is a label (any name you like - session_2, lab_1, bonus-dataset) mapping to an
-# `event_datetime:` - when the thing HAPPENS, which is what the cohort site's
-# schedule shows - and, optionally, actions. Actions fire at the event_datetime unless a
-# deploy carries its own `deploy_datetime:`. The hourly Scheduled release cron does the
-# firing (idempotent - safe to re-run). Sources are always read from the COURSE org;
+# releases: the term CALENDAR and the AUTO-RELEASE plan, in one block. Each entry is a
+# label (any name you like - lecture_2, lab_1, bonus-dataset) mapping to an
+# `event_datetime:` - when the thing HAPPENS, which is what the cohort site's schedule
+# shows - and the deploys it ships. Deploys fire at the event_datetime unless one carries
+# its own `deploy_datetime:`. The hourly Scheduled release cron does the firing
+# (idempotent - safe to re-run). Sources are always read from the COURSE org;
 # destinations always written to THIS cohort org.
+#
+# Lecture vs lab is NOT a field you set: it comes from the section folder you deploy -
+# `lectures/...` renders a lecture row on the site, `labs/...` a lab row. A week with
+# both is two rows.
 # ---------------------------------------------------------------------------
-# materials_releases:
+# releases:
 #
 #   lecture_02:                         # MINIMAL - the recommended shape. Only source_repo
 #     event_datetime: {year}-09-15T10:00  # + source_path are required; this lands at
@@ -33,6 +42,8 @@
 #     event_datetime: {year}-09-15T10:00   # default doesn't fit. (Paths are relative to
 #                                          # their repo: source_path inside source_repo,
 #                                          # dest_path inside dest_repo.)
+#     tbc: true                         # OPTIONAL: a provisional date - fires as normal,
+#                                       # but the site marks it "(TBC)"
 #     deploy:                           # copy one or more paths: course repo -> cohort repo
 #       - source_repo: course-materials-{tag}     # REQUIRED - repo in the COURSE org
 #         source_path: lectures/02_intro          # REQUIRED - folder or file to copy
@@ -43,18 +54,8 @@
 #       - source_repo: course-materials-{tag}
 #         source_path: readings/02_intro          # no deploy_datetime -> out at class time
 #
-#   project-clinic:                     # NO actions -> a display-only calendar event:
-#     event_datetime: {year}-11-17T10:00  # nothing is released, the site simply shows it
-#     title: Project clinic             # OPTIONAL row label (default: prettified label)
-#     tbc: true                         # OPTIONAL: a provisional date - fires as normal,
-#                                       # but the site marks it "(TBC)"
-#
-#   guest-lecture:                      # `event_datetime: tbc` = not even a sketch yet:
-#     event_datetime: tbc               # the site shows a TBC row (sorted end-of-term);
-#     title: Guest lecture              # nothing can fire until you set a real date
-#
-#   lab_1:                              # a lab is just another entry - no special section
-#     event_datetime: {year}-09-17T10:00
+#   lab_1:                              # a lab is just another entry - the `labs/` folder
+#     event_datetime: {year}-09-17T10:00  # below is what makes it a lab row on the site
 #     deploy:
 #       - source_repo: course-materials-{tag}
 #         source_path: labs/01_setup
@@ -71,12 +72,13 @@
 #
 #   (Assignments need NO entry here: their whole lifecycle - handout, due date, grading -
 #   lives under `assignments:` below. Grading fires automatically, ONCE, at each
-#   assignment's `grading_datetime`.)
+#   assignment's `grading_datetime`. Anything that only needs a row on the calendar -
+#   an exam, a clinic, a guest lecture - goes under `events:` at the bottom.)
 
 # ---------------------------------------------------------------------------
 # The rest is for DISPLAY (website) and GRADING - not the release plan above.
 # ---------------------------------------------------------------------------
-# semester_start: {year}-09-07         # YYYY-MM-DD
+# semester_start: {year}-09-07         # YYYY-MM-DD - also a row on the site's schedule
 # semester_end: {year}-12-18
 #
 # assignments:                          # each assignment's WHOLE lifecycle, keyed by slug
@@ -86,7 +88,8 @@
 #                                       # Without it the schedule never releases this
 #                                       # assignment - omit ONLY if you hand out via the
 #                                       # manual "Release assignment" button (which then
-#                                       # records the release moment here for you)
+#                                       # records the release moment here for you).
+#                                       # Shown on the site alongside the due date.
 #     due_datetime: {year}-10-13T23:59  # a bare date -> END of that day (23:59:59)
 #     grading_datetime: {year}-10-15    # OPTIONAL: when the submission snapshot freezes AND
 #                                       # the autograder fires (once). Not shown to students.
@@ -102,11 +105,21 @@
 #                                       # "Join team" flow refuses a member beyond this
 #                                       # (default when unset: 5)
 #
-# exams:                                # `exam_datetime` is a whole day, OR a full datetime
-#   - name: MidTerm Exam                # when you know the start time
-#     exam_datetime: {year}-11-03       # bare date -> the website shows 09:00
+# events:                               # DISPLAY-ONLY calendar rows - nothing deploys
+#   mid-term:
+#     type: exam                        # OPTIONAL: exam | special_event (default:
+#                                       # special_event). `exam` colours the row as an exam
+#     title: MidTerm Exam               # OPTIONAL row label (default: prettified label)
+#     event_datetime: {year}-11-03      # bare date -> a whole day (the website shows 09:00)
 #     tbc: true                         # OPTIONAL: provisional - shown with a "(TBC)" marker
-#   - name: Final Exam
-#     exam_datetime: {year}-12-15T14:00 # real start time, shown as given
-#   - name: Resit Exam
-#     exam_datetime: tbc                # no date at all yet -> the site shows a TBC row
+#   final-exam:
+#     type: exam
+#     title: Final Exam
+#     event_datetime: {year}-12-15T14:00 # real start time, shown as given
+#   resit-exam:
+#     type: exam
+#     title: Resit Exam
+#     event_datetime: tbc               # no date at all yet -> the site shows a TBC row
+#   project-clinic:                     # no `type:` -> a special event row
+#     title: Project clinic
+#     event_datetime: {year}-11-17T10:00

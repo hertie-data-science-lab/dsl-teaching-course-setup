@@ -36,7 +36,7 @@ example-course/
   cohort-org/
     students.csv                    # 10 students + 1 auditor (handles blank until they onboard)
     teams.csv                       # 3 project teams of 3-4 (auditors are refused from teams)
-    schedule.yml                    # the full term: materials_releases + due dates + exams
+    schedule.yml                    # the full term: releases + due dates + events
     people.yml                      # this cohort's own instructors/TAs (real push access)
     grades/*.csv                    # per-assignment grade tables (auto/manual/final)
 ```

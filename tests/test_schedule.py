@@ -1,7 +1,8 @@
 """dsl_course.schedule pure core - classroom-config/schedule.yml is the single home for a
-cohort's release plan (materials_releases), due dates, and exams; a wrong parse here
-silently mis-times a release or mis-pins a grading deadline, so it's the bit that must be
-right. Times are timezone-aware (naive -> Europe/Berlin by default).
+cohort's release plan (releases), due dates (assignments), and display-only calendar rows
+(events); a wrong parse here silently mis-times a release or mis-pins a grading deadline,
+so it's the bit that must be right. Times are timezone-aware (naive -> Europe/Berlin by
+default).
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ import pytest
 
 from dsl_course.schedule import (
     Deploy,
-    Exam,
+    Event,
     Schedule,
     _coerce_date,
     _coerce_datetime,
@@ -58,7 +59,7 @@ def test_parse_full_schedule():
         "timezone": "Europe/Berlin",
         "semester_start": "2026-09-07",
         "semester_end": "2026-12-18",
-        "materials_releases": {
+        "releases": {
             "session_2": {
                 "event_datetime": "2026-09-15T14:00",
                 "deploy": [
@@ -78,7 +79,13 @@ def test_parse_full_schedule():
         "assignments": {
             "assignment-1": {"due_datetime": "2026-10-13", "grading_datetime": "2026-10-15"}
         },
-        "exams": [{"name": "Final", "exam_datetime": "2026-12-15"}],
+        "events": {
+            "final": {"type": "exam", "title": "Final", "event_datetime": "2026-12-15"},
+            "project-clinic": {
+                "title": "Project Clinic",
+                "event_datetime": "2026-10-14T10:00",
+            },
+        },
     }
     sched = parse(meta)
     assert sched.semester_start == date(2026, 9, 7)
@@ -92,7 +99,16 @@ def test_parse_full_schedule():
     assert sched.assignments["assignment-1"].grading_datetime.isoformat().startswith(
         "2026-10-15"
     )
-    assert sched.exams == [Exam(name="Final", exam_datetime=date(2026, 12, 15))]
+    # events are display-only rows, in calendar order; `type` defaults to special_event
+    assert sched.events == [
+        Event(
+            label="project-clinic",
+            title="Project Clinic",
+            when=datetime(2026, 10, 14, 10, 0, tzinfo=BERLIN),
+            type="special_event",
+        ),
+        Event(label="final", title="Final", when=date(2026, 12, 15), type="exam"),
+    ]
 
 
 def test_parse_empty_is_safe():
@@ -102,7 +118,7 @@ def test_parse_empty_is_safe():
 
 def test_release_without_when_is_dropped():
     meta = {
-        "materials_releases": {
+        "releases": {
             "ok": {"event_datetime": "2026-09-01", "deploy": []},
             "nope": {"deploy": []},
         }
@@ -112,7 +128,7 @@ def test_release_without_when_is_dropped():
 
 def test_deploy_accepts_single_mapping_defaults_dest_path_none():
     meta = {
-        "materials_releases": {
+        "releases": {
             "s": {
                 "event_datetime": "2026-09-01",
                 "deploy": {"source_repo": "cm", "source_path": "lectures/00_x"},
@@ -124,7 +140,7 @@ def test_deploy_accepts_single_mapping_defaults_dest_path_none():
 
 def test_deploy_entry_missing_source_is_skipped():
     meta = {
-        "materials_releases": {
+        "releases": {
             "s": {
                 "event_datetime": "2026-09-01",
                 "deploy": [{"source_repo": "cm"}, {"source_path": "x"}],
@@ -134,63 +150,102 @@ def test_deploy_entry_missing_source_is_skipped():
     assert parse(meta).releases[0].deploy == []
 
 
-def test_exam_bare_date_stays_a_date_timed_exam_becomes_aware_datetime():
-    # `exam_datetime:` doubles as "whole day" (a plain date) and "starts at" (a
-    # datetime) - the website renders its 09:00 placeholder only for the former, so the
+def test_event_bare_date_stays_a_date_timed_event_becomes_aware_datetime():
+    # `event_datetime:` doubles as "whole day" (a plain date) and "starts at" (a
+    # datetime) - the website renders its placeholder time only for the former, so the
     # two must not collapse into one type.
     sched = parse(
         {
-            "exams": [
-                {"name": "MidTerm Exam", "exam_datetime": "2026-11-03"},
-                {"name": "Final Exam", "exam_datetime": "2026-12-15T14:00"},
-            ]
+            "events": {
+                "mid-term": {"type": "exam", "event_datetime": "2026-11-03"},
+                "final": {"type": "exam", "event_datetime": "2026-12-15T14:00"},
+            }
         }
     )
-    midterm, final = sched.exams
-    assert midterm.exam_datetime == date(2026, 11, 3)
-    assert not isinstance(midterm.exam_datetime, datetime)
-    assert final.exam_datetime == datetime(2026, 12, 15, 14, 0, tzinfo=BERLIN)
-    assert final.exam_datetime.utcoffset() == BERLIN.utcoffset(datetime(2026, 12, 15, 14, 0))
+    midterm, final = sched.events
+    assert midterm.when == date(2026, 11, 3)
+    assert not isinstance(midterm.when, datetime)
+    assert final.when == datetime(2026, 12, 15, 14, 0, tzinfo=BERLIN)
+    assert final.when.utcoffset() == BERLIN.utcoffset(datetime(2026, 12, 15, 14, 0))
 
 
-def test_exam_yaml_native_date_and_datetime_objects():
+def test_event_yaml_native_date_and_datetime_objects():
     # PyYAML hands us real date/datetime objects, not strings, for unquoted values.
     sched = parse(
         {
-            "exams": [
-                {"name": "Whole day", "exam_datetime": date(2026, 11, 3)},
-                {"name": "Timed", "exam_datetime": datetime(2026, 12, 15, 14, 0)},
-            ]
+            "events": {
+                "whole-day": {"event_datetime": date(2026, 11, 3)},
+                "timed": {"event_datetime": datetime(2026, 12, 15, 14, 0)},
+            }
         }
     )
-    assert sched.exams[0].exam_datetime == date(2026, 11, 3)
-    assert sched.exams[1].exam_datetime == datetime(2026, 12, 15, 14, 0, tzinfo=BERLIN)
+    assert sched.events[0].when == date(2026, 11, 3)
+    assert sched.events[1].when == datetime(2026, 12, 15, 14, 0, tzinfo=BERLIN)
 
 
-def test_exam_explicit_offset_is_honoured_not_overridden():
+def test_event_explicit_offset_is_honoured_not_overridden():
     sched = parse(
         {
             "timezone": "Europe/Berlin",
-            "exams": [{"name": "Remote", "exam_datetime": "2026-12-15T14:00+00:00"}],
+            "events": {"remote": {"event_datetime": "2026-12-15T14:00+00:00"}},
         }
     )
-    assert sched.exams[0].exam_datetime.utcoffset().total_seconds() == 0
+    assert sched.events[0].when.utcoffset().total_seconds() == 0
 
 
-def test_exam_timezone_comes_from_the_cohort_setting():
+def test_event_timezone_comes_from_the_cohort_setting():
     sched = parse(
         {
             "timezone": "Pacific/Niue",
-            "exams": [{"name": "E", "exam_datetime": "2026-12-15T14:00"}],
+            "events": {"e": {"event_datetime": "2026-12-15T14:00"}},
         }
     )
-    assert sched.exams[0].exam_datetime.tzinfo == ZoneInfo("Pacific/Niue")
+    assert sched.events[0].when.tzinfo == ZoneInfo("Pacific/Niue")
 
 
-def test_exam_without_a_usable_date_is_dropped():
+def test_event_without_a_usable_date_is_dropped():
     assert parse(
-        {"exams": [{"name": "No date"}, {"name": "Bad", "exam_datetime": "soon"}]}
-    ).exams == []
+        {"events": {"no-date": {"title": "X"}, "bad": {"event_datetime": "soon"}}}
+    ).events == []
+
+
+def test_event_type_defaults_to_special_event_and_rejects_unknown_values():
+    meta = {
+        "events": {
+            "mid-term": {"type": "Exam", "event_datetime": "2026-11-03"},
+            "clinic": {"event_datetime": "2026-10-14T10:00"},
+            "typo": {"type": "examm", "event_datetime": "2026-10-20"},
+        }
+    }
+    events = {e.label: e for e in parse(meta).events}
+    assert events["mid-term"].type == "exam"  # case-normalised
+    assert events["clinic"].type == "special_event"
+    assert events["typo"].type == "special_event"  # unknown value -> the display default
+
+
+def test_events_sort_by_date_with_undated_last():
+    meta = {
+        "events": {
+            "resit": {"event_datetime": "tbc"},
+            "final": {"type": "exam", "event_datetime": "2026-12-15T14:00"},
+            "clinic": {"event_datetime": date(2026, 10, 14)},
+        }
+    }
+    # whole-day and timed entries sort against each other; TBC rows go to the end
+    assert [e.label for e in parse(meta).events] == ["clinic", "final", "resit"]
+
+
+def test_tbc_semantics_for_events():
+    meta = {
+        "events": {
+            "mid-term": {"type": "exam", "event_datetime": "2026-11-03", "tbc": True},
+            "resit": {"type": "exam", "event_datetime": "tbc"},
+            "broken": {"event_datetime": "not-a-date"},  # no date, no tbc -> dropped
+        }
+    }
+    midterm, resit = parse(meta).events
+    assert midterm.tbc and midterm.when == date(2026, 11, 3)  # provisional, but dated
+    assert resit.tbc and resit.when is None
 
 
 def test_assignment_bare_date_is_rejected_only_the_nested_form_is_accepted():
@@ -204,7 +259,7 @@ def test_assignment_without_due_is_skipped():
 
 def test_event_datetime_is_the_only_accepted_key():
     meta = {
-        "materials_releases": {
+        "releases": {
             "new-style": {"event_datetime": "2026-09-15T10:00", "deploy": []},
             "old-alias": {"calendar_event": "2026-09-01T09:00", "deploy": []},
             "older-alias": {"when": "2026-08-01T09:00", "deploy": []},
@@ -217,7 +272,7 @@ def test_event_datetime_is_the_only_accepted_key():
 
 def test_deploy_datetime_parses_and_defaults_to_none():
     meta = {
-        "materials_releases": {
+        "releases": {
             "session_2": {
                 "event_datetime": "2026-09-15T10:00",
                 "deploy": [
@@ -244,7 +299,7 @@ def test_deploy_datetime_parses_and_defaults_to_none():
 
 def test_display_only_entry_is_kept_with_its_title():
     meta = {
-        "materials_releases": {
+        "releases": {
             "project-clinic": {"event_datetime": "2026-11-17T10:00", "title": "Project clinic"}
         }
     }
@@ -254,7 +309,7 @@ def test_display_only_entry_is_kept_with_its_title():
 
 def test_malformed_deploy_datetime_falls_back_to_the_event_datetime():
     meta = {
-        "materials_releases": {
+        "releases": {
             "s": {
                 "event_datetime": "2026-09-15T10:00",
                 "deploy": [
@@ -302,7 +357,7 @@ def test_assignment_handout_parses():
 
 def test_tbc_event_datetime_keeps_an_undated_entry():
     meta = {
-        "materials_releases": {
+        "releases": {
             "guest-lecture": {"event_datetime": "tbc", "title": "Guest lecture"},
             "dated": {"event_datetime": "2026-09-15T10:00", "deploy": []},
             "dropped": {"deploy": []},  # no date, no tbc -> gone
@@ -318,21 +373,12 @@ def test_tbc_event_datetime_keeps_an_undated_entry():
 
 def test_tbc_flag_keeps_a_provisional_date_firing():
     meta = {
-        "materials_releases": {
+        "releases": {
             "clinic": {"event_datetime": "2026-11-17T10:00", "tbc": True},
         },
-        "exams": [
-            {"name": "MidTerm", "exam_datetime": "2026-11-03", "tbc": True},
-            {"name": "Resit", "exam_datetime": "tbc"},
-            {"name": "Broken", "exam_datetime": "not-a-date"},  # no date, no tbc -> dropped
-        ],
     }
-    sched = parse(meta)
-    (clinic,) = sched.releases
+    (clinic,) = parse(meta).releases
     assert clinic.tbc and clinic.when is not None  # provisional: still fires
-    midterm, resit = sched.exams
-    assert midterm.tbc and midterm.exam_datetime is not None
-    assert resit.tbc and resit.exam_datetime is None
 
 
 def test_assignment_type_parses_and_rejects_unknown_values():
@@ -449,7 +495,7 @@ def test_a_wellformed_schedule_is_untouched_by_the_yaml_guard(monkeypatch, capsy
     good = (
         "timezone: Europe/Berlin\n"
         "semester_start: 2026-09-07\n"
-        "materials_releases:\n"
+        "releases:\n"
         "  lab-1:\n"
         "    event_datetime: 2026-09-03T14:00\n"
         "    deploy:\n"

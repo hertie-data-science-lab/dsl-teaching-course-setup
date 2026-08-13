@@ -1,7 +1,7 @@
 """dsl-course scheduler -- datetime-driven auto-release.
 
 The same idempotent release functions as the manual buttons, fired automatically from the
-cohort's own `classroom-config/schedule.yml` `materials_releases:` plan (see
+cohort's own `classroom-config/schedule.yml` `releases:` plan (see
 `dsl_course.schedule`). Each labelled release carries a `when` datetime and a mix of
 actions - `deploy` (copy a source path from a COURSE-org repo into a COHORT-org repo),
 `assignment` (provision one student repo per enrolled student from a template), and
@@ -14,7 +14,7 @@ Assignment handouts are declared with the rest of the assignment's lifecycle -
 (_handout_releases), so they fire through the exact machinery a deploy does.
 
 The same hourly run also drives each assignment's grading deadline (`grading_datetime`,
-else `due_datetime`), whether or not the cohort uses `materials_releases` at all:
+else `due_datetime`), whether or not the cohort uses `releases` at all:
 
 1. FREEZE. For every assignment whose grading deadline has gone by and that has no snapshot
    yet, record the commit each submission repo is graded at into
@@ -86,7 +86,7 @@ def describe(release: Release, now: datetime | None = None) -> list[str]:
     `now`, deploys not yet due (a deploy_datetime after the entry's event_datetime) are
     marked rather than listed as firing."""
     if release.is_event_only:
-        return ["calendar event only (site schedule row) - nothing to release"]
+        return ["no actions - nothing to release"]
     lines: list[str] = []
     for d in release.deploy:
         fire_at = d.deploy_datetime or release.when
@@ -245,7 +245,7 @@ def _handout_releases(
     """Synthetic releases for `assignments.<slug>.handout_datetime` - the whole assignment
     lifecycle (handout_datetime/due_datetime/grading_datetime/max_team_size) is declared in
     ONE block, and the handout still fires through the exact machinery a
-    `materials_releases` entry would: due at its datetime, re-checked every tick
+    `releases` entry would: due at its datetime, re-checked every tick
     (idempotent - a late onboarder gets their repo on the next one), per-team when the
     template's grading.yml says so. An assignment with no `<slug>-<tag>` template repo is
     skipped - it may be pinned for its website date alone."""
@@ -291,7 +291,7 @@ def run(course_org: str, cohort_org: str, now: datetime, dry_run: bool = False) 
 
     if not releases:
         log(
-            f"  (no materials_releases or assignment handouts in {cohort_org}/"
+            f"  (no releases or assignment handouts in {cohort_org}/"
             f"{schedule.CONFIG_REPO}/{schedule.SCHEDULE_PATH} - {cohort_org} not using "
             f"scheduled release)"
         )

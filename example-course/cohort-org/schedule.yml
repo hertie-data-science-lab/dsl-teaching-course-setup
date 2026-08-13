@@ -1,9 +1,12 @@
 # Worked example - the DSL-Demo-f2026 cohort's schedule + auto-release plan, in one file
-# (classroom-config/schedule.yml). Each materials_releases entry is a `event_datetime` (when
-# the thing happens - what the site's schedule shows); the hourly cron fires its actions at
-# that moment, except deploys carrying their own `deploy_datetime`. Sources are read from the COURSE org;
-# destinations written to this COHORT org. Full schema:
-# docs/DEPLOYMENT-CHECKLIST.md#scheduleyml
+# (classroom-config/schedule.yml). Each block encodes BEHAVIOUR:
+#   releases:     entries that DEPLOY materials (course org -> this cohort org)
+#   assignments:  each assignment's handout / due / grading lifecycle
+#   events:       display-only calendar rows - nothing deploys
+# A release's `event_datetime` is when the thing HAPPENS (what the site's schedule shows);
+# the hourly cron fires its deploys at that moment, except deploys carrying their own
+# `deploy_datetime`. Sources are read from the COURSE org; destinations written to this
+# COHORT org. Full schema: docs/DEPLOYMENT-CHECKLIST.md#scheduleyml
 #
 # Changing a date later? Just commit the edit to this file on main - the GitHub web UI
 # is the recommended way (or edit a local clone, commit, push). The hourly cron reads
@@ -11,12 +14,17 @@
 # Only already-fired ONE-SHOT actions don't rewind: a release already shipped stays
 # shipped, and a snapshot/autograde that already ran needs its marker deleted to redo.
 timezone: Europe/Berlin
+semester_start: 2026-09-07
+semester_end: 2026-12-18
 
-materials_releases:
+releases:
   # Deploys are MINIMAL where the defaults fit: only source_repo + source_path are
   # required; dest_repo defaults to `materials`, dest_path mirrors source_path, and each
   # copy ships at the entry's event_datetime. The lecture lines add ONE option -
   # deploy_datetime - to ship an hour before class. (Paths are relative to their repo.)
+  #
+  # Lecture vs lab is NOT a field: it comes from the section folder deployed here -
+  # `lectures/...` renders a lecture row on the site, `labs/...` a lab row.
   course-intro:
     event_datetime: 2026-08-31T09:00   # week 0 - the course opens before teaching starts
     title: Course opens
@@ -92,26 +100,11 @@ materials_releases:
         source_path: readings/05_week-5
       - source_repo: lecture-code-f2026
         source_path: mlpkg/training
-  # No actions -> a DISPLAY-ONLY event: nothing is released, the site's schedule simply
-  # shows the row. (Use `deploy_datetime:` on a deploy line, as the lecture entries above
-  # do, when materials should go out before the class they belong to - or leave a session
-  # with no deploy at all if its materials are never released.)
   lab-5:
     event_datetime: 2026-10-01T14:00
     deploy:
       - source_repo: course-materials-f2026
         source_path: labs/05_week-5
-  project-clinic:
-    event_datetime: 2026-11-10T10:00
-    title: Project clinic
-
-  # `event_datetime: tbc` -> the site shows an undated TBC row; nothing can fire until a
-  # real date replaces it. (`tbc: true` next to a real date marks it "(TBC)" instead.)
-  guest-lecture:
-    event_datetime: tbc
-    title: Guest lecture (industry speaker)
-semester_start: 2026-09-07
-semester_end: 2026-12-18
 
 # Autograding needs no entry here: at each assignment's grading deadline the hourly cron
 # freezes the submission snapshot and runs the autograder once (individual/group comes from
@@ -131,12 +124,25 @@ assignments:                    # each assignment's whole lifecycle in one block
     due_datetime: 2026-11-15T23:59
     max_team_size: 4              # the welcome "Join team" flow refuses a 5th member
 
+# DISPLAY-ONLY rows: nothing is released, the site's schedule simply shows them.
+# `type: exam` colours the row as an exam; leave `type` out for anything else
+# (a clinic, a guest lecture, a review session).
+events:
+  mid-term:
+    type: exam
+    title: MidTerm Exam
+    event_datetime: 2026-11-03   # a bare date is a whole-day entry (the site shows 09:00)
+    tbc: true                    # provisional - the site shows "(TBC)"
+  final-exam:
+    type: exam
+    title: Final Exam
+    event_datetime: 2026-12-15T14:00   # a real start time, shown as given
+  project-clinic:                # no `type:` -> a special event row
+    title: Project clinic
+    event_datetime: 2026-11-10T10:00
 
-exams:
-  # a bare date is a whole-day entry (the website shows 09:00); give a full datetime when
-  # you know the real start time
-  - name: MidTerm Exam
-    exam_datetime: 2026-11-03
-    tbc: true                # provisional - site shows "(TBC)"
-  - name: Final Exam
-    exam_datetime: 2026-12-15T14:00
+  # `event_datetime: tbc` -> the site shows an undated TBC row; nothing can fire until a
+  # real date replaces it. (`tbc: true` next to a real date marks it "(TBC)" instead.)
+  guest-lecture:
+    title: Guest lecture (industry speaker)
+    event_datetime: tbc
