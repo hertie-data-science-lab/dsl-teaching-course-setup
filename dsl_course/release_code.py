@@ -1,21 +1,27 @@
-"""dsl-course release-code -- publish a path (folder or file) from a course-org source
-repo into a cohort-org repo, additively + idempotently:
+"""dsl-course release -- publish path(s) from a course-org source repo into a cohort-org
+repo, additively + idempotently:
 
     source/<repo>/<source_path>          (a folder - e.g. lectures/02_intro - or a file)
             |  copy that path
             v
     cohort/<dest_repo>/<dest_path>       (private + students read; accumulates over time)
 
-`deploy_many` is the batch core: it clones each unique source repo and each unique dest
-repo ONCE per run and applies every copy against those working trees, so a scheduler run
-releasing 27 paths from one source clones it once, not 27 times. `release_code` is the
-single-path wrapper the manual "Release code" button uses.
+`deploy_many` is the batch core AND the single executor of every release in the system:
+it clones each unique source repo and each unique dest repo ONCE per run and applies every
+copy against those working trees, so a scheduler run releasing 27 paths from one source
+clones it once, not 27 times. Both callers arrive here - the hourly scheduler
+(scheduler._run_releases, straight from each `deploy:` entry in schedule.yml) and the
+manual "Release materials" button (via `main` below, whose five inputs are deliberately the
+same five fields as a `deploy:` entry).
+
+The button's `source_path`/`dest_path` are comma-separated PARALLEL lists paired by index
+(parse_path_pairs) - one Deploy per pair, one deploy_many call for the batch.
 
 Usage:
     python3 -m dsl_course.release_code \\
-        --source-org COURSE --source-repo lecture-code \\
-        --cohort-org COHORT --cohort-repo materials \\
-        --path mlpkg/simulation [--dest-path pkg/simulation]
+        --source-org COURSE --source-repo course-materials-f2026 \\
+        --cohort-org COHORT --dest-repo materials \\
+        --source-path "lectures/02_intro,labs/02_lab" [--dest-path "week02/lecture,week02/lab"]
 """
 
 from __future__ import annotations
@@ -26,9 +32,18 @@ import sys
 import tempfile
 from pathlib import Path
 
-from .release import grant_read_teams
 from .schedule import Deploy
-from .utils import GIT_ENV, create_repo, gh, git, log, log_err, log_ok, log_step
+from .utils import (
+    GIT_ENV,
+    create_repo,
+    gh,
+    git,
+    grant_read_teams,
+    log,
+    log_err,
+    log_ok,
+    log_step,
+)
 
 _GIT_ENV = GIT_ENV
 
@@ -138,69 +153,84 @@ def deploy_many(
     return errors, changed
 
 
-def release_code(
-    source_org: str,
-    source_repo: str,
-    cohort_org: str,
-    cohort_repo: str,
-    path: str,
-    dest_path: str | None = None,
-    sync: bool = True,
-) -> int:
-    """Single-path deploy (the manual Release code button). Thin wrapper over
-    `deploy_many`. `dest_path` defaults to mirror `path`; `sync` runs a website sync
-    after (the scheduler batches via `deploy_many(sync=False)` and syncs once itself)."""
-    path = path.strip("/")
-    if not path:
-        log_err("--path is empty.")
-        return 1
-    log_step(
-        f"Releasing `{path}` from {source_org}/{source_repo} -> "
-        f"{cohort_org}/{cohort_repo}/{(dest_path or path).strip('/')}"
-    )
-    errors, _ = deploy_many(
-        source_org,
-        cohort_org,
-        [Deploy(source_repo, path, cohort_repo, dest_path)],
-        sync=sync,
-    )
-    if errors:
-        return 1
-    log("done")
-    return 0
+def _items(spec: str) -> list[str]:
+    """Split a comma-separated input into stripped, non-empty items - so
+    "a, b," is ["a", "b"] and "" is []."""
+    return [item.strip() for item in spec.split(",") if item.strip()]
+
+
+def parse_path_pairs(source_paths: str, dest_paths: str = "") -> list[tuple[str, str | None]]:
+    """Pair the Release materials button's two comma-separated lists by index.
+
+    A blank `dest_paths` mirrors every source path (`None` dest, exactly what an omitted
+    `dest_path:` means in schedule.yml). Otherwise the counts MUST match: unlike the
+    schedule (which drops what it can't pair, on an unattended cron), a button run has an
+    operator watching it, so a mismatch is a loud ValueError naming both counts rather
+    than a silently short release. Surrounding whitespace is stripped and empty items
+    (a trailing comma) are ignored on both sides."""
+    sources = _items(source_paths)
+    if not sources:
+        raise ValueError("--source-path is empty")
+    dests = _items(dest_paths)
+    if not dests:
+        return [(s, None) for s in sources]
+    if len(dests) != len(sources):
+        raise ValueError(
+            f"{len(sources)} source_paths but {len(dests)} dest_paths - give one "
+            f"dest_path per source_path (paired in order), or leave dest_path blank "
+            f"to mirror every source_path"
+        )
+    return list(zip(sources, dests))
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source-org", required=True, help="Course org (source)")
     parser.add_argument(
-        "--source-repo", required=True, help="Source repo holding the path"
+        "--source-repo", required=True, help="Source repo holding the path(s)"
     )
     parser.add_argument("--cohort-org", required=True, help="Cohort org (target)")
     parser.add_argument(
-        "--cohort-repo", required=True, help="Target repo in the cohort org"
+        "--dest-repo",
+        default="materials",
+        help="Target repo in the cohort org, created if missing (default: materials)",
     )
     parser.add_argument(
-        "--path", required=True, help="Source path to release (folder or file)"
+        "--source-path",
+        required=True,
+        help="Source path(s) to release - a folder/file, or a comma-separated list",
     )
     parser.add_argument(
         "--dest-path",
-        default=None,
-        help="Destination path in the cohort repo (default: mirror --path)",
+        default="",
+        help="Destination path(s), paired with --source-path by index "
+        "(default: mirror each --source-path)",
     )
     args = parser.parse_args()
 
-    if (args.source_org, args.source_repo) == (args.cohort_org, args.cohort_repo):
+    dest_repo = args.dest_repo.strip() or "materials"
+    if (args.source_org, args.source_repo) == (args.cohort_org, dest_repo):
         log_err("source and target must differ.")
         return 1
-    return release_code(
-        args.source_org,
-        args.source_repo,
-        args.cohort_org,
-        args.cohort_repo,
-        args.path,
-        dest_path=args.dest_path,
+    try:
+        pairs = parse_path_pairs(args.source_path, args.dest_path)
+    except ValueError as e:
+        log_err(f"{e}.")
+        return 1
+
+    log_step(
+        f"Releasing {len(pairs)} path(s) from {args.source_org}/{args.source_repo} -> "
+        f"{args.cohort_org}/{dest_repo}"
     )
+    errors, _ = deploy_many(
+        args.source_org,
+        args.cohort_org,
+        [Deploy(args.source_repo, src, dest_repo, dest) for src, dest in pairs],
+    )
+    if errors:
+        return 1
+    log("done")
+    return 0
 
 
 if __name__ == "__main__":

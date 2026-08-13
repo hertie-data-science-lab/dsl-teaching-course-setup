@@ -238,7 +238,8 @@ materials_releases:
   lecture_02:
     event_datetime: 2026-09-15T10:00
     deploy:
-      - {source_repo: course-materials-f2026, source_path: lectures/02_intro}
+      - source_repo: course-materials-f2026
+        source_path: lectures/02_intro
       # -> lands at materials/lectures/02_intro, shipped at class time
 ```
 
@@ -251,12 +252,18 @@ materials_releases:
     tbc: false                        # true = provisional date, shown "(TBC)"
     title: Linear regression          # site row label (default: prettified entry label)
     deploy:
-      - {source_repo: course-materials-f2026, source_path: lectures/02_intro,
-         dest_repo: lecture_materials, dest_path: lectures/02_intro,
-         deploy_datetime: 2026-09-15T09:00}                          # ships 1h early
+      - source_repo: course-materials-f2026
+        source_path: lectures/02_intro
+        dest_repo: lecture_materials
+        dest_path: lectures/02_intro
+        deploy_datetime: 2026-09-15T09:00   # ships 1h early
   bonus-dataset:
-    event_datetime: 2026-10-20T09:30  # single copy - no list needed
-    deploy: {source_repo: course-datasets-f2026, source_path: week7/housing.csv, dest_repo: materials, dest_path: datasets/housing.csv}
+    event_datetime: 2026-10-20T09:30  # a one-off that isn't a teaching session
+    deploy:
+      - source_repo: course-datasets-f2026
+        source_path: week7/housing.csv
+        dest_repo: materials
+        dest_path: datasets/housing.csv
   project-clinic:
     event_datetime: 2026-11-17T10:00  # no actions -> display-only row on the site schedule
     title: Project clinic
@@ -265,8 +272,14 @@ materials_releases:
 **Dates** - the website schedule and the grading deadlines. Absent values are synthesised
 (semester from the tag, lectures weekly, assignments fortnightly, exams weeks 8 + 15).
 
-Per assignment (`assignments.<slug>`; only `due_datetime` is required - a minimal entry is one line,
-`assignment-1: {due_datetime: 2026-10-13}`):
+Per assignment (`assignments.<slug>`); only `due_datetime` is required, so a minimal entry is
+just a slug and a date:
+
+```yaml
+assignments:
+  assignment-1:
+    due_datetime: 2026-10-13
+```
 
 | Field | Required | Default | Meaning |
 |---|---|---|---|
@@ -292,9 +305,13 @@ assignments:                          # each assignment's WHOLE lifecycle, keyed
     max_team_size: 4                  # optional, group assignments: the welcome Join team
                                       # flow refuses members beyond this (default 5)
 exams:
-  - {name: MidTerm Exam, exam_datetime: 2026-11-03, tbc: true}   # provisional - shown "(TBC)"
-  - {name: Final Exam, exam_datetime: 2026-12-15T14:00}
-  - {name: Resit Exam, exam_datetime: tbc}                        # undated - shown as a TBC row
+  - name: MidTerm Exam
+    exam_datetime: 2026-11-03
+    tbc: true   # provisional - shown "(TBC)"
+  - name: Final Exam
+    exam_datetime: 2026-12-15T14:00
+  - name: Resit Exam
+    exam_datetime: tbc   # undated - shown as a TBC row
 ```
 
 **Silent failures - the parser never errors.** A malformed entry is dropped, not reported:

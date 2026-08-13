@@ -152,7 +152,7 @@ faculty / admin teams`"] -->|"write/admin on"| cr["central repo"] --> ba["run Bo
   org AND every cohort; each cohort's people.yml reconciles into that cohort's `instructors` team
   AND a **parallel**, tag-scoped `instructors-<tag>` team on the course org - no merge across
   cohorts. Who-to-declare-where:
-  [access-reference](../docs/access-reference.md); the runbook for changing it:
+  [access-reference](../docs/reference/access-reference.md); the runbook for changing it:
   [05 Manage the teaching team](../docs/05-manage-teaching-team.md).
 - Each person entry takes optional `start`/`end` ISO dates (`utils.active_today`), applied by
   `desired_team_members` to **both** flows. Since every reconcile is a full add-and-remove, a
@@ -201,9 +201,12 @@ real config lives in `classroom-config`.
 
 ### Release
 
-**Materials** copies whole `<section>/<NN>_.../` folders for the chosen sessions from the course
-org into a cohort repo - private, with read for both the `students` and `auditors` teams. Only
-released sessions exist cohort-side; everything is idempotent, so re-releasing is a no-op.
+**Materials** copies `source_path` - a folder, a single file, or a comma-separated list of either -
+from a course-org `source_repo` into the cohort's `dest_repo` at `dest_path` (default: mirror
+`source_path`). The repo is private, with read for both the `students` and `auditors` teams. Those
+four fields are deliberately the same ones a `schedule.yml` `deploy` entry carries, and both routes
+execute through the same `release_code.deploy_many`. Only released paths exist cohort-side;
+everything is idempotent and additive, so re-releasing is a no-op.
 
 **Assignment** is two stages: freeze a cohort-level template from the course template's `main`
 (so a mid-term edit to the course template can't change what a cohort was handed), then generate
@@ -216,11 +219,11 @@ same way everywhere (`collect.assignment_is_group`): the cohort's
 cohort setting never writes back into the course org. The workflow's `group` checkbox
 remains a last-resort force-override.
 
-**Code** (`release_code`, rendered by `workflows_render.render_release_code`) copies one path -
-a subpackage folder or a single module - from the repo it is run in into a cohort repo, purely
-additively, so a package can be disclosed topic by topic. It is **never seeded centrally**
-(`seed_github_workflows` has no entry for it): the workflow is pushed only into content repos by
-`_push_workflows`, because the source repo is always the repo you run it from.
+There is **no separate Code release**. Releasing a subpackage folder or a single module is just
+Materials with `source_path` pointing at it (e.g. `mlpkg/simulation`), which is how a package gets
+disclosed topic by topic. The old `Release code` button and `render_release_code` were removed once
+Materials took the same four fields; `release_code.deploy_many` survives as the shared executor for
+both the button and the scheduler, so the module name is now narrower than what it does.
 
 Materials and Assignment are exposed centrally (in `.github`) *and* run-from-repo (in each
 content repo), from the same renderer; the run-from-repo copy drops `source_repo` and knows that
@@ -319,19 +322,16 @@ READMEs.
 
 - **cohort_org** - from the `.github/cohort-courses-pages.yml` registry.
 - **source_repo** (central only) / **assignment** - the course org's content / `assignment-*` repos.
-- **sessions** - free text, comma and/or hyphen-range (`1,3,5-7`): there is no multi-select
-  widget, and a checkbox per session would blow the input cap. The run-from-repo copy lists the
-  discovered sessions in the field description.
-- **release_&lt;section&gt; / &lt;section&gt;_path** - a checkbox (default on) + a free-text path
-  field per section, capped at `MAX_RELEASE_SECTIONS` (3). The cap is *derived*, not chosen:
-  `workflow_dispatch` allows 10 inputs and each section costs 2, alongside
-  cohort_org/sessions/include_root_files and (centrally) source_repo - the arithmetic lives in
-  `release_budget.py`. A blank path creates/uses a repo named after the section at its root;
-  `repo/subpath` nests it, so sections can share a repo. Sections beyond the cap are logged by
-  `cap_sections`, not silently dropped, and can be released with
-  `python3 -m dsl_course.release --destinations`. The run-from-repo copy uses that repo's own
-  sections; the central copy uses the union across the org, since it can't know which source repo
-  you'll pick.
+- **source_path / dest_path** - free text. Both accept a comma-separated list, paired by index;
+  a blank `dest_path` mirrors every `source_path`, and a count mismatch fails the run loudly
+  (`release_code.parse_path_pairs`) rather than guessing. Comma-separated lists exist because
+  `workflow_dispatch` has no array input and its string fields are single-line, so a multi-line
+  YAML blob cannot be entered.
+- **dest_repo** - free text, default `materials`; created on first release if missing.
+- Sections are **no longer an input**. The button takes five fixed inputs whatever the repo's
+  shape, which is well inside `workflow_dispatch`'s 10-input limit - so the per-section checkbox
+  fields, the derived `MAX_RELEASE_SECTIONS` cap and `release_budget.py` were all deleted. The
+  `<section>/<NN>_.../` convention still matters, but only to the **website** builders.
 
 ## Repo discovery
 
@@ -415,12 +415,11 @@ Self-contained - workflows and their Python implementation both live in this rep
     - `workflows_render` - the workflow YAML templates + every `render_*` function;
     - `discovery` - the cohort registry and all live org/repo/section/session discovery,
       including the shared infra-repo predicate;
-    - `profile_readme` - the org landing page + the `.github` repo's own README;
-    - `release_budget` - the 10-input cap and the section-slot arithmetic under it.
+    - `profile_readme` - the org landing page + the `.github` repo's own README.
   - `scheduler` - the hourly cron: freeze passed deadlines, then fire due releases.
   - `schedule` - parse `schedule.yml` (timezone-aware releases, due dates, exams).
-  - `release` / `release_code` - publish a session's materials across every discovered section
-    into a cohort repo / copy one package path additively.
+  - `release_code` - the single release executor (`deploy_many`): copy each source path into its
+    cohort repo additively, cloning every repo once per run. Shared by the button and the scheduler.
   - `assign` - freeze a cohort assignment template, then fan out per-student (or per-team) repos.
   - `collect` - the faculty-side autograder: deadline snapshots, pinned checkout, sandboxed test
     run, `auto` scores into the grade CSV.

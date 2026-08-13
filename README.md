@@ -1,6 +1,8 @@
 # DSL Teaching & Course Setup (GitHub delivery)
 
-Central registry of the workflows that deliver courses at the Hertie Data Science Lab. A course lives once in a persistent **course** org and is delivered each year into a per-year **cohort** org; everything faculty-facing is a **GitHub Actions button**, and can be scheduled in advance at the start of the semester.
+Central registry of the workflows that deliver courses at the Hertie Data Science Lab. 
+
+A course lives once in a persistent **course** org and is delivered each year into a per-year **cohort** org; everything faculty-facing is a **GitHub Actions button**, and can be scheduled in advance at the start of the semester.
 
 ## Start here
 
@@ -9,38 +11,30 @@ Central registry of the workflows that deliver courses at the Hertie Data Scienc
 |---------|-------|
 | Setting up a brand-new course | [workflow runbooks](docs/README.md) - [01](docs/01-new-course-org.md)-[03](docs/03-add-assignment-to-course.md) |
 | Starting a new cohort / semester of an existing course | [04 New cohort org](docs/04-new-cohort-org.md) onwards |
-| A TA or faculty assistant joining a cohort | [runbooks](docs/README.md) [06](docs/06-enrol-students-to-cohort.md)-[10](docs/10-grade-and-return-assignments.md) - skip 01-05 (setup; 05 is done for you by a course admin) |
-| Granting someone access to a course - incl. **for a fixed term** | [05 Manage the teaching team](docs/05-manage-teaching-team.md) |
-
-| Reference Materials | Go to |
-|---------|-------|
-| Chronological index of the e2e workflow | [the workflows](docs/README.md#the-workflows) |
-| An example course setup | [`example course`](example-course/README.md) |
-| Template artefacts | [`templates`](templates/classroom-config/README.md) |
-| All available `.github` Actions tab buttons (course org) | [`actions reference`](docs/actions-reference.md) |
-| Who may run those buttons, and which team grants it | [`access reference`](docs/access-reference.md) |
-| **Deployment checklist** | [`DEPLOYMENT-CHECKLIST.md`](docs/DEPLOYMENT-CHECKLIST.md) |
+| A TA joining a cohort | [runbooks](docs/README.md) [06](docs/06-enrol-students-to-cohort.md)-[10](docs/10-grade-and-return-assignments.md) - skip 01-05 |
 
 ## Deploying a course
 
-2 phases:
-1. [**set up the course org**](docs/01-new-course-org.md) (once)
+> All workflows are found [here](docs/) - numbered by order of use. 
+
+3 phases:
+1. [**Set up the course org**](docs/01-new-course-org.md) (once)
    - [Add materials](docs/02-add-materials-to-course.md) - lectures slides, readings, labs, other
    - [Add assignments](docs/03-add-assignment-to-course.md) - a template repo that is copied into student private response repos, optionally contains a solutions branch
-2. [**add a cohort org**](docs/04-new-cohort-org.md) (per year),
+2. [**Set up a cohort org**](docs/04-new-cohort-org.md) (per year)
    - [Declare the teaching team](docs/05-manage-teaching-team.md) - this year's instructors & TAs, optionally with `start`/`end` dates so access lapses on its own
    - [Enrol students](docs/06-enrol-students-to-cohort.md)
-   - [Define schedule up front](docs/07-schedule-releases.md) , to automate release/collect of materials, assignments & grading runs from course org -> cohort org (and/or manually release [materials](docs/08-release-materials-to-cohort.md) and [assignments](docs/09-release-assignment-to-cohort.md) on an ad hoc basis)
-   - [Grade assignments](docs/10-grade-and-return-assignments.md)
-      
-> The only manually-required steps are (1) creating each org in the GitHub web UI ([github.com/account/organizations/new](https://github.com/account/organizations/new)) and (2) [inviting **`hertie-dsl-bot`** as an org **Owner**](docs/01-new-course-org.md#steps); the DSL team must **accept** it before you bootstrap. Everything after that is automated via the scheduler / a button click.
-> *NB: if email integration is not currently live, then it may be necessary to email students their initial course invite codes as well.* 
+   - [Set the schedule up front](docs/07-schedule-releases.md) - this automates release materials, assignments & grading runs from course org -> cohort org 
+3. **Run the course**
+   - The editable schedule will automate release & collection of any materials defined in its yaml file.
+   - Further manual release of [materials](docs/08-release-materials-to-cohort.md) and [assignments](docs/09-release-assignment-to-cohort.md) can be managed on an ad hoc basis
+   - [Grade assignments](docs/10-grade-and-return-assignments.md) can be distributed.
 
 ## The model
 
 Two org tiers:
-1. the **course** org is the faculty-facing control panel - the persistent, historical registry, of course materials & assignments, where faculty & instructors push version-controlled materials from;
-2. the **cohort** org is the per-year student-facing delivery target - materials are released here, student assignments are submitted and assessed here, and student-facing features (onboarding, the website) live here.
+1. The **course** org is the faculty-facing control panel - the persistent, historical registry, of course materials & assignments, where faculty & instructors push version-controlled materials from.
+2. The **cohort** org is the per-year student-facing delivery target - materials are released here, student assignments are submitted and assessed here, and student-facing features (onboarding, the website) live here.
 
 ```mermaid
 flowchart TB
@@ -106,7 +100,18 @@ open-courseware site - hosts shared lectures + readings`"]
   class mat,tmpl,cfg,cmat,repos,team,keypriv private;
 ```
 
-Each cohort gets an auto-deployed `<cohort>.github.io` site whose material links are private (enrolled students and auditors only). A course can optionally also publish a **public** `<course-org>.github.io` open-courseware site - see [**Publish course website**](docs/actions-reference.md#optional-public-course-website).
+Each cohort further gets an auto-deployed `<cohort>.github.io` site whose material links are private (enrolled students and auditors only). A course can optionally also publish a **public** `<course-org>.github.io` open-courseware site - see [**Publish course website**](docs/reference/actions-reference.md#optional-public-course-website).
+
+## Further References
+
+| Reference Materials | Go to |
+|---------|-------|
+| Chronological index of the e2e workflow | [the workflows](docs/README.md#the-workflows) |
+| An example course setup | [`example course`](example-course/README.md) |
+| Template artefacts | [`templates`](templates/classroom-config/README.md) |
+| All available `.github` Actions tab buttons (course org) | [`actions reference`](docs/reference/actions-reference.md) |
+| Who may run those buttons, and which team grants it | [`access reference`](docs/reference/access-reference.md) |
+| **Deployment checklist** | [`DEPLOYMENT-CHECKLIST.md`](docs/DEPLOYMENT-CHECKLIST.md) |
 
 
 ## Glossary

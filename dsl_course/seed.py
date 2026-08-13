@@ -2,13 +2,13 @@
 
 The Release / Provision actions live INSIDE course content (and assignment-template)
 repos, so faculty & instructors trigger them from the repo they're working in. The repo the workflow
-runs in is the SOURCE; the action pushes into a chosen cohort org/repo.
+runs in is the default SOURCE; the action pushes into a chosen cohort org/repo.
 
 The cohort org input is a GitHub `choice` dropdown. GitHub can't populate a dropdown
 live, so its options are rendered into the YAML from the cohort registry and
 refreshed on demand: `refresh` reads the course org's .github/cohort-courses-pages.yml
-`cohorts:` list (maintained by `bootstrap --cohort --course X`, or by hand), lists
-their repos, and re-pushes the content actions to every course repo. No cron, no app.
+`cohorts:` list (maintained by `bootstrap --cohort --course X`, or by hand) and re-pushes
+the content actions to every course repo. No cron, no app.
 
 This module is the placement + CLI layer; the three jobs it used to also do live next to
 it, and are imported from there (see `__all__` for the few names still reached for as
@@ -16,12 +16,11 @@ it, and are imported from there (see `__all__` for the few names still reached f
 
 - workflows_render - the workflow YAML templates and every render_* function;
 - discovery       - the cohort registry and all live org/repo/section/session discovery;
-- profile_readme  - the org landing page + `.github` repo README;
-- release_budget  - GitHub's 10-input cap and how many section checkboxes fit under it.
+- profile_readme  - the org landing page + `.github` repo README.
 
 CLI:
   refresh --course-org X   re-render the content actions into every course repo with
-                           fresh cohort/session/assignment dropdowns, and rebuild the
+                           fresh cohort/source-repo/assignment dropdowns, and rebuild the
                            org profile README. (Run by the Refresh-actions and
                            Bootstrap-cohort workflows.)
 """
@@ -39,13 +38,10 @@ from .discovery import (
     discover_cohorts,
     discover_content_repos,
     discover_release_sources,
-    discover_sections_and_sessions,
-    discover_sections_union,
     discover_sessions,
     register_cohort,
 )
 from .profile_readme import update_profile_readme
-from .release_budget import cap_sections
 from .utils import delete_file, gh, log_ok, log_step, put_file
 from .workflows_render import (
     render_bootstrap_cohort,
@@ -58,7 +54,6 @@ from .workflows_render import (
     render_publish_site,
     render_refresh,
     render_release,
-    render_release_code,
     render_render_grades,
     render_scheduler,
     render_send_codes,
@@ -72,7 +67,7 @@ from .workflows_render import (
 # the handful of discovery/profile names its callers (site, scaffold, bootstrap_course,
 # sync_faculty, sync_membership) grew up importing from here. Everything else the split
 # moved out is imported from its owning module (workflows_render, discovery,
-# release_budget, profile_readme, central) - so should new code be.
+# profile_readme, central) - so should new code be.
 __all__ = [
     # placement + CLI (this module's own job)
     "seed_github_workflows",
@@ -94,24 +89,25 @@ __all__ = [
 WORKFLOWS = (
     ".github/workflows/release-materials.yml",
     ".github/workflows/release-assignment.yml",
-    ".github/workflows/release-code.yml",
 )
+
+# Retired in favour of the consolidated Release materials button (whose source_path takes
+# any folder or file, which is all Release code ever did) - removed from content repos
+# seeded before that change, so no repo keeps a button whose CLI no longer exists.
+RETIRED_WORKFLOWS = (".github/workflows/release-code.yml",)
 
 
 def _push_workflows(
     org: str,
     repo: str,
     cohort_orgs: list[str],
-    cohort_repos: list[str],
     assignments: list[str],
 ) -> None:
-    sections, sessions = discover_sections_and_sessions(org, repo)
-    sections = cap_sections(sections, f"{org}/{repo}")
     put_file(
         org,
         repo,
         WORKFLOWS[0],
-        render_release(cohort_orgs, sessions, sections).encode(),
+        render_release(cohort_orgs, repo).encode(),
         "ci: release-materials wrapper",
     )
     put_file(
@@ -121,13 +117,13 @@ def _push_workflows(
         render_provision(cohort_orgs, assignments).encode(),
         "ci: release-assignment wrapper",
     )
-    put_file(
-        org,
-        repo,
-        WORKFLOWS[2],
-        render_release_code(cohort_orgs, cohort_repos).encode(),
-        "ci: release-code wrapper",
-    )
+    for retired in RETIRED_WORKFLOWS:
+        delete_file(
+            org,
+            repo,
+            retired,
+            f"ci: retire {retired.split('/')[-1]} (folded into release-materials.yml)",
+        )
     log_ok(f"workflows -> {org}/{repo}")
 
 
@@ -138,13 +134,9 @@ def seed_github_workflows(course_org: str) -> None:
     cohorts = discover_cohorts(course_org)
     source_repos = discover_content_repos(course_org)
     assignments = discover_assignments(course_org)
-    central_sections = cap_sections(
-        discover_sections_union(course_org, source_repos),
-        f"{course_org}/.github central Release materials button",
-    )
     files = {
         ".github/workflows/release-materials.yml": render_central_release(
-            source_repos, cohorts, central_sections
+            source_repos, cohorts
         ),
         ".github/workflows/release-assignment.yml": render_provision(
             cohorts, assignments
@@ -209,7 +201,6 @@ def refresh(course_org: str) -> int:
     org profile README; and (Free-plan workaround) propagate the token as a repo secret
     so private content repos can authenticate."""
     cohorts = discover_cohorts(course_org)
-    cohort_repos = discover_cohort_repos(cohorts)
     targets = discover_content_repos(course_org)
     assignments = discover_assignments(
         course_org
@@ -218,7 +209,7 @@ def refresh(course_org: str) -> int:
         f"Refreshing {len(targets)} content repo(s) in {course_org} with cohorts {cohorts or 'none'}"
     )
     for repo in sorted(targets):
-        _push_workflows(course_org, repo, cohorts, cohort_repos, assignments)
+        _push_workflows(course_org, repo, cohorts, assignments)
     _propagate_repo_secret(course_org, targets)
     seed_github_workflows(course_org)
     update_profile_readme(course_org)

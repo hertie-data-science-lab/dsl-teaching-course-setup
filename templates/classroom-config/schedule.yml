@@ -26,7 +26,8 @@
 #   lecture_02:                         # MINIMAL - the recommended shape. Only source_repo
 #     event_datetime: {year}-09-15T10:00  # + source_path are required; this lands at
 #     deploy:                             # materials/lectures/02_intro at class time.
-#       - {{source_repo: course-materials-{tag}, source_path: lectures/02_intro}}
+#       - source_repo: course-materials-{tag}
+#         source_path: lectures/02_intro
 #
 #   session_2:                          # FULL - every field spelled out, for when a
 #     event_datetime: {year}-09-15T10:00   # default doesn't fit. (Paths are relative to

@@ -4,7 +4,7 @@ Who can do what, and which team grants it. The companion to
 [`actions-reference.md`](actions-reference.md) (every button, one line each).
 
 To **change** anyone's access, don't use this page - follow
-[05 Manage the teaching team](05-manage-teaching-team.md). Access is declared in config files and
+[05 Manage the teaching team](../05-manage-teaching-team.md). Access is declared in config files and
 reconciled; nothing here is clicked.
 
 ## Two separate populations
@@ -34,7 +34,7 @@ year, and their admin rights need to span every cohort. Instructors and TAs are 
 years and no accumulate-forever roster.
 
 Both files' person entries accept optional `start` / `end` ISO dates - see
-[time-boxed access](05-manage-teaching-team.md#time-box-it-start--end).
+[time-boxed access](../05-manage-teaching-team.md#time-box-it-start--end).
 
 ```mermaid
 flowchart LR
@@ -124,11 +124,11 @@ made.
 
 ## Related
 
-- [05 Manage the teaching team](05-manage-teaching-team.md) - the runbook for changing any of this.
-- [`DEPLOYMENT-CHECKLIST.md`](DEPLOYMENT-CHECKLIST.md) - field-by-field schemas for `dsl-course.yml`
+- [05 Manage the teaching team](../05-manage-teaching-team.md) - the runbook for changing any of this.
+- [`DEPLOYMENT-CHECKLIST.md`](../DEPLOYMENT-CHECKLIST.md) - field-by-field schemas for `dsl-course.yml`
   and `people.yml`.
-- [`../docs-admin-arch/central-admin.md`](../docs-admin-arch/central-admin.md) - central DSL-org
+- [`../../docs-admin-arch/central-admin.md`](../../docs-admin-arch/central-admin.md) - central DSL-org
   authority: who can create orgs, the bot and its rotation, the org inventory.
-- [`../docs-admin-arch/admin-setup.md`](../docs-admin-arch/admin-setup.md) - the bot account, its
+- [`../../docs-admin-arch/admin-setup.md`](../../docs-admin-arch/admin-setup.md) - the bot account, its
   PAT scopes, and the token model.
-- [`../docs-admin-arch/architecture.md`](../docs-admin-arch/architecture.md) - how the pieces move.
+- [`../../docs-admin-arch/architecture.md`](../../docs-admin-arch/architecture.md) - how the pieces move.

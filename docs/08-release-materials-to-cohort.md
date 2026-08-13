@@ -2,7 +2,7 @@
 
 > Releases materials from the course org (private, historical registry of course materials) -> cohort org (a single instance, available to students)
 
-Open sessions up to a cohort, from any section of your materials repo (lectures, readings, labs…).
+Copy any path - a session folder, a dataset, a syllabus file, a code subpackage - from a course-org repo into a cohort repo.
 
 ## Prerequisites
 
@@ -16,21 +16,42 @@ This is the recommended method for releasing materials, as it also creates an en
 
 ## Release materials via manual dispatch
 
-In the course org, use either (1) the **materials repo's own** `Release materials` button (it knows that repo's sections and
-sessions), or (2) the **course org's`.github` repo's** `release materials` button 
+The button's inputs are **the same four fields as a `schedule.yml` `deploy` entry** - what you
+type here is exactly what you would have written in the schedule:
+
+| Input | Required | Default | Meaning |
+|---|---|---|---|
+| `cohort_org` | yes | - | target cohort org (dropdown) |
+| `source_repo` | yes | *(pre-filled with the repo you run it from)* | repo in the COURSE org |
+| `source_path` | yes | - | folder or file to copy - or a **comma-separated list** |
+| `dest_repo` | no | `materials` | repo in the cohort org (created if missing, private, `students` + `auditors` read) |
+| `dest_path` | no | mirrors `source_path` | where to put it |
+
+In the course org, run it from either (1) the **materials repo's own** `Release materials` button
+(`source_repo` pre-filled, editable), or (2) the **course org's `.github` repo's** button
+(`source_repo` is a dropdown of the org's content repos).
 
 e.g. → [Release materials](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/release-materials.yml):
 
-- `cohort_org` = `DSL-Demo-f2026`
-- per section, `release_<section>` (checkbox, default **on**) and `<section>_path` (free text).
-  Leave the path blank to use a cohort repo named after the section; type `repo/subpath`
-  (e.g. `materials/lectures`) to nest it, so two sections can share one repo. Repos are created
-  as needed, private, with `students` + `auditors` given read.
-- `sessions` = comma and/or range list, e.g. `1,3,5-7` (the field description lists the sessions
-  found in the repo)
-- `include_root_files` (default **off**) - also release the syllabus file(s) + source README
+- One copy: `source_path` = `lectures/02_intro` → lands at `materials/lectures/02_intro`.
+- A whole session in one press: `source_path` = `lectures/02_intro, readings/02_intro, labs/02_intro`
+  (each path mirrors itself into `dest_repo`).
+- If you set `dest_path` for a list, give **one per source path, in the same order** - a count
+  mismatch fails the run loudly rather than guessing.
+- Root files are just paths too: `source_path` = `SYLLABUS.md` (name the actual file - there is
+  no syllabus glob) or `README.md`.
 
-Re-releasing is safe to re-run.
+Re-releasing is safe to re-run - copies are additive and idempotent.
+
+### Phased code release
+
+The same button releases **code**, because code is just another path. Keep a growing package in
+a course-org repo (e.g. `lecture-code-f2026`) and disclose it topic by topic as you teach:
+`source_path` = `mlpkg/simulation` (a subpackage folder) or `mlpkg/train/warmup.py` (a single
+module). Copies are additive, so each release extends what students already have - release the
+package base early (e.g. `mlpkg/core`) so partial releases still import. The
+[example schedule](../example-course/cohort-org/schedule.yml) shows the scheduled version of the
+same pattern (weeks 1, 3 and 5 each unlock an `mlpkg` subpackage).
 
 ## Live updates to the deployed `<course>.github.io` site
 - Any released materials will automatically show up in the deployed site (i.e. their release triggers a redeploy).
@@ -42,7 +63,7 @@ by hand only when you don't want to wait for the cron to fire - e.g. after editi
 ## Next
 
 - [Add an assignment](03-add-assignment-to-course.md), then [release it](09-release-assignment-to-cohort.md).
-- [Release code](11-release-code.md) - a growing package, disclosed in phases (not session folders).
+- [Schedule releases](07-schedule-releases.md) - the same four fields, fired automatically.
 
 ---
 **Demo:** released into [`DSL-Demo-f2026`](https://github.com/DSL-Demo-f2026); site at

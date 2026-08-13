@@ -157,39 +157,19 @@ def _section_session_pairs(org: str, repo: str) -> list[tuple[str, int]]:
     ]
 
 
-def discover_sections_and_sessions(org: str, repo: str) -> tuple[list[str], list[str]]:
-    """(sections, sessions) from one shared tree fetch - use this over calling
-    discover_sections/discover_sessions separately when you need both, to avoid
-    fetching the same tree twice."""
-    pairs = _section_session_pairs(org, repo)
-    sections = sorted({section for section, _ in pairs})
-    sessions = [str(n) for n in sorted({n for _, n in pairs})]
-    return sections, sessions
-
-
 def discover_sections(org: str, repo: str) -> list[str]:
     """Top-level directories in a content repo containing at least one
     ordinal-prefixed subdirectory - the releasable sections. No declared config; the
-    repo's own structure is the only source of truth."""
+    repo's own structure is the only source of truth. The API-side half of the one
+    session-folder rule (utils.discover_sections is the local-checkout half, used by
+    the public-site builder); kept in step by tests/test_discovery.py."""
     return sorted({section for section, _ in _section_session_pairs(org, repo)})
 
 
 def discover_sessions(org: str, repo: str) -> list[str]:
     """Session numbers present in a content repo, across every discovered section.
-    Used to populate the session dropdown."""
+    Used by the public-site builder to walk a source repo session by session."""
     return [str(n) for n in sorted({n for _, n in _section_session_pairs(org, repo)})]
-
-
-def discover_sections_union(org: str, content_repos: list[str]) -> list[str]:
-    """Union of sections discovered across every content repo - the central button's
-    source_repo isn't known until you run it, so it offers checkboxes for sections
-    seen somewhere in the org rather than any one repo's own (see
-    workflows_render.render_central_release; capped by the caller, see
-    release_budget.cap_sections)."""
-    all_sections: set[str] = set()
-    for repo in content_repos:
-        all_sections |= set(discover_sections(org, repo))
-    return sorted(all_sections)
 
 
 def discover_release_sources(
@@ -197,11 +177,11 @@ def discover_release_sources(
 ) -> list[tuple[str, str, str, int]]:
     """(repo, subpath, folder_name, session_number) for every session folder found
     across a cohort's `content_repos` (see discover_cohort_repos), covering both shapes
-    a release can produce (see release.route_sections): nested - a section subfolder
-    inside a shared repo, `section/NN_.../` - or root - the repo itself IS one section,
-    `NN_.../` directly at its root (the default when a release's per-section path is
-    left blank). One recursive tree fetch per repo; the exact folder name is captured
-    too, so callers can list its files directly with no further discovery call."""
+    a release can produce: nested - a session folder inside a subpath of a shared repo,
+    `subpath/NN_.../` - or root - `NN_.../` directly at the repo root (what a `deploy:`
+    with a bare `dest_repo` and no `dest_path` produces). One recursive tree fetch per
+    repo; the exact folder name is captured too, so callers can list its files directly
+    with no further discovery call."""
     return [
         (repo, subpath, folder, n)
         for repo in content_repos

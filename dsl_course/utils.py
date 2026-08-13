@@ -310,7 +310,7 @@ def session_dirs(dir_paths: Iterable[str]) -> list[tuple[str, str, int]]:
     releasable section.
 
     One rule, two transports: the local filesystem (discover_sections here, used by
-    release.py) and the GitHub trees API (dsl_course.discovery) both feed their
+    the public-site builder) and the GitHub trees API (dsl_course.discovery) both feed their
     directory listing through this, so "ordinal-prefixed directory = session folder"
     is defined once.
     """
@@ -439,6 +439,32 @@ def grant_tagged_team_access(course_org: str, repo: str, tag: str) -> None:
     team = f"instructors-{tag}"
     create_team(course_org, team, f"Instructors for {tag} (cohort-declared)")
     grant_team_repo_access(course_org, team, repo, "push")
+
+
+# The cohort-org role teams that get read on released content.
+READ_TEAMS = ("students", "auditors")
+
+
+def grant_read_teams(cohort_org: str, repo: str) -> None:
+    """Give both cohort role teams read on a released repo.
+
+    Auditors see exactly what enrolled students see once it's released - the split is
+    assignments and grades, not content - so every release grant covers both teams. A
+    missing team is a note, not an error: an org can be released into before its teams
+    exist, and the next release (or Sync membership) fixes it."""
+    for team in READ_TEAMS:
+        code, _ = gh(
+            "api",
+            "--method",
+            "PUT",
+            f"orgs/{cohort_org}/teams/{team}/repos/{cohort_org}/{repo}",
+            "--field",
+            "permission=pull",
+        )
+        if code == 0:
+            log_ok(f"{team} team -> read")
+        else:
+            log(f"  ({team} team not found - create it first)")
 
 
 def create_repo(

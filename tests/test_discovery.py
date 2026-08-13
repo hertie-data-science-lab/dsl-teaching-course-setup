@@ -80,19 +80,6 @@ def test_list_org_repos_reports_a_failed_listing_as_empty(monkeypatch, capsys):
     assert "Org" in capsys.readouterr().err
 
 
-def test_discover_sections_union_combines_across_content_repos(monkeypatch):
-    monkeypatch.setattr(
-        discovery,
-        "discover_sections",
-        lambda org, repo: {"a": ["lectures"], "b": ["labs", "readings"]}[repo],
-    )
-    assert discovery.discover_sections_union("org", ["a", "b"]) == [
-        "labs",
-        "lectures",
-        "readings",
-    ]
-
-
 TREES = {
     "labs": ["01_intro", "02_functions", "materials/01_intro", "readings"],
     "lectures": ["01_intro"],
@@ -100,9 +87,9 @@ TREES = {
 
 
 def test_discover_release_sources_detects_root_and_nested_shapes(monkeypatch):
-    # root shape: a release left its per-section path blank, so the repo itself is one
-    # section and sessions sit directly at its root (labs/lectures in a live course).
-    # nested shape: a release routed a section under a shared repo's own subfolder.
+    # root shape: a deploy landed with no dest_path, so session folders sit directly at
+    # the dest repo's root (labs/lectures in a live course).
+    # nested shape: a deploy routed its session folders under a shared repo's subfolder.
     monkeypatch.setattr(discovery, "_repo_tree_dirs", lambda org, repo: TREES[repo])
     sources = discovery.discover_release_sources("org", ["labs", "lectures"])
     assert set(sources) == {
@@ -128,14 +115,12 @@ def test_sections_and_sessions_ignore_root_level_and_over_deep_folders(monkeypat
             "labs/2_wrangling",
         ],
     )
-    assert discovery.discover_sections_and_sessions("org", "r") == (
-        ["labs", "lectures"],
-        ["1", "2"],
-    )
+    assert discovery.discover_sections("org", "r") == ["labs", "lectures"]
+    assert discovery.discover_sessions("org", "r") == ["1", "2"]
 
 
 def test_api_and_filesystem_transports_share_one_session_folder_rule(tmp_path):
-    # utils.discover_sections (local checkout, used by release.py) and the API-side
+    # utils.discover_sections (local checkout, used by the public-site builder) and the API-side
     # discovery must never drift: both feed their directory listing through
     # utils.session_dirs, so the same tree yields the same sections either way.
     tree = [

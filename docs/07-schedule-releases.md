@@ -14,24 +14,30 @@ The schedule file can be updated throughout the semester.
 
 Live example (a full term): [`example-course/cohort-org/schedule.yml`](../example-course/cohort-org/schedule.yml).
 
->NB: can include `tbc` labels if unsure at start of the semester... TODO write up how to do this
 
 Block-types carry the whole term:
 
-- **`materials_releases:`** - teaching materials and calendar events. 
-  - Required: a free-form label maps to an `event_datetime` 
-  - Optional `deploy` actions - copies a source path from a course repo → a cohort repo: 
-  - materials, code, datasets, other.
-- **`assignments:`** - each assignment's **whole lifecycle in one block**, keyed by slug:
-  - `handout_datetime` (when repos are provisioned - without it the schedule never releases the assignment; omit only if you use the manual **Release assignment** button), - `due_datetime` (REQUIRED - what students see), 
-  - `grading_datetime` (when it is snapshotted and autograded, once - see
-  [below](#deadline-snapshots-and-autograding)), 
-  - `type` (`group` = per-team repos and
-  grading; also settable in the template's `grading.yml`), 
-  -  `max_team_size` (group
-  assignments).
+- **`materials_releases:`** - deploy any file(s) from course org staging -> cohort org, accessible to students. 
+  - `freeform-label` - the name of the event itself; e.g. lab-1, guest-lecture, etc. This nests all the below fields, and is what is printed in the deployed `<course-name>.github.io site's schedule tab .
+  - `event_datetime` - [Required] when the associated event displays in the calendar (i.e. a lab or lecture or other)
+  - `deploy` actions - [Optional] takes the following:
+    - `deploy_datetime` TODO
+    - `source_repo` TODO
+    - `source_path` TODO
+    - `dest_repo` TODO 
+    - `dest_path` TODO
+    TODO: explain these * give a mock up snippet example here 
+  - use this deploy teaching materials, code, datasets, other.
+- **`assignments:`** - each assignment's whole lifecycle in one block:
+  - `handout_datetime` - when repos are provisioned.
+  - `due_datetime` - what students see in the deployed `<course-name>.github.io site's schedule tab 
+  - `grading_datetime` - when it is snapshotted and [autograded](#deadline-snapshots-and-autograding))
+  - `type` (`individual`|`group`; also settable in the template's `grading.yml`)
+  -  `max_team_size` (group assignments only)
 - **`exam`**
-- **`<freeform description>`**
+- **`<any-freeform-description>`** - this will populate into the schedule.
+
+TODO: complete the above
 
 Nothing assignment-related needs a `materials_releases` entry (an `assignment:` action there
 is still supported, for handing out by hand from a release entry).
@@ -52,13 +58,15 @@ defaults (into the cohort's `materials` repo, at the same path, at the event tim
   lecture_02:
     event_datetime: 2026-09-15T10:00
     deploy:
-      - {source_repo: course-materials-f2026, source_path: lectures/02_intro}
+      - source_repo: course-materials-f2026
+        source_path: lectures/02_intro
       # -> lands at materials/lectures/02_intro when the class starts
 
   lab_02:
     event_datetime: 2026-09-17T14:00
     deploy:
-      - {source_repo: course-materials-f2026, source_path: labs/02_intro}
+      - source_repo: course-materials-f2026
+        source_path: labs/02_intro
 ```
 
 Paths are **relative to their repo**: `source_path` inside `source_repo`, `dest_path`
@@ -69,16 +77,20 @@ destination repo/path, or an early ship time:
   lecture_02:
     event_datetime: 2026-09-15T10:00   # the class - what the site announces
     deploy:
-      - {source_repo: course-materials-f2026, source_path: lectures/02_intro,
-         dest_repo: lecture_materials, deploy_datetime: 2026-09-15T09:00}  # slides out 1h early
-      - {source_repo: course-materials-f2026, source_path: readings/02_intro,
-         dest_repo: lecture_materials}                                     # out at class time
+      - source_repo: course-materials-f2026
+        source_path: lectures/02_intro
+        dest_repo: lecture_materials
+        deploy_datetime: 2026-09-15T09:00   # slides out 1h early
+      - source_repo: course-materials-f2026
+        source_path: readings/02_intro
+        dest_repo: lecture_materials   # out at class time
 
   lab_02:
     event_datetime: 2026-09-17T14:00   # the lab session
     deploy:
-      - {source_repo: course-materials-f2026, source_path: labs/02_intro,
-         dest_repo: lab_materials}
+      - source_repo: course-materials-f2026
+        source_path: labs/02_intro
+        dest_repo: lab_materials
 
   project-clinic:                      # no actions -> display-only site row
     event_datetime: 2026-11-17T10:00
@@ -105,12 +117,15 @@ materials_releases:
   lecture_02:
     event_datetime: 2026-09-15T10:00
     deploy:
-      - {source_repo: course-materials-f2026, source_path: lectures/02_week-2}
-      - {source_repo: lecture-code-f2026, source_path: mlpkg/simulation}
+      - source_repo: course-materials-f2026
+        source_path: lectures/02_week-2
+      - source_repo: lecture-code-f2026
+        source_path: mlpkg/simulation
   lab_02:
     event_datetime: 2026-09-17T14:00
     deploy:
-      - {source_repo: course-materials-f2026, source_path: labs/02_week-2}
+      - source_repo: course-materials-f2026
+        source_path: labs/02_week-2
 
 assignments:
   assignment-1:
@@ -187,42 +202,11 @@ If grading runs with **no snapshot at all**, it falls back to a date-based pin o
 student-supplied committer dates and says so loudly in the run log. Full flow:
 [Grade and return assignments](10-grade-and-return-assignments.md).
 
-## What happens on each tick
-
-**Freeze**, then **autograde**, each passed grading deadline - once, ever - then **fire every
-due release**.
-
-```mermaid
-flowchart TB
-  cron["Scheduled release - hourly cron"] --> parse["parse the cohort's schedule.yml"]
-  parse --> p1["`1 · freeze passed deadlines
-every assignment past its grading deadline`"]
-  p1 --> snap{"`snapshot CSV
-already written?`"}
-  snap -- no --> freeze["`write snapshots/<slug>.csv
-write-once - the pin never moves again`"]
-  snap -- yes --> skip["skip"]
-  parse --> p2["`2 · autograde those same assignments`"]
-  p2 --> mark{"`autograde/<slug>/
-already there?`"}
-  mark -- no --> grade["`run the hidden tests, fill EMPTY auto cells
-the folder it writes is the fire-once marker`"]
-  mark -- yes --> skip2["skip - delete the folder to re-grade"]
-  parse --> p3["`3 · fire EVERY action whose time has passed
-(deploy_datetime, else event_datetime)
-on every tick, forever - no released state`"]
-  p3 --> dep["`deploy → cheap
-nothing changed, nothing pushed`"]
-  p3 --> asg["`assignment → useful
-a late onboarder gets their repo next tick`"]
-```
-
 ---
 ## Next
 
 - [Release materials](08-release-materials-to-cohort.md) /
-  [an assignment](09-release-assignment-to-cohort.md) /
-  [code](11-release-code.md) by hand, when you need the fallback.
+  [an assignment](09-release-assignment-to-cohort.md) by hand, when you need the fallback.
 - [Grade and return assignments](10-grade-and-return-assignments.md).
 
 ---
