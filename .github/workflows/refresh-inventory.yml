@@ -39,7 +39,7 @@ jobs:
             exit 0
           fi
 
-          # Reuse ONE branch so refreshes never accumulate; auto-merge when checks pass.
+          # Reuse ONE branch so refreshes never accumulate.
           BRANCH="chore/refresh-inventory"
           git config user.name "DSL Bot"
           git config user.email "dsl-bot@hertie-school.org"
@@ -54,5 +54,9 @@ jobs:
               --body "Automated refresh by \`refresh-inventory\`. Course orgs discovered via topic \`dsl-course-hub\`." \
               --base main --head "$BRANCH"
           fi
-          gh pr merge "$BRANCH" --squash --auto --delete-branch=false \
-            || echo "::notice::auto-merge not enabled - inventory PR left open for manual merge"
+          # Merge outright, not --auto. Auto-merge is a queue for PRs that must WAIT on
+          # something, and main requires neither an approving review nor a status check -
+          # so GitHub rejects enabling it, which is exactly how this silently stopped
+          # landing. No `|| true` either: an inventory that can't merge is a broken
+          # refresh, and the run must go red rather than report success and drift.
+          gh pr merge "$BRANCH" --squash --delete-branch=false
