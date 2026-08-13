@@ -152,7 +152,7 @@ faculty / admin teams`"] -->|"write/admin on"| cr["central repo"] --> ba["run Bo
   org AND every cohort; each cohort's people.yml reconciles into that cohort's `instructors` team
   AND a **parallel**, tag-scoped `instructors-<tag>` team on the course org - no merge across
   cohorts. Who-to-declare-where:
-  [access-reference](../docs/access-reference.md); the runbook for changing it:
+  [access-reference](../docs/reference/access-reference.md); the runbook for changing it:
   [05 Manage the teaching team](../docs/05-manage-teaching-team.md).
 - Each person entry takes optional `start`/`end` ISO dates (`utils.active_today`), applied by
   `desired_team_members` to **both** flows. Since every reconcile is a full add-and-remove, a

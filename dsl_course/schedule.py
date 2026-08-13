@@ -7,17 +7,21 @@ single home for the timed release plan AND the dates other tools display/enforce
       lecture_02:                    # {event_datetime + deploys}. Each deploy ships at its
         event_datetime: 2026-09-15T10:00   # deploy_datetime (default: the event itself).
         deploy:                            # Labels are free identifiers.
-          - {source_repo: course-materials-f2026, source_path: lectures/02_intro,
-             dest_repo: materials, dest_path: lectures/02_intro,
-             deploy_datetime: 2026-09-15T09:00}   # dest_path/deploy_datetime optional
+          - source_repo: course-materials-f2026   # source_repo + source_path are the
+            source_path: lectures/02_intro        # only required keys; dest_repo,
+            dest_repo: materials                  # dest_path and deploy_datetime are
+            dest_path: lectures/02_intro          # optional.
+            deploy_datetime: 2026-09-15T09:00
     assignments:                     # each assignment's whole lifecycle. A bare
       assignment-1:                  # due_datetime is END of day (23:59:59) - "due on the
         handout_datetime: 2026-09-22T09:00  # 13th" closes at day's end.
         due_datetime: 2026-10-13     # grading_datetime is the moment the snapshot
         grading_datetime: 2026-10-15 # freezes and the autograder fires (default: due).
     exams:                           # `exam_datetime` is a whole day, or a full datetime
-      - {name: MidTerm Exam, exam_datetime: 2026-11-03}   # when the start time is known
-      - {name: Final Exam, exam_datetime: 2026-12-15T14:00}
+      - name: MidTerm Exam           # when the start time is known
+        exam_datetime: 2026-11-03
+      - name: Final Exam
+        exam_datetime: 2026-12-15T14:00
     semester_start: 2026-09-07
     semester_end: 2026-12-18
 

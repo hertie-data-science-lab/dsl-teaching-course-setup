@@ -18,22 +18,23 @@ Once each year; the [course org](01-new-course-org.md) it hangs off is permanent
 
 Live example of every file below: [`example-course/cohort-org/`](../example-course/cohort-org).
 
-1. **Create the cohort org** in the web UI, 
-    - named **`<course-name>-f/sYYYY`** (e.g. `DSL-Demo-f2026`). 
-    - The `fYYYY`/`sYYYY` tag is necessary; it drives the semester label ("Fall 2026") and which year's `assignment-*` templates the site lists.
+1. **Create the cohort org** in the [web UI](https://github.com/account/organizations/new?plan=free&ref_cta=Create%2520a%2520free%2520organization&ref_loc=cards&ref_page=%2Forganizations%2Fplan), 
+    - Named **`<course-name>-f/sYYYY`** (e.g. `DSL-Demo-f2026`). 
+      - The `fYYYY`/`sYYYY` tag is necessary; it drives the semester label ("Fall 2026") and which year's `assignment-*` templates the site lists.
+    - Select a buisness/institutional account, and enter `hertie-data-science-lab` into the text box.
 
 2. **Invite `hertie-dsl-bot` as Owner** (Org → People → Invite → role *Owner*).
 
 3. **Run [Bootstrap cohort](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/bootstrap-cohort.yml)**
-    - From the **course** org's `.github` Actions tab.
+    - From the **course** org's `.github` Actions tab: `Bootrap cohort`.
     - `cohort_org` = select the newly created `<course-name>-f/sYYYY`. 
     - This seeds: 
-      - The public **`welcome`** repo (Join course issue + onboarding
-      - A private student-facing `README.md` telling them how to join - yours to reword, it is never overwritten)
-      - The hidden-from-students **`classroom-config`** repo, containing empty templates for `students.csv`, `teams.csv`, `schedule.yml`, `people.yml`, `grades/`
-      - The empty `students` + `auditors` teams (do not edit directly these, these will be populated by the workflow), 
-      - This cohort's `course-admin` team
-      - The site `dsl-demo-f2026.github.io`
+      - **`welcome`** repo (public) - for student onboarding via `join course` issue tickets.
+      - `README.md` (private student-facing) telling them how to join - yours to reword, it is never overwritten
+      - **`classroom-config`** repo (hidden-from-students) - containing empty templates for `students.csv`, `teams.csv`, `schedule.yml`, `people.yml`, `grades/`
+      - `students` + `auditors` teams (empty) - do not edit directly these, these will be populated by the workflow, 
+      - `course-admin` team for this cohort
+      - `dsl-demo-f2026.github.io` auto-deployed website
 
 4. **Fill in `classroom-config/schedule.yml` for the whole term** (edit locally or in the web UI → commit to `main`).
     - Its dates drive every release, the grading deadlines and the website
@@ -46,8 +47,10 @@ Live example of every file below: [`example-course/cohort-org/`](../example-cour
      session_1:
        event_datetime: 2026-09-07T14:00   # when the class happens - shown on deployed site's schedule tab
        deploy:
-         - {source_repo: course-materials-f2026, source_path: lectures/01_intro, dest_repo: materials,
-            deploy_datetime: 2026-09-07T13:00}   # optional: ship this copy 1h early
+         - source_repo: course-materials-f2026
+           source_path: lectures/01_intro
+           dest_repo: materials
+           deploy_datetime: 2026-09-07T13:00   # optional: ship this copy 1h early
    semester_start: 2026-09-07
    semester_end: 2026-12-18
    assignments:
@@ -57,8 +60,10 @@ Live example of every file below: [`example-course/cohort-org/`](../example-cour
        due_datetime: 2026-10-13         # due date students see; if bare date -> 23:59:59
        grading_datetime: 2026-10-15     # optional; snapshot + autograde fire here 
    exams:
-     - {name: MidTerm Exam, exam_datetime: 2026-11-03}        # bare date -> shown at 09:00
-     - {name: Final Exam, exam_datetime: 2026-12-15T14:00}    # real start time, shown as given
+     - name: MidTerm Exam
+       exam_datetime: 2026-11-03        # bare date -> shown at 09:00
+     - name: Final Exam
+       exam_datetime: 2026-12-15T14:00    # real start time, shown as given
    ```
 ---
 

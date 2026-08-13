@@ -1,7 +1,7 @@
 # Central admin - the DSL org
 
 Who may provision course orgs, how to rotate the bot's token, and where to see which orgs exist.
-Per-course access: [access-reference.md](../docs/access-reference.md). PAT scopes and the token model:
+Per-course access: [access-reference.md](../docs/reference/access-reference.md). PAT scopes and the token model:
 [admin-setup.md](admin-setup.md).
 
 ## Granting a new faculty member access
@@ -17,7 +17,7 @@ and it gates every central button.
   go via PR).
 - This authority is DSL-wide and *creation-only*. It grants **no** access to any course's own
   buttons - those come from that course org's `course-admin` / `instructors-<tag>` teams
-  ([access-reference.md](../docs/access-reference.md)).
+  ([access-reference.md](../docs/reference/access-reference.md)).
 
 ## Bot lifecycle - setup & rotation
 
@@ -88,7 +88,7 @@ hand-edit it - a missing org means a failed or never-run bootstrap, not a forgot
 ## Related
 
 - [admin-setup.md](admin-setup.md) - the bot account, exact PAT scopes, token/secret model.
-- [access-reference.md](../docs/access-reference.md) - per-course access and the instructors
+- [access-reference.md](../docs/reference/access-reference.md) - per-course access and the instructors
   teams; [05 Manage the teaching team](../docs/05-manage-teaching-team.md) is the runbook for
   changing it.
 - [architecture.md](architecture.md) - diagrams, workflow sequences, code map.

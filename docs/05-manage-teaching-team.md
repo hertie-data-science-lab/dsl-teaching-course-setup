@@ -25,7 +25,7 @@ There is no need to edit GitHub team directly. This provides an auditable histor
 
 **Prefer the cohort file** for anyone who isn't running the course across multiple years. It is per-year, self-retiring, and it also supplies the deployed site's staff cards with rich display and information.
 
->Full model - every team and what it reaches: [`access-reference.md`](access-reference.md).
+>Full model - every team and what it reaches: [`access-reference.md`](reference/access-reference.md).
 
 ## Add someone
 

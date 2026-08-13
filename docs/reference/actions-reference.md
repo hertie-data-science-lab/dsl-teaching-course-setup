@@ -4,8 +4,8 @@ Every button, one line each. They all live in the **course org's `.github` Actio
 **Release materials** and **Release assignment** *also* live inside each content repo;
 **Release code** lives there **only**.
 
-Step-by-step flows: [workflow runbooks](README.md). File layouts and CSV columns:
-[`DEPLOYMENT-CHECKLIST.md`](DEPLOYMENT-CHECKLIST.md). Who may run each button, and which team
+Step-by-step flows: [workflow runbooks](../README.md). File layouts and CSV columns:
+[`DEPLOYMENT-CHECKLIST.md`](../DEPLOYMENT-CHECKLIST.md). Who may run each button, and which team
 grants it: [`access-reference.md`](access-reference.md).
 
 ## Setup
@@ -17,22 +17,22 @@ grants it: [`access-reference.md`](access-reference.md).
 | **New assignment** | Scaffold an `assignment-N-<tag>` template: brief + starter on `main`; stub solution, `grading.yml` and a hidden test on the `solution` branch. `format` picks py/notebook stubs; `type: group` makes handout + grading run per team. |
 | **Refresh actions** | Re-seed the run-from-repo buttons, propagate the repo secret, repopulate every dropdown, rebuild the profile READMEs. No inputs. _(All DSL orgs at once: [Refresh Course Orgs Inventory](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions/workflows/refresh-inventory.yml).)_ |
 | **Show status** | Read-only per-cohort checklist of what's configured and what's missing, with an edit link for each gap. |
-| **Sync membership** | Reconcile `students`/`auditors` teams (`students.csv`), project teams (`teams.csv`) and instructor/course-admin access (`people.yml`, `dsl-course.yml`). Automatic on push to those files, plus a daily cron - run it by hand only to apply a `start`/`end` date that rolled over without an edit. See [05](05-manage-teaching-team.md), [`access-reference.md`](access-reference.md). |
+| **Sync membership** | Reconcile `students`/`auditors` teams (`students.csv`), project teams (`teams.csv`) and instructor/course-admin access (`people.yml`, `dsl-course.yml`). Automatic on push to those files, plus a daily cron - run it by hand only to apply a `start`/`end` date that rolled over without an edit. See [05](../05-manage-teaching-team.md), [`access-reference.md`](access-reference.md). |
 
 ## Release
 
 | Action | Effect |
 | --- | --- |
-| **Scheduled release** | **Primary** - the hourly cron fires the cohort's `materials_releases` plan and freezes passed deadlines. Manual runs default to `dry_run=true`. See [07](07-schedule-releases.md). |
-| **Release materials** | Copy whole `<section>/<NN>_.../` folders for the chosen `sessions` into the cohort. `include_root_files` (default off) adds syllabus + README. _Fallback - see [07](07-schedule-releases.md), [08](08-release-materials-to-cohort.md)._ |
-| **Release assignment** | Freeze a cohort template from the chosen `assignment-*`, then generate one private `<slug>-<handle>` repo per onboarded student. `include_solution` / `group` / `dry_run` default off. _Fallback - see [07](07-schedule-releases.md), [09](09-release-assignment-to-cohort.md)._ |
-| **Release code** | Run from the repo holding your package: copy one path (subpackage folder or module file) into a cohort repo, additively. _Fallback - see [07](07-schedule-releases.md), [11](11-release-code.md)._ |
+| **Scheduled release** | **Primary** - the hourly cron fires the cohort's `materials_releases` plan and freezes passed deadlines. Manual runs default to `dry_run=true`. See [07](../07-schedule-releases.md). |
+| **Release materials** | Copy whole `<section>/<NN>_.../` folders for the chosen `sessions` into the cohort. `include_root_files` (default off) adds syllabus + README. _Fallback - see [07](../07-schedule-releases.md), [08](../08-release-materials-to-cohort.md)._ |
+| **Release assignment** | Freeze a cohort template from the chosen `assignment-*`, then generate one private `<slug>-<handle>` repo per onboarded student. `include_solution` / `group` / `dry_run` default off. _Fallback - see [07](../07-schedule-releases.md), [09](../09-release-assignment-to-cohort.md)._ |
+| **Release code** | Run from the repo holding your package: copy one path (subpackage folder or module file) into a cohort repo, additively. _Fallback - see [07](../07-schedule-releases.md), [11](../11-release-code.md)._ |
 | **Send enrolment codes** | Generate an `enrol_code` per roster row, write it back to `students.csv`, email each not-yet-onboarded student theirs. **`dry_run` defaults to `true` - nothing is written or sent until you untick it.** |
 | **Sync site** | Regenerate a cohort's website. Releases, a push to `schedule.yml` and a daily cron already do this for you. |
 
 ## Grades
 
-Full flow: [Grade and return assignments](10-grade-and-return-assignments.md).
+Full flow: [Grade and return assignments](../10-grade-and-return-assignments.md).
 
 | Action | Effect |
 | --- | --- |

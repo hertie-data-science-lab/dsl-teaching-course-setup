@@ -24,11 +24,15 @@ materials_releases:
     event_datetime: 2026-09-01T09:00
     deploy:
       # the package base, early - so later partial releases still import
-      - {source_repo: lecture-code-f2026, source_path: mlpkg/core, dest_repo: materials}
+      - source_repo: lecture-code-f2026
+        source_path: mlpkg/core
+        dest_repo: materials
   week-3:
     event_datetime: 2026-09-15T09:00
     deploy:
-      - {source_repo: lecture-code-f2026, source_path: mlpkg/simulation, dest_repo: materials}
+      - source_repo: lecture-code-f2026
+        source_path: mlpkg/simulation
+        dest_repo: materials
 ```
 
 `dest_path` is optional and defaults to mirroring `source_path`. Copies are additive: an

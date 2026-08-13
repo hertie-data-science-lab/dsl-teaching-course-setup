@@ -1,7 +1,7 @@
 # The bot & token reference
 
 The credential every button runs under: the bot account, its permissions, and the token/secret
-model. Who may run what is elsewhere - **[access-reference.md](../docs/access-reference.md)** (a course's
+model. Who may run what is elsewhere - **[access-reference.md](../docs/reference/access-reference.md)** (a course's
 buttons) and **[central-admin.md](central-admin.md)** (central DSL authority, plus bot
 setup/rotation). How the system is built: **[architecture.md](architecture.md)**. **Faculty &
 instructors delivering a course don't need this page** - see the
@@ -33,7 +33,7 @@ Two **separate** populations - keep them distinct:
 - **Who may provision orgs** (the central **Bootstrap Course Org** button): the `faculty`/`admin`
   teams in `hertie-data-science-lab` → **[central-admin.md](central-admin.md)**.
 - **Who may run a specific course's buttons**: that course org's own `course-admin` team, or a
-  cohort's `instructors-<tag>` team → **[access-reference.md](../docs/access-reference.md)**.
+  cohort's `instructors-<tag>` team → **[access-reference.md](../docs/reference/access-reference.md)**.
 
 Both gate on repo permission, which is also why GitHub only shows "Run workflow" to write+ users.
 

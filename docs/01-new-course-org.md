@@ -16,18 +16,21 @@ This is setup once per course - it serves every future cohort. Per-semester setu
 
 ## Steps
 
-1. **Create the org**: **[github.com/account/organizations/new (Free plan)](https://github.com/account/organizations/new?plan=free&ref_cta=Create%2520a%2520free%2520organization&ref_loc=cards&ref_page=%2Forganizations%2Fplan)**
-   → *Create a new organization*. Name it **`<course-name>-<CODE>`**
-   (e.g. `DSL-Demo-Course-E1234`) - no year in the name.
+1. **Create the org**: 
+   - select the free plan **[here](https://github.com/account/organizations/new?plan=free&ref_cta=Create%2520a%2520free%2520organization&ref_loc=cards&ref_page=%2Forganizations%2Fplan)** → *Create a new organization*. 
+   - Name it **`<course-name>-<CODE>`** (e.g. `DSL-Demo-Course-E1234`) - no year in the name.
+   - Select a buisness/institutional account, and enter `hertie-data-science-lab` into the text box.
 
-2. **Invite `hertie-dsl-bot` as Owner**: `https://github.com/orgs/<your-org>/people` →
-   *Invite member* → `hertie-dsl-bot` → role **Owner**.
+2. **Invite `hertie-dsl-bot` as Owner**: 
+   - `https://github.com/orgs/<your-org>/people` → *Invite member* → `hertie-dsl-bot` 
+   - Select role: **Owner**.
 
-   > ⚠️ **The bot must accept the invite before you can bootstrap.** Ask the DSL team (h.baker)
-   > to accept it - until they do, the *Bootstrap Course Org* run fails.
+   > ⚠️ **The bot must accept the invite before you can bootstrap.** Ask the DSL team (h.baker) to accept it - until they do, the *Bootstrap Course Org* run fails.
 
 3. **Run [Bootstrap Course Org](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions/workflows/bootstrap-org.yml)**
-   (central DSL repo → Actions → *Run workflow*):
+   - from the central DSL's [`teaching-dsl-course-setup` repo](https://github.com/hertie-data-science-lab/dsl-teaching-course-setup/actions) 
+   - Go to the `Actions` tab → select `Boostrap Course Org` 
+   - *Run workflow* with the following:
 
    | Input | Value | Notes |
    |-------|-------|-------|
@@ -37,23 +40,17 @@ This is setup once per course - it serves every future cohort. Per-semester setu
    | `set_secret` | `true` (default) | propagates `DSL_BOT_TOKEN` - **don't set the secret by hand** |
    | `admin` | *your handle* | adds you to `course-admin` so you can run the course buttons |
 
-   Safe to re-run. You get the `.github` repo with every button
-   ([actions reference](actions-reference.md)), the `course-admin` team, and
-   `.github/dsl-course.yml` (the course's identity card).
+   > This action is safe to re-run in case of need. 
+   
+   This seeds the `.github` repo with every workflow button you'll need ([actions reference](reference/actions-reference.md)), the `course-admin` team, and  `.github/dsl-course.yml` (the course's identity card).
 
-4. **Add any other admins.** Edit `people.course_admins` in `.github/dsl-course.yml` and commit
-   to `main` - **Sync membership** runs on the push.
+4. **Add any other admins.** 
+   - Edit `people.course_admins` in `.github/dsl-course.yml` and commit to `main` 
+   - **Sync membership** runs on the push automatically (no need for additional input).
 
-   > ⚠️ **Each admin handle gets an org invite that stays `pending` until that person accepts**,
-   > and GitHub's member list only shows accepted members - check *People → Pending invitations*
-   > if someone looks missing.
+   > Each admin handle gets an org invite that stays `pending` until that person accepts,and GitHub's member list only shows accepted members. Check *People → Pending invitations* if someone looks missing.
 
-   TAs and co-instructors are **not** granted access here; each cohort declares its own in
-   `classroom-config/people.yml` when you [bootstrap that cohort](04-new-cohort-org.md).
-
-5. *(optional)* **Show your teaching team.** Uncomment the `instructors` /
-   `teaching_assistants` scaffold in `.github/dsl-course.yml` (name/photo/title/link - cards on
-   the course site, no access anywhere), commit to `main`, then run **Refresh actions**.
+   NB: TAs and co-instructors are **not** granted access here; each cohort declares its own in `classroom-config/people.yml` when you [bootstrap that cohort](04-new-cohort-org.md).
 
 ## Next
 

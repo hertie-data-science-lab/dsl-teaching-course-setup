@@ -31,7 +31,9 @@ Block-types carry the whole term:
   -  `max_team_size` (group
   assignments).
 - **`exam`**
-- **`<freeform description>`**
+- **`<any-freeform-description>`** - this will populate into the schedule.
+
+TODO: complete the above
 
 Nothing assignment-related needs a `materials_releases` entry (an `assignment:` action there
 is still supported, for handing out by hand from a release entry).
@@ -52,13 +54,15 @@ defaults (into the cohort's `materials` repo, at the same path, at the event tim
   lecture_02:
     event_datetime: 2026-09-15T10:00
     deploy:
-      - {source_repo: course-materials-f2026, source_path: lectures/02_intro}
+      - source_repo: course-materials-f2026
+        source_path: lectures/02_intro
       # -> lands at materials/lectures/02_intro when the class starts
 
   lab_02:
     event_datetime: 2026-09-17T14:00
     deploy:
-      - {source_repo: course-materials-f2026, source_path: labs/02_intro}
+      - source_repo: course-materials-f2026
+        source_path: labs/02_intro
 ```
 
 Paths are **relative to their repo**: `source_path` inside `source_repo`, `dest_path`
@@ -69,16 +73,20 @@ destination repo/path, or an early ship time:
   lecture_02:
     event_datetime: 2026-09-15T10:00   # the class - what the site announces
     deploy:
-      - {source_repo: course-materials-f2026, source_path: lectures/02_intro,
-         dest_repo: lecture_materials, deploy_datetime: 2026-09-15T09:00}  # slides out 1h early
-      - {source_repo: course-materials-f2026, source_path: readings/02_intro,
-         dest_repo: lecture_materials}                                     # out at class time
+      - source_repo: course-materials-f2026
+        source_path: lectures/02_intro
+        dest_repo: lecture_materials
+        deploy_datetime: 2026-09-15T09:00   # slides out 1h early
+      - source_repo: course-materials-f2026
+        source_path: readings/02_intro
+        dest_repo: lecture_materials   # out at class time
 
   lab_02:
     event_datetime: 2026-09-17T14:00   # the lab session
     deploy:
-      - {source_repo: course-materials-f2026, source_path: labs/02_intro,
-         dest_repo: lab_materials}
+      - source_repo: course-materials-f2026
+        source_path: labs/02_intro
+        dest_repo: lab_materials
 
   project-clinic:                      # no actions -> display-only site row
     event_datetime: 2026-11-17T10:00
@@ -105,12 +113,15 @@ materials_releases:
   lecture_02:
     event_datetime: 2026-09-15T10:00
     deploy:
-      - {source_repo: course-materials-f2026, source_path: lectures/02_week-2}
-      - {source_repo: lecture-code-f2026, source_path: mlpkg/simulation}
+      - source_repo: course-materials-f2026
+        source_path: lectures/02_week-2
+      - source_repo: lecture-code-f2026
+        source_path: mlpkg/simulation
   lab_02:
     event_datetime: 2026-09-17T14:00
     deploy:
-      - {source_repo: course-materials-f2026, source_path: labs/02_week-2}
+      - source_repo: course-materials-f2026
+        source_path: labs/02_week-2
 
 assignments:
   assignment-1:
@@ -186,36 +197,6 @@ once each:
 If grading runs with **no snapshot at all**, it falls back to a date-based pin over
 student-supplied committer dates and says so loudly in the run log. Full flow:
 [Grade and return assignments](10-grade-and-return-assignments.md).
-
-## What happens on each tick
-
-**Freeze**, then **autograde**, each passed grading deadline - once, ever - then **fire every
-due release**.
-
-```mermaid
-flowchart TB
-  cron["Scheduled release - hourly cron"] --> parse["parse the cohort's schedule.yml"]
-  parse --> p1["`1 · freeze passed deadlines
-every assignment past its grading deadline`"]
-  p1 --> snap{"`snapshot CSV
-already written?`"}
-  snap -- no --> freeze["`write snapshots/<slug>.csv
-write-once - the pin never moves again`"]
-  snap -- yes --> skip["skip"]
-  parse --> p2["`2 · autograde those same assignments`"]
-  p2 --> mark{"`autograde/<slug>/
-already there?`"}
-  mark -- no --> grade["`run the hidden tests, fill EMPTY auto cells
-the folder it writes is the fire-once marker`"]
-  mark -- yes --> skip2["skip - delete the folder to re-grade"]
-  parse --> p3["`3 · fire EVERY action whose time has passed
-(deploy_datetime, else event_datetime)
-on every tick, forever - no released state`"]
-  p3 --> dep["`deploy → cheap
-nothing changed, nothing pushed`"]
-  p3 --> asg["`assignment → useful
-a late onboarder gets their repo next tick`"]
-```
 
 ---
 ## Next

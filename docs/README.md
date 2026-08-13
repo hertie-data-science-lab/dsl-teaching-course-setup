@@ -80,8 +80,8 @@ Numbered in reading order - **course-level** (01-03) before **cohort-level** (04
 | 10 | [Grade and return assignments](10-grade-and-return-assignments.md) | cohort | per assignment, after the deadline |
 | 11 | [Release code](11-release-code.md) | cohort | when the course ships a growing package to students |
 
-For a one-page summary of **every button**, see [`actions-reference.md`](actions-reference.md);
-for who may run them, [`access-reference.md`](access-reference.md).
+For a one-page summary of **every button**, see [`actions-reference.md`](reference/actions-reference.md);
+for who may run them, [`access-reference.md`](reference/access-reference.md).
 
 ## Example org artefacts
 

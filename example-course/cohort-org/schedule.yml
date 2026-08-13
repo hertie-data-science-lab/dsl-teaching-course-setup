@@ -20,54 +20,71 @@ materials_releases:
   lecture-1:
     event_datetime: 2026-09-01T10:00
     deploy:
-      - {source_repo: course-materials-f2026, source_path: lectures/01_week-1,
-         deploy_datetime: 2026-09-01T09:00}
-      - {source_repo: course-materials-f2026, source_path: readings/01_week-1}
+      - source_repo: course-materials-f2026
+        source_path: lectures/01_week-1
+        deploy_datetime: 2026-09-01T09:00
+      - source_repo: course-materials-f2026
+        source_path: readings/01_week-1
       # release the package base early so later partial releases still import:
-      - {source_repo: lecture-code-f2026, source_path: mlpkg/core}
+      - source_repo: lecture-code-f2026
+        source_path: mlpkg/core
   lab-1:
     event_datetime: 2026-09-03T14:00
     deploy:
-      - {source_repo: course-materials-f2026, source_path: labs/01_week-1}
+      - source_repo: course-materials-f2026
+        source_path: labs/01_week-1
   lecture-2:
     event_datetime: 2026-09-08T10:00
     deploy:
-      - {source_repo: course-materials-f2026, source_path: lectures/02_week-2,
-         deploy_datetime: 2026-09-08T09:00}
-      - {source_repo: course-materials-f2026, source_path: readings/02_week-2}
+      - source_repo: course-materials-f2026
+        source_path: lectures/02_week-2
+        deploy_datetime: 2026-09-08T09:00
+      - source_repo: course-materials-f2026
+        source_path: readings/02_week-2
   lab-2:
     event_datetime: 2026-09-10T14:00
     deploy:
-      - {source_repo: course-materials-f2026, source_path: labs/02_week-2}
+      - source_repo: course-materials-f2026
+        source_path: labs/02_week-2
   lecture-3:
     event_datetime: 2026-09-15T10:00
     deploy:
-      - {source_repo: course-materials-f2026, source_path: lectures/03_week-3,
-         deploy_datetime: 2026-09-15T09:00}
-      - {source_repo: course-materials-f2026, source_path: readings/03_week-3}
+      - source_repo: course-materials-f2026
+        source_path: lectures/03_week-3
+        deploy_datetime: 2026-09-15T09:00
+      - source_repo: course-materials-f2026
+        source_path: readings/03_week-3
       # phased disclosure: reveal a topic-subpackage when you teach it
-      - {source_repo: lecture-code-f2026, source_path: mlpkg/simulation}
+      - source_repo: lecture-code-f2026
+        source_path: mlpkg/simulation
   lab-3:
     event_datetime: 2026-09-17T14:00
     deploy:
-      - {source_repo: course-materials-f2026, source_path: labs/03_week-3}
+      - source_repo: course-materials-f2026
+        source_path: labs/03_week-3
   lecture-4:
     event_datetime: 2026-09-22T10:00
     deploy:
-      - {source_repo: course-materials-f2026, source_path: lectures/04_week-4,
-         deploy_datetime: 2026-09-22T09:00}
-      - {source_repo: course-materials-f2026, source_path: readings/04_week-4}
+      - source_repo: course-materials-f2026
+        source_path: lectures/04_week-4
+        deploy_datetime: 2026-09-22T09:00
+      - source_repo: course-materials-f2026
+        source_path: readings/04_week-4
   lab-4:
     event_datetime: 2026-09-24T14:00
     deploy:
-      - {source_repo: course-materials-f2026, source_path: labs/04_week-4}
+      - source_repo: course-materials-f2026
+        source_path: labs/04_week-4
   lecture-5:
     event_datetime: 2026-09-29T10:00
     deploy:
-      - {source_repo: course-materials-f2026, source_path: lectures/05_week-5,
-         deploy_datetime: 2026-09-29T09:00}
-      - {source_repo: course-materials-f2026, source_path: readings/05_week-5}
-      - {source_repo: lecture-code-f2026, source_path: mlpkg/training}
+      - source_repo: course-materials-f2026
+        source_path: lectures/05_week-5
+        deploy_datetime: 2026-09-29T09:00
+      - source_repo: course-materials-f2026
+        source_path: readings/05_week-5
+      - source_repo: lecture-code-f2026
+        source_path: mlpkg/training
   # No actions -> a DISPLAY-ONLY event: nothing is released, the site's schedule simply
   # shows the row. (Use `deploy_datetime:` on a deploy line, as the lecture entries above
   # do, when materials should go out before the class they belong to - or leave a session
@@ -75,7 +92,8 @@ materials_releases:
   lab-5:
     event_datetime: 2026-10-01T14:00
     deploy:
-      - {source_repo: course-materials-f2026, source_path: labs/05_week-5}
+      - source_repo: course-materials-f2026
+        source_path: labs/05_week-5
   project-clinic:
     event_datetime: 2026-11-10T10:00
     title: Project clinic
@@ -110,5 +128,8 @@ assignments:                    # each assignment's whole lifecycle in one block
 exams:
   # a bare date is a whole-day entry (the website shows 09:00); give a full datetime when
   # you know the real start time
-  - {name: MidTerm Exam, exam_datetime: 2026-11-03, tbc: true}   # provisional - site shows "(TBC)"
-  - {name: Final Exam, exam_datetime: 2026-12-15T14:00}
+  - name: MidTerm Exam
+    exam_datetime: 2026-11-03
+    tbc: true                # provisional - site shows "(TBC)"
+  - name: Final Exam
+    exam_datetime: 2026-12-15T14:00

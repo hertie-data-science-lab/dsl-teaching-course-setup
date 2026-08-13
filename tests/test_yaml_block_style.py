@@ -1,0 +1,200 @@
+"""The faculty-facing YAML surface is block style (indent-only) - never a flow mapping
+used as a list item (`- {a: 1, b: 2}`).
+
+Flow and block parse identically, so this is a teaching/readability standard rather than a
+correctness one: `schedule.yml`, `people.yml`, `dsl-course.yml`, `grading.yml` and the docs
+that mirror them are read and hand-edited by course teams, and one shape everywhere is what
+makes them copyable. The guard matters most for the SEEDED templates - a flow item left in
+`templates/classroom-config/schedule.yml` is `.format()`ed into every new cohort org, so the
+style regression ships to real courses.
+
+Deliberately NOT covered: GitHub Actions workflows and Issue Forms (see EXCLUDED). Those are
+machine infrastructure the docs tell faculty not to edit, they use GitHub-schema idioms where
+flow style is conventional (`branches: [main]`, `workflow_dispatch: {}`), and their embedded
+`github-script` bodies are JavaScript, not YAML.
+
+Scoped to flow mappings used as LIST ITEMS. A flow mapping as a scalar value
+(`deploy: {source_repo: ...}`) is left alone - `docs/DEPLOYMENT-CHECKLIST.md` uses one on
+purpose to show a single-copy shorthand.
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+import pytest
+
+import yaml
+
+from dsl_course import bootstrap_course
+from dsl_course.grades import GradeRow, build_gradebooks, render_yaml
+from dsl_course.scaffold import _GRADING_YML
+
+ROOT = Path(__file__).resolve().parents[1]
+
+# `#` allowed: the seeded schedule.yml/people.yml scaffolds are commented-out YAML, which
+# is exactly where the last flow item hid.
+FLOW_ITEM = re.compile(r"^\s*(?:#\s*)?-\s*\{")
+
+# Machine infrastructure - audited by hand, deliberately left in GitHub's idiom.
+EXCLUDED = {
+    "templates/welcome/onboard.yml",
+    "templates/welcome/team-formation.yml",
+    "templates/welcome/ISSUE_TEMPLATE/01-join-course.yml",
+    "templates/welcome/ISSUE_TEMPLATE/02-join-team.yml",
+    "templates/classroom-config/dispatch-sync.yml",
+    "templates/classroom-config/dispatch-sync-site.yml",
+}
+
+FIX = (
+    "flow-style mapping used as a list item. The faculty-facing YAML in this repo is block "
+    "style (indent-only): rewrite `- {a: 1, b: 2}` as `- a: 1` / `  b: 2`, one key per line. "
+    "Machine infrastructure (.github/workflows, templates/welcome, dispatch-sync*) is exempt "
+    "- see EXCLUDED in this file."
+)
+
+
+def _rel(p: Path) -> str:
+    return p.relative_to(ROOT).as_posix()
+
+
+def _in_scope(p: Path) -> bool:
+    rel = _rel(p)
+    return not rel.startswith(".github/workflows/") and rel not in EXCLUDED
+
+
+def _offences(text: str, rel: str) -> list[str]:
+    return [
+        f"{rel}:{n}: {line.strip()}"
+        for n, line in enumerate(text.splitlines(), 1)
+        if FLOW_ITEM.match(line)
+    ]
+
+
+def _fence_lines(text: str) -> list[tuple[int, str]]:
+    """Lines inside ```yaml / ```yml fences, with their 1-based file line numbers."""
+    out, inside = [], False
+    for n, line in enumerate(text.splitlines(), 1):
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            inside = stripped[3:].strip().lower() in {"yaml", "yml"} if not inside else False
+            continue
+        if inside:
+            out.append((n, line))
+    return out
+
+
+YAML_FILES = sorted(p for p in ROOT.rglob("*.yml") if ".git/" not in _rel(p) and _in_scope(p))
+MD_FILES = sorted(p for p in ROOT.rglob("*.md") if ".git/" not in _rel(p))
+PY_FILES = sorted((ROOT / "dsl_course").glob("*.py"))
+
+
+def _gradebook() -> str:
+    """One student's rendered gradebook - the `yaml.safe_dump` path (grades.render_yaml)."""
+    rows = {
+        "assignment-1": [GradeRow(github_handle="janedoe", team="t1", final="15")],
+        "assignment-2": [GradeRow(github_handle="janedoe", final="10")],
+    }
+    return render_yaml(build_gradebooks(rows)["janedoe"])
+
+
+def _inventory_dump() -> str:
+    """`list_orgs --yaml`: a list of mappings, the shape flow style would show up in."""
+    return yaml.safe_dump(
+        [{"org": "A", "url": "https://a", "cohorts": ["c1"]}, {"org": "B", "url": "https://b"}],
+        sort_keys=False,
+    )
+
+
+def _cohort_registry_dump() -> str:
+    """`discovery.register_cohort`'s cohort-courses-pages.yml body."""
+    return yaml.safe_dump({"cohorts": ["Demo-f2025", "Demo-f2026"]}, sort_keys=False)
+
+
+# PyYAML 6 defaults `default_flow_style` to False, so these are block today and none of
+# them passes it explicitly. Flow style at the document root is a single braced line with
+# no `- ` at all, so FLOW_ITEM can't see it - assert on the braces/brackets instead.
+DUMPED = {
+    "gradebook/<handle>.yml (grades.render_yaml)": _gradebook,
+    "list_orgs --yaml inventory": _inventory_dump,
+    "cohort-courses-pages.yml (discovery)": _cohort_registry_dump,
+}
+
+# Every runtime-generated faculty-facing artefact rendered from templates or string
+# constants: the `.format()`ed seed templates (whose doubled `{{ }}` braces can hide a flow
+# item until bootstrap renders them) and the grading.yml written to each solution branch.
+SEEDED = {
+    "classroom-config/schedule.yml (seeded)": lambda: bootstrap_course._template(
+        "classroom-config/schedule.yml"
+    ).format(tag="f2026", year=2026),
+    "classroom-config/people.yml (seeded)": lambda: bootstrap_course._template(
+        "classroom-config/people.yml"
+    ).format(year=2026, year_next=2027),
+    "course/dsl-course.yml (seeded, commented)": lambda: bootstrap_course._course_metadata(
+        "Org", "Org Name", "Course", "CODE"
+    ),
+    "course/dsl-course.yml (seeded, --admins)": lambda: bootstrap_course._course_metadata(
+        "Org", "Org Name", "Course", "CODE", admins=["adminhandle"]
+    ),
+    "cohort/dsl-course.yml (seeded)": lambda: bootstrap_course._cohort_metadata("Org", "Course"),
+    "grading.yml (scaffolded)": lambda: _GRADING_YML.format(kind="group", fmt="notebook"),
+}
+
+
+def test_the_sweep_actually_sees_files():
+    """A broken glob would make every assertion below vacuously pass."""
+    assert len(YAML_FILES) >= 8
+    assert len(MD_FILES) >= 10
+    assert len(PY_FILES) >= 20
+
+
+@pytest.mark.parametrize("path", YAML_FILES, ids=_rel)
+def test_faculty_yaml_is_block_style(path: Path):
+    found = _offences(path.read_text(), _rel(path))
+    assert not found, f"{FIX}\n" + "\n".join(found)
+
+
+@pytest.mark.parametrize("path", MD_FILES, ids=_rel)
+def test_docs_yaml_fences_are_block_style(path: Path):
+    rel = _rel(path)
+    found = [
+        f"{rel}:{n}: {line.strip()}"
+        for n, line in _fence_lines(path.read_text())
+        if FLOW_ITEM.match(line)
+    ]
+    assert not found, f"{FIX}\n" + "\n".join(found)
+
+
+@pytest.mark.parametrize("path", PY_FILES, ids=_rel)
+def test_embedded_yaml_examples_are_block_style(path: Path):
+    """The schema docs in module docstrings (schedule.py's is the `--help` text) and the
+    YAML written from string constants."""
+    found = _offences(path.read_text(), _rel(path))
+    assert not found, f"{FIX}\n" + "\n".join(found)
+
+
+@pytest.mark.parametrize("label", sorted(SEEDED))
+def test_seeded_artefacts_are_block_style(label: str):
+    found = _offences(SEEDED[label](), label)
+    assert not found, f"{FIX}\n" + "\n".join(found)
+
+
+@pytest.mark.parametrize("label", sorted(DUMPED))
+def test_safe_dump_paths_emit_block_style(label: str):
+    """No flow indicator anywhere in the dumped text. If PyYAML's `default_flow_style`
+    default ever flips, this is what catches it - the fix is to pass
+    `default_flow_style=False` explicitly at the dump call site."""
+    out = DUMPED[label]()
+    braces = sorted({c for c in "{}[]" if c in out})
+    assert not braces, (
+        f"{label}: yaml.safe_dump emitted flow style (found {braces}). Pass "
+        f"default_flow_style=False at the dump call site.\n{out}"
+    )
+
+
+def test_excluded_infrastructure_paths_all_exist():
+    """Keeps the exemption list honest - a renamed workflow must be re-decided, not
+    silently carried."""
+    missing = [rel for rel in sorted(EXCLUDED) if not (ROOT / rel).is_file()]
+    assert not missing, f"EXCLUDED lists paths that no longer exist: {missing}"
