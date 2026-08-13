@@ -44,8 +44,10 @@ Live example: [`example-course/course-org/dsl-course.yml`](../example-course/cou
 
 ```yaml
 org: DSL-Demo-Course-E1234
-org_name: DSL Demo Course        # site title
-course_code: E1234
+org_name: DSL Demo Course        # names the ORG - the websites never show it
+course_name: Deep Learning       # the cohort websites' title
+course_code: E1234               # shown beside it
+course_description: One or two sentences, on one line - the sites' blurb
 people:
   course_admins:
     - github_handle: "janedoe"   # admin on the course org + every cohort
@@ -59,6 +61,9 @@ own `course-admin` team, and never re-declared per year. Deleting an entry, or a
 passing, revokes on the next sync. This org's `instructors`/`teaching_assistants` keys are
 display-only cards; TAs are declared per cohort in [`people.yml`](#peopleyml).
 Runbook: [05](05-manage-teaching-team.md).
+
+`course_name` / `course_code` / `course_description` are the three fields that reach every
+cohort website - a push here re-syncs them all: [11](11-configure-cohort-site.md).
 
 ### `students.csv`
 

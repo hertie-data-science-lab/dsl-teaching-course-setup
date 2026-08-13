@@ -34,7 +34,7 @@ Live example of every file below: [`example-course/cohort-org/`](../example-cour
       - **`classroom-config`** repo (hidden-from-students) - containing empty templates for `students.csv`, `teams.csv`, `schedule.yml`, `people.yml`, `grades/`
       - `students` + `auditors` teams (empty) - do not edit directly these, these will be populated by the workflow, 
       - `course-admin` team for this cohort
-      - `dsl-demo-f2026.github.io` auto-deployed website
+      - `dsl-demo-f2026.github.io` auto-deployed website - what it shows, and what you must not hand-edit: [11](11-configure-cohort-site.md)
 
 4. **Fill in `classroom-config/schedule.yml` for the whole term** (edit locally or in the web UI → commit to `main`).
     - Its dates drive every release, the grading deadlines and the website
@@ -101,6 +101,7 @@ Live example of every file below: [`example-course/cohort-org/`](../example-cour
 - [Schedule releases](07-schedule-releases.md) - the full guide to the plan you started in step 4.
 - [Release ad hoc](08-release-materials-to-cohort.md), if you want something out before the
   schedule says so.
+- [Configure the cohort website](11-configure-cohort-site.md) - the site step 3 just seeded.
 
 ---
 **Demo:** cohort [`DSL-Demo-f2026`](https://github.com/DSL-Demo-f2026), bootstrapped from

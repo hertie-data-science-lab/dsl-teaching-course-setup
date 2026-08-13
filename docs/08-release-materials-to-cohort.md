@@ -55,10 +55,13 @@ same pattern (weeks 1, 3 and 5 each unlock an `mlpkg` subpackage).
 
 ## Live updates to the deployed `<course>.github.io` site
 - Any released materials will automatically show up in the deployed site (i.e. their release triggers a redeploy).
-  - Releases trigger **Sync site** for you, as does a push to `classroom-config/schedule.yml`
-  - Plus there's a daily cron)
+  - Releases trigger **Sync site** for you, as does a push to `classroom-config/schedule.yml` or `people.yml`
+  - Plus there's a daily cron (06:00 UTC)
 - You can also run [Sync site](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/sync-site.yml)
-by hand only when you don't want to wait for the cron to fire - e.g. after editing `classroom-config/people.yml` or a file inside an already-released repo.
+by hand only when you don't want to wait for the cron to fire - e.g. after editing a file inside an already-released repo.
+
+> What the site shows, what redeploys it, and which files it overwrites:
+> [11 Configure the cohort website](11-configure-cohort-site.md).
 
 ## Next
 

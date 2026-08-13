@@ -101,14 +101,24 @@ def _semester_label(cohort_org: str) -> str:
 
 
 def _q(value: str) -> str:
-    """Quote-safe a value for a double-quoted YAML scalar."""
-    return value.replace('"', "'")
+    """Quote-safe a value for a ONE-LINE double-quoted YAML scalar: escape the two
+    characters that are special inside one (`\\` and `"`), and fold newlines away - a
+    multi-line value (a faculty `>` block in dsl-course.yml, say) would otherwise write a
+    raw newline mid-scalar and break the file it lands in."""
+    return " ".join(value.replace("\\", "\\\\").replace('"', "'").split())
 
 
 def _set_config(text: str, key: str, value: str) -> str:
-    """Replace a top-level `key: ...` line in _config.yml, preserving the rest."""
+    """Replace a top-level `key: ...` line in _config.yml, preserving the rest.
+
+    The value is always written as a one-line double-quoted scalar (see `_q`). Any
+    indented continuation lines are consumed with it, so replacing a key someone left as
+    a `>`/`|` block scalar doesn't strand its body as invalid YAML."""
     return re.sub(
-        rf"(?m)^({re.escape(key)}:\s*).*$", rf'\1"{_q(value)}"', text, count=1
+        rf"(?m)^({re.escape(key)}:[ \t]*).*(?:\n[ \t]+\S.*)*$",
+        lambda m: f'{m.group(1)}"{_q(value)}"',
+        text,
+        count=1,
     )
 
 
@@ -562,7 +572,8 @@ def _sync_site_repo(
         if plan is None:
             return 1
 
-        # Course identity into _config.yml (site.course_name / _semester / _code).
+        # Course identity into _config.yml (course_name / _semester / _code /
+        # _description, github_org) - only the keys the plan declares, nothing else.
         cfg_path = wd / "_config.yml"
         if cfg_path.is_file():
             cfg = cfg_path.read_text()
@@ -641,6 +652,11 @@ def sync_site(course_org: str, cohort_org: str) -> int:
             config["course_semester"] = _semester_label(cohort_org)
         if meta.get("course_code"):
             config["course_code"] = str(meta["course_code"])
+        # The site's blurb. Declared once in the course org's dsl-course.yml and pushed to
+        # every cohort site; left as the site repo has it when the course doesn't declare
+        # one. Written as a single line whatever the source shape (see _q).
+        if meta.get("course_description"):
+            config["course_description"] = str(meta["course_description"])
         # The footer's GitHub link (the site's only click-back). This is the COHORT site,
         # so it links the cohort org - where this year's materials and the students' own
         # repos live - never the course org (faculty-side) or the template's default.
