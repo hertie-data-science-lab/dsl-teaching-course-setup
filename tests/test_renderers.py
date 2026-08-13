@@ -160,6 +160,21 @@ def test_grade_assignment_calls_collect_with_no_deadline_input():
     assert "--group" in rendered and "--deadline" not in rendered
 
 
+def test_mail_buttons_and_cohort_bootstrap_carry_the_mail_env():
+    # The send buttons need the mail secrets to SEND; "Bootstrap cohort" needs them to
+    # PROPAGATE them onto the new cohort org (bootstrap_course.propagate_mail_secrets),
+    # which is also what makes a re-run repair a cohort that predates them.
+    from dsl_course import bootstrap_course as bc
+
+    for name in ("send_codes", "distribute_grades", "bootstrap_cohort"):
+        step = workflow_jobs(ALL_RENDERED[name])[
+            "send-codes" if name == "send_codes" else name.replace("_", "-")
+        ]["steps"][-1]
+        assert set(bc.MAIL_SECRETS) <= set(step["env"]), name
+        for secret in bc.MAIL_SECRETS:
+            assert step["env"][secret] == f"${{{{ secrets.{secret} }}}}", (name, secret)
+
+
 def test_sync_membership_is_a_consolidated_reconcile():
     # One consolidated, fully-automatic reconcile (roster + teams + faculty) - no
     # --prune toggle at this level, config is always the live truth.

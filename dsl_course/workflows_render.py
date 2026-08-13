@@ -65,8 +65,11 @@ _RUN_PREAMBLE = f"""    needs: check-team
 {_UNGATED_PREAMBLE}"""
 
 
-# SMTP secrets, wired into the env of the buttons that send email (enrolment codes, grade
-# notifications). A plain string (not the f-string body) so the GitHub `${{ }}` is literal.
+# Mail secrets, wired into the env of the buttons that send email (enrolment codes, grade
+# notifications) and of "Bootstrap cohort", which passes them on to the new cohort org
+# (bootstrap_course.propagate_mail_secrets) so a re-run also repairs a stale set. This org
+# HAS them because the central bootstrap propagated them here in the first place.
+# A plain string (not the f-string body) so the GitHub `${{ }}` is literal.
 _MAIL_ENV = """\
           GRAPH_TENANT_ID: ${{ secrets.GRAPH_TENANT_ID }}
           GRAPH_CLIENT_ID: ${{ secrets.GRAPH_CLIENT_ID }}
@@ -564,6 +567,7 @@ jobs:
           DSL_BOT_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
           COURSE: ${{{{ github.repository_owner }}}}
           COHORT: ${{{{ inputs.cohort_org }}}}
+{_MAIL_ENV}
         run: |
           python3 -m dsl_course.bootstrap_course --org "$COHORT" --org-name "$COHORT" \\
             --cohort --course "$COURSE" --propagate-secret
