@@ -103,7 +103,9 @@ def _desired_for(faculty: dict[str, list[dict]], team: str, today: str) -> set[s
 def _cohort_roles_only(faculty: dict[str, list[dict]]) -> dict[str, list[dict]]:
     """A cohort's people.yml declares instructors/TAs only - course_admins stays
     exclusively course-level, so drop it even if someone puts it there."""
-    return {role: entries for role, entries in faculty.items() if role != "course_admins"}
+    return {
+        role: entries for role, entries in faculty.items() if role != "course_admins"
+    }
 
 
 def _matches_tag(repo: str, tag: str) -> bool:

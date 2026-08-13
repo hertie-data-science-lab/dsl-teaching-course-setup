@@ -6,8 +6,13 @@ from __future__ import annotations
 from dsl_course import status
 
 _ROW = {
-    "label": "x", "org": "o", "repo": "r", "path": "p",
-    "status": "ok", "detail": "1 thing", "edit_url": "https://x/edit",
+    "label": "x",
+    "org": "o",
+    "repo": "r",
+    "path": "p",
+    "status": "ok",
+    "detail": "1 thing",
+    "edit_url": "https://x/edit",
 }
 
 
@@ -28,12 +33,19 @@ def test_render_markdown_covers_every_item_in_order():
 
 def test_render_markdown_c7_instructors_row_present_with_edit_link():
     md = status.render_markdown(
-        "Course", "Cohort-f2026",
-        _data(C7={
-            "label": "Instructors/TAs (people.yml)", "org": "Cohort-f2026",
-            "repo": "classroom-config", "path": "people.yml", "status": "ok",
-            "detail": "2 active", "edit_url": "https://x/edit/people.yml",
-        }),
+        "Course",
+        "Cohort-f2026",
+        _data(
+            C7={
+                "label": "Instructors/TAs (people.yml)",
+                "org": "Cohort-f2026",
+                "repo": "classroom-config",
+                "path": "people.yml",
+                "status": "ok",
+                "detail": "2 active",
+                "edit_url": "https://x/edit/people.yml",
+            }
+        ),
     )
     assert "Instructors/TAs (people.yml)" in md
     assert "2 active" in md

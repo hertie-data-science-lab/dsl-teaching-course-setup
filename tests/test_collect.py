@@ -323,7 +323,9 @@ def test_submission_targets_group_without_teams_is_empty(monkeypatch):
 )
 def test_snapshot_sha_maps_api_outcomes(monkeypatch, response, expected):
     monkeypatch.setattr(collect, "gh", lambda *a, **k: response)
-    assert collect._snapshot_sha("Cohort", "assignment-1-anna", "2026-10-13") == expected
+    assert (
+        collect._snapshot_sha("Cohort", "assignment-1-anna", "2026-10-13") == expected
+    )
 
 
 def test_snapshot_sha_asks_the_api_for_one_commit_before_a_utc_cutoff(monkeypatch):
@@ -344,12 +346,15 @@ def _stub_snapshot_write(monkeypatch, shas: dict[str, str | None], existing=None
         "submission_targets",
         lambda org, slug, is_group=None: [(r, r.split("-")[-1], []) for r in shas],
     )
-    monkeypatch.setattr(collect, "_snapshot_sha", lambda org, repo, deadline: shas[repo])
+    monkeypatch.setattr(
+        collect, "_snapshot_sha", lambda org, repo, deadline: shas[repo]
+    )
     monkeypatch.setattr(
         collect,
         "put_file",
-        lambda org, repo, path, content, msg: written.append((path, content.decode()))
-        or True,
+        lambda org, repo, path, content, msg: (
+            written.append((path, content.decode())) or True
+        ),
     )
     return written
 
@@ -381,7 +386,8 @@ def test_snapshot_assignment_never_overwrites_an_existing_snapshot(monkeypatch):
     monkeypatch.setattr(collect, "_snapshot_sha", boom)
     monkeypatch.setattr(collect, "put_file", boom)
     assert (
-        collect.snapshot_assignment("Cohort", "assignment-1", "2026-10-15T23:59") is True
+        collect.snapshot_assignment("Cohort", "assignment-1", "2026-10-15T23:59")
+        is True
     )
 
 
@@ -392,7 +398,8 @@ def test_snapshot_assignment_writes_nothing_when_a_lookup_fails(monkeypatch):
         monkeypatch, {"assignment-1-anna": SHA, "assignment-1-ben": None}
     )
     assert (
-        collect.snapshot_assignment("Cohort", "assignment-1", "2026-10-15T23:59") is False
+        collect.snapshot_assignment("Cohort", "assignment-1", "2026-10-15T23:59")
+        is False
     )
     assert written == []
 
@@ -401,7 +408,8 @@ def test_snapshot_assignment_fails_when_there_is_nothing_to_snapshot(monkeypatch
     monkeypatch.setattr(collect, "load_snapshots", lambda org, slug: None)
     monkeypatch.setattr(collect, "submission_targets", lambda *a, **k: [])
     assert (
-        collect.snapshot_assignment("Cohort", "assignment-1", "2026-10-15T23:59") is False
+        collect.snapshot_assignment("Cohort", "assignment-1", "2026-10-15T23:59")
+        is False
     )
 
 
@@ -460,7 +468,9 @@ def test_collect_passes_each_repos_own_snapshot_entry_to_grading(monkeypatch):
     assert collect.collect("Course", "assignment-1-f2026", "Cohort") == 0
     assert seen["assignment-1-anna"] == SHA
     assert seen["assignment-1-ben"] == ""  # recorded non-submission, graded as such
-    assert seen["assignment-1-cara"] is None  # absent from the snapshot -> date fallback
+    assert (
+        seen["assignment-1-cara"] is None
+    )  # absent from the snapshot -> date fallback
 
 
 def test_collect_without_a_snapshot_grades_on_dates_and_says_so(monkeypatch, capsys):
@@ -498,22 +508,32 @@ def test_assignment_is_group_prefers_the_cohort_schedule(monkeypatch):
     # schedule.yml's assignments.<slug>.type wins; grading.yml is only the fallback.
     from dsl_course.schedule import AssignmentEntry, Schedule
 
-    entry = AssignmentEntry(due_datetime=datetime(2026, 11, 15, tzinfo=ZoneInfo("Europe/Berlin")))
+    entry = AssignmentEntry(
+        due_datetime=datetime(2026, 11, 15, tzinfo=ZoneInfo("Europe/Berlin"))
+    )
     sched = Schedule(assignments={"assignment-4-project": entry})
     monkeypatch.setattr(collect.schedule, "load", lambda org: sched)
     calls = []
     monkeypatch.setattr(
-        collect, "template_is_group", lambda org, template: calls.append(template) or True
+        collect,
+        "template_is_group",
+        lambda org, template: calls.append(template) or True,
     )
     # no cohort declaration -> falls through to grading.yml
     entry.type = None
-    assert collect.assignment_is_group("Course", "Cohort-f2026", "assignment-4-project-f2026")
+    assert collect.assignment_is_group(
+        "Course", "Cohort-f2026", "assignment-4-project-f2026"
+    )
     assert calls == ["assignment-4-project-f2026"]
     # cohort says individual -> grading.yml is NOT consulted
     entry.type = "individual"
     calls.clear()
-    assert not collect.assignment_is_group("Course", "Cohort-f2026", "assignment-4-project-f2026")
+    assert not collect.assignment_is_group(
+        "Course", "Cohort-f2026", "assignment-4-project-f2026"
+    )
     assert calls == []
     # cohort says group -> group, regardless of the template
     entry.type = "group"
-    assert collect.assignment_is_group("Course", "Cohort-f2026", "assignment-4-project-f2026")
+    assert collect.assignment_is_group(
+        "Course", "Cohort-f2026", "assignment-4-project-f2026"
+    )

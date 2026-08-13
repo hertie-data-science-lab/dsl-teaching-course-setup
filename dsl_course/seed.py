@@ -68,7 +68,7 @@ from .workflows_render import (
 # sync_faculty, sync_membership) grew up importing from here. Everything else the split
 # moved out is imported from its owning module (workflows_render, discovery,
 # profile_readme, central) - so should new code be.
-__all__ = [
+__all__ = [  # noqa: RUF022 - grouped by owning module, sorting would lose the grouping
     # placement + CLI (this module's own job)
     "seed_github_workflows",
     "_push_workflows",
@@ -171,7 +171,12 @@ def seed_github_workflows(course_org: str) -> None:
         ".github/workflows/sync-enrolment.yml",
         ".github/workflows/sync-teams.yml",
     ):
-        delete_file(course_org, ".github", retired, f"ci: retire {retired.split('/')[-1]} (superseded by sync-membership.yml)")
+        delete_file(
+            course_org,
+            ".github",
+            retired,
+            f"ci: retire {retired.split('/')[-1]} (superseded by sync-membership.yml)",
+        )
 
 
 def _propagate_repo_secret(course_org: str, repos: list[str]) -> None:

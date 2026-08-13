@@ -103,16 +103,22 @@ def deploy_many(
         errors += sum(
             1
             for d in deploys
-            if d.course_source_repo not in src_dirs or d.cohort_dest_repo not in dest_dirs
+            if d.course_source_repo not in src_dirs
+            or d.cohort_dest_repo not in dest_dirs
         )
 
         # 3. apply every copy against the already-cloned trees
         touched: set[str] = set()
         for d in deploys:
-            if d.course_source_repo not in src_dirs or d.cohort_dest_repo not in dest_dirs:
+            if (
+                d.course_source_repo not in src_dirs
+                or d.cohort_dest_repo not in dest_dirs
+            ):
                 continue  # its source/dest failed to clone (already counted)
             src_path = d.course_source_path.strip("/")
-            dest_path = (d.cohort_dest_path or d.course_source_path).strip("/") or src_path
+            dest_path = (d.cohort_dest_path or d.course_source_path).strip(
+                "/"
+            ) or src_path
             srcp = src_dirs[d.course_source_repo] / src_path
             if not srcp.exists():
                 log_err(
@@ -134,8 +140,14 @@ def deploy_many(
             dd = dest_dirs[repo]
             git("-C", str(dd), *_GIT_ENV, "add", "-A")
             code, _ = git(
-                "-C", str(dd), *_GIT_ENV, "commit", "-q", "--no-verify",
-                "-m", f"release: sync materials into {repo}",
+                "-C",
+                str(dd),
+                *_GIT_ENV,
+                "commit",
+                "-q",
+                "--no-verify",
+                "-m",
+                f"release: sync materials into {repo}",
             )
             if code != 0:
                 log_ok(f"  {repo}: nothing new to release")
@@ -160,7 +172,9 @@ def _items(spec: str) -> list[str]:
     return [item.strip() for item in spec.split(",") if item.strip()]
 
 
-def parse_path_pairs(source_paths: str, dest_paths: str = "") -> list[tuple[str, str | None]]:
+def parse_path_pairs(
+    source_paths: str, dest_paths: str = ""
+) -> list[tuple[str, str | None]]:
     """Pair the Release materials button's two comma-separated lists by index.
 
     A blank `dest_paths` mirrors every source path (`None` dest, exactly what an omitted

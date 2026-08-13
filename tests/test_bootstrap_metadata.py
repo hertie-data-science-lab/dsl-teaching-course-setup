@@ -57,10 +57,20 @@ def test_schedule_yml_seed_is_commented_and_covers_every_field():
         line.startswith("#") or not line.strip() for line in schedule.splitlines()
     )
     for key in (
-        "timezone", "releases", "event_datetime", "deploy",
-        "course_source_repo", "course_source_path", "cohort_dest_repo", "cohort_dest_path",
-        "semester_start", "semester_end",
-        "assignments", "handout_datetime", "grading_datetime", "events",
+        "timezone",
+        "releases",
+        "event_datetime",
+        "deploy",
+        "course_source_repo",
+        "course_source_path",
+        "cohort_dest_repo",
+        "cohort_dest_path",
+        "semester_start",
+        "semester_end",
+        "assignments",
+        "handout_datetime",
+        "grading_datetime",
+        "events",
     ):
         assert key in schedule
 
@@ -82,7 +92,9 @@ def test_starter_roster_seeds_the_full_column_set():
     starter = bc._template("classroom-config/students.csv")
     assert tuple(starter.splitlines()[0].split(",")) == roster.FIELDS
     assert roster.parse(starter) == []  # header-only: nobody to enrol by accident
-    enrolled, auditor = roster.parse(bc._template("classroom-config/students.csv.sample"))
+    enrolled, auditor = roster.parse(
+        bc._template("classroom-config/students.csv.sample")
+    )
     assert enrolled.is_enrolled and not enrolled.onboarded
     assert auditor.is_auditor and not auditor.onboarded
 
@@ -91,7 +103,7 @@ def test_classroom_readme_documents_every_roster_column():
     # The README's roster table is what faculty read instead of the schema doc; a column
     # missing from it is a column nobody fills in.
     readme = bc._template("classroom-config/README.md")
-    documented = set(re.findall(r"^\| (\w+) \|", readme, re.M))
+    documented = set(re.findall(r"^\| (\w+) \|", readme, re.MULTILINE))
     assert set(roster.FIELDS) <= documented
 
 
@@ -146,7 +158,11 @@ def test_inventory_skips_cohort_pointer_orgs(monkeypatch):
         ],
     )
     metas = {
-        "Course-Org": {"org_name": "Course Org", "course_name": "ML", "course_code": "E1"},
+        "Course-Org": {
+            "org_name": "Course Org",
+            "course_name": "ML",
+            "course_code": "E1",
+        },
         "Cohort-Org": {"course": "Course-Org", "org": "Cohort-Org"},
     }
     monkeypatch.setattr(list_orgs, "_fetch_metadata", lambda org: metas[org])

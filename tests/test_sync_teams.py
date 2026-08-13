@@ -47,7 +47,9 @@ def stub_team(monkeypatch):
         lambda org, team: {"anna-adams", "hertie-dsl-bot", "henrycgbaker", "zoe-zed"},
     )
     monkeypatch.setattr(utils, "_acting_login", lambda: "hertie-dsl-bot")
-    monkeypatch.setattr(utils, "get_org_owners", lambda org: frozenset({"henrycgbaker"}))
+    monkeypatch.setattr(
+        utils, "get_org_owners", lambda org: frozenset({"henrycgbaker"})
+    )
     monkeypatch.setattr(
         utils,
         "add_team_member",

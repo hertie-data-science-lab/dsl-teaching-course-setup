@@ -41,11 +41,15 @@ def sync(
     # course_admins always reconciles everywhere, independent of which cohort (if
     # any) triggered this sync.
     all_registered = seed.discover_cohorts(course_org)
-    errors = sync_faculty.sync_course_admins(course_org, all_registered, dry_run=dry_run)
+    errors = sync_faculty.sync_course_admins(
+        course_org, all_registered, dry_run=dry_run
+    )
 
     # Roster/teams/instructors reconcile only for whichever cohort(s) are in scope -
     # not fanned out to every other, unrelated cohort.
-    targets = list(all_registered) if all_cohorts else ([cohort_org] if cohort_org else [])
+    targets = (
+        list(all_registered) if all_cohorts else ([cohort_org] if cohort_org else [])
+    )
     content_repos = seed.discover_content_repos(course_org) if targets else []
     assignments = seed.discover_assignments(course_org) if targets else []
     for org in targets:

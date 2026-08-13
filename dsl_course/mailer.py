@@ -83,14 +83,20 @@ def _graph_token(cfg: GraphConfig) -> str | None:
             "grant_type": "client_credentials",
         }
     ).encode()
-    status, raw = _post(url, body, {"Content-Type": "application/x-www-form-urlencoded"})
+    status, raw = _post(
+        url, body, {"Content-Type": "application/x-www-form-urlencoded"}
+    )
     if status != 200:
-        log_err(f"Graph token request failed ({status}): {raw[:200].decode(errors='replace')}")
+        log_err(
+            f"Graph token request failed ({status}): {raw[:200].decode(errors='replace')}"
+        )
         return None
     return json.loads(raw).get("access_token")
 
 
-def _graph_send_one(cfg: GraphConfig, token: str, to: str, subject: str, body: str) -> bool:
+def _graph_send_one(
+    cfg: GraphConfig, token: str, to: str, subject: str, body: str
+) -> bool:
     """Send one message via `users/{sender}/sendMail`. Returns True on 200/202."""
     url = f"{_GRAPH}/users/{urllib.parse.quote(cfg.sender)}/sendMail"
     payload = json.dumps(

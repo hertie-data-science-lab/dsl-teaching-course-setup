@@ -65,7 +65,9 @@ def test_workflows_are_gated_on_the_forms_labels():
     onboard = yaml.safe_load((WELCOME / "onboard.yml").read_text())["jobs"]["onboard"]
     assert "'onboarding'" in onboard["if"] and "labels" in onboard["if"]
     form = yaml.safe_load((WELCOME / "ISSUE_TEMPLATE/01-join-course.yml").read_text())
-    team_form = yaml.safe_load((WELCOME / "ISSUE_TEMPLATE/02-join-team.yml").read_text())
+    team_form = yaml.safe_load(
+        (WELCOME / "ISSUE_TEMPLATE/02-join-team.yml").read_text()
+    )
     assert form["labels"] == ["onboarding"]
     assert team_form["labels"] == ["team-formation"]
     # writes to the private roster repo, not a public one

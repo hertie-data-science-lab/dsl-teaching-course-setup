@@ -232,8 +232,9 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.retrofit:
-        import yaml
         from pathlib import Path
+
+        import yaml
 
         entries = yaml.safe_load(Path(args.retrofit).read_text()) or []
         failed = 0

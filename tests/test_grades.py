@@ -166,7 +166,9 @@ def test_merge_auto_never_overwrites_existing_team_columns():
 
 def test_merge_auto_fills_only_the_empty_cells_of_a_mixed_row():
     existing = grades.dump_grades(
-        [grades.GradeRow(github_handle="anna", team="team-x")]  # team set, team_grade empty
+        [
+            grades.GradeRow(github_handle="anna", team="team-x")
+        ]  # team set, team_grade empty
     )
     out = grades.merge_auto(
         existing, [("anna", {"team": "team-y", "team_grade": "85"})]
@@ -190,11 +192,13 @@ def test_merge_auto_write_once_is_per_row_not_per_file():
 
 def test_merge_auto_logs_how_many_cells_were_preserved(capsys):
     existing = grades.dump_grades(
-        [grades.GradeRow(github_handle="anna", auto="9", team="team-x", team_grade="85")]
+        [
+            grades.GradeRow(
+                github_handle="anna", auto="9", team="team-x", team_grade="85"
+            )
+        ]
     )
-    grades.merge_auto(
-        existing, [("anna", {"auto": "3"}), ("ben", {"auto": "3"})]
-    )
+    grades.merge_auto(existing, [("anna", {"auto": "3"}), ("ben", {"auto": "3"})])
     out = capsys.readouterr().out
     assert "anna: 1 existing cell(s)" in out  # per-row skip count
     assert "1 existing machine-written cell(s) preserved" in out
@@ -222,12 +226,16 @@ def test_render_cohort_csv_pivots_to_one_row_per_handle():
     header = csv_text.splitlines()[0].split(",")
     assert header.index("assignment-1_final") < header.index("assignment-2_final")
     anna = rows[0]
-    assert anna["assignment-1_final"] == "88" and anna["assignment-1_comments"] == "Nice"
+    assert (
+        anna["assignment-1_final"] == "88" and anna["assignment-1_comments"] == "Nice"
+    )
     assert anna["assignment-2_final"] == "90"
     # anna has no row in assignment-1's team columns
     assert anna["assignment-1_team"] == ""
     ben = rows[1]
-    assert ben["assignment-1_team"] == "team-x" and ben["assignment-1_team_grade"] == "85"
+    assert (
+        ben["assignment-1_team"] == "team-x" and ben["assignment-1_team_grade"] == "85"
+    )
     # ben has no assignment-2 row at all - blank, not missing
     assert ben["assignment-2_final"] == ""
 

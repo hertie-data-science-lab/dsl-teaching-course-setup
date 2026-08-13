@@ -342,7 +342,10 @@ def _await_run(org: str, site: str, run_id: str, timeout: int = 180) -> str | No
     waited = 0
     while waited < timeout:
         code, out = gh(
-            "api", f"repos/{org}/{site}/actions/runs/{run_id}", "--jq", ".status,.conclusion"
+            "api",
+            f"repos/{org}/{site}/actions/runs/{run_id}",
+            "--jq",
+            ".status,.conclusion",
         )
         if code == 0:
             parts = out.split()
@@ -443,7 +446,9 @@ def scaffold_site(org: str) -> int:
         if conclusion == "success":
             log_ok(f"site deployed -> https://{org.lower()}.github.io/")
             return 0
-        log(f"  (deploy attempt {attempt} did not succeed: {conclusion or 'timed out'})")
+        log(
+            f"  (deploy attempt {attempt} did not succeed: {conclusion or 'timed out'})"
+        )
         time.sleep(10)
     log(
         "  (site not deployed yet - it will deploy on the next push to the site repo, "

@@ -373,10 +373,10 @@ def _pin_commit(
             f"  ! snapshot commit {snapshot[:8]} is not in the clone (history rewritten?) "
             f"- falling back to the commit-date pin"
         )
-    before = deadline if ("T" in deadline or ":" in deadline) else f"{deadline} 23:59:59"
-    code, out = git(
-        "-C", str(repo_dir), "rev-list", "-1", f"--before={before}", "HEAD"
+    before = (
+        deadline if ("T" in deadline or ":" in deadline) else f"{deadline} 23:59:59"
     )
+    code, out = git("-C", str(repo_dir), "rev-list", "-1", f"--before={before}", "HEAD")
     sha = out.strip()
     if code != 0 or not sha:
         return None
@@ -410,7 +410,7 @@ def _run_tests(workdir: Path, fmt: str, tests_src: Path) -> dict | None:
         if fmt == "notebook":
             # Convert each notebook to an importable script first (Otter can slot in here).
             for nb in workdir.rglob("*.ipynb"):
-                subprocess.run(
+                subprocess.run(  # noqa: PLW1510 - a failed convert is tolerated per notebook
                     [
                         sys.executable,
                         "-m",
@@ -435,7 +435,7 @@ def _run_tests(workdir: Path, fmt: str, tests_src: Path) -> dict | None:
         dest = workdir / "_grading_tests"
         shutil.copytree(tests_src, dest, dirs_exist_ok=True)
         report = workdir / "report.xml"
-        subprocess.run(
+        subprocess.run(  # noqa: PLW1510 - a non-zero pytest run IS the grading result
             [sys.executable, "-m", "pytest", "-q", str(dest), f"--junitxml={report}"],
             cwd=workdir,
             env=env,

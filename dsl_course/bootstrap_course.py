@@ -103,7 +103,9 @@ def _cohort_tag(org: str) -> tuple[str, int]:
     return f"{m.group(1).lower()}{m.group(2)}", int(m.group(2))
 
 
-def _seed_user_file(org: str, repo: str, path: str, content: bytes, message: str) -> bool:
+def _seed_user_file(
+    org: str, repo: str, path: str, content: bytes, message: str
+) -> bool:
     """Seed a USER-owned file - create-only, never an overwrite.
 
     Returns True if the file was written, False if it was already present (logged as a
@@ -321,7 +323,8 @@ def _course_admins_block(admins: list[str] | None) -> str:
     if not admins:
         return f"{header}\n{_template('course/people-commented.yml')}\n{cards}"
     entries = "\n".join(
-        f'    - github_handle: "{a}"    # grants the `course-admin` team' for a in admins
+        f'    - github_handle: "{a}"    # grants the `course-admin` team'
+        for a in admins
     )
     return f"{header}people:\n  course_admins:\n{entries}\n\n{cards}"
 
@@ -574,7 +577,9 @@ def setup_cohort_extras(org: str) -> None:
             org,
             "classroom-config",
             "schedule.yml",
-            _template("classroom-config/schedule.yml").format(tag=tag, year=year).encode(),
+            _template("classroom-config/schedule.yml")
+            .format(tag=tag, year=year)
+            .encode(),
             "docs: seed schedule.yml (release plan + due dates + exams)",
         )
         _seed_user_file(
@@ -852,7 +857,7 @@ def main() -> int:
             with open(args.set_secret) as f:
                 token = f.read().strip()
             set_org_secret(args.org, "DSL_BOT_TOKEN", token)
-        except (FileNotFoundError, IOError) as e:
+        except (OSError, FileNotFoundError) as e:
             log_err(f"could not read secret file: {e}")
             return 1
     elif args.propagate_secret:
@@ -869,9 +874,7 @@ def main() -> int:
             log(
                 "\nWARNING: DSL_BOT_TOKEN not set. "
                 "Run bootstrap with --set-secret <path> to add it, "
-                "or set it manually at https://github.com/{}/settings/secrets/actions".format(
-                    args.org
-                )
+                f"or set it manually at https://github.com/{args.org}/settings/secrets/actions"
             )
 
     # 5. Generate the org-overview README now that all repos exist (clickable index).
@@ -882,7 +885,7 @@ def main() -> int:
             f"2. Course admins ({', '.join(admin_logins)}) are already declared in the "
             f"`people:` block of {args.org}/.github/dsl-course.yml - nothing to do here. "
             "Add more later by editing that file directly (not the Teams page - "
-            "\"Sync membership\" reconciles the `course-admin` team FROM that file, so an "
+            '"Sync membership" reconciles the `course-admin` team FROM that file, so an '
             "undeclared manual addition gets reverted on the next sync). Instructors/TAs "
             "are declared per cohort instead, in that cohort's own "
             "classroom-config/people.yml (see step 4)."
@@ -890,7 +893,7 @@ def main() -> int:
     else:
         admins_step = (
             f"2. Declare THIS course's course_admins in the `people:` block of "
-            f"{args.org}/.github/dsl-course.yml, then push - \"Sync membership\" reconciles "
+            f'{args.org}/.github/dsl-course.yml, then push - "Sync membership" reconciles '
             "the `course-admin` team automatically (here and into every cohort's own "
             "course-admin team; no manual Teams-page edit needed). Instructors/TAs are "
             "declared per cohort instead, in that cohort's own classroom-config/people.yml "
