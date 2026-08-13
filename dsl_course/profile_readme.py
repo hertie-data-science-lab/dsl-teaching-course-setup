@@ -174,7 +174,7 @@ cohort org using the GitHub Actions below_.
 
 All actions live in the [`.github` repo's Actions tab](https://github.com/{org}/.github/actions)
 _(automatically bootstrapped from the central
-[dsl-teaching-course-setup repo](https://github.com/{CENTRAL}))_:
+[dsl-teaching-toolkit repo](https://github.com/{CENTRAL}))_:
 
 ### One-time setup actions:
 - [**Bootstrap cohort**](https://github.com/{org}/.github/actions/workflows/bootstrap-cohort.yml) - configure a freshly-created cohort org (sets up scaffold repos), register it with the course org, refresh dropdowns.
@@ -257,7 +257,7 @@ settings you chose, so later materials edits reach it on their own.
 ```
 
 This whole structure is bootstrapped from the central
-[`dsl-teaching-course-setup`](https://github.com/{CENTRAL})
+[`dsl-teaching-toolkit`](https://github.com/{CENTRAL})
 repo (via its **Bootstrap Course Org** action), and the actions above run that same central code.
 
 The course-level actions assume this layout - use **New materials repo** / **New assignment** above to scaffold correctly.

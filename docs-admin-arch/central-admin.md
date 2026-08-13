@@ -12,7 +12,7 @@ and it gates every central button.
 
 - **Bootstrap Course Org** checks membership of those two teams. No membership, no org
   provisioning.
-- Already in place as one-time setup: the central `dsl-teaching-course-setup` repo grants
+- Already in place as one-time setup: the central `dsl-teaching-toolkit` repo grants
   **`faculty` → write** and **`admin` → admin**, and its `main` is **branch-protected** (changes
   go via PR).
 - This authority is DSL-wide and *creation-only*. It grants **no** access to any course's own
