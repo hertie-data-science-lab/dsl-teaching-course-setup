@@ -45,6 +45,7 @@ to count.
 Usage:
     python3 -m dsl_course.schedule --cohort-org Deep-Learning-EXAMPLE-f2026
     python3 -m dsl_course.schedule --cohort-org Deep-Learning-EXAMPLE-f2026 --validate
+    python3 -m dsl_course.schedule --file classroom-config/schedule.yml --validate
 """
 
 from __future__ import annotations
@@ -54,6 +55,7 @@ import json
 import sys
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, time, timezone
+from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
@@ -523,6 +525,51 @@ def load(cohort_org: str) -> Schedule:
     return sched
 
 
+def load_file(path: str) -> tuple[Schedule | None, str | None]:
+    """Parse a schedule.yml from DISK: returns (schedule, None), or (None, error) when the
+    file is missing or is not valid YAML.
+
+    The opposite stance to `load`, deliberately. `load` treats an unparseable cohort file
+    as an absent one, because it sits under the hourly cron and one typo must not be able
+    to freeze a cohort. Here the caller is a validator whose whole job is to fail, so a
+    broken file is an error and not an empty schedule."""
+    p = Path(path)
+    try:
+        text = p.read_text()
+    except OSError as exc:
+        return None, f"cannot read {path}: {exc}"
+    try:
+        meta = yaml.safe_load(text) or {}
+    except yaml.YAMLError as exc:
+        # the parser's own message carries the line/column and the offending snippet
+        return None, f"{path} is not valid YAML:\n{exc}"
+    if not isinstance(meta, dict):
+        return None, f"{path} is valid YAML but not a mapping - it needs top-level keys"
+    return parse(meta), None
+
+
+def _validate_report(sched: Schedule, source: str) -> str:
+    """What the parser UNDERSTOOD, followed by anything it threw away.
+
+    Reporting the totals matters as much as reporting the drops: a well-formed entry with
+    the wrong date is invisible to validation, but "4 assignments" when you wrote five is
+    not. This is what a reader sees in a run summary, so it stays plain text."""
+    lines = [
+        f"Parsed {source}",
+        f"  term {sched.semester_start} -> {sched.semester_end}  ({sched.timezone})",
+        (
+            f"  {len(sched.releases)} release(s), "
+            f"{sum(len(r.deploy) for r in sched.releases)} deploy(s) | "
+            f"{len(sched.assignments)} assignment(s) | {len(sched.events)} event(s)"
+        ),
+    ]
+    if sched.dropped:
+        lines.append("")
+        lines.append(f"  {len(sched.dropped)} ENTRY/IES DROPPED:")
+        lines.extend(f"    - {d}" for d in sched.dropped)
+    return "\n".join(lines)
+
+
 def _insert_handout(text: str, slug: str, stamp: str) -> str | None:
     """Pure text surgery for `record_handout` - schedule.yml is USER-owned and
     comment-rich, so we insert lines rather than re-serialising (which would destroy
@@ -607,26 +654,40 @@ def record_handout(cohort_org: str, slug: str, stamp: str | None = None) -> None
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--cohort-org", required=True)
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--cohort-org", help="fetch schedule.yml from a cohort org")
+    source.add_argument(
+        "--file", help="validate a schedule.yml on disk (no GitHub access)"
+    )
     parser.add_argument(
         "--validate",
         action="store_true",
-        help="exit non-zero if any entry was dropped, instead of dumping the schedule",
+        help="exit non-zero if the file is unparseable or any entry was dropped, "
+        "instead of dumping the schedule",
     )
     args = parser.parse_args()
-    sched = load(args.cohort_org)
+
+    if args.file:
+        sched, error = load_file(args.file)
+        if error is not None:
+            # Unlike a cohort fetch, a broken FILE is a hard failure - see load_file.
+            log_err(error)
+            print(f"INVALID: {args.file} could not be parsed")
+            return 1
+        source_name = args.file
+    else:
+        sched, source_name = load(args.cohort_org), f"{args.cohort_org}/{SCHEDULE_PATH}"
+
     if not args.validate:
         print(json.dumps(asdict(sched), indent=2, default=str))
         return 0
-    # `load` has already logged the detail; this only reports the verdict, so the command
-    # is usable as a gate (in CI, or before trusting a term plan).
+    # Report what was UNDERSTOOD as well as what was dropped: validation cannot catch a
+    # well-formed entry with the wrong date, but a count that is one short is visible.
+    print(_validate_report(sched, source_name))
     if sched.dropped:
-        print(f"INVALID: {len(sched.dropped)} entry/ies dropped - see the errors above")
+        print(f"\nINVALID: {len(sched.dropped)} entry/ies dropped")
         return 1
-    print(
-        f"OK: {len(sched.releases)} release(s), {len(sched.assignments)} assignment(s), "
-        f"{len(sched.events)} event(s) - nothing dropped"
-    )
+    print("\nOK: nothing dropped")
     return 0
 
 

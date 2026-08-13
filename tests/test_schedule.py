@@ -8,10 +8,12 @@ default).
 from __future__ import annotations
 
 from datetime import date, datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
 
+from dsl_course import schedule
 from dsl_course.schedule import (
     Deploy,
     Event,
@@ -689,3 +691,53 @@ def test_load_logs_every_dropped_entry_loudly(monkeypatch, capsys):
     assert "assignments.assignment-2" in err
     assert "`due_datetime`" in err
     assert "no autograding" in err
+
+
+# ------------------------------------------------------- validating a file on disk (CI)
+
+
+def test_load_file_reports_unparseable_yaml_rather_than_treating_it_as_empty(tmp_path):
+    # The opposite stance to `load`: the cron must survive a typo, a validator must fail on
+    # one. A broken file that silently validated would be worse than no validator at all.
+    bad = tmp_path / "schedule.yml"
+    bad.write_text("releases:\n  a:\n    deploy:\n      - {x: 1,\n")
+    sched, error = schedule.load_file(str(bad))
+    assert sched is None
+    assert "not valid YAML" in error and "line" in error
+
+
+def test_load_file_reports_a_missing_file(tmp_path):
+    sched, error = schedule.load_file(str(tmp_path / "nope.yml"))
+    assert sched is None and "cannot read" in error
+
+
+def test_load_file_rejects_valid_yaml_that_is_not_a_mapping(tmp_path):
+    p = tmp_path / "schedule.yml"
+    p.write_text("- just\n- a list\n")
+    sched, error = schedule.load_file(str(p))
+    assert sched is None and "not a mapping" in error
+
+
+def test_load_file_parses_and_surfaces_drops(tmp_path):
+    p = tmp_path / "schedule.yml"
+    p.write_text("assignments:\n  assignment-2:\n    due_date: 2026-11-13\n")
+    sched, error = schedule.load_file(str(p))
+    assert error is None
+    assert sched.assignments == {} and len(sched.dropped) == 1
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "example-course/cohort-org/schedule.yml",
+        "templates/classroom-config/schedule.yml",
+    ],
+)
+def test_shipped_schedules_parse_with_nothing_dropped(path):
+    # The CI gate. The example is what faculty copy and the template is what every new
+    # cohort is seeded with, so either one silently dropping an entry would teach the
+    # mistake rather than catch it.
+    full = Path(__file__).resolve().parents[1] / path
+    sched, error = schedule.load_file(str(full))
+    assert error is None, error
+    assert sched.dropped == [], f"{path} drops entries:\n" + "\n".join(sched.dropped)

@@ -173,16 +173,23 @@ Just commit the edit to `classroom-config/schedule.yml` on `main` - the **GitHub
 
 The one caveat: already-fired **one-shot** actions don't rewind - a release already shipped stays shipped, and a snapshot/autograde that already ran re-runs only if you delete its marker (`snapshots/<slug>.csv` / `autograde/<slug>/`).
 
-## If you want to verify your schedule before trusting it
+## Verifying your schedule
 
-1. **Validate it.**
-    - `python3 -m dsl_course.schedule --cohort-org DSL-Demo-f2026 --validate` names every dropped entry and exits non-zero if there is one.
-    - Without `--validate` it prints the schedule *as parsed*, as JSON.
-2. **Read the counts.** 
-    - **Check cohort setup** reports the release plan and the term dates, and flags `N entry/ies DROPPED` on both schedule rows.
-3. **Dry-run the cron.** 
-    - Run **Scheduled release** by hand 
-    - `dry_run` defaults to **`true`**, so it lists what *would* open and releases nothing
+**It checks itself.** Every commit touching `schedule.yml` runs **Validate schedule** in `classroom-config`. A commit that parses clean gets a green tick; one the scheduler cannot fully read gets a **red X**, and an issue naming the bad entry is opened and assigned to you, closing itself when a later commit parses clean.
+
+The run summary shows what the parser *understood*, not just what it rejected - counts one short of what you wrote is how you catch a mistake that is valid YAML:
+
+```
+Parsed schedule.yml
+  term 2026-09-07 -> 2026-12-18  (Europe/Berlin)
+  11 release(s), 19 deploy(s) | 3 assignment(s) | 4 event(s)
+```
+
+Three other ways to check, none of them required:
+
+1. **Read the counts.** **Check cohort setup** reports the release plan and term dates, and flags `N entry/ies DROPPED`.
+2. **Validate by hand.** `python3 -m dsl_course.schedule --cohort-org DSL-Demo-f2026 --validate`, or `--file schedule.yml --validate` against a local copy. Without `--validate` it prints the schedule *as parsed*, as JSON.
+3. **Dry-run the cron.** Run **Scheduled release** by hand; `dry_run` defaults to **`true`**, so it lists what *would* open and releases nothing.
 
 ## Dropped entries
 

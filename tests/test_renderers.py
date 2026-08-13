@@ -432,3 +432,34 @@ def test_new_assignment_button_exposes_format_and_type():
     assert step["env"]["FORMAT"] == "${{ inputs.format }}"
     assert step["env"]["TYPE"] == "${{ inputs.type }}"
     assert '--format "$FORMAT"' in rendered and '--type "$TYPE"' in rendered
+
+
+def test_validate_schedule_workflow_is_seeded_with_the_central_repo_pinned():
+    # Seeded into a cohort's classroom-config, so it must carry the central repo and ref
+    # baked in - the cohort repo has no other way to reach the parser.
+    from dsl_course.bootstrap_course import _validate_schedule_workflow
+    from dsl_course.central import CENTRAL, CENTRAL_REF
+
+    raw = _validate_schedule_workflow()
+    assert "__CENTRAL__" not in raw and "__CENTRAL_REF__" not in raw
+    doc = yaml.safe_load(raw)
+    trigger = doc.get("on", doc.get(True))
+
+    # fires where the file is edited, and on demand
+    assert trigger["push"]["paths"] == ["schedule.yml"]
+    assert trigger["push"]["branches"] == ["main"]
+    assert "workflow_dispatch" in trigger
+
+    steps = doc["jobs"]["validate"]["steps"]
+    central = next(s for s in steps if s.get("with", {}).get("repository"))
+    assert central["with"]["repository"] == CENTRAL
+    assert central["with"]["ref"] == CENTRAL_REF
+
+    # validates the cohort's OWN file, not a fetched copy - no token needed to read it
+    run = next(s for s in steps if s.get("id") == "validate")["run"]
+    assert "--file ../cohort/schedule.yml --validate" in run
+    assert "$GITHUB_STEP_SUMMARY" in run
+
+    # the run must end red so the commit is marked, and needs issues:write to escalate
+    assert doc["permissions"]["issues"] == "write"
+    assert any("exit 1" in s.get("run", "") for s in steps)

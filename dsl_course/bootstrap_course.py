@@ -296,6 +296,20 @@ def _template(rel: str) -> str:
     return (TEMPLATES / rel).read_text(encoding="utf-8")
 
 
+def _validate_schedule_workflow() -> str:
+    """The classroom-config schedule validator, with the central repo pinned into it.
+
+    Placeholders rather than `str.format`, because the file is full of `${{ }}` GitHub
+    expressions that `format` would try to interpret."""
+    from .central import CENTRAL, CENTRAL_REF
+
+    return (
+        _template("classroom-config/validate-schedule.yml")
+        .replace("__CENTRAL_REF__", CENTRAL_REF)
+        .replace("__CENTRAL__", CENTRAL)
+    )
+
+
 # course_admins are declared ONCE on the persistent COURSE org - the single source of truth
 # for admin access, reconciled into this org's own `course-admin` GitHub team AND mirrored
 # into every cohort org's own `course-admin` team. `github_handle` is the only required
@@ -637,6 +651,13 @@ def setup_cohort_extras(org: str) -> None:
             ".github/workflows/dispatch-sync-site.yml",
             _template("classroom-config/dispatch-sync-site.yml").encode(),
             "ci: seed dispatch-sync-site workflow",
+        )
+        put_file(
+            org,
+            "classroom-config",
+            ".github/workflows/validate-schedule.yml",
+            _validate_schedule_workflow().encode(),
+            "ci: seed validate-schedule workflow",
         )
         log_ok("classroom-config ready (config preserved, dispatchers refreshed)")
 
