@@ -2,7 +2,11 @@ org: {org}
 org_name: {org_name}
 course_name: {course_name}
 course_code: {course_code}
+# course_description: One or two sentences, on ONE line - the blurb on every cohort site.
 
+# `course_name`, `course_code` and `course_description` are what reach the cohort websites
+# (`org_name` does not - it names the org). Editing them here re-syncs every cohort site.
+#
 # This is the persistent COURSE org - it spans many cohorts (years). Cohorts are
 # registered separately in .github/cohort-courses-pages.yml.
 

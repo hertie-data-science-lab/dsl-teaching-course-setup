@@ -2,6 +2,7 @@ org: Hertie-DSL-Demo
 org_name: DSL Demo Course
 course_name: Deep Learning (Demo)
 course_code: GRAD-DEMO
+course_description: A demo course - the blurb every cohort site shows under the title.
 
 # course_admins is the SSOT for course-wide GitHub admin access (applied here AND
 # mirrored into every cohort org's own course-admin team by sync_faculty).

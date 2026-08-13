@@ -8,6 +8,8 @@ from __future__ import annotations
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
+import yaml
+
 from dsl_course import site
 from dsl_course.schedule import Deploy, Event, Release, Schedule
 
@@ -294,6 +296,75 @@ def test_a_mixed_week_becomes_a_lecture_row_and_a_lab_row(monkeypatch, tmp_path)
     assert "date: 2026-09-10T14:00:00" in lectures["lab-02.md"]  # its OWN release time
 
 
+def test_course_description_flows_from_course_metadata_into_config(monkeypatch, tmp_path):
+    # course_description is declared once in the course org's dsl-course.yml and pushed to
+    # every cohort site. Undeclared, it must not be written at all - the site repo keeps
+    # whatever blurb it has.
+    captured = {}
+    monkeypatch.setattr(
+        site, "_sync_site_repo", lambda org, build: captured.update(plan=build(tmp_path)) or 0
+    )
+    monkeypatch.setattr(site.seed, "discover_cohort_repos", lambda orgs: [])
+    monkeypatch.setattr(site.seed, "discover_release_sources", lambda org, repos: [])
+    monkeypatch.setattr(site.seed, "discover_assignments", lambda org: [])
+    monkeypatch.setattr(site.schedule, "load", lambda org: Schedule())
+    monkeypatch.setattr(site, "_people_yaml", lambda *a, **k: "people: []\n")
+
+    monkeypatch.setattr(site, "_yaml_file", lambda *a: {})
+    assert site.sync_site("Course-Org", "Cohort-f2026") == 0
+    assert "course_description" not in captured["plan"].config
+
+    monkeypatch.setattr(site, "_yaml_file", lambda *a: {"course_description": "Nets, from 0."})
+    assert site.sync_site("Course-Org", "Cohort-f2026") == 0
+    cfg = site._set_config(
+        'course_name: "x"\ncourse_description: "old"\ncourse_code: "y"\n',
+        "course_description",
+        captured["plan"].config["course_description"],
+    )
+    assert yaml.safe_load(cfg)["course_description"] == "Nets, from 0."
+    assert yaml.safe_load(cfg)["course_code"] == "y"  # neighbours untouched
+
+
+def test_set_config_writes_one_line_over_a_block_scalar():
+    # A faculty `>` block in dsl-course.yml, and/or one already in _config.yml: either way
+    # the result must stay valid YAML on one line, its body not stranded as loose text.
+    cfg = site._set_config(
+        "course_description: >\n  an old\n  folded blurb\ncourse_code: 'y'\n",
+        "course_description",
+        "line one\nline two\n",
+    )
+    assert yaml.safe_load(cfg) == {"course_description": "line one line two", "course_code": "y"}
+
+
+def test_site_still_builds_when_schedule_yml_does_not_parse(monkeypatch, tmp_path, capsys):
+    # The incident: unparseable schedule.yml crashed schedule.load, which crashed BOTH the
+    # hourly Scheduled release AND Sync site - so the site kept the template's "Fall 2025"
+    # placeholders. schedule.load now degrades to an empty Schedule, and the sync must
+    # complete: course identity + inferred semester land, dates are synthesised.
+    from tests.test_schedule import MALFORMED_SCHEDULE
+
+    captured = {}
+    monkeypatch.setattr(
+        site, "_sync_site_repo", lambda org, build: captured.update(plan=build(tmp_path)) or 0
+    )
+    monkeypatch.setattr(site.seed, "discover_cohort_repos", lambda orgs: [])
+    monkeypatch.setattr(site.seed, "discover_release_sources", lambda org, repos: [])
+    monkeypatch.setattr(site.seed, "discover_assignments", lambda org: [])
+    monkeypatch.setattr(site, "_yaml_file", lambda *a: {"course_name": "Deep Learning"})
+    monkeypatch.setattr(site, "_people_yaml", lambda *a, **k: "people: []\n")
+    # the REAL schedule.load, fed the malformed file
+    monkeypatch.setattr(
+        site.schedule, "get_file_content", lambda org, repo, path: MALFORMED_SCHEDULE
+    )
+
+    assert site.sync_site("Course-Org", "Cohort-f2026") == 0
+
+    plan = captured["plan"]
+    assert plan.config["course_name"] == "Deep Learning"
+    assert plan.config["course_semester"] == "Fall 2026"
+    # no schedule data: the exam rows fall back to the synthesised mid/end-term stubs
+    assert {"midterm.md", "final.md"} <= set(plan.collections["_events"])
+    assert "is NOT valid YAML" in capsys.readouterr().err
 def test_a_week_with_only_one_kind_gets_only_that_row(monkeypatch, tmp_path):
     lab_only = _plan(
         monkeypatch,

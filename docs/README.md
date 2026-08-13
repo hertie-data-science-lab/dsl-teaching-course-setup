@@ -78,6 +78,7 @@ Numbered in reading order - **course-level** (01-03) before **cohort-level** (04
 | 08 | [Manual release materials to cohort](08-release-materials-to-cohort.md) | cohort | fallback/ad-hoc release |
 | 09 | [manual release assignment to cohort](09-release-assignment-to-cohort.md) | cohort | fallback/ad-hoc hand-out |
 | 10 | [Grade and return assignments](10-grade-and-return-assignments.md) | cohort | per assignment, after the deadline |
+| 11 | [Configure the cohort website](11-configure-cohort-site.md) | course + cohort | whenever the site should say something different - and to know what not to hand-edit |
 
 For a one-page summary of **every button**, see [`actions-reference.md`](reference/actions-reference.md);
 for who may run them, [`access-reference.md`](reference/access-reference.md).

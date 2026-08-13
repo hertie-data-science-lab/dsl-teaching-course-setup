@@ -362,7 +362,10 @@ def test_sync_site_auto_resyncs_on_sourced_changes():
     assert jobs["sync"]["needs"] == "check-team"
 
 
-def test_classroom_config_site_dispatcher_fires_on_schedule_change():
+def test_classroom_config_site_dispatcher_fires_on_schedule_or_people_change():
+    # Both files feed the site: schedule.yml its dates, people.yml its staff cards. A
+    # people.yml edit must not have to wait for the daily cron. (people.yml also fires
+    # dispatch-sync.yml - a different workflow, event type sync-membership - which is fine.)
     from pathlib import Path
 
     tmpl = (
@@ -371,7 +374,7 @@ def test_classroom_config_site_dispatcher_fires_on_schedule_change():
     ).read_text()
     doc = yaml.safe_load(tmpl)
     trigger = doc.get("on", doc.get(True))
-    assert trigger["push"]["paths"] == ["schedule.yml"]
+    assert sorted(trigger["push"]["paths"]) == ["people.yml", "schedule.yml"]
     assert "sync-site" in tmpl  # dispatches the sync-site event
 
 

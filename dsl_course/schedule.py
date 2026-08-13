@@ -52,7 +52,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
 
-from .utils import get_file_content
+from .utils import get_file_content, log_err
 
 CONFIG_REPO = "classroom-config"
 SCHEDULE_PATH = "schedule.yml"
@@ -420,9 +420,28 @@ def grading_datetime_iso(sched: Schedule, slug: str) -> str | None:
 def load(cohort_org: str) -> Schedule:
     """Fetch + parse schedule.yml from the cohort's PRIVATE classroom-config repo. A
     pure loader: a missing file returns an empty Schedule silently (every field
-    optional everywhere it's read)."""
+    optional everywhere it's read).
+
+    A file that does not PARSE (faculty-editable YAML - an unclosed brace, a bad indent)
+    is treated exactly as an absent one: the error is logged loudly, with the parser's own
+    line/column, and an empty Schedule is returned. It must never raise: `load` sits under
+    the hourly scheduler AND the site sync, and one cohort's typo froze both."""
     content = get_file_content(cohort_org, CONFIG_REPO, SCHEDULE_PATH)
-    meta = yaml.safe_load(content) if content else {}
+    try:
+        meta = yaml.safe_load(content) if content else {}
+    except yaml.YAMLError as exc:
+        log_err(
+            f"{cohort_org}/{CONFIG_REPO}/{SCHEDULE_PATH} is NOT valid YAML - the whole "
+            f"schedule is ignored:"
+        )
+        # the parser's own message: it carries the line/column and the offending snippet
+        log_err(str(exc))
+        log_err(
+            f"fix {CONFIG_REPO}/{SCHEDULE_PATH} on main in {cohort_org} - until then "
+            f"NOTHING is scheduled for this cohort (no releases, no handouts, no deadline "
+            f"snapshots, no autograding) and the site builds without schedule data."
+        )
+        meta = {}
     return parse(meta if isinstance(meta, dict) else {})
 
 

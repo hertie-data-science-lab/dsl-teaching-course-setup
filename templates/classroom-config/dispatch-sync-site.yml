@@ -2,9 +2,14 @@ name: Dispatch site sync
 
 # Seeded into a cohort's private classroom-config repo as
 # .github/workflows/dispatch-sync-site.yml (companion to dispatch-sync.yml, which handles
-# membership). Its only job: fire the course org's Sync site whenever schedule.yml changes
-# here, so the cohort website - which reads its release plan, session dates, due dates and
-# exams from schedule.yml - refreshes immediately without a manual click.
+# membership). Its only job: fire the course org's Sync site whenever schedule.yml or
+# people.yml changes here, so the cohort website - which reads its release plan, session
+# dates, due dates and exams from schedule.yml, and its staff cards from people.yml -
+# refreshes immediately without a manual click.
+#
+# people.yml also fires dispatch-sync.yml (event_type sync-membership). The two are
+# independent: different workflows, different event types, different targets (teams vs the
+# site repo), so both running on one push is expected and harmless.
 #
 # Reads the course org from THIS cohort's own .github/dsl-course.yml `course:` pointer
 # (single source of truth). Fires a repository_dispatch (not workflow_dispatch) so Sync
@@ -17,6 +22,7 @@ on:
     branches: [main]
     paths:
       - schedule.yml
+      - people.yml
 
 jobs:
   dispatch:

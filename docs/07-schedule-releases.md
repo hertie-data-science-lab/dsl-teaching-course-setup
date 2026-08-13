@@ -237,8 +237,15 @@ re-runs only if you delete its marker (`snapshots/<slug>.csv` / `autograde/<slug
 ## Silent failures
 
 > **The schedule never errors - it drops.** Nothing below fails a run:
+<<<<<<< HEAD
+> - a file that **doesn't parse at all** (unclosed brace, bad indent) → the whole schedule is
+>   treated as empty: the run log says so loudly with the offending line, nothing fires, and
+>   the site still builds (synthesised dates) until you fix it;
+> - a malformed or missing **`event_datetime`** → that whole entry is dropped;
+=======
 > - a malformed or missing **`event_datetime`** → that whole entry is dropped, in
 >   `releases:` and in `events:` alike;
+>>>>>>> origin/main
 > - a malformed **`deploy_datetime`** → ignored, and that copy ships at the `event_datetime`;
 > - a malformed or missing **`due_datetime`** → the whole `assignments:` entry is dropped, and the
 >   grading deadline then falls back to *today* at grading time;
