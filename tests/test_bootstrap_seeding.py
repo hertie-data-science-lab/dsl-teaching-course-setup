@@ -29,6 +29,7 @@ USER_OWNED = {
 SYSTEM_OWNED = {
     ".github/workflows/dispatch-sync.yml",
     ".github/workflows/dispatch-sync-site.yml",
+    ".github/workflows/validate-schedule.yml",
     "README.md",
     "students.csv.sample",
     "teams.csv.sample",
