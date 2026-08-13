@@ -14,8 +14,8 @@ flow style is conventional (`branches: [main]`, `workflow_dispatch: {}`), and th
 `github-script` bodies are JavaScript, not YAML.
 
 Scoped to flow mappings used as LIST ITEMS. A flow mapping as a scalar value
-(`deploy: {source_repo: ...}`) is left alone - `docs/DEPLOYMENT-CHECKLIST.md` uses one on
-purpose to show a single-copy shorthand.
+(`deploy: {course_source_repo: ...}`) is left alone - `docs/DEPLOYMENT-CHECKLIST.md` uses one
+on purpose to show a single-copy shorthand.
 """
 
 from __future__ import annotations

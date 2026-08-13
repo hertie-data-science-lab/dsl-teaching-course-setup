@@ -20,8 +20,8 @@ it, and are imported from there (see `__all__` for the few names still reached f
 
 CLI:
   refresh --course-org X   re-render the content actions into every course repo with
-                           fresh cohort/source-repo/assignment dropdowns, and rebuild the
-                           org profile README. (Run by the Refresh-actions and
+                           fresh cohort/course-source-repo/assignment dropdowns, and rebuild
+                           the org profile README. (Run by the Refresh-actions and
                            Bootstrap-cohort workflows.)
 """
 
@@ -91,8 +91,8 @@ WORKFLOWS = (
     ".github/workflows/release-assignment.yml",
 )
 
-# Retired in favour of the consolidated Release materials button (whose source_path takes
-# any folder or file, which is all Release code ever did) - removed from content repos
+# Retired in favour of the consolidated Release materials button (whose course_source_path
+# takes any folder or file, which is all Release code ever did) - removed from content repos
 # seeded before that change, so no repo keeps a button whose CLI no longer exists.
 RETIRED_WORKFLOWS = (".github/workflows/release-code.yml",)
 
@@ -129,7 +129,7 @@ def _push_workflows(
 
 def seed_github_workflows(course_org: str) -> None:
     """Seed/refresh the org-level workflows into the course org's .github repo: the
-    CENTRAL Release materials (source-repo dropdown), Release assignment, plus Sync
+    CENTRAL Release materials (course-source-repo dropdown), Release assignment, plus Sync
     enrolment / Bootstrap cohort / Refresh."""
     cohorts = discover_cohorts(course_org)
     source_repos = discover_content_repos(course_org)

@@ -212,7 +212,7 @@ repos, never orgs. Every release is idempotent - re-runs are no-ops.
 
 | Action | Does | Fields |
 |--------|------|--------|
-| `deploy` | copy a source path → a cohort repo | `source_repo`, `source_path`, `dest_repo` (default `materials`), `dest_path` (default: mirror). A list, or a single mapping for one copy |
+| `deploy` | copy a source path → a cohort repo | `course_source_repo`, `course_source_path`, `cohort_dest_repo` (default `materials`), `cohort_dest_path` (default: mirror). A list, or a single mapping for one copy |
 | `assignment` | one private repo per onboarded student - or per team, when the template's `grading.yml` says `type: group` | the template repo name |
 
 (Grading takes no action here - each assignment is autograded automatically, once, at its
@@ -229,15 +229,15 @@ Uncertain dates:
 `tbc: true` beside a date = provisional, shown "(TBC)" but fires; `event_datetime: tbc`
 = undated TBC row, nothing fires.
 
-Deploy-item fields (paths are **relative to their repo**: `source_path` inside
-`source_repo`, `dest_path` inside `dest_repo`):
+Deploy-item fields (paths are **relative to their repo**: `course_source_path` inside
+`course_source_repo`, `cohort_dest_path` inside `cohort_dest_repo`):
 
 | Field | Required | Default | Meaning |
 |---|---|---|---|
-| `source_repo` | **yes** | - | repo in the COURSE org to copy from |
-| `source_path` | **yes** | - | folder or file to copy, relative to `source_repo` |
-| `dest_repo` | no | `materials` | cohort repo to copy into (created on first release) |
-| `dest_path` | no | mirrors `source_path` | where it lands, relative to `dest_repo` |
+| `course_source_repo` | **yes** | - | repo in the COURSE org to copy from |
+| `course_source_path` | **yes** | - | folder or file to copy, relative to `course_source_repo` |
+| `cohort_dest_repo` | no | `materials` | cohort repo to copy into (created on first release) |
+| `cohort_dest_path` | no | mirrors `course_source_path` | where it lands, relative to `cohort_dest_repo` |
 | `deploy_datetime` | no | the entry's `event_datetime` | ship this copy earlier/later |
 
 **Minimal** - the recommended shape; everything not stated takes its default:
@@ -248,8 +248,8 @@ releases:
   lecture_02:
     event_datetime: 2026-09-15T10:00
     deploy:
-      - source_repo: course-materials-f2026
-        source_path: lectures/02_intro
+      - course_source_repo: course-materials-f2026
+        course_source_path: lectures/02_intro
       # -> lands at materials/lectures/02_intro, shipped at class time
 ```
 
@@ -262,18 +262,18 @@ releases:
     tbc: false                        # true = provisional date, shown "(TBC)"
     title: Linear regression          # site row label (default: prettified entry label)
     deploy:
-      - source_repo: course-materials-f2026
-        source_path: lectures/02_intro
-        dest_repo: lecture_materials
-        dest_path: lectures/02_intro
+      - course_source_repo: course-materials-f2026
+        course_source_path: lectures/02_intro
+        cohort_dest_repo: lecture_materials
+        cohort_dest_path: lectures/02_intro
         deploy_datetime: 2026-09-15T09:00   # ships 1h early
   bonus-dataset:
     event_datetime: 2026-10-20T09:30  # a one-off that isn't a teaching session
     deploy:
-      - source_repo: course-datasets-f2026
-        source_path: week7/housing.csv
-        dest_repo: materials
-        dest_path: datasets/housing.csv
+      - course_source_repo: course-datasets-f2026
+        course_source_path: week7/housing.csv
+        cohort_dest_repo: materials
+        cohort_dest_path: datasets/housing.csv
 ```
 
 **Dates** - the website schedule and the grading deadlines. Absent values are synthesised
@@ -369,7 +369,7 @@ week with both a lecture and a lab renders two rows.
 | `due_datetime:` missing/unparseable | the whole `assignments:` entry is dropped - no grading pin, no site date |
 | `grading_datetime:` unparseable | silently ignored - the grading deadline falls back to `due_datetime` |
 | unknown `timezone:` | silent fallback to `Europe/Berlin` |
-| `deploy` missing `source_repo`/`source_path` | that copy is silently skipped |
+| `deploy` missing `course_source_repo`/`course_source_path` | that copy is silently skipped |
 
 Verify with `python3 -m dsl_course.schedule --cohort-org <COHORT>` - anything dropped is
 simply absent from the dump. Workflow: [Schedule releases](07-schedule-releases.md).

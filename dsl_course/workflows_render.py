@@ -12,12 +12,13 @@ constants/helpers below (the check-team gate, the checkout+python job preamble, 
 dropdown builders); the prose and ordering stay per-workflow.
 
 The Release materials button's inputs are deliberately the SAME five fields as a
-schedule.yml `deploy:` entry (source_repo, source_path, dest_repo, dest_path, plus the
-cohort org) - one vocabulary for the scheduled and the manual path, so what faculty learn
-on the button reads straight across into the schedule. Nothing about the button is
-discovered from the source repo any more: `source_path` is free text (a folder, a file, or
-a comma-separated list), so it needs no per-section checkbox and no session dropdown, and
-both variants stay well under GitHub's 10-input workflow_dispatch cap.
+schedule.yml `deploy:` entry (course_source_repo, course_source_path, cohort_dest_repo,
+cohort_dest_path, plus the cohort org) - one vocabulary for the scheduled and the manual
+path, so what faculty learn on the button reads straight across into the schedule.
+Nothing about the button is discovered from the source repo any more: `course_source_path`
+is free text (a folder, a file, or a comma-separated list), so it needs no per-section
+checkbox and no session dropdown, and both variants stay well under GitHub's 10-input
+workflow_dispatch cap.
 """
 
 from __future__ import annotations
@@ -83,8 +84,8 @@ def _choice(options: list[str]) -> str:
     return "\n".join(f"          - {o}" for o in opts)
 
 
-# cohort_org alone: the destination REPO is a free-text field of its own (dest_repo), so
-# the materials button never picks a target repo from a dropdown - it can create one.
+# cohort_org alone: the destination REPO is a free-text field of its own (cohort_dest_repo),
+# so the materials button never picks a target repo from a dropdown - it can create one.
 _COHORT_ORG_INPUT = """\
       cohort_org:
         description: "Target cohort org"
@@ -94,20 +95,20 @@ _COHORT_ORG_INPUT = """\
 {cohort_orgs}"""
 
 # The three path fields shared verbatim by both Release materials variants, in the same
-# order and with the same names as a schedule.yml `deploy:` entry's keys. source_path and
-# dest_path are comma-separated PARALLEL lists paired by index (see
-# deploy.parse_path_pairs); a blank dest_path mirrors every source_path, exactly as
-# an omitted `dest_path:` does in the schedule.
+# order and with the same names as a schedule.yml `deploy:` entry's keys. course_source_path
+# and cohort_dest_path are comma-separated PARALLEL lists paired by index (see
+# deploy.parse_path_pairs); a blank cohort_dest_path mirrors every course_source_path,
+# exactly as an omitted `cohort_dest_path:` does in the schedule.
 _DEPLOY_PATH_INPUTS = """\
-      source_path:
-        description: "source_path - folder/file, or a comma-separated list"
+      course_source_path:
+        description: "course_source_path - folder/file, or a comma-separated list"
         required: true
-      dest_repo:
-        description: "dest_repo - repo in the cohort org (created if missing)"
+      cohort_dest_repo:
+        description: "cohort_dest_repo - repo in the cohort org (created if missing)"
         required: false
         default: materials
-      dest_path:
-        description: "dest_path - blank = mirror source_path"
+      cohort_dest_path:
+        description: "cohort_dest_path - blank = mirror course_source_path"
         required: false"""
 
 
@@ -116,7 +117,7 @@ def _render_release(header: str, cohort_orgs: list[str], source_repo_input: str)
     schedule.yml `deploy:` entry (plus the cohort org): the same names, the same order,
     the same meaning - and the same executor, deploy.deploy_many, so a batch of
     paths clones each repo once whether it arrives from the cron or from this button.
-    Only the `source_repo` widget differs between variants (a dropdown centrally, a
+    Only the `course_source_repo` widget differs between variants (a dropdown centrally, a
     pre-filled string inside a content repo), which is why it is passed in."""
     return f"""name: Release materials
 {header}
@@ -134,37 +135,37 @@ jobs:
         env:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
           SRC_ORG: ${{{{ github.repository_owner }}}}
-          SRC_REPO: ${{{{ inputs.source_repo }}}}
+          COURSE_SOURCE_REPO: ${{{{ inputs.course_source_repo }}}}
           COHORT_ORG: ${{{{ inputs.cohort_org }}}}
-          SRC_PATH: ${{{{ inputs.source_path }}}}
-          DEST_REPO: ${{{{ inputs.dest_repo }}}}
-          DEST_PATH: ${{{{ inputs.dest_path }}}}
+          COURSE_SOURCE_PATH: ${{{{ inputs.course_source_path }}}}
+          COHORT_DEST_REPO: ${{{{ inputs.cohort_dest_repo }}}}
+          COHORT_DEST_PATH: ${{{{ inputs.cohort_dest_path }}}}
         run: |
           gh auth setup-git
           python3 -m dsl_course.deploy --source-org "$SRC_ORG" \\
-            --source-repo "$SRC_REPO" --cohort-org "$COHORT_ORG" \\
-            --source-path "$SRC_PATH" --dest-repo "$DEST_REPO" \\
-            --dest-path "$DEST_PATH"
+            --course-source-repo "$COURSE_SOURCE_REPO" --cohort-org "$COHORT_ORG" \\
+            --course-source-path "$COURSE_SOURCE_PATH" --cohort-dest-repo "$COHORT_DEST_REPO" \\
+            --cohort-dest-path "$COHORT_DEST_PATH"
 """
 
 
 def render_release(cohort_orgs: list[str], repo: str) -> str:
-    """Run-from-repo copy: `source_repo` is a free-text field pre-filled with `repo`
+    """Run-from-repo copy: `course_source_repo` is a free-text field pre-filled with `repo`
     (the repo this workflow is being seeded into), so the common case needs no thought
     but a different source repo in the same org can still be typed in."""
     source_repo_input = (
-        '      source_repo:\n        description: "source_repo - repo in the COURSE'
-        ' org"\n        required: true\n'
+        '      course_source_repo:\n        description: "course_source_repo - repo in'
+        ' the COURSE org"\n        required: true\n'
         f'        default: "{repo}"'
     )
     return _render_release(
         header=(
-            "\n# Run from a course content repo: source_repo is pre-filled with THIS repo"
-            " (editable).\n# Copies the given path(s) into the cohort org. source_path and"
-            " dest_path are\n# comma-separated parallel lists paired by index - leave"
-            " dest_path blank to mirror\n# source_path. These are exactly a schedule.yml"
-            " `deploy:` entry's fields.\n# The cohort dropdown is refreshed by the 'Refresh"
-            " actions' workflow.\n"
+            "\n# Run from a course content repo: course_source_repo is pre-filled with THIS"
+            " repo (editable).\n# Copies the given path(s) into the cohort org."
+            " course_source_path and\n# cohort_dest_path are comma-separated parallel lists"
+            " paired by index - leave\n# cohort_dest_path blank to mirror course_source_path."
+            " These are exactly a schedule.yml\n# `deploy:` entry's fields.\n# The cohort"
+            " dropdown is refreshed by the 'Refresh actions' workflow.\n"
         ),
         cohort_orgs=cohort_orgs,
         source_repo_input=source_repo_input,
@@ -172,21 +173,22 @@ def render_release(cohort_orgs: list[str], repo: str) -> str:
 
 
 def render_central_release(source_repos: list[str], cohort_orgs: list[str]) -> str:
-    """Central copy that lives in .github: `source_repo` is a dropdown of the course
+    """Central copy that lives in .github: `course_source_repo` is a dropdown of the course
     org's content repos (discovery.discover_content_repos), since this button lives
     outside any one of them. Otherwise identical to the run-from-repo button."""
     source_repo_input = (
-        '      source_repo:\n        description: "source_repo - repo in the COURSE'
-        ' org"\n        required: true\n        type: choice\n        options:\n'
+        '      course_source_repo:\n        description: "course_source_repo - repo in'
+        ' the COURSE org"\n        required: true\n        type: choice\n        options:\n'
         f"{_choice(source_repos)}"
     )
     return _render_release(
         header=(
             "\n# Central copy: pick the SOURCE repo in this course org, then the path(s) to"
-            " copy into\n# the cohort org. source_path and dest_path are comma-separated"
-            " parallel lists paired\n# by index - leave dest_path blank to mirror"
-            " source_path. These are exactly a\n# schedule.yml `deploy:` entry's fields."
-            "\n# Dropdowns are refreshed by the 'Refresh actions' workflow.\n"
+            " copy into\n# the cohort org. course_source_path and cohort_dest_path are"
+            " comma-separated parallel lists paired\n# by index - leave cohort_dest_path"
+            " blank to mirror course_source_path. These are exactly a\n# schedule.yml"
+            " `deploy:` entry's fields.\n# Dropdowns are refreshed by the 'Refresh actions'"
+            " workflow.\n"
         ),
         cohort_orgs=cohort_orgs,
         source_repo_input=source_repo_input,

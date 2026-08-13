@@ -211,8 +211,8 @@ def test_deploy_many_clones_each_repo_once(monkeypatch):
     assert len(clones) == 3  # 1 source + 2 dests, not 6
 
 
-def test_deploy_many_missing_source_path_is_an_error_not_silent(monkeypatch):
-    # A wrong source_path must be a loud error (return count), never a silent no-op.
+def test_deploy_many_missing_course_source_path_is_an_error_not_silent(monkeypatch):
+    # A wrong course_source_path must be a loud error (return count), never a silent no-op.
     def fake_gh(*args):
         if args[:2] == ("repo", "clone"):
             Path(args[3]).mkdir(parents=True, exist_ok=True)  # empty clones

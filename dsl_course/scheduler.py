@@ -78,7 +78,7 @@ def due_snapshots(sched: schedule.Schedule, now: datetime) -> list[tuple[str, st
 
 
 def _dest(d: Deploy) -> str:
-    return d.dest_path or d.source_path
+    return d.cohort_dest_path or d.course_source_path
 
 
 def describe(release: Release, now: datetime | None = None) -> list[str]:
@@ -97,7 +97,8 @@ def describe(release: Release, now: datetime | None = None) -> list[str]:
             else ""
         )
         lines.append(
-            f"deploy {d.source_repo}/{d.source_path} -> {d.dest_repo}/{_dest(d)}{suffix}"
+            f"deploy {d.course_source_repo}/{d.course_source_path} -> "
+            f"{d.cohort_dest_repo}/{_dest(d)}{suffix}"
         )
     actions_pending = now is not None and (release.when is None or release.when > now)
     actions_suffix = (

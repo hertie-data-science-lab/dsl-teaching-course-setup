@@ -47,34 +47,34 @@ Nested under `deploy:` we havee the following:
 
 | Field | Required | Default | Meaning |
 |---|---|---|---|
-| `source_repo` | **yes** | - | the repo in the COURSE org to copy from |
-| `source_path` | **yes** | - | the folder or file to copy, relative to `source_repo` |
-| `dest_repo` | no | `materials` | the cohort repo to copy into - created on first release |
-| `dest_path` | no | mirrors `source_path` | where it lands, relative to `dest_repo` |
+| `course_source_repo` | **yes** | - | the repo in the COURSE org to copy from |
+| `course_source_path` | **yes** | - | the folder or file to copy, relative to `course_source_repo` |
+| `cohort_dest_repo` | no | `materials` | the cohort repo to copy into - created on first release |
+| `cohort_dest_path` | no | mirrors `course_source_path` | where it lands, relative to `cohort_dest_repo` |
 | `deploy_datetime` | no | the entry's `event_datetime` | ship this one copy earlier (or later) than the class it belongs to |
 
-NB: `dest_repo` is yours to choose - one shared `materials` repo, or one repo for lectures, another for labs etc; any non-existent repo and/or directory structure specified between `dest_repo` and `dest_path` is created on release if non-exist.
+NB: `cohort_dest_repo` is yours to choose - one shared `materials` repo, or one repo for lectures, another for labs etc; any non-existent repo and/or directory structure specified between `cohort_dest_repo` and `cohort_dest_path` is created on release if non-exist.
 
-At a minimum only `source_repo` + `source_path` are required, everything else defaults:
+At a minimum only `course_source_repo` + `course_source_path` are required, everything else defaults:
 
 ```yaml
 releases:
   lecture_02:
     event_datetime: 2026-09-15T10:00
     deploy:
-      - source_repo: course-materials-f2026
-        source_path: lectures/02_intro
+      - course_source_repo: course-materials-f2026
+        course_source_path: lectures/02_intro
 # -> lands at materials/lectures/02_intro when the class starts (the event_datetime)
 
   lab_02:
     event_datetime: 2026-09-17T14:00
     deploy:
-      - source_repo: course-materials-f2026
-        source_path: labs/02_intro
+      - course_source_repo: course-materials-f2026
+        course_source_path: labs/02_intro
 ```
 Each item under `deploy:` is one file to be deployed. Paths are **relative to their repo**: 
-- `source_path` inside `source_repo`
-- `dest_path` inside `dest_repo`. 
+- `course_source_path` inside `course_source_repo`
+- `cohort_dest_path` inside `cohort_dest_repo`. 
 
 Spell fields out only where a default doesn't fit - a different
 destination repo/path, or an early ship time:
@@ -84,23 +84,22 @@ releases:
   lecture_02:
     event_datetime: 2026-09-15T10:00   # class time - what the deployed site schedule will announce
     deploy:
-      - source_repo: course-materials-f2026 # item 1
-        source_path: lectures/02_intro
-        dest_repo: lecture_materials
+      - course_source_repo: course-materials-f2026 # item 1
+        course_source_path: lectures/02_intro
+        cohort_dest_repo: lecture_materials
         deploy_datetime: 2026-09-15T09:00   # is released 1h early
-      - source_repo: course-materials-f2026 # item 2
-        source_path: readings/02_intro
-        dest_repo: lecture_materials   
+      - course_source_repo: course-materials-f2026 # item 2
+        course_source_path: readings/02_intro
+        cohort_dest_repo: lecture_materials   
 
   lab_02:
     event_datetime: 2026-09-17T14:00   # the lab session, which the undefined deploy_datetime will default to
     deploy:
-      - source_repo: course-materials-f2026
-        source_path: labs/02_intro
-        dest_repo: lab_materials
+      - course_source_repo: course-materials-f2026
+        course_source_path: labs/02_intro
+        cohort_dest_repo: lab_materials
 
 ```
-TODO: change names to `course_source_path` & `course_source_repo` & `cohort_dest_repo` and `cohort_dest_path` ??? better to be explicit about org too?
 
 ## `assignments:` 
 
@@ -195,7 +194,7 @@ The one caveat: already-fired **one-shot** actions don't rewind - a release alre
 >   grading deadline then falls back to *today* at grading time;
 > - a malformed **`grading_datetime`** → ignored, and the deadline falls back to `due_datetime`;
 > - an unknown or misspelt **`timezone:`** → silently falls back to `Europe/Berlin`;
-> - a `deploy` entry missing **`source_repo`** or **`source_path`** → silently skipped.
+> - a `deploy` entry missing **`course_source_repo`** or **`course_source_path`** → silently skipped.
 >
 > Which is why you are recommended to run the checks above.
 

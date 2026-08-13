@@ -179,7 +179,7 @@ def discover_release_sources(
     across a cohort's `content_repos` (see discover_cohort_repos), covering both shapes
     a release can produce: nested - a session folder inside a subpath of a shared repo,
     `subpath/NN_.../` - or root - `NN_.../` directly at the repo root (what a `deploy:`
-    with a bare `dest_repo` and no `dest_path` produces). One recursive tree fetch per
+    with a bare `cohort_dest_repo` and no `cohort_dest_path` produces). One recursive tree fetch per
     repo; the exact folder name is captured too, so callers can list its files directly
     with no further discovery call."""
     return [

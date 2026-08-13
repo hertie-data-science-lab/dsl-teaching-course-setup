@@ -10,10 +10,10 @@ lifecycle, `events` are display-only calendar rows.
       lecture_02:                    # {event_datetime + deploys}. Each deploy ships at its
         event_datetime: 2026-09-15T10:00   # deploy_datetime (default: the event itself).
         deploy:                            # Labels are free identifiers.
-          - source_repo: course-materials-f2026   # source_repo + source_path are the
-            source_path: lectures/02_intro        # only required keys; dest_repo,
-            dest_repo: materials                  # dest_path and deploy_datetime are
-            dest_path: lectures/02_intro          # optional.
+          - course_source_repo: course-materials-f2026   # course_source_repo + course_source_path
+            course_source_path: lectures/02_intro        # are the only required keys;
+            cohort_dest_repo: materials                  # cohort_dest_repo, cohort_dest_path
+            cohort_dest_path: lectures/02_intro          # and deploy_datetime are optional.
             deploy_datetime: 2026-09-15T09:00
     assignments:                     # each assignment's whole lifecycle. A bare
       assignment-1:                  # due_datetime is END of day (23:59:59) - "due on the
@@ -144,17 +144,17 @@ def _instant(value: date | datetime, tz: ZoneInfo) -> datetime:
 @dataclass
 class Deploy:
     """One source->dest copy: a path in a COURSE-org source repo copied into a COHORT-org
-    dest repo. `dest_path` defaults to `source_path` (mirror).
+    dest repo. `cohort_dest_path` defaults to `course_source_path` (mirror).
 
     `deploy_datetime` optionally overrides the copy's own ship time; unset, it ships at
     the parent entry's `event_datetime`. This is what disaggregates the class from its
     materials: the entry's `event_datetime` is the session the site announces, a deploy's
     `deploy_datetime` ships the files an hour (or a week) before or after it."""
 
-    source_repo: str
-    source_path: str
-    dest_repo: str = "materials"
-    dest_path: str | None = None
+    course_source_repo: str
+    course_source_path: str
+    cohort_dest_repo: str = "materials"
+    cohort_dest_path: str | None = None
     deploy_datetime: datetime | None = None
 
 
@@ -250,24 +250,24 @@ class Schedule:
 
 def _parse_deploy(raw: object, tz: ZoneInfo) -> list[Deploy]:
     """Parse a release's `deploy:` - a list (or a single mapping) of source->dest copies.
-    Entries missing source_repo/source_path are skipped (nothing to copy). A malformed
-    `deploy_datetime` parses to None (ship at the entry's event_datetime), in keeping
-    with this parser's silent-drop style."""
+    Entries missing course_source_repo/course_source_path are skipped (nothing to copy).
+    A malformed `deploy_datetime` parses to None (ship at the entry's event_datetime), in
+    keeping with this parser's silent-drop style."""
     items = [raw] if isinstance(raw, dict) else (raw or [])
     out: list[Deploy] = []
     for d in items:
         if not isinstance(d, dict):
             continue
-        src_repo, src_path = d.get("source_repo"), d.get("source_path")
+        src_repo, src_path = d.get("course_source_repo"), d.get("course_source_path")
         if not src_repo or not src_path:
             continue
-        dest_path = d.get("dest_path")
+        dest_path = d.get("cohort_dest_path")
         out.append(
             Deploy(
-                source_repo=str(src_repo),
-                source_path=str(src_path),
-                dest_repo=str(d.get("dest_repo") or "materials"),
-                dest_path=str(dest_path) if dest_path else None,
+                course_source_repo=str(src_repo),
+                course_source_path=str(src_path),
+                cohort_dest_repo=str(d.get("cohort_dest_repo") or "materials"),
+                cohort_dest_path=str(dest_path) if dest_path else None,
                 deploy_datetime=_coerce_datetime(d.get("deploy_datetime"), tz),
             )
         )
