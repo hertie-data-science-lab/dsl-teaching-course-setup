@@ -187,11 +187,12 @@ def test_tbc_rows_render_with_theme_flags():
 
 
 def test_term_date_entry_hides_the_placeholder_time():
-    out = site._term_date_entry("Semester begins", date(2026, 9, 7))
+    out = site._term_date_entry("Term starts", date(2026, 9, 7))
     assert "type: term_date" in out
     assert "date: 2026-09-07T09:00:00" in out
     assert "hide_time: true" in out  # a term boundary is a whole day, not a 09:00 slot
-    assert 'description: "Semester begins"' in out
+    assert 'name: "Term starts"' in out  # the name is the row's only text
+    assert 'description: ""' in out
 
 
 def test_assignment_entry_dates_the_released_row_from_the_handout(monkeypatch):
@@ -205,6 +206,8 @@ def test_assignment_entry_dates_the_released_row_from_the_handout(monkeypatch):
     # the entry's own row is the "released!" row; the due row lives in due_event
     assert "date: 2026-09-22T09:00:00" in out.split("due_event:")[0]
     assert "    date: 2026-10-13T23:59:59" in out
+    # the theme's due row is already labelled "due", so the description just names it
+    assert '    description: "Assignment 1"' in out
 
 
 def test_assignment_entry_falls_back_to_the_due_date_without_a_handout(monkeypatch):
@@ -440,9 +443,9 @@ def test_term_date_rows_only_when_the_schedule_pins_the_bounds(monkeypatch, tmp_
         Schedule(semester_start=date(2026, 9, 7), semester_end=date(2026, 12, 18)),
     )
     events = plan.collections["_events"]
-    assert 'description: "Semester begins"' in events["term-start.md"]
+    assert 'name: "Term starts"' in events["term-start.md"]
     assert "date: 2026-09-07T09:00:00" in events["term-start.md"]
-    assert 'description: "Semester ends"' in events["term-end.md"]
+    assert 'name: "Term ends"' in events["term-end.md"]
     assert "date: 2026-12-18T09:00:00" in events["term-end.md"]
 
     unbounded = _plan(monkeypatch, tmp_path, Schedule())
