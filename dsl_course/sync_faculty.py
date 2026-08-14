@@ -75,7 +75,7 @@ def parse_faculty_from_meta(meta: dict) -> dict[str, list[dict]]:
     dsl-course.yml, or a cohort's people.yml - same schema) for the roles in ROLE_TEAM.
     Only entries with a `github_handle` grant access; a named entry without one is a
     legitimate display-only card (noted, not an error), anything else is junk (flagged)."""
-    people = meta.get("people") if isinstance(meta, dict) else None
+    people = meta.get("people")
     if not isinstance(people, dict):
         return {}
     faculty: dict[str, list[dict]] = {}

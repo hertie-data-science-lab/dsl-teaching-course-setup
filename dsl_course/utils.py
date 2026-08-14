@@ -104,6 +104,13 @@ def is_valid_github_username(handle: str) -> bool:
     return bool(_GITHUB_USERNAME_RE.match(handle))
 
 
+def strip_bom(text: str) -> str:
+    """Drop a leading UTF-8 BOM. Excel exports CSVs with one, and left in place
+    `csv.DictReader` reads it into the first header name so every lookup on that column
+    misses and rows are silently dropped."""
+    return text.lstrip("﻿")
+
+
 def git(*args: str, cwd: str | None = None) -> tuple[int, str]:
     """Run a git command."""
     result = subprocess.run(
@@ -311,6 +318,11 @@ def get_org_owners(org: str) -> frozenset[str] | None:
         return None
 
 
+def _fold_diff(a: dict[str, str], b: dict[str, str]) -> list[str]:
+    """Original-cased values of `a` whose casefold key is absent from `b`."""
+    return [a[f] for f in a.keys() - b.keys()]
+
+
 def reconcile_team_members(
     org: str, team: str, wanted: set[str], prune: bool = True, dry_run: bool = False
 ) -> int:
@@ -345,9 +357,7 @@ def reconcile_team_members(
     # Fold-keyed maps of both sides: adds use `wanted`'s casing, removes use `current`'s.
     wanted_by_fold = {h.casefold(): h for h in wanted}
     current_by_fold = {h.casefold(): h for h in current}
-    for handle in sorted(
-        wanted_by_fold[f] for f in wanted_by_fold.keys() - current_by_fold.keys()
-    ):
+    for handle in sorted(_fold_diff(wanted_by_fold, current_by_fold)):
         if dry_run:
             log(f"    DRY-RUN add {handle} -> {org}/{team}")
         elif add_team_member(org, team, handle):
@@ -363,9 +373,7 @@ def reconcile_team_members(
             )
             return errors
         acting = _acting_login()
-        for handle in sorted(
-            current_by_fold[f] for f in current_by_fold.keys() - wanted_by_fold.keys()
-        ):
+        for handle in sorted(_fold_diff(current_by_fold, wanted_by_fold)):
             if handle == acting or handle in owners:
                 continue
             if dry_run:

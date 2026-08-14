@@ -21,7 +21,7 @@ from __future__ import annotations
 import csv
 import io
 
-from .utils import get_file_content
+from .utils import get_file_content, strip_bom
 
 CONFIG_REPO = "classroom-config"
 TEAMS_PATH = "teams.csv"
@@ -34,9 +34,7 @@ def parse(text: str) -> dict[str, dict[str, list[str]]]:
     Blank rows are skipped; a handle listed twice in a team is de-duplicated; member
     order follows first appearance so provisioning is deterministic."""
     out: dict[str, dict[str, list[str]]] = {}
-    # Excel writes a UTF-8 BOM; left in, csv.DictReader reads the first header as
-    # "﻿assignment" and every `assignment` lookup misses, silently dropping every row.
-    for row in csv.DictReader(io.StringIO(text.lstrip("﻿"))):
+    for row in csv.DictReader(io.StringIO(strip_bom(text))):
         assignment = (row.get("assignment") or "").strip()
         team = (row.get("team") or "").strip()
         handle = (row.get("github_handle") or "").strip()

@@ -73,7 +73,13 @@ def sync(
                 course_org, org, content_repos, assignments, dry_run=dry_run
             )
         except Exception as exc:
-            log_err(f"cohort {org} failed to sync (continuing with the rest): {exc}")
+            # Broad by design: this is the batch-isolation boundary, so one cohort's
+            # failure (even an unexpected programming error) must not abandon the rest.
+            # Naming the exception type keeps a genuine bug distinguishable in the log.
+            log_err(
+                f"cohort {org} failed to sync (continuing with the rest): "
+                f"{type(exc).__name__}: {exc}"
+            )
             errors += 1
     return errors
 

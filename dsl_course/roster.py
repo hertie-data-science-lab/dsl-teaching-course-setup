@@ -22,7 +22,7 @@ import csv
 import io
 from dataclasses import dataclass
 
-from .utils import get_file_content, log_err
+from .utils import get_file_content, log_err, strip_bom
 
 CONFIG_REPO = "classroom-config"
 ROSTER_PATH = "students.csv"
@@ -88,9 +88,7 @@ def parse(text: str) -> list[Student]:
     Tolerant of a roster written before a column existed: a missing `enrol_code` or
     `role` column is fine (blank / `enrolled` respectively)."""
     rows = []
-    # Excel writes a UTF-8 BOM; left in, csv.DictReader reads the first header as
-    # "﻿student_id" and every `student_id` lookup misses, silently dropping rows.
-    for row in csv.DictReader(io.StringIO(text.lstrip("﻿"))):
+    for row in csv.DictReader(io.StringIO(strip_bom(text))):
         values = {f: (row.get(f) or "").strip() for f in FIELDS}
         values["role"] = normalise_role(values["role"])
         rows.append(Student(**values))
