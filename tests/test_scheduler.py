@@ -395,7 +395,14 @@ def _stub_snapshots(monkeypatch, existing: set[str]):
     monkeypatch.setattr(
         collect,
         "snapshot_assignment",
-        lambda org, slug, deadline: taken.append((org, slug, deadline)) or True,
+        lambda org, slug, deadline, is_group=None: (
+            taken.append((org, slug, deadline)) or True
+        ),
+    )
+    # The snapshot pass resolves group-ness from the template grading.yml when the schedule
+    # leaves type unset; keep that network-free and individual by default.
+    monkeypatch.setattr(
+        scheduler, "_assignment_template", lambda org, slug, entry: None
     )
     _stub_autograde(monkeypatch)
     return taken
@@ -482,7 +489,7 @@ def test_run_dry_run_snapshots_nothing(monkeypatch):
 def test_run_reports_a_failed_snapshot(monkeypatch):
     monkeypatch.setattr(collect, "load_snapshots", lambda org, slug: None)
     monkeypatch.setattr(
-        collect, "snapshot_assignment", lambda org, slug, deadline: False
+        collect, "snapshot_assignment", lambda org, slug, deadline, is_group=None: False
     )
     _stub_autograde(monkeypatch)
     monkeypatch.setattr(
@@ -559,7 +566,9 @@ def _stub_collect(monkeypatch, marked: set[str], templates: set[str], rc: int = 
 def _only_snapshots_taken(monkeypatch):
     """Snapshots always succeed and are never the subject of these tests."""
     monkeypatch.setattr(collect, "load_snapshots", lambda org, slug: {})
-    monkeypatch.setattr(collect, "snapshot_assignment", lambda org, slug, dl: True)
+    monkeypatch.setattr(
+        collect, "snapshot_assignment", lambda org, slug, dl, is_group=None: True
+    )
 
 
 def test_run_autogrades_a_passed_deadline_with_no_marker(monkeypatch):
@@ -780,7 +789,9 @@ def test_run_re_sorts_handouts_into_the_release_plan(monkeypatch):
     # but the synthesised handouts are appended afterwards, so without a re-sort a
     # September handout is processed after a December release.
     monkeypatch.setattr(collect, "load_snapshots", lambda org, slug: {})
-    monkeypatch.setattr(collect, "snapshot_assignment", lambda org, slug, dl: True)
+    monkeypatch.setattr(
+        collect, "snapshot_assignment", lambda org, slug, dl, is_group=None: True
+    )
     _stub_autograde(monkeypatch)
     monkeypatch.setattr(
         scheduler, "_assignment_template", lambda org, slug, entry: "a-f2026"

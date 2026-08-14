@@ -140,24 +140,45 @@ def _execute_nondeploy(course_org: str, cohort_org: str, release: Release) -> in
 
 
 def _snapshot_passed_deadlines(
-    cohort_org: str, sched: schedule.Schedule, now: datetime, dry_run: bool
+    course_org: str,
+    cohort_org: str,
+    sched: schedule.Schedule,
+    now: datetime,
+    dry_run: bool,
 ) -> int:
     """Freeze every passed-deadline assignment that has no snapshot yet. Write-once: an
     assignment already frozen is skipped silently, so this is a no-op on every tick after
     the first. Returns the error count."""
-    from .collect import load_snapshots, snapshot_assignment, snapshot_path
+    from .collect import (
+        load_snapshots,
+        snapshot_assignment,
+        snapshot_path,
+        template_is_group,
+    )
 
     errors = 0
     for slug, deadline in due_snapshots(sched, now):
+        entry = sched.assignments[slug]
         # every cohort-side artefact keys on the assignment's cohort NAME, not its slug
-        name = schedule.cohort_name(slug, sched.assignments[slug])
+        name = schedule.cohort_name(slug, entry)
         if load_snapshots(cohort_org, name) is not None:
             continue  # already frozen - never re-snapshot, a late push must not move it
         if dry_run:
             log(f"    DRY-RUN  snapshot {snapshot_path(name)} (deadline {deadline})")
             continue
         log_step(f"  snapshot {name} (deadline {deadline})")
-        if not snapshot_assignment(cohort_org, name, deadline):
+        # Resolve group-ness the SAME way grading does - cohort schedule `type:` wins, else
+        # the template's grading.yml - so the snapshot freezes the exact repos grading scores.
+        # Deriving it from the schedule alone would miss a group assignment declared ONLY in
+        # grading.yml, freezing individual repos while grading targets group repos (every team
+        # then reads as "absent from the snapshot" and scores zero). Resolved from the sched
+        # already in hand, reading grading.yml only when the schedule leaves type unset.
+        if entry.type is not None:
+            is_group = entry.type == "group"
+        else:
+            template = _assignment_template(course_org, slug, entry)
+            is_group = template_is_group(course_org, template) if template else None
+        if not snapshot_assignment(cohort_org, name, deadline, is_group=is_group):
             errors += 1
     return errors
 
@@ -302,7 +323,7 @@ def run(course_org: str, cohort_org: str, now: datetime, dry_run: bool = False) 
     # Freeze passed deadlines FIRST: server-timed, and before anything grades against the
     # snapshot. Then autograde those same assignments, once each. Both are independent of
     # the release plan - a cohort can pin due dates without scheduling a single release.
-    errors = _snapshot_passed_deadlines(cohort_org, sched, now, dry_run)
+    errors = _snapshot_passed_deadlines(course_org, cohort_org, sched, now, dry_run)
     errors += _autograde_passed_deadlines(course_org, cohort_org, sched, now, dry_run)
 
     if dry_run:

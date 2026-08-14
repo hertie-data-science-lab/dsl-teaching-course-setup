@@ -338,9 +338,13 @@ def test_submission_targets_group_without_teams_is_empty(monkeypatch):
     "response,expected",
     [
         ((0, SHA), SHA),
-        ((0, ""), ""),  # repo exists, no commit that early
-        ((1, "gh: Not Found (HTTP 404)"), ""),  # not generated -> nothing was on time
-        ((1, "Git Repository is empty (HTTP 409)"), ""),
+        ((0, ""), ""),  # repo exists, no commit that early -> recorded non-submission
+        # 404: the repo ISN'T THERE - distinct from empty, so an all-absent set can be skipped
+        ((1, "gh: Not Found (HTTP 404)"), collect._REPO_ABSENT),
+        (
+            (1, "Git Repository is empty (HTTP 409)"),
+            "",
+        ),  # exists but empty -> freeze as zero
         ((1, "server error (HTTP 500)"), None),  # transient -> the caller must retry
     ],
 )
@@ -883,23 +887,43 @@ def test_snapshot_assignment_takes_group_from_the_schedule_not_teams_csv(monkeyp
     assert seen == [False]  # individual, from the schedule - teams.csv never consulted
 
 
-def test_snapshot_assignment_refuses_to_freeze_an_all_blank_snapshot(
-    monkeypatch, capsys
-):
-    # Every target froze to empty/absent (repos not generated yet, a handout typo, a 403->404
-    # visibility blip). Freezing this all-blank snapshot - write-once - would pin the whole
-    # assignment to "nobody submitted" for ever. Write nothing; a later tick takes the real one.
-    _stub_snapshot_write(monkeypatch, {"assignment-1-anna": "", "assignment-1-ben": ""})
+def test_snapshot_assignment_skips_when_every_repo_is_absent(monkeypatch, capsys):
+    # Every target is ABSENT (404: not generated yet, a handout typo). Freezing this write-once
+    # snapshot would pin the whole assignment to "nobody submitted" for ever; write nothing and
+    # let a later tick take it once the repos exist.
+    _stub_snapshot_write(
+        monkeypatch,
+        {
+            "assignment-1-anna": collect._REPO_ABSENT,
+            "assignment-1-ben": collect._REPO_ABSENT,
+        },
+    )
 
     def boom(*a, **k):
-        raise AssertionError("an all-blank snapshot must never be frozen")
+        raise AssertionError("an all-absent snapshot must never be frozen")
 
     monkeypatch.setattr(collect, "put_file", boom)
     assert (
         collect.snapshot_assignment("Cohort", "assignment-1", "2026-10-15T23:59")
         is True
     )
-    assert "every target repo is empty or absent" in capsys.readouterr().out
+    assert "every target repo is absent" in capsys.readouterr().out
+
+
+def test_snapshot_assignment_freezes_reachable_empty_repos_as_zero(monkeypatch):
+    # Repos EXIST but nobody committed on time - a real "nobody submitted". Freeze it (blank
+    # shas recorded) to CLOSE the backdating window, rather than leaving it open for a later
+    # push backdated before the deadline. Distinct from all-absent, which is skipped above.
+    written = _stub_snapshot_write(
+        monkeypatch, {"assignment-1-anna": "", "assignment-1-ben": ""}
+    )
+    assert (
+        collect.snapshot_assignment("Cohort", "assignment-1", "2026-10-15T23:59")
+        is True
+    )
+    assert len(written) == 1  # the snapshot WAS frozen
+    _path, text = written[0]
+    assert "assignment-1-anna," in text and "assignment-1-ben," in text
 
 
 # ------------------------------------------------ auditors + deadline guard (fix 7, 9)

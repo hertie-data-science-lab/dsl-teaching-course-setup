@@ -91,6 +91,7 @@ from .utils import (
     log_skip,
     log_step,
     put_file,
+    repo_exists,
 )
 
 CONFIG_REPO = roster.CONFIG_REPO  # classroom-config
@@ -100,13 +101,18 @@ SNAPSHOT_DIR = "snapshots"  # classroom-config/snapshots/<slug>.csv
 SNAPSHOT_FIELDS = ("repo", "sha", "recorded_at")
 GRADING_FILE = "grading.yml"  # on the template's solution branch
 RUN_TIMEOUT = 300  # seconds per submission
+# `_snapshot_sha` sentinel: the repo is ABSENT (404), distinct from a reachable-but-empty repo
+# (""). Can't collide with a real sha (40 hex) or "". Recorded as "" if the snapshot is frozen.
+_REPO_ABSENT = "\x00absent"
 
-# Belt-and-suspenders removal of anything a student could commit to hijack their own
-# grading. The PRIMARY defence is the runspace boundary in `_run_tests` (tests + report live
-# outside the checkout, `cwd`/`confcutdir` point away from it, the checkout is off sys.path at
-# startup), which already makes most of these inert; stripping them from the checkout too is a
-# second line so a boundary regression can't silently reopen the hole. Matched ANYWHERE in the
-# checkout, not just its root (a nested conftest.py loads just as readily).
+# Belt-and-suspenders removal of files a student could commit to hijack their own grading:
+# a pre-baked report, pytest plugin/config-by-name, or an interpreter site-hook. The PRIMARY
+# defence is the runspace boundary in `_run_tests` (tests + report live outside the checkout,
+# pytest's rootdir/confcutdir are the runspace not the checkout, the checkout is off sys.path
+# at startup), which already makes these inert; stripping them too is a second line against a
+# boundary regression. Deliberately NOT here: `pyproject.toml`/`setup.cfg`/`tox.ini` - they are
+# never read as pytest config from the checkout (the rootdir is the runspace) and a legitimate
+# package submission needs them to import. Matched ANYWHERE in the checkout, not just its root.
 _STUDENT_TEST_RIGGING = (
     "report.xml",
     "conftest.py",
@@ -114,9 +120,6 @@ _STUDENT_TEST_RIGGING = (
     "usercustomize.py",
     "pytest.ini",
     "pytest.py",
-    "tox.ini",
-    "setup.cfg",
-    "pyproject.toml",
 )
 
 _DEFAULT_SPEC = {
@@ -320,13 +323,17 @@ def _snapshot_sha(cohort_org: str, repo: str, deadline: str) -> str | None:
         sha = out.strip()
         if not sha:
             _warn_if_late_commits_only(cohort_org, repo, deadline)
-        return sha
-    # A genuine 404 (not generated yet, a handout typo, or a private-repo blip surfacing as
-    # 404) or a 409 (empty repo) both mean "nothing was on time here" -> "". Match the shared
-    # 404 marker + the 409 case precisely; a loose `"empty" in out` substring would swallow
-    # some unrelated error's text and mask a real read failure as a non-submission.
-    if is_missing_resource(out) or "HTTP 409" in out:
+        return sha  # a sha, or "" (repo reachable, no commit on/before the deadline)
+    # A 409 is an EMPTY repo: it exists but has no commits, so "" is a real recorded
+    # non-submission (we freeze it, closing the backdating window for it).
+    if "HTTP 409" in out:
         return ""
+    # A 404 means the repo ISN'T THERE (not generated yet, a handout typo, or a private-repo
+    # blip). That is NOT the same as an existing-but-empty repo: an absent repo may still be
+    # provisioned, so if EVERY target is absent the caller skips the freeze rather than pinning
+    # "nobody submitted" for ever. A precise marker match, not a loose `"empty" in out`.
+    if is_missing_resource(out):
+        return _REPO_ABSENT
     log_err(f"  ! could not read commits for {cohort_org}/{repo}: {out[:160]}")
     return None
 
@@ -450,21 +457,27 @@ def snapshot_assignment(
         return True
     recorded_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     rows: list[tuple[str, str, str]] = []
+    any_present = False
     for repo, _key, _members in targets:
         sha = _snapshot_sha(cohort_org, repo, deadline)
         if sha is None:
             log_err(f"  ! abandoning the {slug} snapshot - will retry on the next run")
             return False
-        rows.append((repo, sha, recorded_at))
-    if not any(sha for _repo, sha, _at in rows):
-        # EVERY target froze to an empty/absent sha: repos not generated yet, a handout
-        # typo, or a visibility blip surfacing as 404. Freezing this all-blank snapshot -
-        # write-once - would pin the whole assignment to "nobody submitted" for ever. Write
-        # nothing (mirroring "nothing to freeze yet") so a later tick, once the repos exist,
+        if sha == _REPO_ABSENT:
+            rows.append((repo, "", recorded_at))  # not there -> blank iff we freeze
+        else:
+            any_present = True  # a sha, or a reachable-but-empty ("") repo that EXISTS
+            rows.append((repo, sha, recorded_at))
+    if not any_present:
+        # EVERY target repo is ABSENT (404): not generated yet, or a handout typo. This is
+        # NOT the same as reachable-but-empty repos (a real "nobody submitted", which we DO
+        # freeze as zeros to close the backdating window): an absent repo may still be
+        # provisioned, and freezing the write-once snapshot now would pin the whole assignment
+        # to "nobody submitted" for ever. Write nothing; a later tick, once the repos exist,
         # takes the real snapshot.
         log(
-            f"  [skip] snapshot {snapshot_path(slug)} - every target repo is empty or "
-            f"absent; nothing to freeze yet, a later tick takes it"
+            f"  [skip] snapshot {snapshot_path(slug)} - every target repo is absent "
+            f"(not generated yet); a later tick takes it"
         )
         return True
     if not put_file(
@@ -615,15 +628,20 @@ def _run_tests(workdir: Path, fmt: str, tests_src: Path) -> dict | None:
         with tempfile.TemporaryDirectory() as run:
             tests_dir = Path(run) / "tests"
             shutil.copytree(tests_src, tests_dir)
-            # Make the submission importable by the hidden tests via a conftest that appends
-            # it to sys.path AFTER the stdlib - so `from starter import solve` resolves but a
-            # student `operator.py`/`json.py` can't win an `import operator` in a hidden test.
-            # Prepended to any conftest the faculty tests already ship (append preserves theirs).
-            conftest = tests_dir / "conftest.py"
-            inject = f"import sys\nsys.path.append({str(workdir)!r})\n"
-            conftest.write_text(
-                inject + conftest.read_text() if conftest.exists() else inject
+            # Make the submission importable by the hidden tests WITHOUT letting a student
+            # module shadow a stdlib/site name (`operator.py`, `json.py`) a hidden test imports.
+            # A `sitecustomize` in its own dir - the ONLY thing on PYTHONPATH - runs at
+            # interpreter startup (before any conftest) and appends the submission to sys.path
+            # AFTER the stdlib, so a real module always wins the import while the submission's
+            # own uniquely-named module still resolves. This touches neither the faculty
+            # conftest (a `from __future__` first line stays first) nor sys.path[0]
+            # (PYTHONSAFEPATH), and the student's own sitecustomize isn't on the path to run.
+            startup = Path(run) / "startup"
+            startup.mkdir()
+            (startup / "sitecustomize.py").write_text(
+                f"import sys\nsys.path.append({str(workdir)!r})\n"
             )
+            env["PYTHONPATH"] = str(startup)
             report = Path(run) / "report.xml"
             subprocess.run(  # noqa: PLW1510 - a non-zero pytest run IS the grading result
                 [
@@ -637,6 +655,13 @@ def _run_tests(workdir: Path, fmt: str, tests_src: Path) -> dict | None:
                     str(tests_dir),
                     f"--junitxml={report}",
                 ],
+                # Run FROM the runspace, NOT the checkout. On Python < 3.11 (no PYTHONSAFEPATH)
+                # `python -m` puts cwd on sys.path[0], so a checkout cwd would let a committed
+                # `operator.py`/`collections.py` shadow the stdlib during interpreter startup -
+                # before any sitecustomize could undo it - crashing or hijacking the run. The
+                # runspace holds no student files, so its cwd is inert. (Trade-off: a submission
+                # reading a repo-relative data file by bare name isn't supported - a hidden test
+                # must pass an absolute path.)
                 cwd=run,
                 env=env,
                 timeout=RUN_TIMEOUT,
@@ -665,7 +690,16 @@ def _grade_target(
     with tempfile.TemporaryDirectory() as work:
         wd = Path(work) / "sub"
         if gh("repo", "clone", f"{cohort_org}/{repo}", str(wd), "--", "-q")[0] != 0:
-            log_err(f"  ! could not clone {cohort_org}/{repo} (not generated yet?)")
+            if not repo_exists(cohort_org, repo):
+                # The repo genuinely does not exist (deleted, or never provisioned) - a
+                # recorded zero, NOT a transient failure. Returning None ('unreachable') would
+                # hold the fire-once marker and re-clone + re-grade every OTHER repo hourly,
+                # for ever, on an assignment that can never complete.
+                log_err(
+                    f"  ! {cohort_org}/{repo} does not exist - scoring 0 (no submission)"
+                )
+                return _zero_result(max_auto, "submission repo does not exist")
+            log_err(f"  ! could not clone {cohort_org}/{repo} (transient - will retry)")
             return None
         sha = _pin_commit(wd, deadline, snapshot)
         if sha is None:
