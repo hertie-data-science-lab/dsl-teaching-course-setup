@@ -36,6 +36,20 @@ def test_desired_teams_flattens_per_assignment_without_collision():
     }
 
 
+def test_desired_teams_unions_case_colliding_team_names():
+    # team_slug lower-cases, so `Team-X` and `team-x` collapse to one slug. Overwriting
+    # dropped one row's members; unioning keeps both.
+    per = {
+        "assignment-4-project": {
+            "Team-X": ["anna-adams"],
+            "team-x": ["ben-baker"],
+        }
+    }
+    assert sync_teams.desired_teams(per) == {
+        "assignment-4-project-team-x": {"anna-adams", "ben-baker"}
+    }
+
+
 @pytest.fixture
 def stub_team(monkeypatch):
     """Stub the gh primitives ensure_team drives; return the recorded add/remove calls."""

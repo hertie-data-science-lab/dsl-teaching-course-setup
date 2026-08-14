@@ -153,6 +153,55 @@ def test_api_and_filesystem_transports_share_one_session_folder_rule(tmp_path):
     assert utils.discover_sections(tmp_path) == api_sections == ["labs", "lectures"]
 
 
+def test_read_cohorts_returns_empty_for_an_absent_registry(monkeypatch):
+    monkeypatch.setattr(discovery, "load_yaml_config", lambda *a, **k: None)
+    assert discovery._read_cohorts("Course") == []
+
+
+def test_read_cohorts_reads_a_valid_registry(monkeypatch):
+    monkeypatch.setattr(
+        discovery,
+        "load_yaml_config",
+        lambda *a, **k: {"cohorts": ["Course-f2026", "Course-f2025"]},
+    )
+    assert discovery.discover_cohorts("Course") == ["Course-f2025", "Course-f2026"]
+
+
+def test_read_cohorts_raises_on_a_malformed_registry_shape(monkeypatch):
+    # A malformed shape used to be flattened to [], which renders every dropdown as
+    # "(none-yet)" and lets a whole-course sync go quietly green. Now it raises.
+    monkeypatch.setattr(
+        discovery, "load_yaml_config", lambda *a, **k: {"cohorts": "Course-f2026"}
+    )
+    with pytest.raises(RuntimeError, match="must be a list of strings"):
+        discovery._read_cohorts("Course")
+    monkeypatch.setattr(
+        discovery, "load_yaml_config", lambda *a, **k: {"cohorts": [1, 2, 3]}
+    )
+    with pytest.raises(RuntimeError, match="must be a list of strings"):
+        discovery._read_cohorts("Course")
+
+
+def test_register_cohort_reports_failure_when_the_write_fails(monkeypatch):
+    # The put_file return was discarded and log_ok("registered ...") fired unconditionally,
+    # so bootstrap claimed a cohort was registered even when the write failed.
+    monkeypatch.setattr(discovery, "_read_cohorts", lambda org: [])
+    monkeypatch.setattr(discovery, "put_file", lambda *a, **k: False)
+    assert discovery.register_cohort("Course", "Course-f2026") is False
+
+    monkeypatch.setattr(discovery, "put_file", lambda *a, **k: True)
+    assert discovery.register_cohort("Course", "Course-f2026") is True
+
+
+def test_register_cohort_is_idempotent_when_already_registered(monkeypatch):
+    monkeypatch.setattr(discovery, "_read_cohorts", lambda org: ["Course-f2026"])
+    # no write attempted, still reports success (already present)
+    monkeypatch.setattr(
+        discovery, "put_file", lambda *a, **k: pytest.fail("should not write")
+    )
+    assert discovery.register_cohort("Course", "Course-f2026") is True
+
+
 def test_seed_facade_still_exposes_discovery(monkeypatch):
     # site/scaffold/sync_* call these as seed.<name> - the split must be invisible.
     monkeypatch.setattr(discovery, "list_org_repos", lambda org: INFRA_AND_CONTENT)

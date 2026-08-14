@@ -46,11 +46,15 @@ def team_slug(assignment: str, team: str) -> str:
 
 
 def desired_teams(per: dict[str, dict[str, list[str]]]) -> dict[str, set[str]]:
-    """Flatten parsed teams.csv {assignment: {team: [handles]}} to {team_slug: {handles}}."""
+    """Flatten parsed teams.csv {assignment: {team: [handles]}} to {team_slug: {handles}}.
+
+    team_slug lower-cases, so two team names differing only in case (`Team-X`/`team-x`)
+    map to the same slug: UNION their members rather than overwriting, or one team's
+    members would vanish from the reconcile."""
     wanted: dict[str, set[str]] = {}
     for assignment, groups in per.items():
         for team, members in groups.items():
-            wanted[team_slug(assignment, team)] = set(members)
+            wanted.setdefault(team_slug(assignment, team), set()).update(members)
     return wanted
 
 

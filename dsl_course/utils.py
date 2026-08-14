@@ -9,9 +9,12 @@ import re
 import subprocess
 import sys
 from collections.abc import Iterable
+from datetime import date
 from functools import cache, lru_cache
 from pathlib import Path
 from typing import Any
+
+import yaml
 
 RATE_LIMIT_MARKERS = (
     "secondary rate limit",
@@ -19,23 +22,42 @@ RATE_LIMIT_MARKERS = (
     "abuse detection",
 )
 
+# Per-call ceiling for a single `gh` subprocess. A hung TLS connection would otherwise
+# block the whole Actions job until GitHub's 6-hour limit; a timeout is treated as a
+# retryable failure within the retry ladder below.
+GH_TIMEOUT_SECONDS = 120
+
 
 def gh(*args: str, stdin: str | None = None, retries: int = 3) -> tuple[int, str]:
     """Run a gh CLI command. Returns (returncode, stdout+stderr).
 
-    Retries on GitHub secondary rate limits with exponential backoff.
+    Retries on GitHub secondary rate limits - and on a subprocess timeout - with
+    exponential backoff.
     """
     import time
 
     delay = 30
     for attempt in range(retries + 1):
-        result = subprocess.run(
-            ["gh"] + list(args),
-            capture_output=True,
-            check=False,
-            text=True,
-            input=stdin,
-        )
+        try:
+            result = subprocess.run(
+                ["gh"] + list(args),
+                capture_output=True,
+                check=False,
+                text=True,
+                input=stdin,
+                timeout=GH_TIMEOUT_SECONDS,
+            )
+        except subprocess.TimeoutExpired:
+            out = f"gh: timed out after {GH_TIMEOUT_SECONDS}s"
+            if attempt == retries:
+                return 1, out
+            print(
+                f"  [wait] {out}, retry {attempt + 1}/{retries} in {delay}s",
+                flush=True,
+            )
+            time.sleep(delay)
+            delay *= 2
+            continue
         out = (result.stdout + result.stderr).strip()
         if result.returncode == 0:
             return result.returncode, out
@@ -68,6 +90,18 @@ def gh_json(*args: str) -> Any:
             f"{result.stderr.strip()[:200]}"
         )
     return json.loads(result.stdout)
+
+
+# GitHub usernames: 1-39 chars, ASCII alphanumerics or single hyphens, no leading/
+# trailing hyphen and no consecutive hyphens. Used to reject a typo'd faculty handle
+# before it is invited as a stranger.
+_GITHUB_USERNAME_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$")
+
+
+def is_valid_github_username(handle: str) -> bool:
+    """Whether `handle` is a syntactically valid GitHub username (charset/length only -
+    not whether the account exists)."""
+    return bool(_GITHUB_USERNAME_RE.match(handle))
 
 
 def git(*args: str, cwd: str | None = None) -> tuple[int, str]:
@@ -165,7 +199,12 @@ def create_team(
     if code == 0:
         log_ok(f"team created: {name}")
         return True
-    if "already exists" in out.lower() or "422" in out:
+    # Only a genuine "already exists" 422 is success. A bare `"422" in out` also swallowed
+    # an invalid-name or policy/plan 422 as success, so a caller would then write into a
+    # team that was never created. Key on the message text (GitHub renders it as either
+    # "already exists" or the JSON `already_exists` error code).
+    lower = out.lower()
+    if "already exists" in lower or "already_exists" in lower:
         log_skip(f"team {name}")
         return True
     log_err(f"failed to create team {name}: {out[:200]}")
@@ -220,16 +259,23 @@ def add_team_member(org: str, team_slug: str, login: str, role: str = "member") 
     return False
 
 
-def get_team_members(org: str, team_slug: str) -> set[str]:
+def get_team_members(org: str, team_slug: str) -> set[str] | None:
+    """Current members of a team, or None if the listing could not be read.
+
+    None (non-zero exit OR unparseable JSON) means "couldn't read" and must never be
+    conflated with an empty team: reconciling against an unreadable team would add or
+    prune blind. Mirrors get_org_owners."""
     code, out = gh(
         "api", f"orgs/{org}/teams/{team_slug}/members?per_page=100", "--paginate"
     )
     if code != 0:
-        return set()
+        log_err(f"could not read the members of {org}/{team_slug}: {out[:200]}")
+        return None
     try:
         return {m["login"] for m in json.loads(out)}
     except (json.JSONDecodeError, KeyError, TypeError):
-        return set()
+        log_err(f"unparseable member listing for {org}/{team_slug}: {out[:200]}")
+        return None
 
 
 def remove_team_member(org: str, team_slug: str, login: str) -> bool:
@@ -280,11 +326,28 @@ def reconcile_team_members(
     account no longer evicts the bot, and vice versa.
 
     If the owner list can't be read at all, the whole prune pass is skipped: pruning
-    blind is how an Owner gets evicted, and adds are still applied.
+    blind is how an Owner gets evicted, and adds are still applied. If the team's OWN
+    current membership can't be read, the reconcile aborts entirely (returns an error):
+    adding or pruning blind against an unreadable team is unsafe either way.
+
+    Membership is compared case-insensitively (`.casefold()`): GitHub logins are
+    case-insensitive, so a hand-typed `Anna-Adams` and the API's `anna-adams` are the same
+    account - comparing raw casing would add-then-prune it on every run, oscillating access.
     """
     current = get_team_members(org, team)
+    if current is None:
+        log_err(
+            f"reconcile aborted for {org}/{team}: the team's current membership could "
+            f"not be read, so adding or pruning against it would act blind"
+        )
+        return 1
     errors = 0
-    for handle in sorted(wanted - current):
+    # Fold-keyed maps of both sides: adds use `wanted`'s casing, removes use `current`'s.
+    wanted_by_fold = {h.casefold(): h for h in wanted}
+    current_by_fold = {h.casefold(): h for h in current}
+    for handle in sorted(
+        wanted_by_fold[f] for f in wanted_by_fold.keys() - current_by_fold.keys()
+    ):
         if dry_run:
             log(f"    DRY-RUN add {handle} -> {org}/{team}")
         elif add_team_member(org, team, handle):
@@ -300,7 +363,9 @@ def reconcile_team_members(
             )
             return errors
         acting = _acting_login()
-        for handle in sorted(current - wanted):
+        for handle in sorted(
+            current_by_fold[f] for f in current_by_fold.keys() - wanted_by_fold.keys()
+        ):
             if handle == acting or handle in owners:
                 continue
             if dry_run:
@@ -312,12 +377,26 @@ def reconcile_team_members(
     return errors
 
 
-def active_today(start: str | None, end: str | None, today: str) -> bool:
+def _as_iso_date(value: str | date | None) -> str | None:
+    """Coerce a date bound to a `YYYY-MM-DD` string. An unquoted `start: 2026-09-01` in
+    YAML parses to a `datetime.date` (or `datetime`), not a string, so comparing it against
+    an ISO string raises `TypeError: str < date`; normalise both sides first."""
+    if value is None:
+        return None
+    if isinstance(value, date):  # date and its datetime subclass both land here
+        return value.isoformat()[:10]
+    return str(value)[:10]
+
+
+def active_today(start: str | date | None, end: str | date | None, today: str) -> bool:
     """Whether `today` (ISO date string) falls within [start, end], either bound optional
-    (open-ended if omitted)."""
-    if start and today < start:
+    (open-ended if omitted). Bounds may be ISO strings or `datetime.date` objects (an
+    unquoted YAML date), coerced to strings before comparison."""
+    start_iso = _as_iso_date(start)
+    end_iso = _as_iso_date(end)
+    if start_iso and today < start_iso:
         return False
-    if end and today > end:  # noqa: SIM103 - explicit guards mirror the docstring
+    if end_iso and today > end_iso:  # noqa: SIM103 - explicit guards mirror the docstring
         return False
     return True
 
@@ -528,7 +607,10 @@ def create_repo(
     if code == 0:
         log_ok(f"repo created: {org}/{name}")
         return True
-    if "name already exists" in out.lower() or "422" in out:
+    # Only a genuine name-clash 422 is success. A bare `"422" in out` also swallowed an
+    # invalid-name or policy/plan 422 as success, so a caller would then write into a repo
+    # that was never created. Key on GitHub's specific message text instead.
+    if "name already exists" in out.lower():
         log_skip(f"repo {org}/{name}")
         return True
     log_err(f"failed to create repo {org}/{name}: {out[:200]}")
@@ -599,6 +681,41 @@ def get_file_content(org: str, repo: str, path: str, ref: str = "") -> str | Non
     return out
 
 
+def load_yaml_config(org: str, repo: str, path: str) -> dict | None:
+    """Fetch + parse a YAML config file into a mapping, correctly distinguishing the three
+    states callers that prune depend on:
+
+    - ABSENT -> None (get_file_content returned None on a genuine 404). Do not prune.
+    - present but empty -> {} (the file exists but parses to nothing). A legitimate
+      "empty the team" for pruning callers.
+    - present with content -> the parsed mapping.
+
+    Any OTHER read failure propagates (get_file_content raises on non-404 - preserved
+    here). Malformed YAML, or a non-mapping top level (a list/scalar), is logged (naming
+    org/repo/path) and raised - never silently coerced to {}, which is exactly the
+    "or '' erases None-vs-content" class of bug this replaces."""
+    content = get_file_content(org, repo, path)
+    if content is None:
+        return None
+    try:
+        data = yaml.safe_load(content)
+    except yaml.YAMLError as exc:
+        log_err(f"malformed YAML in {org}/{repo}/{path}: {exc}")
+        raise
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        msg = (
+            f"{org}/{repo}/{path} is not a YAML mapping "
+            f"(got {type(data).__name__}) - refusing to use it"
+        )
+        log_err(msg)
+        # RuntimeError (not TypeError) to match the house style for a bad read/config -
+        # get_file_content and list_org_repos raise it too, and status.main catches it.
+        raise RuntimeError(msg)  # noqa: TRY004
+    return data
+
+
 def delete_file(org: str, repo: str, path: str, message: str) -> bool:
     """Delete a file via the Contents API (needs its current SHA). A no-op (returns
     True) if the file doesn't exist - safe to call unconditionally when retiring a
@@ -631,8 +748,6 @@ def delete_file(org: str, repo: str, path: str, message: str) -> bool:
 
 def current_mds_year() -> int:
     """Current MDS cohort year. Hertie academic year starts 1 August."""
-    from datetime import date
-
     today = date.today()
     if today.month >= 8:
         return today.year

@@ -9,6 +9,90 @@ from __future__ import annotations
 from dsl_course import sync_faculty
 
 
+def test_desired_team_members_skips_an_invalid_github_handle(capsys):
+    # A typo'd handle would otherwise be invited to the org as a stranger with push on
+    # `.github`; there is no faculty roster to intersect against, so charset-validation is
+    # the minimum guard - an invalid handle is skipped and reported, never granted.
+    faculty = {
+        "instructors": [
+            {"github_handle": "janedoe"},
+            {"github_handle": "not a handle"},  # space -> invalid
+            {"github_handle": "-leading-hyphen"},
+        ],
+        "course_admins": [
+            {"github_handle": "admin_underscore"}
+        ],  # underscore -> invalid
+    }
+    desired = sync_faculty.desired_team_members(faculty, today="2026-10-01")
+    assert desired == {"instructors": {"janedoe"}, "course-admin": set()}
+    err = capsys.readouterr().err
+    assert "not a valid GitHub username" in err
+
+
+def test_sync_course_admins_refuses_to_prune_when_the_config_is_absent(monkeypatch):
+    # The mass-de-admin bug: an absent dsl-course.yml must NOT be read as an empty desired
+    # set, or a pruning reconcile strips course-admin from every org. Absent -> skip + error.
+    monkeypatch.setattr(sync_faculty, "load_faculty", lambda org: None)
+    calls = []
+    monkeypatch.setattr(
+        sync_faculty,
+        "reconcile_team_members",
+        lambda *a, **k: calls.append(a) or 0,
+    )
+    errors = sync_faculty.sync_course_admins("Course", ["Course-f2026"])
+    assert errors == 1
+    assert calls == []  # nothing reconciled - no blind prune
+
+
+def test_sync_course_admins_still_prunes_a_present_but_empty_people_block(monkeypatch):
+    # A present-but-empty people block ({}, not None) is a legitimate "empty the team" and
+    # must still reconcile (with prune) - only ABSENT is skipped.
+    monkeypatch.setattr(sync_faculty, "load_faculty", lambda org: {})
+    calls = []
+    monkeypatch.setattr(
+        sync_faculty,
+        "reconcile_team_members",
+        lambda org, team, wanted, **k: calls.append((org, team, wanted)) or 0,
+    )
+    errors = sync_faculty.sync_course_admins("Course", ["Course-f2026"])
+    assert errors == 0
+    # reconciled the course org + the one cohort, each to an empty desired set
+    assert [c[0] for c in calls] == ["Course", "Course-f2026"]
+    assert all(c[2] == set() for c in calls)
+
+
+def test_sync_cohort_instructors_refuses_to_prune_when_people_yml_is_absent(
+    monkeypatch,
+):
+    monkeypatch.setattr(sync_faculty, "load_cohort_faculty", lambda org: None)
+    calls = []
+    monkeypatch.setattr(
+        sync_faculty,
+        "reconcile_team_members",
+        lambda *a, **k: calls.append(a) or 0,
+    )
+    errors = sync_faculty.sync_cohort_instructors("Course", "Course-f2026", [], [])
+    assert errors == 1
+    assert calls == []
+
+
+def test_sync_cohort_instructors_counts_failed_grants(monkeypatch):
+    # create_team / grant_team_repo_access returns used to be discarded, so a failed grant
+    # was invisible to the exit code. Now each failure is counted.
+    monkeypatch.setattr(sync_faculty, "load_cohort_faculty", lambda org: {})
+    monkeypatch.setattr(sync_faculty, "reconcile_team_members", lambda *a, **k: 0)
+    monkeypatch.setattr(sync_faculty.site, "_cohort_tag", lambda org: "f2026")
+    monkeypatch.setattr(sync_faculty, "create_team", lambda *a, **k: True)
+    monkeypatch.setattr(
+        sync_faculty, "grant_team_repo_access", lambda *a, **k: False
+    )  # every grant fails
+    errors = sync_faculty.sync_cohort_instructors(
+        "Course", "Course-f2026", ["course-materials-f2026"], []
+    )
+    # _tag_repos always includes .github + the one matching content repo -> 2 failed grants
+    assert errors == 2
+
+
 def test_parse_faculty_skips_entries_without_github_handle():
     raw = """
 people:
