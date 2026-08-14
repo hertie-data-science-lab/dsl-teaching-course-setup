@@ -35,8 +35,6 @@ import argparse
 import sys
 from datetime import date
 
-import yaml
-
 from . import seed, site
 from .utils import (
     active_today,
@@ -61,13 +59,6 @@ COHORT_PEOPLE_PATH = "people.yml"
 
 
 # --------------------------------------------------------------------------- pure core
-
-
-def parse_faculty(raw: str) -> dict[str, list[dict]]:
-    """Parse a `people:` block's raw text - kept for callers that hold raw text; the
-    loaders below go through `load_yaml_config` and call `parse_faculty_from_meta`."""
-    meta = yaml.safe_load(raw) if raw else {}
-    return parse_faculty_from_meta(meta if isinstance(meta, dict) else {})
 
 
 def parse_faculty_from_meta(meta: dict) -> dict[str, list[dict]]:
@@ -111,7 +102,8 @@ def desired_team_members(
             # handle would invite a stranger with push on `.github`. There is no roster to
             # intersect faculty against, so charset-validate at minimum and skip anything
             # that can't be a real GitHub username rather than inviting it.
-            if not is_valid_github_username(str(handle)):
+            handle = str(handle)  # an unquoted YAML handle may parse to int/bool
+            if not is_valid_github_username(handle):
                 log_err(
                     f"  ! {role} github_handle {handle!r} is not a valid GitHub "
                     f"username - skipping (not inviting)"
@@ -159,7 +151,7 @@ def load_faculty(course_org: str) -> dict[str, list[dict]] | None:
     """Fetch + parse the course org's `.github/dsl-course.yml` `people:` block -
     course_admins only in practice; instructors/TAs are declared per cohort
     (see `load_cohort_faculty`), but any stray entries here are still parsed
-    (and reconciled) the same way `parse_faculty` always has.
+    (and reconciled) the same way `parse_faculty_from_meta` always has.
 
     Returns None when dsl-course.yml is genuinely ABSENT - the caller must then NOT prune
     (an absent config is not an empty desired set). A present-but-empty `people:` block
@@ -242,7 +234,10 @@ def sync_cohort_instructors(
         if not create_team(
             course_org, team, f"Instructors for {tag} (cohort-declared)"
         ):
-            errors += 1
+            # The team could not be created; granting it repo access and reconciling its
+            # membership would all fail against a non-existent team (triple-counting the
+            # one root failure and firing doomed API calls). Report it once and stop here.
+            return errors + 1
         for repo in _tag_repos(content_repos, assignments, tag):
             if not grant_team_repo_access(course_org, team, repo, "push"):
                 errors += 1

@@ -22,6 +22,7 @@ example-course/cohort-org/ rather than authored twice.
 from __future__ import annotations
 
 import pytest
+import yaml
 
 from dsl_course import bootstrap_course as bc
 from dsl_course import grades, roster, schedule, seed, sync_faculty, teams, welcome
@@ -241,7 +242,9 @@ def test_every_shipped_sample_parses_with_the_real_parser():
     # the current three-block schema, all three blocks exercised
     assert sched.releases and sched.assignments and sched.events
 
-    faculty = sync_faculty.parse_faculty(welcome.example_cohort_file("people.yml"))
+    faculty = sync_faculty.parse_faculty_from_meta(
+        yaml.safe_load(welcome.example_cohort_file("people.yml")) or {}
+    )
     assert faculty["instructors"] and faculty["teaching_assistants"]
 
     # both grade tables: the individual case, and the team-graded one the derived set
@@ -292,7 +295,9 @@ def test_the_people_sample_names_nobody_real():
     # be an unasked-for mention (and would resolve to a real avatar). Fictional people
     # only: either no handle at all (valid - the card is display-only) or the
     # demo-*-placeholder convention.
-    faculty = sync_faculty.parse_faculty(welcome.example_cohort_file("people.yml"))
+    faculty = sync_faculty.parse_faculty_from_meta(
+        yaml.safe_load(welcome.example_cohort_file("people.yml")) or {}
+    )
     for role, people in faculty.items():
         for person in people:
             handle = (person.get("github_handle") or "").strip()

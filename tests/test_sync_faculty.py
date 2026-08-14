@@ -6,7 +6,14 @@ cohort-scoping/tag-matching helpers, which decide what gets reconciled.
 
 from __future__ import annotations
 
+import yaml
+
 from dsl_course import sync_faculty
+
+
+def _parse(raw: str) -> dict:
+    """Parse a people.yml/dsl-course.yml text through the production entry point."""
+    return sync_faculty.parse_faculty_from_meta(yaml.safe_load(raw) or {})
 
 
 def test_desired_team_members_skips_an_invalid_github_handle(capsys):
@@ -93,6 +100,41 @@ def test_sync_cohort_instructors_counts_failed_grants(monkeypatch):
     assert errors == 2
 
 
+def test_sync_cohort_instructors_skips_wiring_when_team_creation_fails(monkeypatch):
+    # A failed create_team must not then grant access + reconcile against a nonexistent
+    # team (which would triple-count the one failure and fire doomed API calls).
+    monkeypatch.setattr(sync_faculty, "load_cohort_faculty", lambda org: {})
+    monkeypatch.setattr(sync_faculty.site, "_cohort_tag", lambda org: "f2026")
+    monkeypatch.setattr(sync_faculty, "create_team", lambda *a, **k: False)
+    grants = []
+    monkeypatch.setattr(
+        sync_faculty, "grant_team_repo_access", lambda *a, **k: grants.append(a) or True
+    )
+    reconciles = []
+    monkeypatch.setattr(
+        sync_faculty,
+        "reconcile_team_members",
+        lambda *a, **k: reconciles.append(a) or 0,
+    )
+    errors = sync_faculty.sync_cohort_instructors(
+        "Course", "Course-f2026", ["course-materials-f2026"], []
+    )
+    assert errors == 1  # the single create_team failure, counted once
+    assert grants == []  # no doomed grants against a team that does not exist
+    assert (
+        len(reconciles) == 1
+    )  # only the cohort's own instructors team, not the tag team
+
+
+def test_desired_team_members_coerces_a_nonstring_handle():
+    # An unquoted YAML handle can parse to int/bool; it must be stringified so the
+    # downstream casefold() in reconcile can't crash the unguarded course-admin path.
+    faculty = {"course_admins": [{"github_handle": 12345}]}
+    desired = sync_faculty.desired_team_members(faculty, today="2026-10-01")
+    assert desired["course-admin"] == {"12345"}
+    assert all(isinstance(h, str) for h in desired["course-admin"])
+
+
 def test_parse_faculty_skips_entries_without_github_handle():
     raw = """
 people:
@@ -105,14 +147,14 @@ people:
   course_admins:
     - github_handle: adminhandle
 """
-    faculty = sync_faculty.parse_faculty(raw)
+    faculty = _parse(raw)
     assert [p["github_handle"] for p in faculty["instructors"]] == ["janedoe"]
     assert [p["github_handle"] for p in faculty["teaching_assistants"]] == ["anOther"]
     assert [p["github_handle"] for p in faculty["course_admins"]] == ["adminhandle"]
 
 
 def test_parse_faculty_with_no_people_block_is_empty():
-    assert sync_faculty.parse_faculty("org: My-Course-E1\n") == {}
+    assert _parse("org: My-Course-E1\n") == {}
 
 
 def test_desired_team_members_maps_roles_and_filters_by_date():
@@ -156,7 +198,7 @@ people:
   course_admins:
     - github_handle: sneaky
 """
-    faculty = sync_faculty._cohort_roles_only(sync_faculty.parse_faculty(raw))
+    faculty = sync_faculty._cohort_roles_only(_parse(raw))
     desired = sync_faculty.desired_team_members(faculty, today="2026-10-01")
     assert desired == {"instructors": set(), "course-admin": set()}
 

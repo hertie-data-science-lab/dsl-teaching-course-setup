@@ -153,16 +153,29 @@ def test_api_and_filesystem_transports_share_one_session_folder_rule(tmp_path):
     assert utils.discover_sections(tmp_path) == api_sections == ["labs", "lectures"]
 
 
+def _registry(text: str | None):
+    return lambda *a, **k: text
+
+
 def test_read_cohorts_returns_empty_for_an_absent_registry(monkeypatch):
-    monkeypatch.setattr(discovery, "load_yaml_config", lambda *a, **k: None)
+    monkeypatch.setattr(discovery, "get_file_content", _registry(None))
     assert discovery._read_cohorts("Course") == []
 
 
 def test_read_cohorts_reads_a_valid_registry(monkeypatch):
     monkeypatch.setattr(
         discovery,
-        "load_yaml_config",
-        lambda *a, **k: {"cohorts": ["Course-f2026", "Course-f2025"]},
+        "get_file_content",
+        _registry("cohorts:\n  - Course-f2026\n  - Course-f2025\n"),
+    )
+    assert discovery.discover_cohorts("Course") == ["Course-f2025", "Course-f2026"]
+
+
+def test_read_cohorts_tolerates_a_bare_list_registry(monkeypatch):
+    # The machine-written form is {cohorts: [...]}, but the file is human-editable and a
+    # bare top-level list has always been accepted - it must not newly hard-fail the sync.
+    monkeypatch.setattr(
+        discovery, "get_file_content", _registry("- Course-f2026\n- Course-f2025\n")
     )
     assert discovery.discover_cohorts("Course") == ["Course-f2025", "Course-f2026"]
 
@@ -171,14 +184,14 @@ def test_read_cohorts_raises_on_a_malformed_registry_shape(monkeypatch):
     # A malformed shape used to be flattened to [], which renders every dropdown as
     # "(none-yet)" and lets a whole-course sync go quietly green. Now it raises.
     monkeypatch.setattr(
-        discovery, "load_yaml_config", lambda *a, **k: {"cohorts": "Course-f2026"}
+        discovery, "get_file_content", _registry("cohorts: Course-f2026\n")
     )
-    with pytest.raises(RuntimeError, match="must be a list of strings"):
+    with pytest.raises(RuntimeError, match="expected a list of cohort org names"):
         discovery._read_cohorts("Course")
     monkeypatch.setattr(
-        discovery, "load_yaml_config", lambda *a, **k: {"cohorts": [1, 2, 3]}
+        discovery, "get_file_content", _registry("cohorts:\n  - 1\n  - 2\n")
     )
-    with pytest.raises(RuntimeError, match="must be a list of strings"):
+    with pytest.raises(RuntimeError, match="expected a list of cohort org names"):
         discovery._read_cohorts("Course")
 
 

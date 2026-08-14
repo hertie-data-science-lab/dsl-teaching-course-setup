@@ -23,8 +23,8 @@ import yaml
 
 from .utils import (
     get_default_branch,
+    get_file_content,
     gh,
-    load_yaml_config,
     log_err,
     log_ok,
     put_file,
@@ -93,18 +93,21 @@ def list_org_repos(org: str) -> list[dict]:
 def _read_cohorts(course_org: str) -> list[str]:
     """Read the course org's standalone .github/cohort-courses-pages.yml registry.
 
-    A genuinely absent or empty registry is [] (a valid brand-new course org). But a
-    malformed shape - not a mapping, or `cohorts:` that isn't a list of strings - is an
-    error, logged and raised, never silently flattened to [] (which downstream renders
-    every dropdown as "(none-yet)" and lets a whole-course sync go quietly green)."""
-    config = load_yaml_config(course_org, ".github", COHORTS_PATH)
-    if config is None:
+    A genuinely absent or empty registry is [] (a valid brand-new course org). The
+    machine-written form is a `{cohorts: [...]}` mapping, but the file is human-editable
+    and a bare top-level list has always been accepted too. Anything else - a scalar, or
+    a cohort list that isn't all strings - is malformed, logged and raised, never silently
+    flattened to [] (which downstream renders every dropdown as "(none-yet)" and lets a
+    whole-course sync go quietly green)."""
+    content = get_file_content(course_org, ".github", COHORTS_PATH)
+    if not content:
         return []
-    cohorts = config.get("cohorts", [])
+    data = yaml.safe_load(content)
+    cohorts = data.get("cohorts", []) if isinstance(data, dict) else data
     if not isinstance(cohorts, list) or not all(isinstance(c, str) for c in cohorts):
         msg = (
             f"malformed cohort registry in {course_org}/.github/{COHORTS_PATH}: "
-            f"'cohorts:' must be a list of strings"
+            f"expected a list of cohort org names (bare, or under a 'cohorts:' key)"
         )
         log_err(msg)
         raise RuntimeError(msg)
