@@ -105,6 +105,20 @@ def _students(*rows: str) -> list[roster.Student]:
     return roster.parse("\n".join((HEADER, *rows)) + "\n")
 
 
+def test_vet_handles_canonicalises_accepts_and_rejects():
+    allowed = {
+        "ada-l": "Ada-L",
+        "ben-b": "Ben-B",
+    }  # fold-key -> roster canonical casing
+    accepted, rejected = sync_teams.vet_handles(
+        ["ADA-L", "ben-b", "m-stranger"], allowed
+    )
+    assert accepted == ["Ada-L", "Ben-B"]  # case-normalised to the roster's casing
+    assert rejected == [
+        "m-stranger"
+    ]  # not on the roster -> excluded, raw handle returned
+
+
 def test_known_handles_are_the_onboarded_roster_handles():
     students = _students(
         "1,ada@uni.edu,Ada,ada-l,42,A,,enrolled",

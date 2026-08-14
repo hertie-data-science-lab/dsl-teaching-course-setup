@@ -366,17 +366,13 @@ def provision_all(
         }
         units = []
         for team, members in sorted(groups.items()):
-            vetted: list[str] = []
-            for m in members:
-                canonical = allowed_by_fold.get(m.casefold())
-                if canonical is None:
-                    log_err(
-                        f"{m} in teams.csv ({slug}/{team}) is not an enrolled, onboarded "
-                        f"roster handle - excluding it (would invite an arbitrary account "
-                        f"into {cohort_org})"
-                    )
-                else:
-                    vetted.append(canonical)
+            vetted, rejected = sync_teams.vet_handles(members, allowed_by_fold)
+            for m in rejected:
+                log_err(
+                    f"{m} in teams.csv ({slug}/{team}) is not an enrolled, onboarded "
+                    f"roster handle - excluding it (would invite an arbitrary account "
+                    f"into {cohort_org})"
+                )
             units.append((f"{slug}-{team}", vetted, sync_teams.team_slug(slug, team)))
         what = f"{len(units)} team(s)"
     else:

@@ -101,12 +101,12 @@ SNAPSHOT_FIELDS = ("repo", "sha", "recorded_at")
 GRADING_FILE = "grading.yml"  # on the template's solution branch
 RUN_TIMEOUT = 300  # seconds per submission
 
-# Anything a student could commit to hijack their own grading: a pre-baked report to be
-# scored as-is, or pytest config / plugins / interpreter site-hooks that change which tests
-# run or how they are collected. None of it may survive into the tree the grader executes -
-# the invariant is that nothing the student committed influences which tests run, how pytest
-# is configured, or the report that is scored. Matched ANYWHERE in the checkout, not just its
-# root (a nested conftest.py loads just as readily).
+# Belt-and-suspenders removal of anything a student could commit to hijack their own
+# grading. The PRIMARY defence is the runspace boundary in `_run_tests` (tests + report live
+# outside the checkout, `cwd`/`confcutdir` point away from it, the checkout is off sys.path at
+# startup), which already makes most of these inert; stripping them from the checkout too is a
+# second line so a boundary regression can't silently reopen the hole. Matched ANYWHERE in the
+# checkout, not just its root (a nested conftest.py loads just as readily).
 _STUDENT_TEST_RIGGING = (
     "report.xml",
     "conftest.py",
@@ -494,11 +494,18 @@ def _pin_commit(
     back to `rev-list --before` - which filters on the COMMITTER date, a value the student
     supplies, so it can be backdated. `deadline` is an ISO date or datetime; a bare date
     (no time) is treated as end-of-day."""
+
+    def _checkout_if_present() -> bool:
+        """Check out the frozen commit if it's in the clone; True if it was."""
+        if git("-C", str(repo_dir), "cat-file", "-e", f"{snapshot}^{{commit}}")[0] != 0:
+            return False
+        git("-C", str(repo_dir), *GIT_ENV, "checkout", "-q", snapshot)
+        return True
+
     if snapshot is not None:
         if not snapshot:
             return None  # snapshot recorded no submission on/before the deadline
-        if git("-C", str(repo_dir), "cat-file", "-e", f"{snapshot}^{{commit}}")[0] == 0:
-            git("-C", str(repo_dir), *GIT_ENV, "checkout", "-q", snapshot)
+        if _checkout_if_present():
             return snapshot
         # The pinned commit isn't in the clone: a force-push AFTER the deadline rewrote
         # history. Falling back to the committer-date pin here would grade the rewritten
@@ -507,8 +514,7 @@ def _pin_commit(
         # THAT; if it can't be recovered, fail the target loudly (score zero) rather than
         # ever pinning on the student-controlled dates of a rewritten history.
         git("-C", str(repo_dir), *GIT_ENV, "fetch", "-q", "origin", snapshot)
-        if git("-C", str(repo_dir), "cat-file", "-e", f"{snapshot}^{{commit}}")[0] == 0:
-            git("-C", str(repo_dir), *GIT_ENV, "checkout", "-q", snapshot)
+        if _checkout_if_present():
             return snapshot
         log_err(
             f"  ! snapshot commit {snapshot[:8]} is not in the clone and could not be "
@@ -545,19 +551,17 @@ def _stray_conversion(nb: Path) -> Path | None:
 
 
 def _strip_student_test_rigging(workdir: Path) -> None:
-    """Delete from the checkout anything the student could have committed to steer their own
-    grading run (see `_STUDENT_TEST_RIGGING`), plus pytest/py caches. Runs before any
-    subprocess touches the tree, so a committed conftest/sitecustomize can never load and a
-    pre-baked report.xml can never be read."""
-    for name in _STUDENT_TEST_RIGGING:
-        for hit in workdir.rglob(name):
-            if hit.is_dir():
-                shutil.rmtree(hit, ignore_errors=True)
-            else:
-                hit.unlink(missing_ok=True)
-    for cache_name in (".pytest_cache", "__pycache__"):
-        for cache in workdir.rglob(cache_name):
-            shutil.rmtree(cache, ignore_errors=True)
+    """Second-line removal of anything the student could have committed to steer their own
+    grading run (see `_STUDENT_TEST_RIGGING`) plus pytest/py caches, before any subprocess
+    touches the tree. One walk of the checkout, deleting by name."""
+    targets = frozenset(_STUDENT_TEST_RIGGING) | {".pytest_cache", "__pycache__"}
+    for hit in workdir.rglob("*"):
+        if hit.name not in targets:
+            continue
+        if hit.is_dir():
+            shutil.rmtree(hit, ignore_errors=True)
+        else:
+            hit.unlink(missing_ok=True)
 
 
 def _run_tests(workdir: Path, fmt: str, tests_src: Path) -> dict | None:
@@ -571,9 +575,6 @@ def _run_tests(workdir: Path, fmt: str, tests_src: Path) -> dict | None:
     stored in `.git` is removed and the student's own rigging files are stripped before any
     subprocess runs."""
     env = _sanitised_env()
-    # `-P` semantics: keep cwd and '' off sys.path so a committed `pytest.py` / `sitecustomize.py`
-    # in the checkout can't shadow the real modules. The submission is still importable by the
-    # hidden tests because it is added to PYTHONPATH explicitly below.
     # Keep cwd/'' off sys.path so a committed `pytest.py`/`sitecustomize.py` can't shadow real
     # modules. The submission is NOT put on PYTHONPATH: every PYTHONPATH entry precedes the
     # stdlib, so a student `json.py`/`operator.py` there would shadow a module the hidden tests
