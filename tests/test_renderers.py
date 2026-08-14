@@ -276,16 +276,16 @@ def test_both_release_buttons_take_exactly_a_deploy_entrys_fields(rendered):
     assert inp["cohort_org"]["required"] is True
     assert inp["course_source_repo"]["required"] is True
     assert inp["course_source_path"]["required"] is True
-    # Both optional boxes ship EMPTY - a `default:` on a free-text field is submitted
-    # verbatim, so pre-filling one puts words in the faculty member's mouth. The executor
-    # supplies the real fallbacks: blank cohort_dest_repo -> materials, blank
-    # cohort_dest_path -> mirror course_source_path (see deploy.main).
+    # Naming the destination repo is forced rather than defaulted - a release that lands
+    # in an unnoticed second materials repo is invisible to the cohort. (The schedule's
+    # `deploy:` may still omit it; deploy.main's `materials` fallback covers that path.)
+    assert inp["cohort_dest_repo"]["required"] is True
     assert "default" not in inp["cohort_dest_repo"]
-    assert inp["cohort_dest_repo"]["required"] is False
-    assert "default" not in inp["cohort_dest_path"]
+    # cohort_dest_path is the one optional box, and ships EMPTY - a `default:` on a
+    # free-text field is submitted verbatim, so pre-filling puts words in the faculty
+    # member's mouth. Its fallback is stated on the box instead, or it is invisible.
     assert inp["cohort_dest_path"]["required"] is False
-    # ...so each fallback has to be stated on the box itself, or it is invisible.
-    assert "blank = materials" in inp["cohort_dest_repo"]["description"]
+    assert "default" not in inp["cohort_dest_path"]
     assert "blank = mirrors" in inp["cohort_dest_path"]["description"]
     # Multi-path is discoverable from the button itself, not just the docs.
     assert "comma-separated" in inp["course_source_path"]["description"]

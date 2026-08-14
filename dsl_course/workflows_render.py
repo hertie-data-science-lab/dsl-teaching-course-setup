@@ -125,10 +125,12 @@ def _choice_input(
 # deploy.parse_path_pairs); a blank cohort_dest_path mirrors every course_source_path,
 # exactly as an omitted `cohort_dest_path:` does in the schedule.
 #
-# Both optional fields ship EMPTY rather than pre-filled: a `default:` on a free-text box
-# is submitted verbatim, so a pre-filled `materials` reads as a value the faculty member
-# chose. Blank still lands in `materials` - deploy's --cohort-dest-repo falls back to it -
-# and the description says so, which is the honest place for it.
+# Only cohort_dest_path is optional, and it ships EMPTY rather than pre-filled - a
+# `default:` on a free-text box is submitted verbatim, so pre-filling one reads as a value
+# the faculty member chose. cohort_dest_repo is REQUIRED on the button (the schedule's
+# `deploy:` may still omit it and take deploy's `materials` fallback): naming the repo a
+# release lands in is the one decision worth forcing, since a typo'd or defaulted target
+# quietly creates a second materials repo the cohort never sees.
 _COURSE_SOURCE_REPO_DESC = (
     "1. repo to release from in the course org (course_source_repo)"
 )
@@ -140,8 +142,8 @@ _COURSE_SOURCE_PATH_INPUT = """\
 
 _COHORT_DEST_INPUTS = """\
       cohort_dest_repo:
-        description: "4. repo to release to in the cohort org; created if missing; blank = materials (cohort_dest_repo)"
-        required: false
+        description: "4. repo to release to in the cohort org; created if missing (cohort_dest_repo)"
+        required: true
       cohort_dest_path:
         description: "5. within-repo destination path; blank = mirrors course_source_path (cohort_dest_path)"
         required: false"""
