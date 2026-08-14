@@ -286,7 +286,7 @@ def test_both_release_buttons_take_exactly_a_deploy_entrys_fields(rendered):
     # member's mouth. Its fallback is stated on the box instead, or it is invisible.
     assert inp["cohort_dest_path"]["required"] is False
     assert "default" not in inp["cohort_dest_path"]
-    assert "blank = mirrors" in inp["cohort_dest_path"]["description"]
+    assert "blank mirrors box 2" in inp["cohort_dest_path"]["description"]
     # Labels are plain English: the schedule.yml mapping lives in the input NAMES (asserted
     # above), so no description repeats its own key back at the reader.
     for name in RELEASE_INPUTS:

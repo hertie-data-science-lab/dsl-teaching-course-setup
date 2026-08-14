@@ -143,7 +143,7 @@ _COHORT_DEST_INPUTS = """\
         description: "4. repo to release to in the cohort org; created if missing"
         required: true
       cohort_dest_path:
-        description: "5. within-repo destination path; blank = mirrors the source path"
+        description: "5. within-repo destination path; blank mirrors box 2's path(s)"
         required: false"""
 
 
