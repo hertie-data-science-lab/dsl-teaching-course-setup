@@ -42,7 +42,12 @@ from .utils import (
     repo_is_private,
     set_repo_topics,
 )
-from .welcome import refresh_classroom_samples, refresh_welcome_workflows, template
+from .welcome import (
+    CLASSROOM_SCAFFOLDS,
+    refresh_classroom_samples,
+    refresh_welcome_workflows,
+    template,
+)
 
 COURSE_HUB_TOPIC = "dsl-course-hub"
 COHORT_TOPIC = "dsl-cohort"
@@ -520,27 +525,23 @@ def setup_cohort_extras(org: str) -> None:
         # roster with enrol codes and onboarded handles, the schedule the scheduler
         # releases from, this cohort's people.yml, and returned grades. Re-running
         # "Bootstrap cohort" mid-semester must leave all of it exactly as faculty (and the
-        # onboarding/enrol-code/grade flows) left it. The examples the seeds render are
-        # tag-aware (this cohort's fYYYY/sYYYY), so they are copy-paste-correct.
+        # onboarding/enrol-code/grade flows) left it.
         tag, year = _cohort_tag(org)
         # The scaffolds: minimal, mostly-commented skeletons faculty fill in. Header-only
         # CSVs carry the full schema (roster.FIELDS / teams.FIELDS); the YAML scaffolds
         # carry structure + one-line field notes. Every filled example lives in the
         # `.sample` twin seeded below, so none of these has to double as documentation.
-        _seed_user_file(
-            org,
-            "classroom-config",
-            "students.csv",
-            template("classroom-config/students.csv").encode(),
-            "init: starter roster (fill with registrar data - see students.csv.sample)",
-        )
-        _seed_user_file(
-            org,
-            "classroom-config",
-            "teams.csv",
-            template("classroom-config/teams.csv").encode(),
-            "init: starter teams table (the welcome Join-team issue appends to it)",
-        )
+        # Rendering is uniform - the CSV scaffolds carry no `{placeholders}`, so one
+        # `.format` over the whole table keeps the YAML examples tag-aware (this cohort's
+        # fYYYY/sYYYY, so they are copy-paste-correct) without a per-file special case.
+        for path, (rel, message) in CLASSROOM_SCAFFOLDS.items():
+            _seed_user_file(
+                org,
+                "classroom-config",
+                path,
+                template(rel).format(tag=tag, year=year, year_next=year + 1).encode(),
+                message,
+            )
         _seed_user_file(
             org,
             "classroom-config",
@@ -548,29 +549,11 @@ def setup_cohort_extras(org: str) -> None:
             b"",
             "init: grades/ (add one <assignment>.csv per assignment to return marks)",
         )
-        _seed_user_file(
-            org,
-            "classroom-config",
-            "schedule.yml",
-            template("classroom-config/schedule.yml")
-            .format(tag=tag, year=year)
-            .encode(),
-            "docs: seed schedule.yml (release plan + due dates + exams)",
-        )
-        _seed_user_file(
-            org,
-            "classroom-config",
-            "people.yml",
-            template("classroom-config/people.yml")
-            .format(year=year, year_next=year + 1)
-            .encode(),
-            "docs: seed people.yml (this cohort's instructors/TAs)",
-        )
         # SYSTEM-owned documentation, refreshed on every run so it never goes stale: the
-        # schema contract README, and the `.sample` twin of every scaffold above (injected
-        # from the worked example course). Samples keep the `.sample` suffix so the engine
-        # (sync_membership, sync_teams, grade sync) never ingests them - only the real
-        # names; activation = copying rows into the real file.
+        # schema contract README, and a `.sample` twin for every file in the worked example
+        # cohort. Samples keep the `.sample` suffix so the engine (sync_membership,
+        # sync_teams, grade sync) never ingests them - only the real names; activation =
+        # copying rows into the real file.
         put_file(
             org,
             "classroom-config",

@@ -7,31 +7,60 @@ cannot import bootstrap_course back - this module is what both sides may import.
 
 from __future__ import annotations
 
+from functools import cache
 from pathlib import Path
 
+from .roster import CONFIG_REPO
 from .utils import delete_file, log_err, log_ok, put_file
 
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATES = ROOT / "templates"
 EXAMPLE_COHORT = ROOT / "example-course" / "cohort-org"
 
-CONFIG_REPO = "classroom-config"
+# Every user-editable file in classroom-config ships as a PAIR under one rule: `<file>` is
+# a minimal commented scaffold, seeded once and never rewritten; `<file>.sample` is a
+# filled, realistic example, always converged.
+#
+# The SCAFFOLD half - the file faculty fill in. `{tag}`/`{year}`/`{year_next}` are
+# rendered for this cohort, so every example in a scaffold is copy-paste-correct.
+CLASSROOM_SCAFFOLDS = {
+    "students.csv": (
+        "classroom-config/students.csv",
+        "init: starter roster (fill with registrar data - see students.csv.sample)",
+    ),
+    "teams.csv": (
+        "classroom-config/teams.csv",
+        "init: starter teams table (the welcome Join-team issue appends to it)",
+    ),
+    "schedule.yml": (
+        "classroom-config/schedule.yml",
+        "docs: seed schedule.yml (release plan + due dates + exams)",
+    ),
+    "people.yml": (
+        "classroom-config/people.yml",
+        "docs: seed people.yml (this cohort's instructors/TAs)",
+    ),
+}
 
-# Every user-editable file in classroom-config ships as a PAIR: `<file>` is a minimal
-# commented scaffold (templates/classroom-config/<file>, seeded once and never rewritten)
-# and `<file>.sample` is a filled, realistic example. The samples are not authored twice -
-# they ARE the worked example course, injected from example-course/cohort-org/, which is
-# what the docs link to and what tests/test_bootstrap_seeding.py parses with the real
-# parsers. Keys are the paths in classroom-config; values the example-course source.
+# The SAMPLE half - DERIVED, not enumerated: every regular file in the worked example
+# cohort ships as `<its path>.sample`. Deriving is what makes example-course/README.md's
+# "every file in cohort-org/ is seeded" claim true by construction; enumerating it once
+# silently dropped the team-graded grades table. The samples are therefore not authored
+# twice - they ARE the worked example the docs link to, and tests/test_bootstrap_seeding.py
+# parses each one with the real parser so none can go schema-stale.
 CLASSROOM_SAMPLES = {
-    "students.csv.sample": "students.csv",
-    "teams.csv.sample": "teams.csv",
-    "schedule.yml.sample": "schedule.yml",
-    "people.yml.sample": "people.yml",
-    "grades/assignment-1.csv.sample": "grades/assignment-1.csv",
+    f"{rel}.sample": rel
+    for rel in sorted(
+        p.relative_to(EXAMPLE_COHORT).as_posix()
+        for p in EXAMPLE_COHORT.rglob("*")
+        if p.is_file()
+    )
+    # dotfiles are plumbing (.gitkeep and friends), never reference material
+    if not any(part.startswith(".") for part in rel.split("/"))
 }
 
 
+@cache
 def template(rel: str) -> str:
     """Read a seeded template file (templates/<rel>) as text.
 
@@ -42,6 +71,7 @@ def template(rel: str) -> str:
     return (TEMPLATES / rel).read_text(encoding="utf-8")
 
 
+@cache
 def example_cohort_file(rel: str) -> str:
     """Read a file from the worked example cohort (example-course/cohort-org/<rel>).
 

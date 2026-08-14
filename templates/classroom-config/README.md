@@ -16,8 +16,8 @@ Canonical, engine-wide schema:
 **Scaffold + sample.** Every file you edit here ships as a pair: `<file>` is the live,
 minimal scaffold you fill in (a header-only CSV, a commented YAML skeleton), and
 `<file>.sample` next to it is a filled, realistic example of the same file -
-`students.csv.sample`, `teams.csv.sample`, `schedule.yml.sample`, `people.yml.sample`,
-`grades/assignment-1.csv.sample`. Samples are documentation: the engine never reads a
+`students.csv.sample`, `teams.csv.sample`, `schedule.yml.sample`, `people.yml.sample`, and
+one per graded assignment under `grades/`. Samples are documentation: the engine never reads a
 `.sample`, and every bootstrap and nightly refresh re-pushes them so they can never go
 schema-stale. Copy what you need into the real file to activate it; never grade or enrol
 the example people.
@@ -46,8 +46,8 @@ there is no separate off-boarding step).
 ## grades/<assignment>.csv - marks (optional, when returning grades)
 
 One file per assignment, e.g. `grades/assignment-1.csv` (see
-`grades/assignment-1.csv.sample` for a filled individual-graded table; the `team`,
-`team_grade` and `team_comments` columns carry the group case):
+`grades/assignment-1.csv.sample` for a filled individual-graded table and
+`grades/assignment-4-project.csv.sample` for a team-graded one):
 `github_handle, team, auto, manual, team_grade, adjustment, final, comments, team_comments`.
 The autograder pre-fills `auto`/`team_grade` from hidden tests, creating the file if it
 doesn't exist; faculty & instructors fill the rest, then **Sync gradebooks** -> **Render

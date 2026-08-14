@@ -43,9 +43,12 @@ example-course/
 
 > NB: **`cohort-org/` is shipped, not just documented.** Every file in it is seeded into each
 > cohort's private `classroom-config` repo as the `.sample` twin of the scaffold faculty fill
-> in - `students.csv` → `students.csv.sample`, and so on for `teams.csv`, `schedule.yml`,
-> `people.yml` and `grades/assignment-1.csv`. Bootstrap and the nightly Refresh both converge
-> them, so editing one here updates every cohort's worked example.
+> in - `students.csv` → `students.csv.sample`, and so on for every other file here. The set is
+> derived by walking this directory (`welcome.CLASSROOM_SAMPLES`), so adding a file here ships
+> it; bootstrap and the nightly Refresh both converge them, so editing one updates every
+> cohort's worked example. Keep the contents fictional and self-contained: no real accounts,
+> and links written as full URLs (a repo-relative `docs/...` link resolves to nothing once the
+> file has landed in a cohort org).
 
 > NB: **Assignment layout:** each `assignment-*/` splits into `main/` (→ the repo's `main` branch,
 > what students get) and `solution/` (→ the `solution` branch: model solution, `grading.yml`, and

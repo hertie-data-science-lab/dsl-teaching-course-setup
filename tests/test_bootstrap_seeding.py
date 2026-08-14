@@ -26,13 +26,9 @@ import pytest
 from dsl_course import bootstrap_course as bc
 from dsl_course import grades, roster, schedule, seed, sync_faculty, teams, welcome
 
-USER_OWNED = {
-    "students.csv",
-    "teams.csv",
-    "schedule.yml",
-    "people.yml",
-    "grades/.gitkeep",
-}
+# Derived from the seeding tables, so a sixth config file cannot silently miss the set
+# these tests police - which is the whole point of the tables existing.
+USER_OWNED = {*welcome.CLASSROOM_SCAFFOLDS, "grades/.gitkeep"}
 SYSTEM_OWNED = {
     ".github/workflows/dispatch-sync.yml",
     ".github/workflows/dispatch-sync-site.yml",
@@ -209,13 +205,20 @@ def test_cohort_tag_derivation():
     assert bc._cohort_tag("Some-Odd-Name") == ("f2026", 2026)
 
 
-def test_every_sample_source_exists_in_the_worked_example_course():
-    # The samples are injected, not authored: a rename or deletion under
-    # example-course/cohort-org/ would otherwise only surface as a FileNotFoundError
-    # mid-bootstrap, against a live org.
+def test_the_sample_set_is_the_whole_worked_example_cohort():
+    # The set is DERIVED from example-course/cohort-org/, not enumerated - that is what
+    # makes "every file in cohort-org/ ships as a sample" true rather than aspirational
+    # (an enumeration once silently dropped the team-graded grades table).
+    assert set(welcome.CLASSROOM_SAMPLES) == {
+        "students.csv.sample",
+        "teams.csv.sample",
+        "schedule.yml.sample",
+        "people.yml.sample",
+        "grades/assignment-1.csv.sample",
+        "grades/assignment-4-project.csv.sample",
+    }
     for path, source in welcome.CLASSROOM_SAMPLES.items():
         assert (welcome.EXAMPLE_COHORT / source).is_file(), f"{path} <- {source}"
-        assert path == f"{source}.sample", path  # one rule, no bespoke names
 
 
 def test_every_shipped_sample_parses_with_the_real_parser():
@@ -226,14 +229,13 @@ def test_every_shipped_sample_parses_with_the_real_parser():
     assert roster.auditors(students), "the roster sample must exercise `role: auditor`"
 
     per_assignment = teams.parse(welcome.example_cohort_file("teams.csv"))
-    handles = {
-        h for byteam in per_assignment.values() for hs in byteam.values() for h in hs
-    }
-    assert per_assignment and handles
+    assert sorted(per_assignment["assignment-4-project"]) == [
+        "team-alpha",
+        "team-beta",
+        "team-gamma",
+    ]
 
-    sched, error = schedule.load_file(
-        str(welcome.EXAMPLE_COHORT / "schedule.yml"),
-    )
+    sched, error = schedule.load_file(str(welcome.EXAMPLE_COHORT / "schedule.yml"))
     assert error is None, error
     assert sched.dropped == [], "\n".join(sched.dropped)
     # the current three-block schema, all three blocks exercised
@@ -241,6 +243,17 @@ def test_every_shipped_sample_parses_with_the_real_parser():
 
     faculty = sync_faculty.parse_faculty(welcome.example_cohort_file("people.yml"))
     assert faculty["instructors"] and faculty["teaching_assistants"]
+
+    # both grade tables: the individual case, and the team-graded one the derived set
+    # restored (a group assignment fills team/team_grade/team_comments instead)
+    individual = grades.parse_grades(
+        welcome.example_cohort_file("grades/assignment-1.csv")
+    )
+    project = grades.parse_grades(
+        welcome.example_cohort_file("grades/assignment-4-project.csv")
+    )
+    assert individual and not any(r.team for r in individual)
+    assert project and all(r.team and r.team_grade for r in project)
 
 
 def test_scaffold_and_sample_carry_the_engines_current_column_sets():
@@ -258,10 +271,34 @@ def test_scaffold_and_sample_carry_the_engines_current_column_sets():
     # header-only scaffolds: nobody to enrol, and no team to provision, by accident
     assert roster.parse(welcome.template("classroom-config/students.csv")) == []
     assert teams.parse(welcome.template("classroom-config/teams.csv")) == {}
-    assert (
-        header(welcome.example_cohort_file("grades/assignment-1.csv"))
-        == grades.GRADE_FIELDS
-    )
+    for path, source in welcome.CLASSROOM_SAMPLES.items():
+        if source.startswith("grades/"):
+            assert header(welcome.example_cohort_file(source)) == grades.GRADE_FIELDS, (
+                path
+            )
+
+
+def test_samples_carry_nothing_that_only_makes_sense_inside_this_repo():
+    # example-course/cohort-org/ is SHIPPING reference material: each file is pushed into
+    # every cohort's private config repo, where a repo-relative `docs/...` link resolves to
+    # nothing. Full URLs only, as the seeded README already does.
+    for path, source in welcome.CLASSROOM_SAMPLES.items():
+        for line in welcome.example_cohort_file(source).splitlines():
+            assert "docs/" not in line or "https://" in line, f"{path}: {line}"
+
+
+def test_the_people_sample_names_nobody_real():
+    # The staff cards it demonstrates land in six live cohort orgs, so a real handle would
+    # be an unasked-for mention (and would resolve to a real avatar). Fictional people
+    # only: either no handle at all (valid - the card is display-only) or the
+    # demo-*-placeholder convention.
+    faculty = sync_faculty.parse_faculty(welcome.example_cohort_file("people.yml"))
+    for role, people in faculty.items():
+        for person in people:
+            handle = (person.get("github_handle") or "").strip()
+            assert not handle or (
+                handle.startswith("demo-") and handle.endswith("-placeholder")
+            ), f"{role}: {handle}"
 
 
 def test_course_dsl_course_yml_is_never_rewritten(fake, monkeypatch):
@@ -384,17 +421,6 @@ def test_bootstrap_reports_an_unreachable_api_instead_of_a_traceback(
 # ----------------------------------------- the nightly refresh converges live cohorts
 
 
-def test_refresh_re_pushes_every_registered_cohorts_welcome_workflows(monkeypatch):
-    # A cohort's onboarding workflows are seeded once, at Bootstrap cohort, and then run
-    # against an engine that keeps moving on central main. The nightly Refresh is what
-    # closes that gap, so it has to reach EVERY registered cohort, not just the course org.
-    refreshed: list[str] = []
-    _stub_refresh(monkeypatch, welcome_failures=lambda org: refreshed.append(org) or 0)
-
-    assert seed.refresh("Course-Org") == 0
-    assert refreshed == ["Cohort-f2026", "Cohort-s2027"]
-
-
 def _stub_refresh(
     monkeypatch,
     welcome_failures=lambda org: 0,
@@ -415,33 +441,39 @@ def _stub_refresh(
     monkeypatch.setattr(seed, "refresh_classroom_samples", sample_failures)
 
 
-def test_refresh_converges_every_registered_cohorts_config_samples(monkeypatch):
-    # Samples are machine-owned reference material: a cohort bootstrapped last semester
-    # must pick up today's worked example without anyone re-running Bootstrap cohort.
+@pytest.mark.parametrize(
+    "per_cohort_job",
+    ["welcome_failures", "sample_failures"],
+    ids=["welcome-workflows", "config-samples"],
+)
+def test_refresh_reaches_every_registered_cohort(monkeypatch, per_cohort_job):
+    # Both per-cohort jobs are seeded once, at Bootstrap cohort, and then left behind by an
+    # engine (and a set of schemas) that keep moving on central main. The nightly Refresh
+    # is what closes that gap, so each has to reach EVERY registered cohort, not just the
+    # course org.
     refreshed: list[str] = []
-    _stub_refresh(monkeypatch, sample_failures=lambda org: refreshed.append(org) or 0)
+    _stub_refresh(
+        monkeypatch, **{per_cohort_job: lambda org: refreshed.append(org) or 0}
+    )
 
     assert seed.refresh("Course-Org") == 0
     assert refreshed == ["Cohort-f2026", "Cohort-s2027"]
 
 
 @pytest.mark.parametrize(
-    ("seed_failures", "welcome_failures", "sample_failures"),
-    [(2, 0, 0), (0, 1, 0), (0, 0, 1)],
+    ("failing_job", "count"),
+    [("seed_failures", 2), ("welcome_failures", 1), ("sample_failures", 1)],
     ids=["org-workflows", "welcome-workflows", "config-samples"],
 )
 def test_refresh_goes_red_when_it_could_not_converge(
-    monkeypatch, capsys, seed_failures, welcome_failures, sample_failures
+    monkeypatch, capsys, failing_job, count
 ):
     # The nightly cron is how an org keeps up with central. A run that failed to write
     # the buttons but reported success leaves faculty with a stale (or absent) button and
     # nothing in the Actions list to say so.
-    _stub_refresh(
-        monkeypatch,
-        welcome_failures=lambda org: welcome_failures,
-        sample_failures=lambda org: sample_failures,
-        seed_failures=seed_failures,
-    )
+    failure = count if failing_job == "seed_failures" else (lambda org: count)
+    _stub_refresh(monkeypatch, **{failing_job: failure})
+
     assert seed.refresh("Course-Org") == 1
     assert "refresh incomplete" in capsys.readouterr().err
 
@@ -461,29 +493,31 @@ def test_refresh_cli_logs_an_unreachable_api_instead_of_a_traceback(
     assert "HTTP 502" in capsys.readouterr().err
 
 
-def test_welcome_refresh_counts_failed_writes_and_says_nothing_is_up_to_date(
-    monkeypatch, capsys
+@pytest.mark.parametrize(
+    ("job", "expected", "message"),
+    [
+        ("refresh_welcome_workflows", 4, "welcome-repo file(s) not written"),
+        (
+            "refresh_classroom_samples",
+            len(welcome.CLASSROOM_SAMPLES),
+            "classroom-config sample(s) not written",
+        ),
+    ],
+    ids=["welcome-workflows", "config-samples"],
+)
+def test_a_per_cohort_refresh_counts_failed_writes_and_claims_nothing(
+    monkeypatch, capsys, job, expected, message
 ):
-    # "[ok] welcome repo workflows + Join forms up to date" used to print unconditionally,
-    # so a cohort whose onboarding workflow never landed still read as fully seeded.
+    # "[ok] ... up to date" used to print unconditionally, so a cohort whose onboarding
+    # workflow never landed still read as fully seeded. Both per-cohort jobs owe the caller
+    # a count instead, since that count is what makes the nightly Refresh go red.
     monkeypatch.setattr(welcome, "put_file", lambda *a, **k: False)
     monkeypatch.setattr(welcome, "delete_file", lambda *a, **k: True)
-    assert welcome.refresh_welcome_workflows("Cohort-f2026") == 4
+
+    assert getattr(welcome, job)("Cohort-f2026") == expected
     out = capsys.readouterr()
     assert "up to date" not in out.out
-    assert "4 welcome-repo file(s) not written" in out.err
-
-
-def test_sample_refresh_counts_failed_writes(monkeypatch, capsys):
-    # Same contract for the config samples: a cohort left on a stale worked example must
-    # make the nightly Refresh go red rather than read as converged.
-    monkeypatch.setattr(welcome, "put_file", lambda *a, **k: False)
-    assert welcome.refresh_classroom_samples("Cohort-f2026") == len(
-        welcome.CLASSROOM_SAMPLES
-    )
-    out = capsys.readouterr()
-    assert "up to date" not in out.out
-    assert "classroom-config sample(s) not written" in out.err
+    assert f"{expected} {message}" in out.err
 
 
 def test_org_settings_ok_line_only_prints_when_2fa_was_set(monkeypatch, capsys):
