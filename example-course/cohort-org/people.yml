@@ -3,9 +3,10 @@
 # year's content repos, plus the central .github repo for the central dispatch
 # buttons).
 #
-# This file ALSO supplies the COHORT website's staff cards (name/title/photo/url) -
-# see this dataset's README, "What this stands up". The course org's dsl-course.yml
-# people: block supplies cards for the optional PUBLIC course site instead.
+# This file ALSO supplies the COHORT website's staff cards (name/title/photo/url). The
+# course org's dsl-course.yml people: block supplies cards for the optional PUBLIC course
+# site instead. Field reference:
+# https://github.com/hertie-data-science-lab/dsl-teaching-toolkit/blob/main/docs/05-manage-teaching-team.md
 #
 # `photo` takes EITHER an absolute URL on a host that ALLOWS HOTLINKING (GitHub
 # avatars always do), OR a site-relative path to an image committed into this
@@ -30,10 +31,10 @@ people:
       url: "https://www.hertie-school.org/en/who-we-are/profile/person/fusar-bassini"
       start: "2026-08-01"
       end: "2027-01-31"
-    - github_handle: "henrycgbaker"
-      name: "Henry Baker"
+    - github_handle: "demo-rmoreau-placeholder"
+      name: "Renée Moreau"
       title: "Research Engineer & Data Scientist"
-      photo: "/_images/pp/henrycgbaker.jpg"   # the other form: local file in the site repo
-      url: "https://www.hertie-school.org/en/who-we-are/profile/person/baker"
+      photo: "/_images/pp/renee-moreau.jpg"   # the other form: local file in the site repo
+      url: "https://www.hertie-school.org/en/who-we-are/profile/person/moreau"
       start: "2026-08-01"
       end: "2027-01-31"
