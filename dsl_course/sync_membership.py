@@ -41,6 +41,16 @@ def sync(
     # course_admins always reconciles everywhere, independent of which cohort (if
     # any) triggered this sync.
     all_registered = seed.discover_cohorts(course_org)
+    if not all_registered:
+        # An empty registry can be legitimate for a brand-new course org, so this does not
+        # fail the run - but it must be VISIBLE, not a silent green "Sync complete": only
+        # the course org's own course-admin gets reconciled, no cohort at all.
+        log_err(
+            f"no cohorts are registered under {course_org} "
+            f"({seed.COHORTS_PATH} is empty or unset) - only course-admin on the course "
+            f"org itself will be reconciled. Expected for a brand-new course org; a "
+            f"problem if this course has live cohorts."
+        )
     errors = sync_faculty.sync_course_admins(
         course_org, all_registered, dry_run=dry_run
     )
@@ -53,11 +63,24 @@ def sync(
     content_repos = seed.discover_content_repos(course_org) if targets else []
     assignments = seed.discover_assignments(course_org) if targets else []
     for org in targets:
-        errors += sync_roster.sync(org, prune=True, dry_run=dry_run)
-        errors += sync_teams.sync(org, prune=True, dry_run=dry_run)
-        errors += sync_faculty.sync_cohort_instructors(
-            course_org, org, content_repos, assignments, dry_run=dry_run
-        )
+        # Per-cohort isolation: the read helpers now raise on non-404, so one cohort's
+        # transient failure must not abort the whole batch (the lesson seed.refresh
+        # applied). Log it, count it, and carry on to the next cohort.
+        try:
+            errors += sync_roster.sync(org, prune=True, dry_run=dry_run)
+            errors += sync_teams.sync(org, prune=True, dry_run=dry_run)
+            errors += sync_faculty.sync_cohort_instructors(
+                course_org, org, content_repos, assignments, dry_run=dry_run
+            )
+        except Exception as exc:
+            # Broad by design: this is the batch-isolation boundary, so one cohort's
+            # failure (even an unexpected programming error) must not abandon the rest.
+            # Naming the exception type keeps a genuine bug distinguishable in the log.
+            log_err(
+                f"cohort {org} failed to sync (continuing with the rest): "
+                f"{type(exc).__name__}: {exc}"
+            )
+            errors += 1
     return errors
 
 

@@ -44,6 +44,16 @@ def test_unknown_role_falls_back_to_enrolled_and_warns(capsys):
     assert "guest" in capsys.readouterr().err  # a typo must be visible, not silent
 
 
+def test_parse_tolerates_a_utf8_bom_from_excel():
+    # Excel exports a UTF-8 BOM; left in, csv.DictReader reads the first header as
+    # "﻿student_id" and every `student_id` lookup misses, silently dropping rows.
+    text = "﻿" + f"{HEADER}\n1,ada@uni.edu,Ada,ada-l,42,A,dsl-abc,enrolled\n"
+    (student,) = roster.parse(text)
+    assert student.student_id == "1"
+    assert student.github_handle == "ada-l"
+    assert student.is_enrolled
+
+
 def test_role_survives_a_dump_parse_roundtrip():
     students = roster.parse(
         f"{HEADER}\n"

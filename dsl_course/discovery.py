@@ -25,6 +25,7 @@ from .utils import (
     get_default_branch,
     get_file_content,
     gh,
+    log_err,
     log_ok,
     put_file,
     session_dirs,
@@ -90,12 +91,26 @@ def list_org_repos(org: str) -> list[dict]:
 
 
 def _read_cohorts(course_org: str) -> list[str]:
-    """Read the course org's standalone .github/cohort-courses-pages.yml registry."""
+    """Read the course org's standalone .github/cohort-courses-pages.yml registry.
+
+    A genuinely absent or empty registry is [] (a valid brand-new course org). The
+    machine-written form is a `{cohorts: [...]}` mapping, but the file is human-editable
+    and a bare top-level list has always been accepted too. Anything else - a scalar, or
+    a cohort list that isn't all strings - is malformed, logged and raised, never silently
+    flattened to [] (which downstream renders every dropdown as "(none-yet)" and lets a
+    whole-course sync go quietly green)."""
     content = get_file_content(course_org, ".github", COHORTS_PATH)
     if not content:
         return []
-    data = yaml.safe_load(content) or []
+    data = yaml.safe_load(content)
     cohorts = data.get("cohorts", []) if isinstance(data, dict) else data
+    if not isinstance(cohorts, list) or not all(isinstance(c, str) for c in cohorts):
+        msg = (
+            f"malformed cohort registry in {course_org}/.github/{COHORTS_PATH}: "
+            f"expected a list of cohort org names (bare, or under a 'cohorts:' key)"
+        )
+        log_err(msg)
+        raise RuntimeError(msg)
     return [c for c in cohorts if c]
 
 
@@ -105,22 +120,32 @@ def discover_cohorts(course_org: str) -> list[str]:
     return sorted(_read_cohorts(course_org))
 
 
-def register_cohort(course_org: str, cohort_org: str) -> None:
-    """Append cohort_org to the course's cohort-courses-pages.yml registry (idempotent)."""
+def register_cohort(course_org: str, cohort_org: str) -> bool:
+    """Append cohort_org to the course's cohort-courses-pages.yml registry (idempotent).
+
+    Returns True if the cohort is registered afterwards (already present, or the write
+    succeeded), False if the write failed - so bootstrap doesn't claim a cohort was
+    registered when the put_file actually failed."""
     cohorts = set(_read_cohorts(course_org))
     if cohort_org in cohorts:
         log_ok(f"{cohort_org} already in {course_org}/.github/{COHORTS_PATH}")
-        return
+        return True
     cohorts.add(cohort_org)
     body = yaml.safe_dump({"cohorts": sorted(cohorts)}, sort_keys=False)
-    put_file(
+    if not put_file(
         course_org,
         ".github",
         COHORTS_PATH,
         body.encode(),
         f"registry: add cohort {cohort_org}",
-    )
+    ):
+        log_err(
+            f"failed to register {cohort_org} under {course_org}: the registry write "
+            f"to {COHORTS_PATH} failed"
+        )
+        return False
     log_ok(f"registered {cohort_org} under {course_org}")
+    return True
 
 
 def discover_cohort_repos(cohort_orgs: list[str]) -> list[str]:

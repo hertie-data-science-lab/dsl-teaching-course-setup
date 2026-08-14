@@ -36,6 +36,20 @@ def test_desired_teams_flattens_per_assignment_without_collision():
     }
 
 
+def test_desired_teams_unions_case_colliding_team_names():
+    # team_slug lower-cases, so `Team-X` and `team-x` collapse to one slug. Overwriting
+    # dropped one row's members; unioning keeps both.
+    per = {
+        "assignment-4-project": {
+            "Team-X": ["anna-adams"],
+            "team-x": ["ben-baker"],
+        }
+    }
+    assert sync_teams.desired_teams(per) == {
+        "assignment-4-project-team-x": {"anna-adams", "ben-baker"}
+    }
+
+
 @pytest.fixture
 def stub_team(monkeypatch):
     """Stub the gh primitives ensure_team drives; return the recorded add/remove calls."""
@@ -115,3 +129,20 @@ def test_sync_never_adds_a_handle_that_is_not_on_the_roster(stub_team, monkeypat
     errors = sync_teams.sync("org", prune=False)
     assert errors == 1  # the skipped stranger is surfaced, not silently dropped
     assert stub_team["added"] == ["ben-baker"]
+
+
+def test_sync_matches_roster_handles_case_insensitively(stub_team, monkeypatch):
+    # A teams.csv handle differing only in case from the roster entry is the same
+    # GitHub account, so it must be added (in the roster's canonical casing), not
+    # dropped as an unknown stranger.
+    monkeypatch.setattr(
+        sync_teams.teams,
+        "load",
+        lambda org: {"assignment-4-project": {"wizards": ["Ben-Baker"]}},
+    )
+    monkeypatch.setattr(
+        roster, "load", lambda org: _students("1,ben@uni.edu,Ben,ben-baker,42,A,,")
+    )
+    errors = sync_teams.sync("org", prune=False)
+    assert errors == 0
+    assert stub_team["added"] == ["ben-baker"]  # roster's canonical casing

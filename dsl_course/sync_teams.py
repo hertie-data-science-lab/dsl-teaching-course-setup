@@ -46,11 +46,15 @@ def team_slug(assignment: str, team: str) -> str:
 
 
 def desired_teams(per: dict[str, dict[str, list[str]]]) -> dict[str, set[str]]:
-    """Flatten parsed teams.csv {assignment: {team: [handles]}} to {team_slug: {handles}}."""
+    """Flatten parsed teams.csv {assignment: {team: [handles]}} to {team_slug: {handles}}.
+
+    team_slug lower-cases, so two team names differing only in case (`Team-X`/`team-x`)
+    map to the same slug: UNION their members rather than overwriting, or one team's
+    members would vanish from the reconcile."""
     wanted: dict[str, set[str]] = {}
     for assignment, groups in per.items():
         for team, members in groups.items():
-            wanted[team_slug(assignment, team)] = set(members)
+            wanted.setdefault(team_slug(assignment, team), set()).update(members)
     return wanted
 
 
@@ -85,17 +89,22 @@ def sync(cohort_org: str, prune: bool = False, dry_run: bool = False) -> int:
         log_ok("no project teams defined yet - nothing to sync.")
         return 0
     log_step(f"Materialising {len(wanted)} project team(s) in {cohort_org}")
-    allowed = known_handles(roster.load(cohort_org))
+    # Fold-keyed so a teams.csv handle that differs only in case from its roster entry
+    # (same GitHub account) matches; the roster's canonical casing is what gets added.
+    allowed_by_fold = {h.casefold(): h for h in known_handles(roster.load(cohort_org))}
     errors = 0
     for slug in sorted(wanted):
-        members = wanted[slug]
-        for unknown in sorted(members - allowed):
-            log_err(
-                f"{unknown} in teams.csv is not an onboarded roster handle - "
-                f"not adding to {slug} (would invite an arbitrary GitHub account)"
-            )
-            errors += 1
-        members = members & allowed
+        members = set()
+        for member in sorted(wanted[slug]):
+            canonical = allowed_by_fold.get(member.casefold())
+            if canonical is None:
+                log_err(
+                    f"{member} in teams.csv is not an onboarded roster handle - "
+                    f"not adding to {slug} (would invite an arbitrary GitHub account)"
+                )
+                errors += 1
+            else:
+                members.add(canonical)
         if dry_run:
             log(
                 f"    DRY-RUN team {slug}: {', '.join('@' + m for m in sorted(members))}"

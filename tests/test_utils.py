@@ -246,6 +246,163 @@ def test_reconcile_team_members_never_prunes_any_org_owner(monkeypatch):
     assert removed == ["alice"]  # neither owner touched, despite neither being declared
 
 
+def test_reconcile_team_members_compares_case_insensitively(monkeypatch, capsys):
+    # GitHub logins are case-insensitive: a hand-typed `Anna-Adams` and the API's
+    # `anna-adams` are the same account. Comparing raw casing added-then-pruned it every
+    # run, oscillating that person's access nightly.
+    monkeypatch.setattr(utils, "get_team_members", lambda org, team: {"anna-adams"})
+    monkeypatch.setattr(utils, "_acting_login", lambda: None)
+    monkeypatch.setattr(utils, "get_org_owners", lambda org: frozenset())
+    added, removed = [], []
+    monkeypatch.setattr(
+        utils,
+        "add_team_member",
+        lambda org, team, h, role="member": added.append(h) or True,
+    )
+    monkeypatch.setattr(
+        utils, "remove_team_member", lambda org, team, h: removed.append(h) or True
+    )
+    errors = utils.reconcile_team_members("org", "instructors", {"Anna-Adams"})
+    assert errors == 0
+    assert added == []  # already present (case-folded) - not re-added
+    assert removed == []  # ...and therefore not pruned as "unwanted"
+
+
+def test_reconcile_team_members_aborts_when_current_membership_is_unreadable(
+    monkeypatch, capsys
+):
+    # get_team_members returns None when the team's membership can't be read. Adding or
+    # pruning blind against it is unsafe, so the whole reconcile aborts with an error -
+    # it must not treat the team as empty (which would re-add everyone, or prune nobody).
+    monkeypatch.setattr(utils, "get_team_members", lambda org, team: None)
+    added, removed = [], []
+    monkeypatch.setattr(
+        utils,
+        "add_team_member",
+        lambda org, team, h, role="member": added.append(h) or True,
+    )
+    monkeypatch.setattr(
+        utils, "remove_team_member", lambda org, team, h: removed.append(h) or True
+    )
+    errors = utils.reconcile_team_members("org", "instructors", {"alice"})
+    assert errors == 1
+    assert added == [] and removed == []
+    assert "reconcile aborted" in capsys.readouterr().err
+
+
+def test_get_team_members_returns_none_on_failure_not_an_empty_set(monkeypatch):
+    # None (unreadable) must never be conflated with an empty team, or a reconcile acts
+    # blind. Mirrors get_org_owners.
+    monkeypatch.setattr(utils, "gh", lambda *a, **k: (1, "gh: HTTP 502"))
+    assert utils.get_team_members("Org", "students") is None
+    monkeypatch.setattr(utils, "gh", lambda *a, **k: (0, "not json"))
+    assert utils.get_team_members("Org", "students") is None
+    monkeypatch.setattr(utils, "gh", lambda *a, **k: (0, '[{"login": "alice"}]'))
+    assert utils.get_team_members("Org", "students") == {"alice"}
+
+
+def test_active_today_accepts_date_objects_as_bounds():
+    # An unquoted `start: 2026-09-01` in people.yml parses to a datetime.date, not a
+    # string; `today < start` used to raise TypeError: str < date.
+    from datetime import date, datetime
+
+    assert utils.active_today(date(2026, 9, 1), None, "2026-10-01") is True
+    assert utils.active_today(date(2026, 11, 1), None, "2026-10-01") is False
+    assert utils.active_today(None, date(2026, 9, 30), "2026-10-01") is False
+    assert utils.active_today(None, date(2026, 12, 31), "2026-10-01") is True
+    # a full datetime (date subclass) is sliced back to its date portion
+    assert utils.active_today(datetime(2026, 9, 1, 12, 0), None, "2026-10-01") is True
+    # strings still work exactly as before
+    assert utils.active_today("2026-09-01", "2026-12-31", "2026-10-01") is True
+
+
+def test_load_yaml_config_distinguishes_absent_empty_and_malformed(monkeypatch):
+    import yaml
+
+    # ABSENT (404 -> get_file_content None) -> None: pruning callers must not treat this
+    # as an empty desired set.
+    monkeypatch.setattr(utils, "get_file_content", lambda *a, **k: None)
+    assert utils.load_yaml_config("Org", ".github", "dsl-course.yml") is None
+
+    # present but empty -> {} (a legitimate "empty the team")
+    monkeypatch.setattr(utils, "get_file_content", lambda *a, **k: "")
+    assert utils.load_yaml_config("Org", ".github", "dsl-course.yml") == {}
+
+    # present with content -> the parsed mapping
+    monkeypatch.setattr(utils, "get_file_content", lambda *a, **k: "people:\n  x: 1\n")
+    assert utils.load_yaml_config("Org", ".github", "dsl-course.yml") == {
+        "people": {"x": 1}
+    }
+
+    # malformed YAML -> logged + raised, never silently {}
+    monkeypatch.setattr(utils, "get_file_content", lambda *a, **k: "a: b: c\n")
+    with pytest.raises(yaml.YAMLError):
+        utils.load_yaml_config("Org", ".github", "dsl-course.yml")
+
+    # a non-mapping top level (list/scalar) -> raised, naming the file
+    monkeypatch.setattr(utils, "get_file_content", lambda *a, **k: "- a\n- b\n")
+    with pytest.raises(RuntimeError, match="not a YAML mapping"):
+        utils.load_yaml_config("Org", ".github", "dsl-course.yml")
+
+
+def test_load_yaml_config_propagates_a_non_404_read_error(monkeypatch):
+    # get_file_content raises on any non-404 failure; load_yaml_config must not swallow it
+    # into None/{}, or a transient error reads as "not configured".
+    def boom(*a, **k):
+        raise RuntimeError("could not read Org/.github/dsl-course.yml: HTTP 403")
+
+    monkeypatch.setattr(utils, "get_file_content", boom)
+    with pytest.raises(RuntimeError, match="HTTP 403"):
+        utils.load_yaml_config("Org", ".github", "dsl-course.yml")
+
+
+def test_create_repo_only_treats_a_genuine_name_clash_422_as_success(monkeypatch):
+    # A bare `"422" in out` swallowed an invalid-name/policy 422 as success, so the caller
+    # then wrote into a repo that was never created. Only the name-clash message is success.
+    monkeypatch.setattr(utils, "gh", lambda *a, **k: (0, ""))
+    assert utils.create_repo("Org", "good") is True
+    monkeypatch.setattr(
+        utils,
+        "gh",
+        lambda *a, **k: (
+            1,
+            "HTTP 422: Validation Failed - name already exists on this account",
+        ),
+    )
+    assert utils.create_repo("Org", "dup") is True
+    monkeypatch.setattr(
+        utils,
+        "gh",
+        lambda *a, **k: (1, "HTTP 422: Validation Failed - name is invalid"),
+    )
+    assert utils.create_repo("Org", "bad name") is False
+
+
+def test_create_team_only_treats_an_already_exists_422_as_success(monkeypatch):
+    monkeypatch.setattr(utils, "gh", lambda *a, **k: (0, ""))
+    assert utils.create_team("Org", "students") is True
+    monkeypatch.setattr(
+        utils, "gh", lambda *a, **k: (1, "HTTP 422: name already_exists")
+    )
+    assert utils.create_team("Org", "students") is True
+    monkeypatch.setattr(
+        utils, "gh", lambda *a, **k: (1, "HTTP 422: Validation Failed - name too long")
+    )
+    assert utils.create_team("Org", "x" * 200) is False
+
+
+def test_is_valid_github_username_charset_and_hyphen_rules():
+    assert utils.is_valid_github_username("anna-adams")
+    assert utils.is_valid_github_username("Anna-Adams")
+    assert utils.is_valid_github_username("a" * 39)
+    assert not utils.is_valid_github_username("a" * 40)  # too long
+    assert not utils.is_valid_github_username("-anna")  # leading hyphen
+    assert not utils.is_valid_github_username("anna-")  # trailing hyphen
+    assert not utils.is_valid_github_username("an--na")  # double hyphen
+    assert not utils.is_valid_github_username("a_b")  # underscore not allowed
+    assert not utils.is_valid_github_username("")
+
+
 def test_reconcile_team_members_skips_the_prune_when_the_owners_are_unreadable(
     monkeypatch, capsys
 ):

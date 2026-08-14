@@ -1,0 +1,70 @@
+"""sync_membership orchestrates course-admin (always) plus per-cohort roster/teams/
+instructors. The gh wiring is left live per the testing strategy; these pin the
+orchestration decisions: an empty registry is visible (not a silent green), and one
+cohort's failure is isolated from the rest of the batch.
+"""
+
+from __future__ import annotations
+
+from dsl_course import sync_membership
+
+
+def _stub_course_admins(monkeypatch, rv: int = 0):
+    monkeypatch.setattr(
+        sync_membership.sync_faculty, "sync_course_admins", lambda *a, **k: rv
+    )
+
+
+def test_empty_registry_is_visible_but_not_fatal(monkeypatch, capsys):
+    # An empty registry can be legitimate for a brand-new course org, so the run does not
+    # fail - but it must be loudly visible, not a silent green "Sync complete".
+    monkeypatch.setattr(sync_membership.seed, "discover_cohorts", lambda org: [])
+    _stub_course_admins(monkeypatch)
+    errors = sync_membership.sync("Course", all_cohorts=True)
+    assert errors == 0
+    assert "no cohorts are registered" in capsys.readouterr().err
+
+
+def test_one_cohort_failure_does_not_abort_the_whole_batch(monkeypatch, capsys):
+    # The read helpers now raise on a non-404 failure; without isolation, one cohort's
+    # transient error aborts every other cohort's sync. Each is wrapped: log, count, carry on.
+    monkeypatch.setattr(
+        sync_membership.seed, "discover_cohorts", lambda org: ["A", "B", "C"]
+    )
+    monkeypatch.setattr(sync_membership.seed, "discover_content_repos", lambda org: [])
+    monkeypatch.setattr(sync_membership.seed, "discover_assignments", lambda org: [])
+    _stub_course_admins(monkeypatch)
+
+    processed = []
+
+    def fake_roster_sync(org, **k):
+        processed.append(org)
+        if org == "B":
+            raise RuntimeError("transient HTTP 502 reading B's roster")
+        return 0
+
+    monkeypatch.setattr(sync_membership.sync_roster, "sync", fake_roster_sync)
+    monkeypatch.setattr(sync_membership.sync_teams, "sync", lambda org, **k: 0)
+    monkeypatch.setattr(
+        sync_membership.sync_faculty, "sync_cohort_instructors", lambda *a, **k: 0
+    )
+
+    errors = sync_membership.sync("Course", all_cohorts=True)
+    assert processed == ["A", "B", "C"]  # C still ran despite B blowing up
+    assert errors == 1  # B's failure counted
+    assert "cohort B failed to sync" in capsys.readouterr().err
+
+
+def test_a_clean_multi_cohort_run_reports_no_errors(monkeypatch):
+    monkeypatch.setattr(
+        sync_membership.seed, "discover_cohorts", lambda org: ["A", "B"]
+    )
+    monkeypatch.setattr(sync_membership.seed, "discover_content_repos", lambda org: [])
+    monkeypatch.setattr(sync_membership.seed, "discover_assignments", lambda org: [])
+    _stub_course_admins(monkeypatch)
+    monkeypatch.setattr(sync_membership.sync_roster, "sync", lambda org, **k: 0)
+    monkeypatch.setattr(sync_membership.sync_teams, "sync", lambda org, **k: 0)
+    monkeypatch.setattr(
+        sync_membership.sync_faculty, "sync_cohort_instructors", lambda *a, **k: 0
+    )
+    assert sync_membership.sync("Course", all_cohorts=True) == 0

@@ -27,7 +27,7 @@ from datetime import date
 import yaml
 
 from . import grades, roster, schedule, sync_faculty, teams
-from .utils import get_default_branch, get_file_content, log_err
+from .utils import get_default_branch, load_yaml_config, log_err
 
 ITEMS = ("B1", "B6", "C2", "C3", "C4", "C5", "C6", "C7")
 # Rows whose input is marked `[required]` in docs/DEPLOYMENT-CHECKLIST.md;
@@ -93,8 +93,9 @@ def render_markdown(course_org: str, cohort_org: str, data: dict[str, dict]) -> 
 
 def collect(course_org: str, cohort_org: str) -> dict[str, dict]:
     """One status row per faculty & instructors input location for `cohort_org`. Read-only."""
-    course_raw = get_file_content(course_org, ".github", "dsl-course.yml")
-    course_meta = (yaml.safe_load(course_raw) or {}) if course_raw else {}
+    # load_yaml_config raises a clear error on malformed YAML (caught in main()) instead
+    # of handing a traceback to the operator who runs status to find the broken input.
+    course_meta = load_yaml_config(course_org, ".github", "dsl-course.yml") or {}
 
     # Every course-org row lives in .github; every cohort row lives in
     # classroom-config - resolve each default branch once, not once per row.
@@ -123,7 +124,7 @@ def collect(course_org: str, cohort_org: str) -> dict[str, dict]:
     # docs/DEPLOYMENT-CHECKLIST.md), not access, so it must not inflate
     # this count.
     has_people_block = isinstance(course_meta.get("people"), dict)
-    course_faculty = sync_faculty.parse_faculty(course_raw or "")
+    course_faculty = sync_faculty.parse_faculty_from_meta(course_meta)
     course_desired = sync_faculty.desired_team_members(
         course_faculty, date.today().isoformat()
     )
@@ -136,7 +137,12 @@ def collect(course_org: str, cohort_org: str) -> dict[str, dict]:
         "dsl-course.yml",
         course_branch,
         has_people_block,
-        f"{n_admins} active" if has_people_block else "falls back to GitHub teams",
+        # No people: block does NOT "fall back to GitHub teams" - sync_faculty reconciles
+        # course-admin with prune=True whenever dsl-course.yml is present, so an absent
+        # block reconciles the team to empty.
+        f"{n_admins} active"
+        if has_people_block
+        else "no people: block - Sync empties course-admin",
     )
 
     students = roster.load(cohort_org) or []
@@ -216,7 +222,9 @@ def collect(course_org: str, cohort_org: str) -> dict[str, dict]:
         else dropped.lstrip(" -"),
     )
 
-    cohort_faculty = sync_faculty.load_cohort_faculty(cohort_org)
+    # load_cohort_faculty returns None when people.yml is absent - an empty desired set
+    # for this read-only status view (no team to count).
+    cohort_faculty = sync_faculty.load_cohort_faculty(cohort_org) or {}
     cohort_desired = sync_faculty.desired_team_members(
         cohort_faculty, date.today().isoformat()
     )
@@ -254,7 +262,10 @@ def main() -> int:
         else:
             data = collect(args.course_org, args.cohort_org)
             print(render_markdown(args.course_org, args.cohort_org, data))
-    except RuntimeError as exc:
+    except (RuntimeError, yaml.YAMLError) as exc:
+        # A read helper that couldn't reach the API raises RuntimeError; a malformed
+        # config file raises yaml.YAMLError. Either way an operator wants a one-line
+        # "this is broken" in the log, not a traceback - and the run still goes red.
         log_err(str(exc))
         return 1
     return 0

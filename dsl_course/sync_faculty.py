@@ -35,14 +35,13 @@ import argparse
 import sys
 from datetime import date
 
-import yaml
-
 from . import seed, site
 from .utils import (
     active_today,
     create_team,
-    get_file_content,
     grant_team_repo_access,
+    is_valid_github_username,
+    load_yaml_config,
     log,
     log_err,
     log_ok,
@@ -62,13 +61,12 @@ COHORT_PEOPLE_PATH = "people.yml"
 # --------------------------------------------------------------------------- pure core
 
 
-def parse_faculty(raw: str) -> dict[str, list[dict]]:
-    """Parse a `people:` block's text (course org's dsl-course.yml, or a cohort's
-    people.yml - same schema) for the roles in ROLE_TEAM. Only entries with a
-    `github_handle` grant access; a named entry without one is a legitimate
-    display-only card (noted, not an error), anything else is junk (flagged)."""
-    meta = yaml.safe_load(raw) if raw else {}
-    people = meta.get("people") if isinstance(meta, dict) else None
+def parse_faculty_from_meta(meta: dict) -> dict[str, list[dict]]:
+    """Parse an already-loaded config mapping's `people:` block (course org's
+    dsl-course.yml, or a cohort's people.yml - same schema) for the roles in ROLE_TEAM.
+    Only entries with a `github_handle` grant access; a named entry without one is a
+    legitimate display-only card (noted, not an error), anything else is junk (flagged)."""
+    people = meta.get("people")
     if not isinstance(people, dict):
         return {}
     faculty: dict[str, list[dict]] = {}
@@ -97,8 +95,21 @@ def desired_team_members(
     for role, entries in faculty.items():
         team = ROLE_TEAM[role]
         for p in entries:
-            if active_today(p.get("start"), p.get("end"), today):
-                desired[team].add(p["github_handle"])
+            if not active_today(p.get("start"), p.get("end"), today):
+                continue
+            handle = p["github_handle"]
+            # Adding a faculty handle to a team also INVITES it to the org, so a typo'd
+            # handle would invite a stranger with push on `.github`. There is no roster to
+            # intersect faculty against, so charset-validate at minimum and skip anything
+            # that can't be a real GitHub username rather than inviting it.
+            handle = str(handle)  # an unquoted YAML handle may parse to int/bool
+            if not is_valid_github_username(handle):
+                log_err(
+                    f"  ! {role} github_handle {handle!r} is not a valid GitHub "
+                    f"username - skipping (not inviting)"
+                )
+                continue
+            desired[team].add(handle)
     return desired
 
 
@@ -136,20 +147,31 @@ def _tag_repos(content_repos: list[str], assignments: list[str], tag: str) -> li
 # ---------------------------------------------------------------------- gh/git wiring
 
 
-def load_faculty(course_org: str) -> dict[str, list[dict]]:
+def load_faculty(course_org: str) -> dict[str, list[dict]] | None:
     """Fetch + parse the course org's `.github/dsl-course.yml` `people:` block -
     course_admins only in practice; instructors/TAs are declared per cohort
     (see `load_cohort_faculty`), but any stray entries here are still parsed
-    (and reconciled) the same way `parse_faculty` always has."""
-    raw = get_file_content(course_org, ".github", "dsl-course.yml") or ""
-    return parse_faculty(raw)
+    (and reconciled) the same way `parse_faculty_from_meta` always has.
+
+    Returns None when dsl-course.yml is genuinely ABSENT - the caller must then NOT prune
+    (an absent config is not an empty desired set). A present-but-empty `people:` block
+    parses to {} and legitimately empties the team."""
+    meta = load_yaml_config(course_org, ".github", "dsl-course.yml")
+    if meta is None:
+        return None
+    return parse_faculty_from_meta(meta)
 
 
-def load_cohort_faculty(cohort_org: str) -> dict[str, list[dict]]:
+def load_cohort_faculty(cohort_org: str) -> dict[str, list[dict]] | None:
     """Fetch + parse this cohort's own classroom-config/people.yml - instructors/TAs
-    only (no course_admins key here; that role stays exclusively course-level)."""
-    raw = get_file_content(cohort_org, COHORT_CONFIG_REPO, COHORT_PEOPLE_PATH) or ""
-    return _cohort_roles_only(parse_faculty(raw))
+    only (no course_admins key here; that role stays exclusively course-level).
+
+    Returns None when people.yml is genuinely ABSENT (do not prune); a present-but-empty
+    people block parses to {} and legitimately empties the team."""
+    meta = load_yaml_config(cohort_org, COHORT_CONFIG_REPO, COHORT_PEOPLE_PATH)
+    if meta is None:
+        return None
+    return _cohort_roles_only(parse_faculty_from_meta(meta))
 
 
 def sync_course_admins(
@@ -158,6 +180,15 @@ def sync_course_admins(
     """course_admins: declared once on the course org, mirrored unchanged into the
     course org itself and every cohort's own course-admin team."""
     faculty = load_faculty(course_org)
+    if faculty is None:
+        # ABSENT dsl-course.yml: parsing it as "" would yield an empty desired set and a
+        # pruning reconcile would strip course-admin from EVERY org. Refuse to prune.
+        log_err(
+            f"course identity {course_org}/.github/dsl-course.yml is absent - refusing "
+            f"to reconcile course-admin (an absent config would prune every admin from "
+            f"{1 + len(cohorts)} org(s)); skipping"
+        )
+        return 1
     desired = _desired_for(faculty, "course-admin", date.today().isoformat())
     errors = 0
     for org in [course_org] + cohorts:
@@ -181,6 +212,15 @@ def sync_cohort_instructors(
     (rather than re-discovered here) so a multi-cohort `sync()` fetches them once,
     not once per cohort."""
     faculty = load_cohort_faculty(cohort_org)
+    if faculty is None:
+        # ABSENT people.yml: reconciling an empty desired set with prune=True would strip
+        # this cohort's instructors team (and its course-org tag team). Refuse to prune.
+        log_err(
+            f"cohort people config {cohort_org}/{COHORT_CONFIG_REPO}/"
+            f"{COHORT_PEOPLE_PATH} is absent - refusing to reconcile instructors (an "
+            f"absent config would prune every instructor); skipping"
+        )
+        return 1
     desired = _desired_for(faculty, "instructors", date.today().isoformat())
     errors = reconcile_team_members(
         cohort_org, "instructors", desired, prune=True, dry_run=dry_run
@@ -191,9 +231,16 @@ def sync_cohort_instructors(
         return errors
     team = f"instructors-{tag}"
     if not dry_run:
-        create_team(course_org, team, f"Instructors for {tag} (cohort-declared)")
+        if not create_team(
+            course_org, team, f"Instructors for {tag} (cohort-declared)"
+        ):
+            # The team could not be created; granting it repo access and reconciling its
+            # membership would all fail against a non-existent team (triple-counting the
+            # one root failure and firing doomed API calls). Report it once and stop here.
+            return errors + 1
         for repo in _tag_repos(content_repos, assignments, tag):
-            grant_team_repo_access(course_org, team, repo, "push")
+            if not grant_team_repo_access(course_org, team, repo, "push"):
+                errors += 1
     errors += reconcile_team_members(
         course_org, team, desired, prune=True, dry_run=dry_run
     )

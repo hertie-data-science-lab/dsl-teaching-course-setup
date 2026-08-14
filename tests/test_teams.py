@@ -34,6 +34,14 @@ def test_parse_dedupes_and_skips_blank_rows():
     assert per == {"a1": {"t1": ["anna"]}}
 
 
+def test_parse_tolerates_a_utf8_bom_from_excel():
+    # Excel exports a UTF-8 BOM; left in, csv.DictReader reads the first header as
+    # "﻿assignment" and every `assignment` lookup misses, dropping every row.
+    text = "﻿assignment,team,github_handle\nassignment-4-project,team-x,anna-adams\n"
+    per = teams.parse(text)
+    assert per == {"assignment-4-project": {"team-x": ["anna-adams"]}}
+
+
 def test_teams_for_returns_empty_for_unknown_assignment():
     per = teams.parse("assignment,team,github_handle\na1,t1,anna\n")
     assert teams.teams_for(per, "nope") == {}
