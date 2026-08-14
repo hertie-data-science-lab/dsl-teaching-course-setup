@@ -208,11 +208,16 @@ def provision_one(
     if team is not None:
         # Group: materialise the team from its members and grant it on the repo, so
         # post-sync membership edits propagate to access (vs. one-off collaborator grants).
-        sync_teams.ensure_team(cohort_org, team, set(handles), prune=False)
-        if grant_team_repo_access(cohort_org, team, repo, "maintain"):
-            log_ok(f"  + team {team} (maintain)")
-            return "skipped" if existed else "ok"
-        return "created-no-collaborator"
+        # A team that couldn't take all its members grants access to nobody missing, so
+        # its result counts towards this repo's status rather than being discarded.
+        team_ok = sync_teams.ensure_team(cohort_org, team, set(handles), prune=False)
+        if not grant_team_repo_access(cohort_org, team, repo, "maintain"):
+            return "failed-no-access"
+        log_ok(f"  + team {team} (maintain)")
+        if not team_ok:
+            log_err(f"  ! team {team} is missing member(s) - they cannot see {repo}")
+            return "failed-team-members"
+        return "skipped" if existed else "ok"
 
     added = 0
     for handle in handles:
@@ -222,7 +227,9 @@ def provision_one(
         else:
             log_err(f"  ! could not add @{handle} (not a real account?)")
     if added == 0:
-        return "created-no-collaborator"
+        # A repo nobody can open is a failed handout - "failed" is what the exit code
+        # keys on (see provision_all), so the run goes red rather than quietly ok.
+        return "failed-no-collaborator"
     return "skipped" if existed else "ok"
 
 
@@ -260,15 +267,21 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
     kind = args.kind
-    return provision_all(
-        args.master_org,
-        args.template,
-        args.cohort_org,
-        roster_path=args.roster,
-        solution=args.solution,
-        group={"auto": None, "individual": False, "group": True}[kind],
-        dry_run=args.dry_run,
-    )
+    # A read helper that couldn't reach the API raises; in an Actions log a one-line
+    # error beats a traceback, and the run still goes red.
+    try:
+        return provision_all(
+            args.master_org,
+            args.template,
+            args.cohort_org,
+            roster_path=args.roster,
+            solution=args.solution,
+            group={"auto": None, "individual": False, "group": True}[kind],
+            dry_run=args.dry_run,
+        )
+    except RuntimeError as exc:
+        log_err(str(exc))
+        return 1
 
 
 def provision_all(

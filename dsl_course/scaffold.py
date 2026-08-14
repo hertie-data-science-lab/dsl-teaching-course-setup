@@ -485,11 +485,18 @@ def main() -> int:
     ps = sub.add_parser("site")
     ps.add_argument("--org", required=True)
     args = parser.parse_args()
-    if args.cmd == "materials":
-        return scaffold_materials(args.org, args.tag)
-    if args.cmd == "site":
-        return scaffold_site(args.org)
-    return scaffold_assignment(args.org, args.number, args.tag, args.fmt, args.kind)
+    # scaffold_materials equips the new repo's Release buttons, which reads the cohort
+    # registry + assignment list; a read helper that couldn't reach the API raises, and in
+    # an Actions log a one-line error beats a traceback.
+    try:
+        if args.cmd == "materials":
+            return scaffold_materials(args.org, args.tag)
+        if args.cmd == "site":
+            return scaffold_site(args.org)
+        return scaffold_assignment(args.org, args.number, args.tag, args.fmt, args.kind)
+    except RuntimeError as exc:
+        log_err(str(exc))
+        return 1
 
 
 if __name__ == "__main__":

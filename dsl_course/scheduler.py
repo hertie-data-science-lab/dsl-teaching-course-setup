@@ -46,19 +46,30 @@ from .utils import log, log_err, log_ok, log_step
 
 # --------------------------------------------------------------------------- pure core
 
+_EPOCH = datetime.min.replace(tzinfo=timezone.utc)
+
 
 def due_releases(releases: list[Release], now: datetime) -> list[Release]:
     """Entries with something to DO at `now`, in event_datetime order. An assignment
     handout fires at the entry's event_datetime; each deploy at its own deploy_datetime
     (else the event_datetime) - so an entry is due as soon as any one of its actions is.
     Display-only entries (no actions) never fire and are never due. `releases` is already
-    sorted (schedule._parse_releases), and every datetime is tz-aware, so the comparisons
-    are correct across timezones."""
+    sorted (schedule._parse_releases, and `run` re-sorts once the synthesised handouts are
+    merged in), and every datetime is tz-aware, so the comparisons are correct across
+    timezones."""
     return [
         r
         for r in releases
         if r.due_deploys(now) or (r.assignment and r.when is not None and r.when <= now)
     ]
+
+
+def release_order(release: Release) -> tuple[bool, datetime]:
+    """The plan's ordering key, the same one `schedule._parse_releases` sorts on: by
+    event_datetime, with undated (TBC) entries last. Synthesised handout releases are
+    merged into that already-sorted list, so the merged list has to be re-sorted through
+    this or `due_releases` stops being event_datetime-ordered."""
+    return (release.when is None, release.when or _EPOCH)
 
 
 def due_snapshots(sched: schedule.Schedule, now: datetime) -> list[tuple[str, str]]:
@@ -175,9 +186,9 @@ def _autograde_passed_deadlines(
     sched: schedule.Schedule,
     now: datetime,
     dry_run: bool,
-) -> tuple[int, set[str]]:
-    """Autograde every passed-deadline assignment exactly once - zero config. Returns
-    (error count, the slugs fired this tick).
+) -> int:
+    """Autograde every passed-deadline assignment exactly once - zero config. Returns the
+    error count.
 
     Fire-once: `autograde/<slug>/` in classroom-config is the marker. Absent means never
     machine-graded, so grade now; present means graded already, so never again - which is
@@ -189,7 +200,7 @@ def _autograde_passed_deadlines(
     is not guessed here - `collect` resolves it from the cohort schedule / grading.yml."""
     from .collect import collect, has_autograde_results
 
-    errors, fired = 0, set()
+    errors = 0
     for slug, deadline in due_snapshots(sched, now):
         # the fire-once marker is keyed on the cohort NAME - it must agree with what
         # collect writes, or a passed deadline re-grades every tick
@@ -205,10 +216,9 @@ def _autograde_passed_deadlines(
             log(f"    DRY-RUN  autograde {slug} via {template} (deadline {deadline})")
             continue
         log_step(f"  autograde {slug} via {template} (deadline {deadline})")
-        fired.add(slug)  # fired, pass or fail - never twice in one tick
         if collect(course_org, template, cohort_org, deadline) != 0:
             errors += 1
-    return errors, fired
+    return errors
 
 
 def _run_releases(
@@ -277,7 +287,12 @@ def _handout_releases(
 
 def run(course_org: str, cohort_org: str, now: datetime, dry_run: bool = False) -> int:
     sched = schedule.load(cohort_org)
-    releases = sched.releases + _handout_releases(course_org, cohort_org, sched)
+    # Re-sorted, not just concatenated: the synthesised handouts carry their own datetimes
+    # and would otherwise land after every scheduled release whatever their date.
+    releases = sorted(
+        sched.releases + _handout_releases(course_org, cohort_org, sched),
+        key=release_order,
+    )
     due = due_releases(releases, now)
     log_step(
         f"Scheduler {course_org} -> {cohort_org} as of {now.isoformat()}: "
@@ -288,10 +303,7 @@ def run(course_org: str, cohort_org: str, now: datetime, dry_run: bool = False) 
     # snapshot. Then autograde those same assignments, once each. Both are independent of
     # the release plan - a cohort can pin due dates without scheduling a single release.
     errors = _snapshot_passed_deadlines(cohort_org, sched, now, dry_run)
-    autograde_errors, _fired = _autograde_passed_deadlines(
-        course_org, cohort_org, sched, now, dry_run
-    )
-    errors += autograde_errors
+    errors += _autograde_passed_deadlines(course_org, cohort_org, sched, now, dry_run)
 
     if dry_run:
         for release in due:

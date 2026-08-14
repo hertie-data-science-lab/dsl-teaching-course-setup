@@ -1107,26 +1107,32 @@ def main() -> int:
         "--no-include-lectures", action="store_true", help="Skip lecture files"
     )
     args = parser.parse_args()
-    if args.cmd == "public-sync":
-        if not args.source_repo:
-            return resync_public_site(args.course_org)
-        return sync_public_site(
-            args.course_org,
-            args.source_repo,
-            args.readings_mode,
-            include_lectures=not args.no_include_lectures,
-        )
-    if args.all_cohorts:
-        from .seed import discover_cohorts
-
-        rc = 0
-        for cohort in discover_cohorts(args.course_org):
-            rc |= sync_site(args.course_org, cohort)
-        return rc
-    if not args.cohort_org:
+    if args.cmd != "public-sync" and not (args.all_cohorts or args.cohort_org):
         log_err("pass --cohort-org or --all-cohorts.")
         return 1
-    return sync_site(args.course_org, args.cohort_org)
+    # A read helper that couldn't reach the API raises; in an Actions log a one-line
+    # error beats a traceback, and the run still goes red.
+    try:
+        if args.cmd == "public-sync":
+            if not args.source_repo:
+                return resync_public_site(args.course_org)
+            return sync_public_site(
+                args.course_org,
+                args.source_repo,
+                args.readings_mode,
+                include_lectures=not args.no_include_lectures,
+            )
+        if args.all_cohorts:
+            from .seed import discover_cohorts
+
+            rc = 0
+            for cohort in discover_cohorts(args.course_org):
+                rc |= sync_site(args.course_org, cohort)
+            return rc
+        return sync_site(args.course_org, args.cohort_org)
+    except RuntimeError as exc:
+        log_err(str(exc))
+        return 1
 
 
 if __name__ == "__main__":

@@ -5,6 +5,8 @@ the roster must round-trip with the new enrol_code column. SMTP send is wiring, 
 
 from __future__ import annotations
 
+import pytest
+
 from dsl_course import enrol_codes, mailer, roster
 
 
@@ -85,3 +87,12 @@ def test_graph_config_from_env_needs_all_four(monkeypatch):
     monkeypatch.setenv("GRAPH_SENDER", "bot@x.edu")
     cfg = mailer.graph_config_from_env()
     assert cfg and cfg.sender == "bot@x.edu" and cfg.tenant_id == "t"
+
+
+def test_a_failed_graph_token_is_not_reported_as_nothing_to_send(monkeypatch):
+    # "0 sent" is the same number an empty batch produces, so a dead token used to look
+    # like a quiet no-op. Nothing was sent AND nothing could be: that is a failure.
+    monkeypatch.setattr(mailer, "_graph_token", lambda cfg: None)
+    cfg = mailer.GraphConfig("t", "c", "s", "bot@x.edu")
+    with pytest.raises(RuntimeError, match="token request failed"):
+        mailer._send_via_graph(cfg, [("a@x.edu", "Subj", "Body")])

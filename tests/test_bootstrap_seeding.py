@@ -322,6 +322,25 @@ def test_bootstrap_survives_a_failing_initial_site_sync(monkeypatch, capsys, out
     assert "Sync site" in capsys.readouterr().err
 
 
+def test_bootstrap_reports_an_unreachable_api_instead_of_a_traceback(
+    monkeypatch, capsys
+):
+    # Every read on the way through (the create-only file check, the cohort registry, the
+    # repo listing behind the profile README) now raises rather than reporting an absent
+    # file or an empty org. Bootstrap runs from a button, so that has to land as an [err]
+    # line and a red run, not a Python traceback halfway down the log.
+    _stub_bootstrap(monkeypatch)
+
+    def boom(org, org_name=None, course_name=None):
+        raise RuntimeError("could not list repos in Course-Org: gh: HTTP 502")
+
+    monkeypatch.setattr(bc.seed, "update_profile_readme", boom)
+    monkeypatch.setattr("sys.argv", ["bootstrap_course", "--org", "Course-Org"])
+
+    assert bc.main() == 1
+    assert "HTTP 502" in capsys.readouterr().err
+
+
 # ----------------------------------------- the nightly refresh converges live cohorts
 
 
@@ -330,15 +349,82 @@ def test_refresh_re_pushes_every_registered_cohorts_welcome_workflows(monkeypatc
     # against an engine that keeps moving on central main. The nightly Refresh is what
     # closes that gap, so it has to reach EVERY registered cohort, not just the course org.
     refreshed: list[str] = []
+    _stub_refresh(monkeypatch, welcome_failures=lambda org: refreshed.append(org) or 0)
+
+    assert seed.refresh("Course-Org") == 0
+    assert refreshed == ["Cohort-f2026", "Cohort-s2027"]
+
+
+def _stub_refresh(monkeypatch, welcome_failures=lambda org: 0, seed_failures=0) -> None:
+    """Neutralise every network call seed.refresh makes; the two write paths report a
+    failure count, which is what refresh's exit code is built from."""
     monkeypatch.setattr(
         seed, "discover_cohorts", lambda org: ["Cohort-f2026", "Cohort-s2027"]
     )
     monkeypatch.setattr(seed, "discover_content_repos", lambda org: [])
     monkeypatch.setattr(seed, "discover_assignments", lambda org: [])
     monkeypatch.setattr(seed, "_propagate_repo_secret", lambda org, repos: None)
-    monkeypatch.setattr(seed, "seed_github_workflows", lambda org: None)
+    monkeypatch.setattr(seed, "seed_github_workflows", lambda org: seed_failures)
     monkeypatch.setattr(seed, "update_profile_readme", lambda org: None)
-    monkeypatch.setattr(seed, "refresh_welcome_workflows", refreshed.append)
+    monkeypatch.setattr(seed, "refresh_welcome_workflows", welcome_failures)
 
-    assert seed.refresh("Course-Org") == 0
-    assert refreshed == ["Cohort-f2026", "Cohort-s2027"]
+
+@pytest.mark.parametrize(
+    ("seed_failures", "welcome_failures"),
+    [(2, 0), (0, 1)],
+    ids=["org-workflows", "welcome-workflows"],
+)
+def test_refresh_goes_red_when_it_could_not_converge(
+    monkeypatch, capsys, seed_failures, welcome_failures
+):
+    # The nightly cron is how an org keeps up with central. A run that failed to write
+    # the buttons but reported success leaves faculty with a stale (or absent) button and
+    # nothing in the Actions list to say so.
+    _stub_refresh(
+        monkeypatch,
+        welcome_failures=lambda org: welcome_failures,
+        seed_failures=seed_failures,
+    )
+    assert seed.refresh("Course-Org") == 1
+    assert "refresh incomplete" in capsys.readouterr().err
+
+
+def test_refresh_cli_logs_an_unreachable_api_instead_of_a_traceback(
+    monkeypatch, capsys
+):
+    # Discovery now raises rather than reporting an empty org; the CLI is where that
+    # becomes an [err] line + exit 1, so the Actions log stays readable.
+    def boom(org: str) -> list[str]:
+        raise RuntimeError("could not list repos in Course-Org: gh: HTTP 502")
+
+    monkeypatch.setattr(seed, "discover_cohorts", boom)
+    monkeypatch.setattr("sys.argv", ["seed", "refresh", "--course-org", "Course-Org"])
+
+    assert seed.main() == 1
+    assert "HTTP 502" in capsys.readouterr().err
+
+
+def test_welcome_refresh_counts_failed_writes_and_says_nothing_is_up_to_date(
+    monkeypatch, capsys
+):
+    # "[ok] welcome repo workflows + Join forms up to date" used to print unconditionally,
+    # so a cohort whose onboarding workflow never landed still read as fully seeded.
+    monkeypatch.setattr(welcome, "put_file", lambda *a, **k: False)
+    monkeypatch.setattr(welcome, "delete_file", lambda *a, **k: True)
+    assert welcome.refresh_welcome_workflows("Cohort-f2026") == 4
+    out = capsys.readouterr()
+    assert "up to date" not in out.out
+    assert "4 welcome-repo file(s) not written" in out.err
+
+
+def test_org_settings_ok_line_only_prints_when_2fa_was_set(monkeypatch, capsys):
+    # The summary line claims "(2FA enforced)" - it must not print when the PATCH failed.
+    monkeypatch.setattr(bc, "gh", lambda *a, **k: (1, "gh: HTTP 403"))
+    bc.set_org_settings("Course-Org")
+    out = capsys.readouterr()
+    assert "2FA enforced" not in out.out
+    assert "could not enable 2FA" in out.err
+
+    monkeypatch.setattr(bc, "gh", lambda *a, **k: (0, ""))
+    bc.set_org_settings("Course-Org")
+    assert "2FA enforced" in capsys.readouterr().out

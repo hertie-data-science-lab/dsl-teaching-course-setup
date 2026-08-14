@@ -27,7 +27,7 @@ from datetime import date
 import yaml
 
 from . import grades, roster, schedule, sync_faculty, teams
-from .utils import get_default_branch, get_file_content
+from .utils import get_default_branch, get_file_content, log_err
 
 ITEMS = ("B1", "B6", "C2", "C3", "C4", "C5", "C6", "C7")
 # Rows whose input is marked `[required]` in docs/DEPLOYMENT-CHECKLIST.md;
@@ -241,16 +241,22 @@ def main() -> int:
     parser.add_argument("--cohort-org", required=True)
     parser.add_argument("--format", choices=["md", "json"], default="md")
     args = parser.parse_args()
-    if args.format == "json":
-        # collect()'s dependencies (schedule.load, roster.load, ...) log informational
-        # lines to stdout - fine for the human-facing markdown mode, but --format json
-        # promises clean, parseable output, so keep those off stdout here.
-        with contextlib.redirect_stdout(io.StringIO()):
+    # A read helper that couldn't reach the API raises; in an Actions log a one-line
+    # error beats a traceback, and the run still goes red.
+    try:
+        if args.format == "json":
+            # collect()'s dependencies (schedule.load, roster.load, ...) log informational
+            # lines to stdout - fine for the human-facing markdown mode, but --format json
+            # promises clean, parseable output, so keep those off stdout here.
+            with contextlib.redirect_stdout(io.StringIO()):
+                data = collect(args.course_org, args.cohort_org)
+            print(json.dumps(data, indent=2))
+        else:
             data = collect(args.course_org, args.cohort_org)
-        print(json.dumps(data, indent=2))
-    else:
-        data = collect(args.course_org, args.cohort_org)
-        print(render_markdown(args.course_org, args.cohort_org, data))
+            print(render_markdown(args.course_org, args.cohort_org, data))
+    except RuntimeError as exc:
+        log_err(str(exc))
+        return 1
     return 0
 
 

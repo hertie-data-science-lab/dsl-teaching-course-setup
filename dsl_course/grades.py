@@ -291,8 +291,10 @@ def provision_one(cohort_org: str, handle: str) -> str:
     if add_collaborator(cohort_org, repo, handle, permission="pull"):
         log_ok(f"  + @{handle} (read)")
         return "skipped" if existed else "ok"
+    # A gradebook the student can't open is a failure, not a partial success - the status
+    # starts with "failed" so it reaches the exit code (see sync).
     log_err(f"  ! could not add @{handle} (not a real account?)")
-    return "created-no-collaborator"
+    return "failed-no-collaborator"
 
 
 def sync(cohort_org: str, dry_run: bool = False) -> int:
@@ -486,8 +488,16 @@ def _email_updates(cohort_org: str, handles: list[str], dry_run: bool = False) -
             f"  {url}\n"
         )
         messages.append((student.hertie_email, "Your grades have been updated", body))
-    if messages:
-        mailer.send_bulk(messages, dry_run=dry_run)
+    if not messages:
+        return
+    # The grades themselves are already pushed by this point, so a mail failure isn't
+    # fatal - but it must not pass unmentioned: a student who never got the notification
+    # doesn't know to look.
+    sent = mailer.send_bulk(messages, dry_run=dry_run)
+    if sent < len(messages):
+        log_err(
+            f"{len(messages) - sent} of {len(messages)} grade notification(s) not sent"
+        )
 
 
 def main() -> int:
@@ -511,11 +521,19 @@ def main() -> int:
             )
     args = parser.parse_args()
 
-    if args.action == "sync":
-        return sync(args.cohort_org, dry_run=args.dry_run)
-    if args.action == "render":
-        return render(args.cohort_org)
-    return distribute(args.cohort_org, notify=not args.no_notify, dry_run=args.dry_run)
+    # A read helper that couldn't reach the API raises; in an Actions log a one-line
+    # error beats a traceback, and the run still goes red.
+    try:
+        if args.action == "sync":
+            return sync(args.cohort_org, dry_run=args.dry_run)
+        if args.action == "render":
+            return render(args.cohort_org)
+        return distribute(
+            args.cohort_org, notify=not args.no_notify, dry_run=args.dry_run
+        )
+    except RuntimeError as exc:
+        log_err(str(exc))
+        return 1
 
 
 if __name__ == "__main__":

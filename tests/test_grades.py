@@ -256,3 +256,25 @@ def test_gradebook_sync_skips_auditors(monkeypatch, capsys):
     assert "eve-e" not in out
     assert "Syncing 2 gradebook repo(s)" in out
     assert "1 auditor row(s) skipped" in out
+
+
+def test_a_gradebook_the_student_cannot_open_is_a_failure(monkeypatch):
+    # The old "created-no-collaborator" status doesn't start with "failed", so sync's exit
+    # predicate ignored it: a student with no read on their own gradebook, reported green.
+    monkeypatch.setattr(grades, "repo_exists", lambda org, repo: True)
+    monkeypatch.setattr(grades, "add_collaborator", lambda *a, **k: False)
+    assert grades.provision_one("COHORT", "ada-l").startswith("failed")
+
+
+def test_unsent_grade_notifications_are_reported(monkeypatch, capsys):
+    # The send count used to be discarded, so a student who never got the "your grades are
+    # updated" mail left no trace in the log at all.
+    students = roster.parse(
+        "student_id,hertie_email,name,github_handle,github_id,section,enrol_code,role\n"
+        "1,ada@uni.edu,Ada,ada-l,42,A,dsl-abc,enrolled\n"
+        "2,bob@uni.edu,Bob,bob-b,43,A,dsl-def,enrolled\n"
+    )
+    monkeypatch.setattr(grades.roster, "load", lambda org: students)
+    monkeypatch.setattr(grades.mailer, "send_bulk", lambda msgs, dry_run=False: 1)
+    grades._email_updates("COHORT", ["ada-l", "bob-b"])
+    assert "1 of 2 grade notification(s) not sent" in capsys.readouterr().err

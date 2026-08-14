@@ -127,13 +127,20 @@ def discover_cohort_orgs() -> list[dict]:
 
 
 def _fetch_metadata(org: str) -> dict:
-    """Read and parse `.github/dsl-course.yml` for an org. Returns {} on any failure."""
+    """Read and parse `.github/dsl-course.yml` for an org.
+
+    {} means the org genuinely carries no metadata (a 404, or an empty file); any other
+    read failure raises. The tier split reads this file - `course:` present means a
+    cohort - so a transient failure would file a cohort org under Course orgs, and the
+    inventory is fully generated: a wrong refresh is worse than no refresh."""
     code, raw = gh(
         "api",
         f"repos/{org}/.github/contents/dsl-course.yml",
         "--jq",
         ".content | @base64d",
     )
+    if code != 0 and not ("HTTP 404" in raw or "Not Found" in raw):
+        raise RuntimeError(f"could not read {org}/.github/dsl-course.yml: {raw[:200]}")
     if code != 0 or not raw:
         return {}
 
@@ -215,8 +222,14 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    orgs = discover_course_orgs()
-    cohorts = discover_cohort_orgs()
+    # Discovery is one `gh search repos` call per topic; if it fails there is no
+    # inventory to write. Report it as a line in the Actions log, not a traceback.
+    try:
+        orgs = discover_course_orgs()
+        cohorts = discover_cohort_orgs()
+    except RuntimeError as exc:
+        log_err(str(exc))
+        return 1
 
     if args.update_file:
         changed = update_file(args.update_file, render_page(orgs, cohorts))

@@ -421,14 +421,12 @@ def set_org_settings(org: str) -> None:
         "--field",
         "two_factor_requirement_enabled=true",
     )
-    if code == 0:
-        log_ok("2FA requirement enabled")
-    else:
-        log_err(f"could not enable 2FA: {out[:100]}")
-
     # Set default Pages branch to main (if not present, Pages will use default on first enable)
     # Note: pages_build_type is set per-repo, not org-wide
-    log_ok("org settings configured (2FA enforced)")
+    if code == 0:
+        log_ok("org settings configured (2FA enforced)")
+    else:
+        log_err(f"could not enable 2FA: {out[:100]}")
 
 
 def validate_secret_presence(org: str, secret_name: str) -> bool:
@@ -489,7 +487,11 @@ def setup_cohort_extras(org: str) -> None:
         private=False,
         description="Course front door - open a Join issue to enrol",
     ):
-        refresh_welcome_workflows(org)
+        if refresh_welcome_workflows(org):
+            log_err(
+                f"the welcome repo in {org} is not fully seeded - re-run Bootstrap "
+                f"cohort (or wait for the nightly Refresh) once the cause is cleared"
+            )
         # The landing page a student sees on this public repo: what to do, and how. Its
         # link back to the issue chooser is org-specific, so the template carries `{org}`.
         # USER-owned (it is the cohort's front door, and faculty may reword it), so
@@ -722,7 +724,18 @@ def main() -> int:
         "org's Teams page.",
     )
     args = parser.parse_args()
+    # A read helper that couldn't reach the API raises; in an Actions log a one-line
+    # error beats a traceback, and the run still goes red.
+    try:
+        return _run(args)
+    except RuntimeError as exc:
+        log_err(str(exc))
+        return 1
 
+
+def _run(args: argparse.Namespace) -> int:
+    """The bootstrap itself, in order: preflight, org settings, teams, repos, secret,
+    profile README. Split from main so the whole sequence sits under one guard."""
     org_name = args.org_name or args.org
     course_name = args.course_name or org_name
     admin_logins = _parse_handles(args.admins)

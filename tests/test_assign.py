@@ -147,3 +147,57 @@ def test_group_false_forces_individual_even_for_a_group_template(
     )
     assert rc == 0
     assert "assignment-4-project-ada-l" in capsys.readouterr().out
+
+
+# ------------------------------------ what counts as a failed handout (the exit code)
+
+
+@pytest.fixture
+def _provisioned(monkeypatch):
+    """An existing repo, so provision_one only exercises the access half."""
+    monkeypatch.setattr(assign, "repo_exists", lambda org, repo: True)
+
+
+def test_a_repo_no_student_can_open_is_a_failed_handout(_provisioned, monkeypatch):
+    # The old "created-no-collaborator" status doesn't start with "failed", so a repo
+    # nobody can see never reached provision_all's exit predicate: the release went green
+    # while the student had nothing to submit into.
+    monkeypatch.setattr(assign, "add_collaborator", lambda *a, **k: False)
+    status = assign.provision_one(
+        "COURSE",
+        "assignment-1",
+        "COHORT",
+        "assignment-1-ada-l",
+        ["ada-l"],
+        "assignment-1",
+    )
+    assert status.startswith("failed")
+
+
+def test_a_group_repo_reports_the_teams_own_failures(_provisioned, monkeypatch):
+    # ensure_team's result used to be discarded, so a team that couldn't take its members
+    # (they see nothing - access is via the team) still reported "ok".
+    monkeypatch.setattr(assign, "grant_team_repo_access", lambda *a, **k: True)
+    monkeypatch.setattr(assign.sync_teams, "ensure_team", lambda *a, **k: False)
+    status = assign.provision_one(
+        "COURSE",
+        "assignment-1",
+        "COHORT",
+        "assignment-1-wizards",
+        ["ada-l", "bob-b"],
+        "assignment-1",
+        team="assignment-1-wizards",
+    )
+    assert status.startswith("failed")
+
+    monkeypatch.setattr(assign.sync_teams, "ensure_team", lambda *a, **k: True)
+    status = assign.provision_one(
+        "COURSE",
+        "assignment-1",
+        "COHORT",
+        "assignment-1-wizards",
+        ["ada-l", "bob-b"],
+        "assignment-1",
+        team="assignment-1-wizards",
+    )
+    assert status == "skipped"

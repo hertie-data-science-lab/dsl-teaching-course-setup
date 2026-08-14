@@ -849,3 +849,18 @@ def test_shipped_schedules_parse_with_nothing_dropped(path):
     sched, error = schedule.load_file(str(full))
     assert error is None, error
     assert sched.dropped == [], f"{path} drops entries:\n" + "\n".join(sched.dropped)
+
+
+def test_validate_cli_reports_an_unreadable_cohort_schedule(monkeypatch, capsys):
+    # An absent schedule.yml is an empty Schedule (valid: nothing planned yet), but a read
+    # that failed outright now raises - the CLI turns that into a line and a red run,
+    # rather than a traceback or a false "OK: nothing dropped".
+    def boom(cohort_org):
+        raise RuntimeError("could not read Cohort-f2026/classroom-config/schedule.yml")
+
+    monkeypatch.setattr(schedule, "load", boom)
+    monkeypatch.setattr(
+        "sys.argv", ["schedule", "--cohort-org", "Cohort-f2026", "--validate"]
+    )
+    assert schedule.main() == 1
+    assert "could not read" in capsys.readouterr().err

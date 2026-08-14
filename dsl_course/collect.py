@@ -39,7 +39,10 @@ repos were provisioned late - delete the snapshot CSV and let the next tick rebu
 FIRE-ONCE.  The hourly scheduler autogrades each assignment exactly once, just after its
 grading deadline. The marker is the `autograde/<slug>/` directory this module writes: while
 it is absent the assignment has never been machine-graded, and once it exists it is never
-graded again automatically. Machine-written grade cells are write-once too (see
+graded again automatically. A DECISION not to grade (no `solution` branch, `autograde:
+false`, nothing gradable) writes the marker too - as `<slug>/_skipped.json`, saying why -
+because a skip that leaves it absent is re-decided, at the cost of a template clone, every
+hour for ever. Machine-written grade cells are write-once too (see
 `grades.merge_auto`), so a marker's hand-edit is never clobbered. To re-grade deliberately,
 delete `autograde/<slug>/` (the next tick regrades) or press the Grade assignment button -
 and clear the `auto`/`team_grade` cells you want recomputed.
@@ -91,6 +94,7 @@ from .utils import (
 
 CONFIG_REPO = roster.CONFIG_REPO  # classroom-config
 AUTOGRADE_DIR = "autograde"  # classroom-config/autograde/<slug>/<key>.json
+SKIP_RECORD = "_skipped.json"  # the same marker, for an assignment nothing grades
 SNAPSHOT_DIR = "snapshots"  # classroom-config/snapshots/<slug>.csv
 SNAPSHOT_FIELDS = ("repo", "sha", "recorded_at")
 GRADING_FILE = "grading.yml"  # on the template's solution branch
@@ -310,6 +314,28 @@ def has_autograde_results(cohort_org: str, slug: str) -> bool:
     return code == 0
 
 
+def mark_not_autograded(cohort_org: str, slug: str, why: str) -> bool:
+    """Record that this assignment will never be machine-graded, and why.
+
+    `autograde/<slug>/` IS the fire-once marker (see `has_autograde_results`), so a skip
+    that leaves it absent is not a skip at all: the scheduler re-clones the template and
+    re-decides the same skip on every hourly tick, for ever. The note is what tells a
+    marker reading the archive that the empty result set was deliberate."""
+    return put_file(
+        cohort_org,
+        CONFIG_REPO,
+        f"{autograde_path(slug)}/{SKIP_RECORD}",
+        json.dumps(
+            {
+                "skipped": why,
+                "recorded_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            },
+            indent=2,
+        ).encode(),
+        f"autograde: {slug} not machine-graded ({why})",
+    )
+
+
 def load_snapshots(cohort_org: str, slug: str) -> dict[str, str] | None:
     """{repo: sha} from this assignment's snapshot CSV, or None if no snapshot was ever
     taken (the two are different: a recorded blank sha means "no submission", while no
@@ -322,13 +348,26 @@ def snapshot_assignment(cohort_org: str, slug: str, deadline: str) -> bool:
     """Freeze, at a server-chosen moment, the commit each of `slug`'s submission repos will
     be graded at. Write-once: an existing snapshot is never re-taken or overwritten, so a
     late push can never move the pin. Returns False if the snapshot could not be completed
-    (nothing is written - the next cron tick tries again)."""
+    (nothing is written - the next cron tick tries again).
+
+    An assignment with no submission units yet is a no-op, not a failure: nothing is frozen
+    and nothing is written, so a later handout still gets its own snapshot."""
     if load_snapshots(cohort_org, slug) is not None:
         log_skip(f"snapshot {snapshot_path(slug)}")
         return True
     targets = submission_targets(cohort_org, slug)
     if not targets:
-        return False
+        # Nobody onboarded, or no teams for a group assignment - which is also what an
+        # assignment not handed out yet looks like from here. The snapshot is write-once,
+        # so freezing an empty one would pin the assignment to "nothing submitted" for
+        # ever; write nothing and let a later tick take it. Green, because the alternative
+        # is a red hourly run for every assignment whose cohort has yet to fill up.
+        # `submission_targets` has already logged which of the two it was.
+        log(
+            f"  [skip] snapshot {snapshot_path(slug)} - nothing to freeze yet; "
+            f"a later tick takes it"
+        )
+        return True
     recorded_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     rows: list[tuple[str, str, str]] = []
     for repo, _key, _members in targets:
@@ -537,6 +576,14 @@ def collect(
                 f"no `{SOLUTION_BRANCH}` branch on {master_org}/{template} - no hidden "
                 f"tests to run; nothing to collect."
             )
+            # Hand-marked, then: say so once in the archive rather than re-deciding it on
+            # every hourly tick (see FIRE-ONCE above).
+            if not dry_run:
+                mark_not_autograded(
+                    cohort_org,
+                    slug,
+                    f"no `{SOLUTION_BRANCH}` branch on {master_org}/{template}",
+                )
             return 0
         spec_path = soldir / GRADING_FILE
         spec = parse_grading_spec(spec_path.read_text() if spec_path.is_file() else "")
@@ -544,11 +591,17 @@ def collect(
             log_ok(
                 f"{slug}: autograde disabled in {GRADING_FILE} - all-manual, nothing to collect."
             )
+            if not dry_run:
+                mark_not_autograded(
+                    cohort_org, slug, f"`autograde: false` in {GRADING_FILE}"
+                )
             return 0
         # group-vs-individual precedence: an explicit force (the button's checkbox) wins;
-        # else the COHORT's declaration (schedule.yml assignments.<slug>.type, already
-        # loaded above); else the template's design-time grading.yml `type:`.
-        entry = sched.assignments.get(slug)
+        # else the COHORT's declaration (schedule.yml assignments.<slug>.type); else the
+        # template's design-time grading.yml `type:`. The entry is the one found above by
+        # course_source_repo - `slug` is the cohort-side NAME, which is `cohort_dest_repo`
+        # when that is set and so is not a key into `sched.assignments` at all.
+        entry = found[1] if found else None
         cohort_kind = entry.type if entry else None
         if group:
             is_group = True
@@ -584,7 +637,12 @@ def collect(
         )
 
         updates: list[tuple[str, dict[str, str]]] = []
-        for repo, key, members in targets:
+        # `_grade_target` returns None for one reason only: the submission repo could not be
+        # cloned. That is the line between "examined, and there was nothing to grade" (a
+        # recorded non-submission still comes back as a zero result) and "never examined" -
+        # and the fire-once record below must never be written on the strength of the latter.
+        unreachable: list[str] = []
+        for repo, target_key, members in targets:
             log_step(repo)
             if dry_run:
                 pin = (
@@ -603,27 +661,52 @@ def collect(
                 snapshot=None if snapshots is None else snapshots.get(repo),
             )
             if result is None:
+                unreachable.append(repo)
                 continue
             for line in summary_lines(result):
                 log(line)
             put_file(
                 cohort_org,
                 CONFIG_REPO,
-                f"{autograde_path(slug)}/{key}.json",
+                f"{autograde_path(slug)}/{target_key}.json",
                 json.dumps(result, indent=2).encode(),
-                f"autograde: {slug}/{key}",
+                f"autograde: {slug}/{target_key}",
             )
             score = str(result["score"])
             if is_group:
-                updates += [(m, {"team": key, "team_grade": score}) for m in members]
+                updates += [
+                    (m, {"team": target_key, "team_grade": score}) for m in members
+                ]
             else:
-                updates.append((key, {"auto": score}))
+                updates.append((target_key, {"auto": score}))
 
         if dry_run:
             return 0
-        if not updates:
-            log_err("nothing graded.")
+        if not updates and unreachable:
+            # Nothing graded because nothing could be READ - a repo that is not there yet,
+            # or an API having a bad afternoon. The run is genuinely unfinished, so it goes
+            # red and no record is written: the next tick must be free to try again, and
+            # one outage must never mark an assignment as permanently not-machine-graded.
+            log_err(
+                f"{slug}: none of the {len(unreachable)} submission repo(s) could be read "
+                f"(named above) - nothing graded, and nothing recorded; the next run retries"
+            )
             return 1
+        if not updates:
+            # Every target WAS examined and none of them yielded a grade. Not a failure: the
+            # snapshot is frozen, so an hourly retry would see exactly what this run saw and
+            # go red for ever. Record the skip and stay green - a deliberate re-grade is
+            # still a delete of autograde/<slug>/ away.
+            log_ok(
+                f"{slug}: nothing gradable across {len(targets)} target(s) - recording "
+                f"the skip rather than retrying every hour."
+            )
+            mark_not_autograded(
+                cohort_org,
+                slug,
+                f"nothing gradable across {len(targets)} target(s) as of {deadline}",
+            )
+            return 0
 
         path = f"{grades.GRADES_DIR}/{slug}.csv"
         existing = get_file_content(cohort_org, CONFIG_REPO, path) or ""

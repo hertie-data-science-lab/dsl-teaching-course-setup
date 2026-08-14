@@ -775,6 +775,48 @@ def test_handout_releases_synthesised_from_the_assignments_block(monkeypatch):
     ]
 
 
+def test_run_re_sorts_handouts_into_the_release_plan(monkeypatch):
+    # due_releases documents event_datetime order, and the plan is sorted at parse time -
+    # but the synthesised handouts are appended afterwards, so without a re-sort a
+    # September handout is processed after a December release.
+    monkeypatch.setattr(collect, "load_snapshots", lambda org, slug: {})
+    monkeypatch.setattr(collect, "snapshot_assignment", lambda org, slug, dl: True)
+    _stub_autograde(monkeypatch)
+    monkeypatch.setattr(
+        scheduler, "_assignment_template", lambda org, slug, entry: "a-f2026"
+    )
+    sched = Schedule(
+        releases=[_r("december", datetime(2026, 12, 1, 9, 0, tzinfo=BERLIN))],
+        assignments={
+            "assignment-1": AssignmentEntry(
+                course_source_repo="a-f2026",
+                due_datetime=datetime(2026, 10, 13, 23, 59, tzinfo=BERLIN),
+                handout_datetime=datetime(2026, 9, 22, 9, 0, tzinfo=BERLIN),
+            )
+        },
+    )
+    monkeypatch.setattr(scheduler.schedule, "load", lambda cohort: sched)
+    ordered = []
+    monkeypatch.setattr(
+        scheduler,
+        "due_releases",
+        lambda releases, now: ordered.extend(r.label for r in releases) or [],
+    )
+    assert (
+        scheduler.run(
+            "Course-Org", "Cohort-f2026", datetime(2027, 1, 1, tzinfo=timezone.utc)
+        )
+        == 0
+    )
+    assert ordered == ["assignment-1-handout", "december"]
+
+
+def test_release_order_puts_undated_tbc_entries_last():
+    dated = _r("dated", datetime(2026, 9, 1, tzinfo=BERLIN))
+    tbc = _r("tbc", None)
+    assert sorted([tbc, dated], key=scheduler.release_order) == [dated, tbc]
+
+
 def test_run_survives_an_unparseable_schedule_and_exits_zero(monkeypatch, capsys):
     # The incident: unparseable schedule.yml raised inside schedule.load and killed the
     # hourly tick for the cohort. Now the tick releases nothing (same as the crash, minus
