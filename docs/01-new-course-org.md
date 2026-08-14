@@ -18,7 +18,7 @@ This is setup once per course - it serves every future cohort. Per-semester setu
 
 1. **Create the org**: 
    - select the free plan **[here](https://github.com/account/organizations/new?plan=free&ref_cta=Create%2520a%2520free%2520organization&ref_loc=cards&ref_page=%2Forganizations%2Fplan)** → *Create a new organization*. 
-   - Name it **`hertie-<course-slug>-<code>`** - lowercase-kebab, no year (e.g. `hertie-demo-e1234`).
+   - Name it **`hertie-<course-slug>-<code>`** - lowercase-kebab, no year (e.g. `hertie-dsl-demo-course-e1234`).
    - Select a buisness/institutional account, and enter `hertie-data-science-lab` into the text box.
 
 2. **Invite `hertie-dsl-bot` as Owner**: 
@@ -34,7 +34,7 @@ This is setup once per course - it serves every future cohort. Per-semester setu
 
    | Input | Value | Notes |
    |-------|-------|-------|
-   | `org` | the org you just made | e.g. `hertie-demo-e1234` |
+   | `org` | the org you just made | e.g. `hertie-dsl-demo-course-e1234` |
    | `org_name` | display name | e.g. `DSL Demo Course` |
    | `course_code` | short code | e.g. `E1234` |
    | `set_secret` | `true` (default) | propagates `DSL_BOT_TOKEN` - **don't set the secret by hand** |
@@ -58,5 +58,5 @@ This is setup once per course - it serves every future cohort. Per-semester setu
 - When the year starts: [New cohort org](04-new-cohort-org.md).
 
 ---
-**Demo:** course org [`hertie-demo-e1234`](https://github.com/hertie-demo-e1234) ·
-control panel [`.github` Actions](https://github.com/hertie-demo-e1234/.github/actions).
+**Demo:** course org [`hertie-dsl-demo-course-e1234`](https://github.com/hertie-dsl-demo-course-e1234) ·
+control panel [`.github` Actions](https://github.com/hertie-dsl-demo-course-e1234/.github/actions).

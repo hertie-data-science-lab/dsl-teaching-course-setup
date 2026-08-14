@@ -29,7 +29,7 @@ In the course org, run it from either (1) the **materials repo's own** `Release 
 (`course_source_repo` pre-filled, editable), or (2) the **course org's `.github` repo's** button
 (`course_source_repo` is a dropdown of the org's content repos).
 
-e.g. → [Release materials](https://github.com/hertie-demo-e1234/.github/actions/workflows/release-materials.yml):
+e.g. → [Release materials](https://github.com/hertie-dsl-demo-course-e1234/.github/actions/workflows/release-materials.yml):
 
 - One copy: `course_source_path` = `lectures/02_intro` → lands at `materials/lectures/02_intro`.
 - A whole session in one press: `course_source_path` = `lectures/02_intro, readings/02_intro, labs/02_intro`
@@ -55,7 +55,7 @@ same pattern (weeks 1, 3 and 5 each unlock an `mlpkg` subpackage).
 - Any released materials will automatically show up in the deployed site (i.e. their release triggers a redeploy).
   - Releases trigger **Sync site** for you, as does a push to `classroom-config/schedule.yml` or `people.yml`
   - Plus there's a daily cron (06:00 UTC)
-- You can also run [Sync site](https://github.com/hertie-demo-e1234/.github/actions/workflows/sync-site.yml)
+- You can also run [Sync site](https://github.com/hertie-dsl-demo-course-e1234/.github/actions/workflows/sync-site.yml)
 by hand only when you don't want to wait for the cron to fire - e.g. after editing a file inside an already-released repo.
 
 > What the site shows, what redeploys it, and which files it overwrites:
@@ -67,5 +67,5 @@ by hand only when you don't want to wait for the cron to fire - e.g. after editi
 - [Schedule releases](07-schedule-releases.md) - the same four fields, fired automatically.
 
 ---
-**Demo:** released into [`hertie-demo-f2026`](https://github.com/hertie-demo-f2026); site at
-`hertie-demo-f2026.github.io`.
+**Demo:** released into [`hertie-dsl-demo-f2026`](https://github.com/hertie-dsl-demo-f2026); site at
+`hertie-dsl-demo-f2026.github.io`.

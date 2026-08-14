@@ -26,7 +26,7 @@ with no manual removal step. Every reconcile here is FULL (add + remove) - a lap
 students.csv/teams.csv.
 
 Usage:
-    python3 -m dsl_course.sync_faculty --course-org hertie-demo-e1234
+    python3 -m dsl_course.sync_faculty --course-org hertie-dsl-demo-course-e1234
 """
 
 from __future__ import annotations

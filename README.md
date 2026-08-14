@@ -38,7 +38,7 @@ Two org tiers:
 
 ```mermaid
 flowchart TB
-  subgraph COURSE["COURSE org — e.g. hertie-demo-e1234 (persistent)"]
+  subgraph COURSE["COURSE org — e.g. hertie-dsl-demo-course-e1234 (persistent)"]
     mat["`**course-materials-f/s202X**
 
 lectures/01_.../ + readings/01_.../ + labs/01_.../
@@ -58,7 +58,7 @@ profile (auto)
 + cohort registry`"]
   end
 
-  subgraph COHORT["COHORT org — e.g. Deep-Learning-f/s202X (per-year)"]
+  subgraph COHORT["COHORT org — e.g. hertie-dsl-demo-f/s202X (per-year)"]
     cgh["`**.github**
 
 cohort config pointer + auto-generated student-facing org page`"]
@@ -118,8 +118,8 @@ Each cohort further gets an auto-deployed `<cohort>.github.io` site whose materi
 
 | Term | Meaning |
 |------|---------|
-| **Course org** | the persistent org for a course (e.g. `hertie-demo-e1234`): materials repos, assignment templates, the control panel. Lives across all years. |
-| **Cohort org** | one org per semester delivery (e.g. `hertie-demo-f2026`): roster, released materials, per-student repos, grades, the cohort website. Fresh each year. |
+| **Course org** | the persistent org for a course (e.g. `hertie-dsl-demo-course-e1234`): materials repos, assignment templates, the control panel. Lives across all years. |
+| **Cohort org** | one org per semester delivery (e.g. `hertie-dsl-demo-f2026`): roster, released materials, per-student repos, grades, the cohort website. Fresh each year. |
 | **Tag** | the `fYYYY`/`sYYYY` suffix naming a delivery (`f2026` = Fall 2026, s2027 = Summer 2027). Scopes the year's content repos and teams. |
 | **Control panel** | the course org's `.github` repo - its **Actions** tab holds every workflow button, for the course org and all its cohorts. Cohort orgs have no buttons of their own. |
 | **`course-admin` team** | the course's standing owners, declared once in the course org's `.github/dsl-course.yml` (`course_admins`), mirrored into every cohort. |

@@ -18,7 +18,7 @@ Live example: [`example-course/course-org/course-materials-f2026/`](../example-c
 
 1. **Scaffold the repo.** 
    - Course org → `.github` → **Actions** →
-   [New materials repo](https://github.com/hertie-demo-e1234/.github/actions/workflows/new-materials.yml); input `tag` = `f/sYYY` 
+   [New materials repo](https://github.com/hertie-dsl-demo-course-e1234/.github/actions/workflows/new-materials.yml); input `tag` = `f/sYYY` 
    - this creates **`course-materials-f2026`** - a private repo, pre-seeded with (edit as needed):
       - `lectures/01_session-1/`, 
       - `readings/01_session-1/`, 
@@ -58,4 +58,4 @@ Live example: [`example-course/course-org/course-materials-f2026/`](../example-c
 - [Release to a cohort](08-release-materials-to-cohort.md) - open sessions up to students by hand.
 
 ---
-**Demo:** [`hertie-demo-e1234`](https://github.com/hertie-demo-e1234) → New materials repo.
+**Demo:** [`hertie-dsl-demo-course-e1234`](https://github.com/hertie-dsl-demo-course-e1234) → New materials repo.

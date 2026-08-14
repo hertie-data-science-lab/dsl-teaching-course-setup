@@ -119,5 +119,5 @@ So a TA on f2026 can `git push` labs into the course org level `course-materials
 - Field-by-field schemas: [DEPLOYMENT-CHECKLIST](DEPLOYMENT-CHECKLIST.md#peopleyml).
 
 ---
-**Demo:** [`hertie-demo-f2026/classroom-config/people.yml`](https://github.com/hertie-demo-f2026/classroom-config/blob/main/people.yml)
-→ [`hertie-demo-e1234` teams](https://github.com/orgs/hertie-demo-e1234/teams).
+**Demo:** [`hertie-dsl-demo-f2026/classroom-config/people.yml`](https://github.com/hertie-dsl-demo-f2026/classroom-config/blob/main/people.yml)
+→ [`hertie-dsl-demo-course-e1234` teams](https://github.com/orgs/hertie-dsl-demo-course-e1234/teams).

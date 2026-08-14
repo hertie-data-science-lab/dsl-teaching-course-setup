@@ -10,7 +10,7 @@ You never edit what the site shows - you edit the file it reads, and it re-syncs
 |---|---|---|
 | Course  blurb under the title | course org `.github/dsl-course.yml` | `course_description` |
 | Course title + code | course org `.github/dsl-course.yml` | `course_name`, `course_code` - **not** `org_name` |
-| Semester + year | *nothing to set* | inferred from the cohort org's `fYYYY`/`sYYYY` tag (`hertie-demo-f2026` → "Fall 2026") |
+| Semester + year | *nothing to set* | inferred from the cohort org's `fYYYY`/`sYYYY` tag (`hertie-dsl-demo-f2026` → "Fall 2026") |
 | Instructor / TA cards | cohort `classroom-config/people.yml` ([05](05-manage-teaching-team.md)) | every field you declare displays, bar `github_handle`, `start`, `end` (access only); a card needs a `name` to appear at all |
 | Instructor photos | site repo `<cohort-org>.github.io` | commit the image under `_images/pp/`, then `photo: /_images/pp/jane.jpg`. Can also use a URL that allows hotlinking |
 | Schedule rows, exams, assignment due dates | cohort `classroom-config/schedule.yml` ([07](07-schedule-releases.md)) | `releases`, `events`, `exams`, `assignments` |
@@ -49,6 +49,6 @@ listed above are ever written.
 - Field-by-field schemas: [DEPLOYMENT-CHECKLIST](DEPLOYMENT-CHECKLIST.md#dsl-courseyml).
 
 ---
-**Demo:** [`hertie-demo-f2026.github.io`](https://hertie-demo-f2026.github.io/), fed by
-[`hertie-demo-e1234/.github/dsl-course.yml`](https://github.com/hertie-demo-e1234/.github/blob/main/dsl-course.yml)
-and [`hertie-demo-f2026/classroom-config`](https://github.com/hertie-demo-f2026/classroom-config).
+**Demo:** [`hertie-dsl-demo-f2026.github.io`](https://hertie-dsl-demo-f2026.github.io/), fed by
+[`hertie-dsl-demo-course-e1234/.github/dsl-course.yml`](https://github.com/hertie-dsl-demo-course-e1234/.github/blob/main/dsl-course.yml)
+and [`hertie-dsl-demo-f2026/classroom-config`](https://github.com/hertie-dsl-demo-f2026/classroom-config).

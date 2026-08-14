@@ -43,7 +43,7 @@ Live example: [`example-course/course-org/dsl-course.yml`](../example-course/cou
 - Bootstrap writes it; you can optionally edit it; edits here are propagated to the course orgs' `.github` (which is mostly a series of pointers to this file).
 
 ```yaml
-org: hertie-demo-e1234
+org: hertie-dsl-demo-course-e1234
 org_name: DSL Demo Course        # names the ORG - the websites never show it
 course_name: Deep Learning       # the cohort websites' title
 course_code: E1234               # shown beside it

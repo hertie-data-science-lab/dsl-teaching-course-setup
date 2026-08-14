@@ -13,8 +13,8 @@ With --cohort, instead tightens the org and seeds the student-facing welcome (on
 and classroom-config (roster) repos.
 
 Usage:
-    python3 -m dsl_course.bootstrap_course --org Hertie-School-Deep-Learning-E1394
-    python3 -m dsl_course.bootstrap_course --org Deep-Learning-f2026 --cohort
+    python3 -m dsl_course.bootstrap_course --org hertie-dsl-demo-course-e1234
+    python3 -m dsl_course.bootstrap_course --org hertie-dsl-demo-f2026 --cohort
 """
 
 from __future__ import annotations
