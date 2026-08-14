@@ -287,6 +287,10 @@ def test_both_release_buttons_take_exactly_a_deploy_entrys_fields(rendered):
     assert inp["cohort_dest_path"]["required"] is False
     assert "default" not in inp["cohort_dest_path"]
     assert "blank = mirrors" in inp["cohort_dest_path"]["description"]
+    # Labels are plain English: the schedule.yml mapping lives in the input NAMES (asserted
+    # above), so no description repeats its own key back at the reader.
+    for name in RELEASE_INPUTS:
+        assert name not in inp[name]["description"]
     # Multi-path is discoverable from the button itself, not just the docs.
     assert "comma-separated" in inp["course_source_path"]["description"]
     # Every box is numbered in the order it is filled in - GitHub renders dispatch inputs

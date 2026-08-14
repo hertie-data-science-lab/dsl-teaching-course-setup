@@ -118,12 +118,12 @@ def _choice_input(
 
 # The five Release materials inputs read top to bottom as the release itself: what to copy
 # (1, 2), then where it lands (3, 4, 5). They are numbered in the UI because GitHub renders
-# workflow_dispatch inputs as a flat list of boxes with no grouping. Names match a
-# schedule.yml `deploy:` entry's keys exactly, and are echoed in each description, so what
-# faculty learn on the button reads straight across into the schedule. course_source_path
-# and cohort_dest_path are comma-separated PARALLEL lists paired by index (see
-# deploy.parse_path_pairs); a blank cohort_dest_path mirrors every course_source_path,
-# exactly as an omitted `cohort_dest_path:` does in the schedule.
+# workflow_dispatch inputs as a flat list of boxes with no grouping. The input NAMES are
+# still a schedule.yml `deploy:` entry's keys exactly - the mapping is the key itself, not
+# the label, so the descriptions stay plain English rather than echoing the snake_case.
+# course_source_path and cohort_dest_path are comma-separated PARALLEL lists paired by
+# index (see deploy.parse_path_pairs); a blank cohort_dest_path mirrors every
+# course_source_path, exactly as an omitted `cohort_dest_path:` does in the schedule.
 #
 # Only cohort_dest_path is optional, and it ships EMPTY rather than pre-filled - a
 # `default:` on a free-text box is submitted verbatim, so pre-filling one reads as a value
@@ -131,21 +131,19 @@ def _choice_input(
 # `deploy:` may still omit it and take deploy's `materials` fallback): naming the repo a
 # release lands in is the one decision worth forcing, since a typo'd or defaulted target
 # quietly creates a second materials repo the cohort never sees.
-_COURSE_SOURCE_REPO_DESC = (
-    "1. repo to release from in the course org (course_source_repo)"
-)
+_COURSE_SOURCE_REPO_DESC = "1. repo to release from in the course org"
 
 _COURSE_SOURCE_PATH_INPUT = """\
       course_source_path:
-        description: "2. within-repo folder/file path, or comma-separated list (course_source_path)"
+        description: "2. within-repo folder/file path to copy from (or comma-separated list)"
         required: true"""
 
 _COHORT_DEST_INPUTS = """\
       cohort_dest_repo:
-        description: "4. repo to release to in the cohort org; created if missing (cohort_dest_repo)"
+        description: "4. repo to release to in the cohort org; created if missing"
         required: true
       cohort_dest_path:
-        description: "5. within-repo destination path; blank = mirrors course_source_path (cohort_dest_path)"
+        description: "5. within-repo destination path; blank = mirrors the source path"
         required: false"""
 
 
