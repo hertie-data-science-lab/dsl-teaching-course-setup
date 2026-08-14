@@ -122,6 +122,19 @@ def test_put_file_writes_with_the_fetched_sha_when_the_content_differs(monkeypat
     assert f"sha={_blob_sha(b'something else')}" in calls[1]
 
 
+def test_repo_is_archived_reads_the_flag_and_assumes_live_when_it_cannot(monkeypatch):
+    # This gates whether the nightly refresh skips a cohort, so the failure default is the
+    # whole point: an unreadable repo must read as LIVE. Guessing "archived" on a transient
+    # error would silently stop converging a running cohort with nothing in the log to say
+    # so; guessing "live" costs a loud 403 from the write itself, which is the right alarm.
+    monkeypatch.setattr(utils, "gh", lambda *a, **k: (0, "true\n"))
+    assert utils.repo_is_archived("Cohort-f2025", "classroom-config") is True
+    monkeypatch.setattr(utils, "gh", lambda *a, **k: (0, "false\n"))
+    assert utils.repo_is_archived("Cohort-f2026", "classroom-config") is False
+    monkeypatch.setattr(utils, "gh", lambda *a, **k: (1, "gh: HTTP 502 - bad gateway"))
+    assert utils.repo_is_archived("Cohort-f2026", "classroom-config") is False
+
+
 def test_get_file_content_returns_none_only_for_a_genuine_404(monkeypatch):
     # None is what every caller reads as "not configured yet" (an unseeded roster, an
     # empty cohort registry), so only a real 404 may produce it - a rate-limited or

@@ -46,7 +46,17 @@ from .discovery import (
     register_cohort,
 )
 from .profile_readme import update_profile_readme
-from .utils import delete_file, gh, log_err, log_ok, log_step, put_file
+from .roster import CONFIG_REPO
+from .utils import (
+    delete_file,
+    gh,
+    log,
+    log_err,
+    log_ok,
+    log_step,
+    put_file,
+    repo_is_archived,
+)
 from .welcome import refresh_classroom_samples, refresh_welcome_workflows
 from .workflows_render import (
     render_bootstrap_cohort,
@@ -231,8 +241,9 @@ def refresh(course_org: str) -> int:
     """Refresh both layers: the run-from-repo content actions in every content repo,
     AND the central org-level workflows in .github; repopulate dropdowns; rebuild the
     org profile README; re-push every registered cohort's welcome workflows and
-    classroom-config `*.sample` worked examples; and (Free-plan workaround) propagate the
-    token as a repo secret so private content repos can authenticate.
+    classroom-config `*.sample` worked examples (skipping cohorts whose repos are
+    archived); and (Free-plan workaround) propagate the token as a repo secret so private
+    content repos can authenticate.
 
     Non-zero if any file could not be written: this runs nightly on a cron, so a run that
     silently failed to converge an org would go unnoticed until someone clicked a button
@@ -258,6 +269,13 @@ def refresh(course_org: str) -> int:
         f"Refreshing welcome workflows + config samples in {len(cohorts)} cohort org(s)"
     )
     for cohort in cohorts:
+        # A finished semester's cohort is archived, and an archived repo is read-only:
+        # every write 403s, and the samples are new files so put_file's sha no-op can't
+        # absorb it. A past cohort is meant to stay frozen anyway, so skip it whole rather
+        # than turn the nightly cron red in every org that has ever finished a semester.
+        if repo_is_archived(cohort, CONFIG_REPO):
+            log(f"  [skip] {cohort} (archived cohort - left frozen)")
+            continue
         failures += refresh_welcome_workflows(cohort)
         failures += refresh_classroom_samples(cohort)
     if failures:
