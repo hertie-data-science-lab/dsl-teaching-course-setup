@@ -1,8 +1,6 @@
 # Manually release materials to a cohort
 
-> Releases materials from the course org (private, historical registry of course materials) -> cohort org (a single instance, available to students)
-
-Copy any path - a session folder, a dataset, a syllabus file, a code subpackage - from a course-org repo into a cohort repo.
+Deploy any path - a session folder, a dataset, a syllabus file, a code subpackage - from the staging course-org repo into a student-facing cohort repo.
 
 ## Prerequisites
 

@@ -403,7 +403,7 @@ central repo and fanned out by Bootstrap/Refresh - see
 Self-contained - workflows and their Python implementation both live in this repo.
 
 - `.github/workflows/` - `bootstrap-org` (the one central button) + `refresh-inventory`
-  (weekly cron regenerating `inventory/course-orgs.md`) + `ci`. The faculty workflows are
+  (weekly cron regenerating `bootstrapped-orgs-inventory.md`) + `ci`. The faculty workflows are
   *rendered* and seeded into the course/cohort orgs, not kept here.
 - `dsl_course/`:
   - `bootstrap_course` - configure a course or (`--cohort`) cohort org; create teams; grant
