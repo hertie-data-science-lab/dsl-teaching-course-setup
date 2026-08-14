@@ -103,12 +103,12 @@ def _gradebook() -> str:
 
 
 def _inventory_dump() -> str:
-    """`list_orgs --yaml`: a list of mappings, the shape flow style would show up in."""
+    """`list_orgs --yaml`: dict of course/cohort lists, the shape flow style would show up in."""
     return yaml.safe_dump(
-        [
-            {"org": "A", "url": "https://a", "cohorts": ["c1"]},
-            {"org": "B", "url": "https://b"},
-        ],
+        {
+            "course_orgs": [{"org": "A", "url": "https://a", "course_code": "E1"}],
+            "cohort_orgs": [{"org": "A-f2026", "course": "A", "url": "https://af"}],
+        },
         sort_keys=False,
     )
 

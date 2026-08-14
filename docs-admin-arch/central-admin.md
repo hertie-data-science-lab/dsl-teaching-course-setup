@@ -81,7 +81,7 @@ Entra app registration is pending.
 
 ## What orgs exist
 
-**[`inventory/course-orgs.md`](../inventory/course-orgs.md)** is the live list. It is
+**[`bootstrapped-orgs-inventory.md`](../bootstrapped-orgs-inventory.md)** is the live list. It is
 auto-generated **Mondays 06:00 UTC** (and on demand); when the list changed it opens a PR and
 merges it in the same run. Don't hand-edit it - a missing org means a failed or never-run
 bootstrap, not a forgotten edit.
