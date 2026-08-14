@@ -479,11 +479,15 @@ def test_assignment_type_parses_and_rejects_unknown_values():
             },
         }
     }
-    entries = parse(meta).assignments
+    sched = parse(meta)
+    entries = sched.assignments
     assert entries["assignment-4-project"].type == "group"
     assert entries["assignment-1"].type == "individual"  # case-normalised
     assert entries["assignment-2"].type is None
-    assert entries["typo"].type is None  # unknown value -> silently dropped
+    # unknown value still falls back to individual, but is now surfaced (a group
+    # assignment typo'd here would otherwise silently get one repo per student)
+    assert entries["typo"].type is None
+    assert any("assignments.typo.type" in d and "grp" in d for d in sched.dropped)
 
 
 def test_insert_handout_records_write_once():
@@ -849,6 +853,120 @@ def test_shipped_schedules_parse_with_nothing_dropped(path):
     sched, error = schedule.load_file(str(full))
     assert error is None, error
     assert sched.dropped == [], f"{path} drops entries:\n" + "\n".join(sched.dropped)
+
+
+# ------------------------------------- a block authored as a list (never-raise contract)
+# `parse` iterates `.items()` over each block; a block written as a YAML LIST or scalar (a
+# common mistake - `deploy:` right below IS a list) would raise `AttributeError` and break
+# `load`'s promise never to raise, freezing the hourly scheduler AND the site sync.
+
+
+def test_a_block_authored_as_a_list_is_dropped_not_raised():
+    for block, empty in (("releases", []), ("assignments", {}), ("events", [])):
+        sched = parse({block: [{"event_datetime": "2026-09-01"}]})
+        assert getattr(sched, block) == empty
+        assert any(d.startswith(f"{block}:") for d in sched.dropped)
+
+
+def test_load_never_raises_when_a_block_is_a_list(monkeypatch, capsys):
+    from dsl_course import schedule as S
+
+    monkeypatch.setattr(
+        S,
+        "get_file_content",
+        lambda org, repo, path: "releases:\n  - event_datetime: 2026-09-01\n",
+    )
+    sched = S.load("Cohort-f2026")  # must not raise
+    assert sched.releases == []
+    assert "DROPPED" in capsys.readouterr().err
+
+
+# ------------------------------------------------- unknown/typo'd keys at every level
+# A typo'd or legacy key is silently ignored, so a file validates while meaning something
+# other than what faculty wrote. Flagged (but the entry itself is kept when it can parse).
+
+
+def test_an_unknown_top_level_key_is_reported_not_silently_zero_releases():
+    # The Maths-f2026 incident: a whole plan under `materials_releases:` validated as
+    # "OK: nothing dropped" with zero releases.
+    sched = parse({"materials_releases": {"lab-1": {"event_datetime": "2026-09-01"}}})
+    assert sched.releases == []
+    assert len(sched.dropped) == 1
+    assert sched.dropped[0].startswith("materials_releases:")
+    assert "unrecognised key" in sched.dropped[0]
+
+
+def test_a_typod_field_within_an_entry_is_reported_but_the_entry_survives():
+    sched = parse(
+        {
+            "releases": {
+                "s": {
+                    "event_datetime": "2026-09-01",
+                    "deploy": [
+                        {
+                            "course_source_repo": "cm",
+                            "course_source_path": "l/01",
+                            "dest_repo": "materials",  # legacy key, silently ignored
+                        }
+                    ],
+                }
+            },
+            "assignments": {
+                "a1": {
+                    "course_source_repo": "a-f2026",
+                    "due_datetime": "2026-10-13",
+                    "grading_dateime": "2026-10-15",  # typo, grading silently falls back
+                }
+            },
+        }
+    )
+    # the entries still parse - one stray key never poisons the whole entry
+    assert len(sched.releases) == 1 and len(sched.releases[0].deploy) == 1
+    assert list(sched.assignments) == ["a1"]
+    where = {d.split(":")[0] for d in sched.dropped}
+    assert "releases.s.deploy[0].dest_repo" in where
+    assert "assignments.a1.grading_dateime" in where
+
+
+def test_schedule_and_utils_share_one_date_coercion():
+    # The two implementations must not drift: schedule re-exports the canonical one.
+    from dsl_course import utils
+
+    assert schedule._coerce_date is utils.coerce_date
+
+
+# ------------------------------------------------ _insert_handout indentation robustness
+
+
+def test_insert_handout_finds_a_deeper_indented_entry_and_keeps_its_due_datetime():
+    import yaml
+
+    from dsl_course.schedule import _insert_handout
+
+    # A 4-space-nested file: the old code matched only `  slug:` (2 spaces), missed this
+    # entry, and fabricated a fake 2-space one that swallowed the real entry - dropping its
+    # due_datetime for good (write-once meant it was never repaired).
+    base = (
+        "assignments:\n"
+        "    assignment-1:\n"
+        "        course_source_repo: a-f2026\n"
+        "        due_datetime: 2026-10-13\n"
+    )
+    out = _insert_handout(base, "assignment-1", "2026-09-22T14:05")
+    assert out.count("assignment-1:") == 1  # the real entry, not a fabricated duplicate
+    assert "handout_datetime: 2026-09-22T14:05" in out
+    entry = parse(yaml.safe_load(out)).assignments["assignment-1"]
+    assert entry.due_datetime.isoformat().startswith("2026-10-13")  # survives the edit
+    assert entry.handout_datetime.isoformat().startswith("2026-09-22T14:05")
+
+
+def test_insert_handout_leaves_an_unrecognisable_flow_block_untouched():
+    from dsl_course.schedule import _insert_handout
+
+    # A flow-style `assignments: {...}` can't take a line insertion - leave it untouched
+    # rather than fabricate a duplicate key.
+    flow = "assignments: {assignment-1: {due_datetime: 2026-10-13}}\n"
+    assert _insert_handout(flow, "assignment-1", "2026-09-22T14:05") is None
 
 
 def test_validate_cli_reports_an_unreadable_cohort_schedule(monkeypatch, capsys):

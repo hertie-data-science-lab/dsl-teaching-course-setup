@@ -476,3 +476,44 @@ def test_validate_schedule_workflow_is_seeded_with_the_central_repo_pinned():
     # the run must end red so the commit is marked, and needs issues:write to escalate
     assert doc["permissions"]["issues"] == "write"
     assert any("exit 1" in s.get("run", "") for s in steps)
+
+
+# -------------------------------------- update_profile_readme guards its config load
+# A malformed dsl-course.yml used to raise a bare yaml traceback from mid-refresh (after
+# workflows were pushed, before the welcome/sample refresh), half-converging the nightly
+# run. It now loads through utils.load_yaml_config: absent -> fall back to the org name;
+# malformed/non-mapping -> raise with a clear, logged message.
+
+
+def test_update_profile_readme_absent_config_falls_back_without_crashing(monkeypatch):
+    from dsl_course import profile_readme as P
+
+    monkeypatch.setattr("dsl_course.utils.get_file_content", lambda *a, **k: None)
+    monkeypatch.setattr(
+        P,
+        "list_org_repos",
+        lambda org: [
+            {"name": "welcome", "url": "u", "visibility": "private", "description": ""}
+        ],
+    )
+    monkeypatch.setattr(P, "discover_cohorts", lambda org: [])
+    writes = []
+    monkeypatch.setattr(P, "put_file", lambda *a, **k: writes.append(a) or True)
+    monkeypatch.setattr(P, "log_ok", lambda *a, **k: None)
+
+    P.update_profile_readme("Cohort-f2026")  # must not raise
+    assert len(writes) == 2  # both READMEs written, using the org name as the fallback
+
+
+def test_update_profile_readme_raises_clearly_on_a_malformed_config(
+    monkeypatch, capsys
+):
+    from dsl_course import profile_readme as P
+
+    monkeypatch.setattr(
+        "dsl_course.utils.get_file_content",
+        lambda *a, **k: "course_name: [unclosed\n",
+    )
+    with pytest.raises(yaml.YAMLError):
+        P.update_profile_readme("Course-Org")
+    assert "malformed YAML" in capsys.readouterr().err

@@ -9,7 +9,7 @@ import re
 import subprocess
 import sys
 from collections.abc import Iterable
-from datetime import date
+from datetime import date, datetime
 from functools import cache, lru_cache
 from pathlib import Path
 from typing import Any
@@ -385,26 +385,34 @@ def reconcile_team_members(
     return errors
 
 
-def _as_iso_date(value: str | date | None) -> str | None:
-    """Coerce a date bound to a `YYYY-MM-DD` string. An unquoted `start: 2026-09-01` in
-    YAML parses to a `datetime.date` (or `datetime`), not a string, so comparing it against
-    an ISO string raises `TypeError: str < date`; normalise both sides first."""
-    if value is None:
-        return None
+def coerce_date(value: object) -> date | None:
+    """A YAML date/datetime or an ISO `YYYY-MM-DD` string -> a `date` (None if unparseable).
+    Date-level only (whole-day). The single canonical date coercion: `active_today` here and
+    `schedule._coerce_date` both use it, so the two can never drift. An unquoted
+    `start: 2026-09-01` in YAML parses to a `datetime.date` (or `datetime`), not a string;
+    a quoted one is a string - both land on the same `date`."""
+    if isinstance(value, datetime):
+        return value.date()
     if isinstance(value, date):  # date and its datetime subclass both land here
-        return value.isoformat()[:10]
-    return str(value)[:10]
+        return value
+    if isinstance(value, str):
+        try:
+            return date.fromisoformat(value.strip()[:10])
+        except ValueError:
+            return None
+    return None
 
 
 def active_today(start: str | date | None, end: str | date | None, today: str) -> bool:
     """Whether `today` (ISO date string) falls within [start, end], either bound optional
     (open-ended if omitted). Bounds may be ISO strings or `datetime.date` objects (an
-    unquoted YAML date), coerced to strings before comparison."""
-    start_iso = _as_iso_date(start)
-    end_iso = _as_iso_date(end)
-    if start_iso and today < start_iso:
+    unquoted YAML date); an unparseable bound is treated as absent (open-ended on that side)."""
+    today_d = coerce_date(today)
+    start_d = coerce_date(start)
+    end_d = coerce_date(end)
+    if start_d and today_d and today_d < start_d:
         return False
-    if end_iso and today > end_iso:  # noqa: SIM103 - explicit guards mirror the docstring
+    if end_d and today_d and today_d > end_d:  # noqa: SIM103 - guards mirror the docstring
         return False
     return True
 

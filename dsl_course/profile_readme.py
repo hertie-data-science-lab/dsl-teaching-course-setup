@@ -14,11 +14,9 @@ update_profile_readme is the one function that touches the network.
 
 from __future__ import annotations
 
-import yaml
-
 from .central import CENTRAL, CENTRAL_REF
 from .discovery import discover_cohorts, list_org_repos
-from .utils import get_file_content, log_ok, put_file
+from .utils import load_yaml_config, log_ok, put_file
 
 # Per-org identity/people/schedule config, lives at the root of each org's `.github` repo.
 COURSE_CONFIG = "dsl-course.yml"
@@ -288,10 +286,11 @@ def update_profile_readme(
     A cohort org (one with a `welcome` repo) gets a student-facing page; a course org
     gets the faculty-facing one."""
     if org_name is None or course_name is None:
-        cfg = {}
-        content = get_file_content(org, ".github", COURSE_CONFIG)
-        if content:
-            cfg = yaml.safe_load(content) or {}
+        # Guarded load: absent (None) is normal - a cohort org has no dsl-course.yml of its
+        # own, so fall back to the org name. A MALFORMED config raises here (with a clear,
+        # logged message) rather than the bare `yaml.safe_load` traceback that used to
+        # surface from mid-refresh - a non-mapping is likewise refused, not coerced to {}.
+        cfg = load_yaml_config(org, ".github", COURSE_CONFIG) or {}
         org_name = org_name or cfg.get("org_name") or org
         course_name = course_name or cfg.get("course_name") or org_name
     repos = list_org_repos(org)
