@@ -22,11 +22,12 @@ from dsl_course import (
 GITHUB_MAX_DISPATCH_INPUTS = 10
 
 # The five inputs of a Release materials button, in the order they must appear: exactly a
-# schedule.yml `deploy:` entry's fields, plus the cohort org.
+# schedule.yml `deploy:` entry's fields, plus the cohort org - ordered source-then-target
+# (what to copy, then where it lands) and numbered 1-5 in their descriptions to match.
 RELEASE_INPUTS = [
-    "cohort_org",
     "course_source_repo",
     "course_source_path",
+    "cohort_org",
     "cohort_dest_repo",
     "cohort_dest_path",
 ]
@@ -214,9 +215,11 @@ def test_dotgithub_readme_orients_faculty():
 @pytest.mark.parametrize(
     "rendered",
     [
-        workflows_render.render_release(["Cohort-f2026"], "course-materials-f2026"),
+        workflows_render.render_release(
+            ["Cohort-f2025", "Cohort-f2026"], "course-materials-f2026"
+        ),
         workflows_render.render_central_release(
-            ["course-materials-f2026"], ["Cohort-f2026"]
+            ["course-materials-f2026"], ["Cohort-f2025", "Cohort-f2026"]
         ),
     ],
     ids=["run-from-repo", "central"],
@@ -239,6 +242,14 @@ def test_both_release_buttons_take_exactly_a_deploy_entrys_fields(rendered):
     assert inp["cohort_dest_path"]["required"] is False
     # Multi-path is discoverable from the button itself, not just the docs.
     assert "comma-separated" in inp["course_source_path"]["description"]
+    # GitHub has no placeholder attribute, so each free-text box carries a worked example
+    # in its description instead - and every box is numbered in the order it is filled in.
+    for n, name in enumerate(RELEASE_INPUTS, start=1):
+        assert inp[name]["description"].startswith(f"{n}. ")
+    for name in ("course_source_path", "cohort_dest_repo", "cohort_dest_path"):
+        assert " - e.g. " in inp[name]["description"]
+    # The cohort dropdown pre-selects the latest cohort, not the alphabetically first.
+    assert inp["cohort_org"]["default"] == "Cohort-f2026"
     # Gone with the section machinery: no per-section checkboxes, no session list, no
     # root-files toggle, no cohort_repo dropdown.
     for retired in (
@@ -286,18 +297,39 @@ def test_run_from_repo_button_prefills_course_source_repo_with_its_own_repo():
 
 def test_central_button_offers_the_orgs_content_repos_as_the_source_dropdown():
     # Centrally there is no "own" repo to pre-fill, so course_source_repo is the discovered
-    # dropdown (refreshed by Refresh actions).
+    # dropdown (refreshed by Refresh actions), listed alphabetically but pre-selected on
+    # the latest term year - the repo faculty are teaching from now.
     inp = workflow_inputs(
         workflows_render.render_central_release(
-            ["course-materials-f2026", "lecture-code"], ["Cohort-f2026"]
+            ["course-materials-f2025", "course-materials-f2026", "lecture-code"],
+            ["Cohort-f2026"],
         )
     )
     assert inp["course_source_repo"]["type"] == "choice"
     assert inp["course_source_repo"]["options"] == [
+        "course-materials-f2025",
         "course-materials-f2026",
         "lecture-code",
     ]
+    assert inp["course_source_repo"]["default"] == "course-materials-f2026"
+
+
+def test_undated_dropdown_options_leave_the_default_to_github():
+    # A course org whose repos carry no term year has no "latest" to pre-select; emitting
+    # a `default:` that is not one of the options would break the workflow outright, so
+    # the dropdown ships bare and GitHub selects the first option.
+    inp = workflow_inputs(
+        workflows_render.render_central_release(
+            ["lecture-code", "slides"], ["Cohort-A"]
+        )
+    )
     assert "default" not in inp["course_source_repo"]
+    assert "default" not in inp["cohort_org"]
+    # An org code that merely ends in four digits is not a year (GRAD-E1234 != 1234 AD).
+    inp = workflow_inputs(
+        workflows_render.render_central_release(["mat-e1234"], ["Cohort-e1234"])
+    )
+    assert "default" not in inp["cohort_org"]
 
 
 def test_content_repos_get_both_buttons_and_lose_the_retired_one(monkeypatch):
