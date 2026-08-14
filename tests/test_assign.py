@@ -201,3 +201,125 @@ def test_a_group_repo_reports_the_teams_own_failures(_provisioned, monkeypatch):
         team="assignment-1-wizards",
     )
     assert status == "skipped"
+
+
+# ------------------------------------- group provisioning honours the roster allowlist
+
+
+def test_group_provisioning_filters_teams_csv_through_the_roster_allowlist(
+    tmp_path, capsys, monkeypatch
+):
+    # teams.csv is student-writable (the welcome "Join team" issue appends rows). A handle
+    # not on the roster - a typo, or a stranger's login - must be excluded, never invited
+    # into the private org with maintain on a repo. An auditor's handle is excluded too.
+    monkeypatch.setattr(
+        "dsl_course.collect.assignment_is_group", lambda org, cohort, template: True
+    )
+    monkeypatch.setattr(assign.teams, "load", lambda cohort_org: {"unused": {}})
+    monkeypatch.setattr(
+        assign.teams,
+        "teams_for",
+        lambda rows, slug: {"team-1": ["ada-l", "stranger-x", "Eve-E"]},
+    )
+    path = _roster_file(
+        tmp_path,
+        "1,ada@uni.edu,Ada,ada-l,42,A,dsl-abc,enrolled",
+        "2,eve@uni.edu,Eve,eve-e,43,A,dsl-xyz,auditor",  # an auditor, not a team member
+    )
+    rc = assign.provision_all(
+        "COURSE", "assignment-4-project-f2026", "COHORT", roster_path=path, dry_run=True
+    )
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert "@ada-l" in captured.out  # the one valid, enrolled, onboarded handle
+    assert "stranger-x" not in captured.out  # never provisioned
+    assert "eve-e" not in captured.out  # the auditor's handle is not a team member
+    assert "stranger-x" in captured.err and "Eve-E" in captured.err  # both warned
+
+
+# ------------------------------------------------ half-created cohort template healing
+
+
+def test_ensure_cohort_template_repairs_a_half_created_template(monkeypatch):
+    # A prior run left the repo existing but never set is_template (a _wait_for_content
+    # timeout). The exists-path must still verify content and re-PATCH is_template
+    # (idempotent), healing it instead of failing every later handout with "not a template".
+    monkeypatch.setattr(assign, "repo_exists", lambda org, name: True)
+    monkeypatch.setattr(assign, "_wait_for_content", lambda org, name: True)
+    monkeypatch.setattr(assign, "set_repo_topics", lambda *a, **k: True)
+    calls: list[tuple[str, ...]] = []
+
+    def fake_gh(*args, **kwargs):
+        calls.append(args)
+        return (0, "")
+
+    monkeypatch.setattr(assign, "gh", fake_gh)
+    assert (
+        assign.ensure_cohort_template(
+            "COURSE", "assignment-1-f2026", "COHORT", "assignment-1"
+        )
+        == "assignment-1"
+    )
+    assert any("PATCH" in a for a in calls) and any(
+        "is_template=true" in a for a in calls
+    )
+
+
+def test_ensure_cohort_template_fails_loudly_when_is_template_patch_fails(monkeypatch):
+    # The is_template PATCH result was discarded; now a failed PATCH returns None so the run
+    # goes red rather than fanning out from a repo that isn't actually a template.
+    monkeypatch.setattr(assign, "repo_exists", lambda org, name: True)
+    monkeypatch.setattr(assign, "_wait_for_content", lambda org, name: True)
+    monkeypatch.setattr(assign, "gh", lambda *a, **k: (1, "403 Forbidden"))
+    assert (
+        assign.ensure_cohort_template(
+            "COURSE", "assignment-1-f2026", "COHORT", "assignment-1"
+        )
+        is None
+    )
+
+
+# ----------------------------------- handout recorded under the schedule key + site guard
+
+
+def test_provision_all_records_handout_under_schedule_key_and_survives_site_failure(
+    tmp_path, monkeypatch
+):
+    # record_handout keys on the schedule KEY; with a cohort_dest_repo set, the cohort-side
+    # name differs, and passing the name appended a bogus block. And site.sync_site now RAISES
+    # on a genuine read failure - one such failure must be logged + counted, never a traceback
+    # that misreports the whole handout.
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from dsl_course.schedule import AssignmentEntry, Schedule
+
+    entry = AssignmentEntry(
+        course_source_repo="assignment-4-project-f2026",
+        cohort_dest_repo="group-project",
+        due_datetime=datetime(2026, 11, 15, tzinfo=ZoneInfo("Europe/Berlin")),
+    )
+    monkeypatch.setattr(
+        "dsl_course.schedule.load",
+        lambda org: Schedule(assignments={"project": entry}),
+    )
+    captured: dict[str, str] = {}
+    monkeypatch.setattr(
+        "dsl_course.schedule.record_handout",
+        lambda org, slug, *a: captured.__setitem__("key", slug),
+    )
+    monkeypatch.setattr(assign, "ensure_cohort_template", lambda *a: "group-project")
+    monkeypatch.setattr(assign, "provision_one", lambda *a, **k: "ok")
+
+    from dsl_course import site
+
+    def boom_site(*a, **k):
+        raise RuntimeError("tree read failed")
+
+    monkeypatch.setattr(site, "sync_site", boom_site)
+    path = _roster_file(tmp_path, "1,ada@uni.edu,Ada,ada-l,42,A,dsl-abc,enrolled")
+    rc = assign.provision_all(
+        "COURSE", "assignment-4-project-f2026", "COHORT", roster_path=path, group=False
+    )
+    assert captured["key"] == "project"  # the schedule key, not "group-project"
+    assert rc == 1  # the site failure was counted, not raised as a traceback

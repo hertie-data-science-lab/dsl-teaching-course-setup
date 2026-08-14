@@ -96,3 +96,38 @@ def test_a_failed_graph_token_is_not_reported_as_nothing_to_send(monkeypatch):
     cfg = mailer.GraphConfig("t", "c", "s", "bot@x.edu")
     with pytest.raises(RuntimeError, match="token request failed"):
         mailer._send_via_graph(cfg, [("a@x.edu", "Subj", "Body")])
+
+
+# --------------------------------- writing codes must not rewrite the roster (fix 17)
+
+
+def test_fill_enrol_codes_preserves_unknown_columns_and_raw_role():
+    # The old round-trip through roster.dump re-serialised only roster.FIELDS, dropping a
+    # faculty-added `notes` column and normalising `role`. A surgical cell edit must leave
+    # every other column and each cell's raw text exactly as written.
+    import csv
+    import io
+
+    text = (
+        "student_id,hertie_email,name,github_handle,github_id,section,enrol_code,role,notes\n"
+        "1,ada@uni.edu,Ada,ada-l,42,A,,audit,keen\n"
+        "2,bob@uni.edu,Bob,bob-b,43,B,dsl-keep,enrolled,\n"
+    )
+    out = enrol_codes.fill_enrol_codes_in_csv(text, {0: "dsl-new"})
+    rows = list(csv.DictReader(io.StringIO(out)))
+    assert rows[0]["enrol_code"] == "dsl-new"  # the blank cell is filled
+    assert rows[0]["role"] == "audit"  # raw text, NOT normalised to enrolled/auditor
+    assert rows[0]["notes"] == "keen"  # the unknown column survives
+    assert rows[1]["enrol_code"] == "dsl-keep"  # an existing code is never overwritten
+    assert "notes" in out.splitlines()[0]  # header keeps the extra column
+
+
+def test_fill_enrol_codes_appends_the_column_when_the_roster_predates_it():
+    import csv
+    import io
+
+    text = "student_id,name,github_handle\n1,Ada,ada-l\n"
+    out = enrol_codes.fill_enrol_codes_in_csv(text, {0: "dsl-new"})
+    rows = list(csv.DictReader(io.StringIO(out)))
+    assert rows[0]["enrol_code"] == "dsl-new"
+    assert out.splitlines()[0].endswith("enrol_code")  # added at the end

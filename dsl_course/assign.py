@@ -88,8 +88,7 @@ def ensure_cohort_template(
     template name, or None on failure. Idempotent."""
     if repo_exists(cohort_org, slug):
         log_skip(f"cohort template {cohort_org}/{slug}")
-        return slug
-    if not generate_from_template(
+    elif not generate_from_template(
         template_org=master_org,
         template_name=template,
         owner=cohort_org,
@@ -98,16 +97,22 @@ def ensure_cohort_template(
         description=f"{slug} - cohort assignment template",
     ):
         return None
-    log_ok(f"created cohort template {cohort_org}/{slug}")
-    # template-generate is async; wait for the new template to populate before per-student
-    # repos generate FROM it, else the first one fails with "<slug> is empty".
+    else:
+        log_ok(f"created cohort template {cohort_org}/{slug}")
+    # Whether just created OR pre-existing, ENSURE it is both populated and flagged as a
+    # template - not only on the create path. A prior run that timed out in
+    # `_wait_for_content` left the repo existing but with `is_template` never set; the old
+    # exists-short-circuit then returned the slug without re-checking, so every later handout
+    # failed with a misleading "<slug> is not a template" error. Both steps are idempotent,
+    # so a retry HEALS a half-created template rather than being wedged by it. For a healthy
+    # template `_wait_for_content` returns on its first poll, so the cost is one API call.
     if not _wait_for_content(cohort_org, slug):
         log_err(
             f"  ! cohort template {cohort_org}/{slug} did not populate in time "
             f"(template-generate is async) - re-run the release"
         )
         return None
-    gh(
+    code, out = gh(
         "api",
         "--method",
         "PATCH",
@@ -115,6 +120,12 @@ def ensure_cohort_template(
         "-F",
         "is_template=true",
     )
+    if code != 0:
+        log_err(
+            f"  ! could not set is_template on {cohort_org}/{slug} - per-student repos "
+            f"generate FROM it, so this must succeed: {out[:160]}"
+        )
+        return None
     set_repo_topics(cohort_org, slug, [slug, "assignment-template"])
     return slug
 
@@ -219,6 +230,12 @@ def provision_one(
             return "failed-team-members"
         return "skipped" if existed else "ok"
 
+    # Ordering hazard (individual path): granting a repo collaborator BEFORE the student has
+    # accepted their org invite records them as an OUTSIDE collaborator, which can make a
+    # later team-based add 422 forever. The individual flow is collaborator-based by design
+    # (see the module docstring - groups are the team-based path), and onboarding normally
+    # accepts the org invite first, so this stays a direct grant; the group path already
+    # routes access through the team to avoid the wedge.
     added = 0
     for handle in handles:
         if add_collaborator(cohort_org, repo, handle, permission="maintain"):
@@ -339,10 +356,28 @@ def provision_all(
                 f"students self-select via the welcome 'Join team' issue, or seed the CSV."
             )
             return 1
-        units = [
-            (f"{slug}-{team}", members, sync_teams.team_slug(slug, team))
-            for team, members in sorted(groups.items())
-        ]
+        # teams.csv is student-writable (the welcome "Join team" issue appends rows), so its
+        # handles must pass the SAME roster allowlist sync_teams applies: only enrolled,
+        # onboarded roster handles - never a typo or a stranger's login that would be INVITED
+        # into the private cohort org (and granted `maintain` on a repo) by ensure_team.
+        # Compared casefold (GitHub logins are case-insensitive); the roster's casing wins.
+        allowed_by_fold = {
+            h.casefold(): h for h in sync_teams.known_handles(participants)
+        }
+        units = []
+        for team, members in sorted(groups.items()):
+            vetted: list[str] = []
+            for m in members:
+                canonical = allowed_by_fold.get(m.casefold())
+                if canonical is None:
+                    log_err(
+                        f"{m} in teams.csv ({slug}/{team}) is not an enrolled, onboarded "
+                        f"roster handle - excluding it (would invite an arbitrary account "
+                        f"into {cohort_org})"
+                    )
+                else:
+                    vetted.append(canonical)
+            units.append((f"{slug}-{team}", vetted, sync_teams.team_slug(slug, team)))
         what = f"{len(units)} team(s)"
     else:
         units = [
@@ -402,14 +437,28 @@ def provision_all(
     # Record the handout moment back into the cohort's schedule.yml (write-once - a
     # handout the schedule already carries is never touched). The schedule is the primary
     # route AND the one record of when each assignment went out; a manual button click
-    # fills the field the dispatcher didn't.
+    # fills the field the dispatcher didn't. record_handout keys on the schedule KEY, not the
+    # cohort-side name: when `cohort_dest_repo` is set the two differ, and passing the name
+    # made it miss the real entry and append a bogus duplicate block (dropping its due date).
     from . import schedule
 
-    schedule.record_handout(cohort_org, slug)
+    schedule.record_handout(cohort_org, found[0] if found else slug)
     from . import site
 
-    site.sync_site(master_org, cohort_org)
-    return 1 if any(k.startswith("failed") for k in results) else 0
+    # site.sync_site now RAISES on a genuine tree/team read failure (post-PR2). The repos are
+    # already handed out by this point, so one site-sync failure must not abort the run with a
+    # traceback and misreport the whole handout as failed: log it, count it (so the run goes
+    # red and the next Sync site / tick refreshes the site), and return normally.
+    site_failed = False
+    try:
+        site.sync_site(master_org, cohort_org)
+    except RuntimeError as exc:
+        log_err(
+            f"site sync failed after provisioning {slug} - the repos are handed out; the "
+            f"site refreshes on the next Sync site or scheduler tick: {exc}"
+        )
+        site_failed = True
+    return 1 if site_failed or any(k.startswith("failed") for k in results) else 0
 
 
 if __name__ == "__main__":

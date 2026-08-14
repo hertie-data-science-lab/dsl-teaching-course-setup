@@ -51,6 +51,22 @@ there means nothing was pushed by the deadline, and that scores zero.
 
 Nothing is written to any student repo. Auditors are never graded.
 
+### What autograde guarantees
+
+- **The graded commit is the frozen one.** Grading pins to the snapshot sha, never to a
+  client-supplied commit date. A late push, a backdated commit, or a force-push that rewrites
+  history after the deadline cannot move the pin: if the frozen commit can't be recovered, the
+  target scores zero rather than grading the rewritten history.
+- **Student-committed files can't rig the score.** The hidden tests run in a sandbox outside
+  the checkout; a committed `report.xml`, `conftest.py`, `pytest.ini`, `sitecustomize.py`, or a
+  module shadowing a standard-library name cannot change which tests run or the score they
+  produce. The bot credential is removed from the checkout before any submission code runs.
+- **A failed run is safe to retry.** The fire-once marker is written only after every score is
+  recorded and every repo was read. If a run is interrupted, or any submission repo can't be
+  read, no marker is written and the next tick re-grades - already-recorded scores are left
+  untouched (write-once). A snapshot is likewise never frozen while every target repo is still
+  empty or absent, so a not-yet-provisioned assignment isn't locked in as "nobody submitted".
+
 ## 2. Add your marks (on top of / instead of autograde)
 
 Live example: [`example-course/cohort-org/grades/assignment-1.csv`](../example-course/cohort-org/grades/assignment-1.csv).

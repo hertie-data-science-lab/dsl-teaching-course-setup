@@ -164,12 +164,35 @@ def test_pin_commit_blank_snapshot_is_a_recorded_non_submission(monkeypatch):
     assert calls == []
 
 
-def test_pin_commit_falls_back_when_the_snapshot_sha_is_gone(monkeypatch):
-    # History rewritten since the snapshot: warn, then pin on dates rather than crash.
+def test_pin_commit_fails_when_the_snapshot_sha_is_gone_after_a_rewrite(monkeypatch):
+    # A force-push after the deadline rewrote history and the pinned commit can't be
+    # fetched back. Falling back to the committer-date pin here would grade the rewritten
+    # history - turning a detected tamper into a successful one. So the target FAILS (None),
+    # a recovery fetch is attempted, and the client-datable rev-list is never consulted.
     fake_git, calls = _git_stub(rev_list_sha=OTHER_SHA, sha_in_clone=False)
     monkeypatch.setattr(collect, "git", fake_git)
-    assert collect._pin_commit(Path("/repo"), "2026-10-15T23:59", SHA) == OTHER_SHA
-    assert any("rev-list" in c for c in calls)
+    assert collect._pin_commit(Path("/repo"), "2026-10-15T23:59", SHA) is None
+    assert any("fetch" in c for c in calls)  # tried to recover the frozen commit
+    assert not any("rev-list" in c for c in calls)  # never the date fallback
+
+
+def test_pin_commit_recovers_the_snapshot_sha_via_fetch(monkeypatch):
+    # A rewrite orphans the pinned commit but it survives server-side until GC; fetching it
+    # by sha lets us grade exactly what was frozen, not the rewritten history.
+    seen = {"cat_file": 0}
+    calls: list[tuple[str, ...]] = []
+
+    def fake_git(*args, **kwargs):
+        calls.append(args)
+        if "cat-file" in args:
+            seen["cat_file"] += 1
+            return (1, "") if seen["cat_file"] == 1 else (0, "")  # gone, then fetched
+        return (0, "")
+
+    monkeypatch.setattr(collect, "git", fake_git)
+    assert collect._pin_commit(Path("/repo"), "2026-10-15T23:59", SHA) == SHA
+    assert any("fetch" in c and SHA in c for c in calls)
+    assert any("checkout" in c and SHA in c for c in calls)
 
 
 def test_pin_commit_without_a_snapshot_uses_the_date_pin(monkeypatch):
@@ -340,6 +363,9 @@ def test_snapshot_sha_asks_the_api_for_one_commit_before_a_utc_cutoff(monkeypatc
 def _stub_snapshot_write(monkeypatch, shas: dict[str, str | None], existing=None):
     """Wire snapshot_assignment onto stubs; returns the (path, text) writes it makes."""
     written: list[tuple[str, str]] = []
+    # snapshot_assignment resolves is_group from the cohort schedule when the caller leaves
+    # it None; stub the load so these tests stay network-free (and default to individual).
+    monkeypatch.setattr(collect.schedule, "load", lambda org: Schedule())
     monkeypatch.setattr(collect, "load_snapshots", lambda org, slug: existing)
     monkeypatch.setattr(
         collect,
@@ -413,6 +439,7 @@ def test_snapshot_assignment_with_no_targets_yet_writes_nothing_and_is_not_an_er
     def boom(*args, **kwargs):
         raise AssertionError("an empty snapshot must never be frozen")
 
+    monkeypatch.setattr(collect.schedule, "load", lambda org: Schedule())
     monkeypatch.setattr(collect, "load_snapshots", lambda org, slug: None)
     monkeypatch.setattr(collect, "submission_targets", lambda *a, **k: [])
     monkeypatch.setattr(collect, "put_file", boom)
@@ -499,9 +526,10 @@ def test_collect_passes_each_repos_own_snapshot_entry_to_grading(monkeypatch):
     assert collect.collect("Course", "assignment-1-f2026", "Cohort") == 0
     assert seen["assignment-1-anna"] == SHA
     assert seen["assignment-1-ben"] == ""  # recorded non-submission, graded as such
-    assert (
-        seen["assignment-1-cara"] is None
-    )  # absent from the snapshot -> date fallback
+    # cara is ABSENT from the snapshot (a repo present at grading but not in the freeze).
+    # That must NOT silently drop to the student-controlled committer-date pin - it is scored
+    # zero, so _grade_target is never called for it.
+    assert "assignment-1-cara" not in seen
 
 
 def test_collect_without_a_snapshot_grades_on_dates_and_says_so(monkeypatch, capsys):
@@ -607,7 +635,9 @@ def test_collect_with_every_repo_unreadable_fails_and_records_nothing(
     # afternoon. Recording a permanent "not machine-graded" on the strength of an outage
     # would lose the scores for good, so the run goes red with nothing written and the
     # next hourly tick retries. This is the one empty case that is NOT a skip.
-    _stub_collect(monkeypatch, {"assignment-1-anna": SHA})
+    _stub_collect(
+        monkeypatch, None
+    )  # no snapshot: every repo goes through the clone path
     monkeypatch.setattr(collect, "_grade_target", lambda *a, **k: None)
     written = _captured_writes(monkeypatch)
     assert collect.collect("Course", "assignment-1-f2026", "Cohort") == 1
@@ -672,3 +702,231 @@ def test_assignment_is_group_prefers_the_cohort_schedule(monkeypatch):
     assert collect.assignment_is_group(
         "Course", "Cohort-f2026", "assignment-4-project-f2026"
     )
+
+
+# ---------------------------------------------------------- autograde sandbox (fix 1)
+# These run REAL pytest against a REAL submission: the only way to prove that nothing a
+# student committed can move their machine score. Each tampered checkout must yield exactly
+# the honest score - the student's own code, judged by the hidden tests, and nothing else.
+
+
+def _sandbox(tmp_path, starter_body: str):
+    """A checked-out submission + a hidden-tests dir. The student's `solve` is WRONG (returns
+    0), so the honest score is 0/2; a successful tamper would raise it."""
+    work = tmp_path / "sub"
+    work.mkdir()
+    (work / "starter.py").write_text(starter_body)
+    tests = tmp_path / "hidden"
+    tests.mkdir()
+    (tests / "test_solve.py").write_text(
+        "from starter import solve\n"
+        "def test_one():\n    assert solve(1) == 2\n"
+        "def test_two():\n    assert solve(3) == 4\n"
+    )
+    return work, tests
+
+
+def test_run_tests_honest_baseline(tmp_path):
+    # Ground truth: the student's wrong code scores 0/2 with no tampering in play.
+    work, tests = _sandbox(tmp_path, "def solve(x):\n    return 0\n")
+    assert collect._run_tests(work, "py", tests) == {
+        "score": 0,
+        "max": 2,
+        "tests": [
+            {"name": "test_one", "passed": False},
+            {"name": "test_two", "passed": False},
+        ],
+    }
+
+
+def test_run_tests_ignores_a_committed_report_xml(tmp_path):
+    # A pre-baked report claiming full marks must never be scored: the real report is written
+    # OUTSIDE the checkout, so the committed one is irrelevant.
+    work, tests = _sandbox(tmp_path, "def solve(x):\n    return 0\n")
+    (work / "report.xml").write_text(
+        '<testsuite><testcase name="a"/><testcase name="b"/></testsuite>'
+    )
+    result = collect._run_tests(work, "py", tests)
+    assert result["score"] == 0 and result["max"] == 2  # honest, not the forged 2/2
+
+
+def test_run_tests_ignores_a_committed_conftest(tmp_path):
+    # A conftest.py that would suppress collection (0 tests -> 0/0) must not be honored: the
+    # score stays the honest 0/2, proving the student's conftest never loaded.
+    work, tests = _sandbox(tmp_path, "def solve(x):\n    return 0\n")
+    (work / "conftest.py").write_text(
+        "def pytest_ignore_collect(collection_path, config):\n    return True\n"
+    )
+    result = collect._run_tests(work, "py", tests)
+    assert result["max"] == 2  # both hidden tests still collected
+    assert result["score"] == 0
+
+
+def test_run_tests_ignores_a_committed_sitecustomize(tmp_path):
+    # sitecustomize.py runs at interpreter startup from any sys.path dir. Here it would inject
+    # a fake `starter` whose solve is CORRECT (0/2 -> 2/2). Stripped before the run, it never
+    # loads, so the student's real (wrong) code is what gets scored.
+    work, tests = _sandbox(tmp_path, "def solve(x):\n    return 0\n")
+    (work / "sitecustomize.py").write_text(
+        "import sys, types\n"
+        "m = types.ModuleType('starter')\n"
+        "m.solve = lambda x: x + 1\n"
+        "sys.modules['starter'] = m\n"
+    )
+    result = collect._run_tests(work, "py", tests)
+    assert result["score"] == 0 and result["max"] == 2  # the tamper did not inflate it
+
+
+def test_run_tests_student_module_cannot_shadow_a_stdlib_import(tmp_path):
+    # A student `operator.py` in the checkout must not shadow the stdlib module a hidden test
+    # imports - that would let them force every assertion True. The submission is appended to
+    # sys.path AFTER the stdlib, so the real module wins the import and the wrong solve (0)
+    # still scores 0; if it were prepended, operator.eq would return True and forge a 1/1.
+    work = tmp_path / "sub"
+    work.mkdir()
+    (work / "starter.py").write_text("def solve(x):\n    return 0\n")
+    (work / "operator.py").write_text(
+        "def eq(a, b):\n    return True\n"
+    )  # the forge attempt
+    tests = tmp_path / "hidden"
+    tests.mkdir()
+    (tests / "test_solve.py").write_text(
+        "import operator\n"
+        "from starter import solve\n"
+        "def test_one():\n    assert operator.eq(solve(1), 2)\n"
+    )
+    result = collect._run_tests(work, "py", tests)
+    assert result["score"] == 0 and result["max"] == 1  # the real stdlib operator won
+
+
+def test_run_tests_removes_the_git_credential_before_student_code_runs(tmp_path):
+    # The clone's .git/config persists the bot credential; env-stripping doesn't reach it, so
+    # it must be gone from the tree before student code can read it.
+    work, tests = _sandbox(tmp_path, "def solve(x):\n    return x + 1\n")
+    (work / ".git").mkdir()
+    (work / ".git" / "config").write_text(
+        "[http]\n  extraheader = AUTHORIZATION: bearer x\n"
+    )
+    collect._run_tests(work, "py", tests)
+    assert not (work / ".git").exists()
+
+
+# ------------------------------------------------------- fire-once ordering (fix 2, 6)
+
+
+def test_collect_leaves_no_marker_when_the_run_dies_mid_loop(monkeypatch):
+    # If the run dies part-way through grading, the fire-once marker (the autograde/<slug>/
+    # archives) must be ABSENT so the next tick regrades - not left present over an unwritten
+    # grades CSV, which would silently un-grade everyone.
+    _stub_collect(monkeypatch, {"assignment-1-anna": SHA, "assignment-1-ben": SHA})
+    n = {"calls": 0}
+
+    def dying_grade(*a, **k):
+        n["calls"] += 1
+        if n["calls"] == 2:
+            raise RuntimeError("the clone host fell over mid-run")
+        return {"score": 1, "max": 2, "tests": []}
+
+    monkeypatch.setattr(collect, "_grade_target", dying_grade)
+    written = _captured_writes(monkeypatch)
+    with pytest.raises(RuntimeError):
+        collect.collect("Course", "assignment-1-f2026", "Cohort")
+    # the first target graded fine, but NOTHING was written - no archive, no grades CSV
+    assert written == []
+
+
+def test_collect_holds_the_marker_when_some_repos_are_unreachable(monkeypatch):
+    # Partial outage: some repos graded, one couldn't be read. The scores are recorded
+    # (write-once), but the marker is held back and the run returns non-zero, so the next tick
+    # retries the missing one rather than treating the assignment as fully machine-graded.
+    _stub_collect(monkeypatch, None)
+
+    def grade(cohort_org, repo, *a, **k):
+        return None if repo.endswith("cara") else {"score": 1, "max": 2, "tests": []}
+
+    monkeypatch.setattr(collect, "_grade_target", grade)
+    written = _captured_writes(monkeypatch)
+    assert collect.collect("Course", "assignment-1-f2026", "Cohort") == 1
+    paths = [p for p, _ in written]
+    assert "grades/assignment-1.csv" in paths  # the reachable scores are recorded
+    assert not any(p.startswith("autograde/") for p in paths)  # marker held back
+
+
+# ------------------------------------------------------ snapshot integrity (fix 3B, 4b)
+
+
+def test_snapshot_assignment_takes_group_from_the_schedule_not_teams_csv(monkeypatch):
+    # A student can grow teams.csv by opening a "Join team" issue that names an INDIVIDUAL
+    # assignment. The snapshot must resolve group-vs-individual from the faculty-owned
+    # schedule, never guess it from teams.csv - so a scheduled individual assignment stays
+    # individual even when a team row exists for it.
+    from dsl_course.schedule import AssignmentEntry
+
+    entry = AssignmentEntry(
+        course_source_repo="assignment-1-f2026",
+        due_datetime=datetime(2026, 11, 15, tzinfo=ZoneInfo("Europe/Berlin")),
+        type=None,  # scheduled, but group-ness left unset -> individual, not teams.csv
+    )
+    monkeypatch.setattr(
+        collect.schedule,
+        "load",
+        lambda org: Schedule(assignments={"assignment-1": entry}),
+    )
+    monkeypatch.setattr(collect, "load_snapshots", lambda org, slug: None)
+    seen: list[bool | None] = []
+    monkeypatch.setattr(
+        collect,
+        "submission_targets",
+        lambda org, slug, is_group=None: seen.append(is_group) or [],
+    )
+    collect.snapshot_assignment("Cohort", "assignment-1", "2026-11-15")
+    assert seen == [False]  # individual, from the schedule - teams.csv never consulted
+
+
+def test_snapshot_assignment_refuses_to_freeze_an_all_blank_snapshot(
+    monkeypatch, capsys
+):
+    # Every target froze to empty/absent (repos not generated yet, a handout typo, a 403->404
+    # visibility blip). Freezing this all-blank snapshot - write-once - would pin the whole
+    # assignment to "nobody submitted" for ever. Write nothing; a later tick takes the real one.
+    _stub_snapshot_write(monkeypatch, {"assignment-1-anna": "", "assignment-1-ben": ""})
+
+    def boom(*a, **k):
+        raise AssertionError("an all-blank snapshot must never be frozen")
+
+    monkeypatch.setattr(collect, "put_file", boom)
+    assert (
+        collect.snapshot_assignment("Cohort", "assignment-1", "2026-10-15T23:59")
+        is True
+    )
+    assert "every target repo is empty or absent" in capsys.readouterr().out
+
+
+# ------------------------------------------------ auditors + deadline guard (fix 7, 9)
+
+
+def test_submission_targets_individual_excludes_auditors(monkeypatch):
+    # Auditors deliberately have no submission repo; listing one makes it an unclonable
+    # phantom target. submission_targets must apply the enrolled filter, like assign/grades.
+    students = [
+        Student("1", "a@x", "Anna", "anna-adams", "", "", "", "enrolled"),
+        Student("2", "e@x", "Eve", "eve-e", "", "", "", "auditor"),
+    ]
+    monkeypatch.setattr(collect.roster, "load", lambda org: students)
+    monkeypatch.setattr(collect.teams, "load", lambda org: {})
+    assert collect.submission_targets("Cohort", "assignment-1") == [
+        ("assignment-1-anna-adams", "anna-adams", ["anna-adams"]),
+    ]
+
+
+def test_collect_refuses_an_unparseable_deadline(monkeypatch, capsys):
+    # An unparseable --deadline would reach git's approxidate and silently match NO commits,
+    # zeroing the whole cohort. Validate up front and fail loudly instead.
+    monkeypatch.setattr(collect.schedule, "load", lambda org: Schedule())
+    assert (
+        collect.collect(
+            "Course", "assignment-1-f2026", "Cohort", deadline="next friday"
+        )
+        == 1
+    )
+    assert "not an ISO date" in capsys.readouterr().err
