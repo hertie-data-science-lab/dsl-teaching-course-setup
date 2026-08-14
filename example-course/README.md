@@ -41,6 +41,12 @@ example-course/
     grades/*.csv                    # per-assignment grade tables (auto/manual/final)
 ```
 
+> NB: **`cohort-org/` is shipped, not just documented.** Every file in it is seeded into each
+> cohort's private `classroom-config` repo as the `.sample` twin of the scaffold faculty fill
+> in - `students.csv` → `students.csv.sample`, and so on for `teams.csv`, `schedule.yml`,
+> `people.yml` and `grades/assignment-1.csv`. Bootstrap and the nightly Refresh both converge
+> them, so editing one here updates every cohort's worked example.
+
 > NB: **Assignment layout:** each `assignment-*/` splits into `main/` (→ the repo's `main` branch,
 > what students get) and `solution/` (→ the `solution` branch: model solution, `grading.yml`, and
 > the HIDDEN `tests/` that **Grade assignment** runs). Student repos never get `solution/`.

@@ -92,11 +92,11 @@ def test_starter_roster_seeds_the_full_column_set():
     starter = welcome.template("classroom-config/students.csv")
     assert tuple(starter.splitlines()[0].split(",")) == roster.FIELDS
     assert roster.parse(starter) == []  # header-only: nobody to enrol by accident
-    enrolled, auditor = roster.parse(
-        welcome.template("classroom-config/students.csv.sample")
-    )
-    assert enrolled.is_enrolled and not enrolled.onboarded
-    assert auditor.is_auditor and not auditor.onboarded
+    # ...and the sample it points at shows both roles, none of them pre-onboarded (a
+    # handle/id copied across would collide with a real student's onboarding).
+    sampled = roster.parse(welcome.example_cohort_file("students.csv"))
+    assert roster.enrolled(sampled) and roster.auditors(sampled)
+    assert not any(s.onboarded for s in sampled)
 
 
 def test_classroom_readme_documents_every_roster_column():

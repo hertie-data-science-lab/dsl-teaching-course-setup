@@ -5,13 +5,18 @@ grants, refresh workflows), so it runs against LIVE cohorts. `utils.create_repo`
 an already-existing repo as success, so the `if create_repo(...)` blocks are no
 first-run guard - the guard has to be per file. These tests pin the split:
 
-- USER-owned (classroom-config roster/schedule/people/grades, welcome's student-facing
-  README, and the course org's dsl-course.yml SSOT): seeded once, NEVER rewritten - a
-  rewrite destroyed a live roster (enrol codes + onboarded handles) in DSL-Demo-f2026.
+- USER-owned (classroom-config roster/teams/schedule/people/grades, welcome's
+  student-facing README, and the course org's dsl-course.yml SSOT): seeded once, NEVER
+  rewritten - a rewrite destroyed a live roster (enrol codes + onboarded handles) in
+  DSL-Demo-f2026.
 - SYSTEM-owned (welcome's onboard/team-formation workflows + the issue forms they parse,
-  classroom-config's dispatch-sync*.yml, its README contract and `*.csv.sample` worked
+  classroom-config's dispatch-sync*.yml, its README contract and `*.sample` worked
   examples, the cohort's generated dsl-course.yml pointer): re-pushed on every run so
   fixes reach running cohorts.
+
+Every user-editable classroom-config file is a scaffold/sample PAIR - `<file>` seeded once,
+`<file>.sample` always converged - and the samples are injected from
+example-course/cohort-org/ rather than authored twice.
 """
 
 from __future__ import annotations
@@ -19,10 +24,11 @@ from __future__ import annotations
 import pytest
 
 from dsl_course import bootstrap_course as bc
-from dsl_course import seed, welcome
+from dsl_course import grades, roster, schedule, seed, sync_faculty, teams, welcome
 
 USER_OWNED = {
     "students.csv",
+    "teams.csv",
     "schedule.yml",
     "people.yml",
     "grades/.gitkeep",
@@ -32,9 +38,7 @@ SYSTEM_OWNED = {
     ".github/workflows/dispatch-sync-site.yml",
     ".github/workflows/validate-schedule.yml",
     "README.md",
-    "students.csv.sample",
-    "teams.csv.sample",
-    "grades/assignment-1.csv.sample",
+    *welcome.CLASSROOM_SAMPLES,
 }
 WELCOME_SYSTEM_OWNED = {
     ".github/workflows/onboard.yml",
@@ -125,6 +129,7 @@ def test_rerun_preserves_user_config_and_refreshes_workflows(fake):
     # stale README/sample from an older engine version.
     live = {
         "students.csv": "email,github_handle,enrol_code\na@x.edu,ahandle,AB12CD\n",
+        "teams.csv": "assignment,team,github_handle\na1,team-1,ahandle\n",
         "schedule.yml": "timezone: Europe/Berlin\nassignments:\n  - id: a1\n",
         "people.yml": "people:\n  instructors:\n    - github_handle: profx\n",
         "teams.csv.sample": "team,members\nstale,sample\n",
@@ -151,7 +156,7 @@ def test_rerun_preserves_user_config_and_refreshes_workflows(fake):
         welcome.template("classroom-config/README.md")
     )
     assert fake.files[("classroom-config", "teams.csv.sample")] == (
-        welcome.template("classroom-config/teams.csv.sample")
+        welcome.example_cohort_file("teams.csv")
     )
     assert fake.files[("welcome", ".github/workflows/onboard.yml")] == (
         welcome.template("welcome/onboard.yml")
@@ -204,24 +209,59 @@ def test_cohort_tag_derivation():
     assert bc._cohort_tag("Some-Odd-Name") == ("f2026", 2026)
 
 
-def test_sample_headers_match_the_engine_schemas():
-    # The seeded worked examples must always carry the real, current column sets - a
-    # drifted sample teaches faculty a schema the engine no longer reads.
-    from dsl_course.grades import GRADE_FIELDS
-    from dsl_course.roster import FIELDS
+def test_every_sample_source_exists_in_the_worked_example_course():
+    # The samples are injected, not authored: a rename or deletion under
+    # example-course/cohort-org/ would otherwise only surface as a FileNotFoundError
+    # mid-bootstrap, against a live org.
+    for path, source in welcome.CLASSROOM_SAMPLES.items():
+        assert (welcome.EXAMPLE_COHORT / source).is_file(), f"{path} <- {source}"
+        assert path == f"{source}.sample", path  # one rule, no bespoke names
 
-    roster_header = ",".join(FIELDS)
-    assert (
-        welcome.template("classroom-config/students.csv").splitlines()[0]
-        == roster_header
+
+def test_every_shipped_sample_parses_with_the_real_parser():
+    # A sample IS the schema documentation faculty copy from, so it is validated by the
+    # very code that will read their copy - never by a second, driftable checker.
+    students = roster.parse(welcome.example_cohort_file("students.csv"))
+    assert len(students) >= 3
+    assert roster.auditors(students), "the roster sample must exercise `role: auditor`"
+
+    per_assignment = teams.parse(welcome.example_cohort_file("teams.csv"))
+    handles = {
+        h for byteam in per_assignment.values() for hs in byteam.values() for h in hs
+    }
+    assert per_assignment and handles
+
+    sched, error = schedule.load_file(
+        str(welcome.EXAMPLE_COHORT / "schedule.yml"),
     )
-    sample = welcome.template("classroom-config/students.csv.sample").splitlines()
-    assert sample[0] == roster_header
-    assert any(",auditor" in line for line in sample[1:])  # the auditor worked example
-    grades_sample = welcome.template(
-        "classroom-config/grades/assignment-1.csv.sample"
-    ).splitlines()
-    assert grades_sample[0] == ",".join(GRADE_FIELDS)
+    assert error is None, error
+    assert sched.dropped == [], "\n".join(sched.dropped)
+    # the current three-block schema, all three blocks exercised
+    assert sched.releases and sched.assignments and sched.events
+
+    faculty = sync_faculty.parse_faculty(welcome.example_cohort_file("people.yml"))
+    assert faculty["instructors"] and faculty["teaching_assistants"]
+
+
+def test_scaffold_and_sample_carry_the_engines_current_column_sets():
+    # A drifted header teaches faculty a schema the engine no longer reads. The scaffolds
+    # are the file they fill in; the samples are what they copy rows from.
+    def header(text: str) -> tuple[str, ...]:
+        return tuple(text.splitlines()[0].split(","))
+
+    for scaffold, fields in (
+        ("students.csv", roster.FIELDS),
+        ("teams.csv", teams.FIELDS),
+    ):
+        assert header(welcome.template(f"classroom-config/{scaffold}")) == fields
+        assert header(welcome.example_cohort_file(scaffold)) == fields
+    # header-only scaffolds: nobody to enrol, and no team to provision, by accident
+    assert roster.parse(welcome.template("classroom-config/students.csv")) == []
+    assert teams.parse(welcome.template("classroom-config/teams.csv")) == {}
+    assert (
+        header(welcome.example_cohort_file("grades/assignment-1.csv"))
+        == grades.GRADE_FIELDS
+    )
 
 
 def test_course_dsl_course_yml_is_never_rewritten(fake, monkeypatch):
@@ -355,8 +395,13 @@ def test_refresh_re_pushes_every_registered_cohorts_welcome_workflows(monkeypatc
     assert refreshed == ["Cohort-f2026", "Cohort-s2027"]
 
 
-def _stub_refresh(monkeypatch, welcome_failures=lambda org: 0, seed_failures=0) -> None:
-    """Neutralise every network call seed.refresh makes; the two write paths report a
+def _stub_refresh(
+    monkeypatch,
+    welcome_failures=lambda org: 0,
+    sample_failures=lambda org: 0,
+    seed_failures=0,
+) -> None:
+    """Neutralise every network call seed.refresh makes; the three write paths report a
     failure count, which is what refresh's exit code is built from."""
     monkeypatch.setattr(
         seed, "discover_cohorts", lambda org: ["Cohort-f2026", "Cohort-s2027"]
@@ -367,15 +412,26 @@ def _stub_refresh(monkeypatch, welcome_failures=lambda org: 0, seed_failures=0) 
     monkeypatch.setattr(seed, "seed_github_workflows", lambda org: seed_failures)
     monkeypatch.setattr(seed, "update_profile_readme", lambda org: None)
     monkeypatch.setattr(seed, "refresh_welcome_workflows", welcome_failures)
+    monkeypatch.setattr(seed, "refresh_classroom_samples", sample_failures)
+
+
+def test_refresh_converges_every_registered_cohorts_config_samples(monkeypatch):
+    # Samples are machine-owned reference material: a cohort bootstrapped last semester
+    # must pick up today's worked example without anyone re-running Bootstrap cohort.
+    refreshed: list[str] = []
+    _stub_refresh(monkeypatch, sample_failures=lambda org: refreshed.append(org) or 0)
+
+    assert seed.refresh("Course-Org") == 0
+    assert refreshed == ["Cohort-f2026", "Cohort-s2027"]
 
 
 @pytest.mark.parametrize(
-    ("seed_failures", "welcome_failures"),
-    [(2, 0), (0, 1)],
-    ids=["org-workflows", "welcome-workflows"],
+    ("seed_failures", "welcome_failures", "sample_failures"),
+    [(2, 0, 0), (0, 1, 0), (0, 0, 1)],
+    ids=["org-workflows", "welcome-workflows", "config-samples"],
 )
 def test_refresh_goes_red_when_it_could_not_converge(
-    monkeypatch, capsys, seed_failures, welcome_failures
+    monkeypatch, capsys, seed_failures, welcome_failures, sample_failures
 ):
     # The nightly cron is how an org keeps up with central. A run that failed to write
     # the buttons but reported success leaves faculty with a stale (or absent) button and
@@ -383,6 +439,7 @@ def test_refresh_goes_red_when_it_could_not_converge(
     _stub_refresh(
         monkeypatch,
         welcome_failures=lambda org: welcome_failures,
+        sample_failures=lambda org: sample_failures,
         seed_failures=seed_failures,
     )
     assert seed.refresh("Course-Org") == 1
@@ -415,6 +472,18 @@ def test_welcome_refresh_counts_failed_writes_and_says_nothing_is_up_to_date(
     out = capsys.readouterr()
     assert "up to date" not in out.out
     assert "4 welcome-repo file(s) not written" in out.err
+
+
+def test_sample_refresh_counts_failed_writes(monkeypatch, capsys):
+    # Same contract for the config samples: a cohort left on a stale worked example must
+    # make the nightly Refresh go red rather than read as converged.
+    monkeypatch.setattr(welcome, "put_file", lambda *a, **k: False)
+    assert welcome.refresh_classroom_samples("Cohort-f2026") == len(
+        welcome.CLASSROOM_SAMPLES
+    )
+    out = capsys.readouterr()
+    assert "up to date" not in out.out
+    assert "classroom-config sample(s) not written" in out.err
 
 
 def test_org_settings_ok_line_only_prints_when_2fa_was_set(monkeypatch, capsys):
