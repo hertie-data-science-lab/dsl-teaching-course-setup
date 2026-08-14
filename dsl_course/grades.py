@@ -245,6 +245,25 @@ def merge_auto(text: str, updates: list[tuple[str, dict[str, str]]]) -> str:
 # ---------------------------------------------------------------------- gh/git wiring
 
 
+RENDER_BOT_NAME = "dsl-bot"  # the author name GIT_ENV stamps on engine-made commits
+
+
+def _human_commit_authors(
+    log_output: str, bot_name: str = RENDER_BOT_NAME
+) -> list[str]:
+    """Author names on the render branch (from `git log --format=%an base..branch`) that are
+    NOT the bot - i.e. a reviewer's own commit on the open preview PR. `render` refuses to
+    force-overwrite the branch when this is non-empty, so a reviewer's correction is never
+    silently discarded by a re-render."""
+    return sorted(
+        {
+            a.strip()
+            for a in log_output.splitlines()
+            if a.strip() and a.strip() != bot_name
+        }
+    )
+
+
 def load_grade_sources(cohort_org: str) -> dict[str, list[GradeRow]]:
     """Read every `grades/<assignment>.csv` from the cohort's classroom-config repo."""
     code, out = gh(
@@ -353,6 +372,47 @@ def render(cohort_org: str) -> int:
         ):
             log_err(f"could not clone {cohort_org}/{CONFIG_REPO}")
             return 1
+        # A prior render's branch may carry a reviewer's OWN commit (a grade fixed on the open
+        # preview PR). Rebuilding from base and force-pushing would silently discard it, so
+        # check first: any non-bot commit on `base..RENDER_BRANCH` means human edits are
+        # present - refuse rather than clobber. When the branch has only bot render commits
+        # (or doesn't exist), the reset + force-push below is safe and idempotent as before.
+        if (
+            git(
+                "-C",
+                str(wd),
+                "ls-remote",
+                "--exit-code",
+                "--heads",
+                "origin",
+                RENDER_BRANCH,
+            )[0]
+            == 0
+        ):
+            git(
+                "-C",
+                str(wd),
+                *GIT_ENV,
+                "fetch",
+                "-q",
+                "origin",
+                f"{RENDER_BRANCH}:refs/remotes/origin/{RENDER_BRANCH}",
+            )
+            _code, authors = git(
+                "-C",
+                str(wd),
+                "log",
+                "--format=%an",
+                f"origin/{base}..origin/{RENDER_BRANCH}",
+            )
+            human = _human_commit_authors(authors)
+            if human:
+                log_err(
+                    f"the {RENDER_BRANCH} branch carries commit(s) by {', '.join(human)} - a "
+                    f"reviewer edited the preview. Refusing to overwrite them: merge or close "
+                    f"the open PR (or delete the branch) before re-rendering."
+                )
+                return 1
         git("-C", str(wd), *GIT_ENV, "checkout", "-q", "-B", RENDER_BRANCH, base)
         gbdir = wd / GRADEBOOK_DIR
         gbdir.mkdir(exist_ok=True)

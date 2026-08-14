@@ -84,12 +84,14 @@ from .utils import (
     get_file_content,
     gh,
     git,
+    is_missing_resource,
     log,
     log_err,
     log_ok,
     log_skip,
     log_step,
     put_file,
+    repo_exists,
 )
 
 CONFIG_REPO = roster.CONFIG_REPO  # classroom-config
@@ -99,6 +101,26 @@ SNAPSHOT_DIR = "snapshots"  # classroom-config/snapshots/<slug>.csv
 SNAPSHOT_FIELDS = ("repo", "sha", "recorded_at")
 GRADING_FILE = "grading.yml"  # on the template's solution branch
 RUN_TIMEOUT = 300  # seconds per submission
+# `_snapshot_sha` sentinel: the repo is ABSENT (404), distinct from a reachable-but-empty repo
+# (""). Can't collide with a real sha (40 hex) or "". Recorded as "" if the snapshot is frozen.
+_REPO_ABSENT = "\x00absent"
+
+# Belt-and-suspenders removal of files a student could commit to hijack their own grading:
+# a pre-baked report, pytest plugin/config-by-name, or an interpreter site-hook. The PRIMARY
+# defence is the runspace boundary in `_run_tests` (tests + report live outside the checkout,
+# pytest's rootdir/confcutdir are the runspace not the checkout, the checkout is off sys.path
+# at startup), which already makes these inert; stripping them too is a second line against a
+# boundary regression. Deliberately NOT here: `pyproject.toml`/`setup.cfg`/`tox.ini` - they are
+# never read as pytest config from the checkout (the rootdir is the runspace) and a legitimate
+# package submission needs them to import. Matched ANYWHERE in the checkout, not just its root.
+_STUDENT_TEST_RIGGING = (
+    "report.xml",
+    "conftest.py",
+    "sitecustomize.py",
+    "usercustomize.py",
+    "pytest.ini",
+    "pytest.py",
+)
 
 _DEFAULT_SPEC = {
     "type": "individual",
@@ -250,13 +272,17 @@ def submission_targets(
             (f"{slug}-{team}", team, members)
             for team, members in sorted(groups.items())
         ]
+    # Enrolled participants only, matching assign/grades: an auditor deliberately has no
+    # submission repo, so listing one makes it an unclonable phantom target (noise, and a
+    # spurious "could not be read"). `roster.enrolled` drops auditors; `onboarded` drops
+    # the not-yet-joined.
     targets = [
         (f"{slug}-{s.github_handle}", s.github_handle, [s.github_handle])
-        for s in roster.load(cohort_org) or []
+        for s in roster.enrolled(roster.load(cohort_org) or [])
         if s.onboarded
     ]
     if not targets:
-        log_err(f"no onboarded students in {cohort_org} to grade.")
+        log_err(f"no onboarded enrolled students in {cohort_org} to grade.")
     return targets
 
 
@@ -294,11 +320,45 @@ def _snapshot_sha(cohort_org: str, repo: str, deadline: str) -> str | None:
         '.[0].sha // ""',
     )
     if code == 0:
-        return out.strip()
-    if any(m in out for m in ("HTTP 404", "Not Found", "HTTP 409", "empty")):
+        sha = out.strip()
+        if not sha:
+            _warn_if_late_commits_only(cohort_org, repo, deadline)
+        return sha  # a sha, or "" (repo reachable, no commit on/before the deadline)
+    # A 409 is an EMPTY repo: it exists but has no commits, so "" is a real recorded
+    # non-submission (we freeze it, closing the backdating window for it).
+    if "HTTP 409" in out:
         return ""
+    # A 404 means the repo ISN'T THERE (not generated yet, a handout typo, or a private-repo
+    # blip). That is NOT the same as an existing-but-empty repo: an absent repo may still be
+    # provisioned, so if EVERY target is absent the caller skips the freeze rather than pinning
+    # "nobody submitted" for ever. A precise marker match, not a loose `"empty" in out`.
+    if is_missing_resource(out):
+        return _REPO_ABSENT
     log_err(f"  ! could not read commits for {cohort_org}/{repo}: {out[:160]}")
     return None
+
+
+def _warn_if_late_commits_only(cohort_org: str, repo: str, deadline: str) -> None:
+    """When a reachable repo yielded no commit on/before the deadline, tell an empty repo
+    apart from one that HAS commits, all dated after the cutoff. The snapshot filters on the
+    committer date (`until=`), so a student whose clock is skewed past the deadline looks
+    identical to a non-submitter; log the difference so faculty can spot a skew that would
+    otherwise score an on-time student zero. Best-effort: a failed probe just stays quiet."""
+    code, out = gh(
+        "api",
+        "-X",
+        "GET",
+        f"repos/{cohort_org}/{repo}/commits",
+        "-f",
+        "per_page=1",
+        "--jq",
+        '.[0].sha // ""',
+    )
+    if code == 0 and out.strip():
+        log(
+            f"    ({repo} has commit(s), but none on/before {deadline} - an empty freeze "
+            f"here can also be a client clock skewed past the deadline; check if unexpected)"
+        )
 
 
 def has_autograde_results(cohort_org: str, slug: str) -> bool:
@@ -344,18 +404,45 @@ def load_snapshots(cohort_org: str, slug: str) -> dict[str, str] | None:
     return parse_snapshots(content) if content is not None else None
 
 
-def snapshot_assignment(cohort_org: str, slug: str, deadline: str) -> bool:
+def _snapshot_is_group(cohort_org: str, slug: str) -> bool | None:
+    """How the SNAPSHOT step should resolve group-vs-individual for `slug`, WITHOUT trusting
+    teams.csv (a student can grow it by opening a "Join team" issue that names an individual
+    assignment). A scheduled assignment's kind is faculty-declared: its schedule entry's
+    `type:` decides, defaulting to individual when the entry exists but leaves it unset.
+
+    Returns True/False for a scheduled assignment, or None only when no schedule entry keys
+    to this cohort-side name (an ad-hoc handout) - then the caller may fall back to teams.csv.
+    The scheduler only ever snapshots scheduled assignments, so in practice the teams.csv
+    inference is never reached from there."""
+    sched = schedule.load(cohort_org)
+    entry = next(
+        (e for k, e in sched.assignments.items() if schedule.cohort_name(k, e) == slug),
+        None,
+    )
+    if entry is None:
+        return None
+    return entry.type == "group"
+
+
+def snapshot_assignment(
+    cohort_org: str, slug: str, deadline: str, is_group: bool | None = None
+) -> bool:
     """Freeze, at a server-chosen moment, the commit each of `slug`'s submission repos will
     be graded at. Write-once: an existing snapshot is never re-taken or overwritten, so a
     late push can never move the pin. Returns False if the snapshot could not be completed
     (nothing is written - the next cron tick tries again).
 
     An assignment with no submission units yet is a no-op, not a failure: nothing is frozen
-    and nothing is written, so a later handout still gets its own snapshot."""
+    and nothing is written, so a later handout still gets its own snapshot.
+
+    `is_group` decides which repos are targets; when the caller leaves it None it is resolved
+    from the cohort schedule (never guessed from teams.csv - see `_snapshot_is_group`)."""
     if load_snapshots(cohort_org, slug) is not None:
         log_skip(f"snapshot {snapshot_path(slug)}")
         return True
-    targets = submission_targets(cohort_org, slug)
+    if is_group is None:
+        is_group = _snapshot_is_group(cohort_org, slug)
+    targets = submission_targets(cohort_org, slug, is_group)
     if not targets:
         # Nobody onboarded, or no teams for a group assignment - which is also what an
         # assignment not handed out yet looks like from here. The snapshot is write-once,
@@ -370,12 +457,29 @@ def snapshot_assignment(cohort_org: str, slug: str, deadline: str) -> bool:
         return True
     recorded_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     rows: list[tuple[str, str, str]] = []
+    any_present = False
     for repo, _key, _members in targets:
         sha = _snapshot_sha(cohort_org, repo, deadline)
         if sha is None:
             log_err(f"  ! abandoning the {slug} snapshot - will retry on the next run")
             return False
-        rows.append((repo, sha, recorded_at))
+        if sha == _REPO_ABSENT:
+            rows.append((repo, "", recorded_at))  # not there -> blank iff we freeze
+        else:
+            any_present = True  # a sha, or a reachable-but-empty ("") repo that EXISTS
+            rows.append((repo, sha, recorded_at))
+    if not any_present:
+        # EVERY target repo is ABSENT (404): not generated yet, or a handout typo. This is
+        # NOT the same as reachable-but-empty repos (a real "nobody submitted", which we DO
+        # freeze as zeros to close the backdating window): an absent repo may still be
+        # provisioned, and freezing the write-once snapshot now would pin the whole assignment
+        # to "nobody submitted" for ever. Write nothing; a later tick, once the repos exist,
+        # takes the real snapshot.
+        log(
+            f"  [skip] snapshot {snapshot_path(slug)} - every target repo is absent "
+            f"(not generated yet); a later tick takes it"
+        )
+        return True
     if not put_file(
         cohort_org,
         CONFIG_REPO,
@@ -403,16 +507,34 @@ def _pin_commit(
     back to `rev-list --before` - which filters on the COMMITTER date, a value the student
     supplies, so it can be backdated. `deadline` is an ISO date or datetime; a bare date
     (no time) is treated as end-of-day."""
+
+    def _checkout_if_present() -> bool:
+        """Check out the frozen commit if it's in the clone; True if it was."""
+        if git("-C", str(repo_dir), "cat-file", "-e", f"{snapshot}^{{commit}}")[0] != 0:
+            return False
+        git("-C", str(repo_dir), *GIT_ENV, "checkout", "-q", snapshot)
+        return True
+
     if snapshot is not None:
         if not snapshot:
             return None  # snapshot recorded no submission on/before the deadline
-        if git("-C", str(repo_dir), "cat-file", "-e", f"{snapshot}^{{commit}}")[0] == 0:
-            git("-C", str(repo_dir), *GIT_ENV, "checkout", "-q", snapshot)
+        if _checkout_if_present():
+            return snapshot
+        # The pinned commit isn't in the clone: a force-push AFTER the deadline rewrote
+        # history. Falling back to the committer-date pin here would grade the rewritten
+        # history - turning a detected tamper into a successful one. Try to fetch exactly the
+        # frozen commit (a rewrite orphans it, but it survives server-side until GC) and grade
+        # THAT; if it can't be recovered, fail the target loudly (score zero) rather than
+        # ever pinning on the student-controlled dates of a rewritten history.
+        git("-C", str(repo_dir), *GIT_ENV, "fetch", "-q", "origin", snapshot)
+        if _checkout_if_present():
             return snapshot
         log_err(
-            f"  ! snapshot commit {snapshot[:8]} is not in the clone (history rewritten?) "
-            f"- falling back to the commit-date pin"
+            f"  ! snapshot commit {snapshot[:8]} is not in the clone and could not be "
+            f"fetched (history rewritten after the deadline?) - scoring zero rather than "
+            f"grading the rewritten history"
         )
+        return None
     before = (
         deadline if ("T" in deadline or ":" in deadline) else f"{deadline} 23:59:59"
     )
@@ -441,11 +563,42 @@ def _stray_conversion(nb: Path) -> Path | None:
     return None
 
 
+def _strip_student_test_rigging(workdir: Path) -> None:
+    """Second-line removal of anything the student could have committed to steer their own
+    grading run (see `_STUDENT_TEST_RIGGING`) plus pytest/py caches, before any subprocess
+    touches the tree. One walk of the checkout, deleting by name."""
+    targets = frozenset(_STUDENT_TEST_RIGGING) | {".pytest_cache", "__pycache__"}
+    for hit in workdir.rglob("*"):
+        if hit.name not in targets:
+            continue
+        if hit.is_dir():
+            shutil.rmtree(hit, ignore_errors=True)
+        else:
+            hit.unlink(missing_ok=True)
+
+
 def _run_tests(workdir: Path, fmt: str, tests_src: Path) -> dict | None:
-    """Overlay the hidden tests into the checked-out submission and run them token-free.
-    Returns the result.json dict, or None if grading could not run."""
+    """Run the hidden tests against the checked-out submission, token-free and sandboxed.
+    Returns the result.json dict, or None if grading could not run.
+
+    Integrity: the hidden tests and the scored report live OUTSIDE the checkout, in a fresh
+    runspace the student never touched, and pytest runs from there with config/plugin/cache
+    discovery cut off at that runspace - so nothing the student committed can be collected as
+    a test, read as configuration, or scored as a pre-baked report. The credential the clone
+    stored in `.git` is removed and the student's own rigging files are stripped before any
+    subprocess runs."""
     env = _sanitised_env()
-    env["PYTHONPATH"] = str(workdir) + os.pathsep + env.get("PYTHONPATH", "")
+    # Keep cwd/'' off sys.path so a committed `pytest.py`/`sitecustomize.py` can't shadow real
+    # modules. The submission is NOT put on PYTHONPATH: every PYTHONPATH entry precedes the
+    # stdlib, so a student `json.py`/`operator.py` there would shadow a module the hidden tests
+    # import and let them force assertions. Instead the trusted hidden-tests conftest appends
+    # the submission to sys.path AFTER the stdlib (see the injection below), so a real module
+    # always wins the import while the submission's own uniquely-named module still resolves.
+    env["PYTHONSAFEPATH"] = "1"
+    # The clone persists the bot credential in `.git/config`; env-stripping doesn't reach it,
+    # and student code runs next and can read the workspace - so drop `.git` first (fix 10).
+    shutil.rmtree(workdir / ".git", ignore_errors=True)
+    _strip_student_test_rigging(workdir)
     try:
         if fmt == "notebook":
             # Convert each notebook to an importable script first (Otter can slot in here).
@@ -472,22 +625,54 @@ def _run_tests(workdir: Path, fmt: str, tests_src: Path) -> dict | None:
                         f"    ({nb.name} declares no python file_extension - "
                         f"{stray.name} -> {script.name})"
                     )
-        dest = workdir / "_grading_tests"
-        shutil.copytree(tests_src, dest, dirs_exist_ok=True)
-        report = workdir / "report.xml"
-        subprocess.run(  # noqa: PLW1510 - a non-zero pytest run IS the grading result
-            [sys.executable, "-m", "pytest", "-q", str(dest), f"--junitxml={report}"],
-            cwd=workdir,
-            env=env,
-            timeout=RUN_TIMEOUT,
-            capture_output=True,
-        )
+        with tempfile.TemporaryDirectory() as run:
+            tests_dir = Path(run) / "tests"
+            shutil.copytree(tests_src, tests_dir)
+            # Make the submission importable by the hidden tests WITHOUT letting a student
+            # module shadow a stdlib/site name (`operator.py`, `json.py`) a hidden test imports.
+            # A `sitecustomize` in its own dir - the ONLY thing on PYTHONPATH - runs at
+            # interpreter startup (before any conftest) and appends the submission to sys.path
+            # AFTER the stdlib, so a real module always wins the import while the submission's
+            # own uniquely-named module still resolves. This touches neither the faculty
+            # conftest (a `from __future__` first line stays first) nor sys.path[0]
+            # (PYTHONSAFEPATH), and the student's own sitecustomize isn't on the path to run.
+            startup = Path(run) / "startup"
+            startup.mkdir()
+            (startup / "sitecustomize.py").write_text(
+                f"import sys\nsys.path.append({str(workdir)!r})\n"
+            )
+            env["PYTHONPATH"] = str(startup)
+            report = Path(run) / "report.xml"
+            subprocess.run(  # noqa: PLW1510 - a non-zero pytest run IS the grading result
+                [
+                    sys.executable,
+                    "-m",
+                    "pytest",
+                    "-q",
+                    "-p",
+                    "no:cacheprovider",
+                    f"--confcutdir={tests_dir}",
+                    str(tests_dir),
+                    f"--junitxml={report}",
+                ],
+                # Run FROM the runspace, NOT the checkout. On Python < 3.11 (no PYTHONSAFEPATH)
+                # `python -m` puts cwd on sys.path[0], so a checkout cwd would let a committed
+                # `operator.py`/`collections.py` shadow the stdlib during interpreter startup -
+                # before any sitecustomize could undo it - crashing or hijacking the run. The
+                # runspace holds no student files, so its cwd is inert. (Trade-off: a submission
+                # reading a repo-relative data file by bare name isn't supported - a hidden test
+                # must pass an absolute path.)
+                cwd=run,
+                env=env,
+                timeout=RUN_TIMEOUT,
+                capture_output=True,
+            )
+            if not report.exists():
+                return None
+            return score_from_junit(report.read_text())
     except subprocess.TimeoutExpired:
         log_err(f"  ! grading timed out after {RUN_TIMEOUT}s")
         return None
-    if not report.exists():
-        return None
-    return score_from_junit(report.read_text())
 
 
 def _grade_target(
@@ -505,7 +690,16 @@ def _grade_target(
     with tempfile.TemporaryDirectory() as work:
         wd = Path(work) / "sub"
         if gh("repo", "clone", f"{cohort_org}/{repo}", str(wd), "--", "-q")[0] != 0:
-            log_err(f"  ! could not clone {cohort_org}/{repo} (not generated yet?)")
+            if not repo_exists(cohort_org, repo):
+                # The repo genuinely does not exist (deleted, or never provisioned) - a
+                # recorded zero, NOT a transient failure. Returning None ('unreachable') would
+                # hold the fire-once marker and re-clone + re-grade every OTHER repo hourly,
+                # for ever, on an assignment that can never complete.
+                log_err(
+                    f"  ! {cohort_org}/{repo} does not exist - scoring 0 (no submission)"
+                )
+                return _zero_result(max_auto, "submission repo does not exist")
+            log_err(f"  ! could not clone {cohort_org}/{repo} (transient - will retry)")
             return None
         sha = _pin_commit(wd, deadline, snapshot)
         if sha is None:
@@ -556,6 +750,17 @@ def collect(
         or schedule.grading_datetime_iso(sched, key)
         or _today_in_cohort_tz(sched)
     )
+    # Validate the deadline up front (raises on a non-ISO string). git's `rev-list --before`
+    # would otherwise take an unparseable `--deadline` as an approxidate that silently matches
+    # NOTHING, zeroing every submission in the cohort without a word.
+    try:
+        _until_param(deadline)
+    except ValueError:
+        log_err(
+            f"--deadline '{deadline}' is not an ISO date/datetime - refusing to grade "
+            f"(git would silently match no commits and zero the whole cohort)"
+        )
+        return 1
 
     with tempfile.TemporaryDirectory() as sd:
         soldir = Path(sd) / "sol"
@@ -637,6 +842,11 @@ def collect(
         )
 
         updates: list[tuple[str, dict[str, str]]] = []
+        # The per-target result archives are held here and written only AFTER the grades CSV
+        # is durable (see below). Their `autograde/<slug>/` directory IS the fire-once marker,
+        # so writing one mid-loop is what let an aborted run un-grade everyone: the marker
+        # existed, but no score had been recorded.
+        archives: list[tuple[str, bytes, str]] = []
         # `_grade_target` returns None for one reason only: the submission repo could not be
         # cloned. That is the line between "examined, and there was nothing to grade" (a
         # recorded non-submission still comes back as a zero result) and "never examined" -
@@ -645,32 +855,46 @@ def collect(
         for repo, target_key, members in targets:
             log_step(repo)
             if dry_run:
-                pin = (
-                    f"<= {deadline}"
-                    if snapshots is None
-                    else f"snapshot {(snapshots.get(repo) or 'none')[:8]}"
-                )
+                if snapshots is None:
+                    pin = f"<= {deadline}"
+                elif repo in snapshots:
+                    pin = f"snapshot {(snapshots[repo] or 'none')[:8]}"
+                else:
+                    pin = "no snapshot row -> zero"
                 log(f"    DRY-RUN would grade {cohort_org}/{repo} (pin {pin})")
                 continue
-            result = _grade_target(
-                cohort_org,
-                repo,
-                spec,
-                tests_src,
-                deadline,
-                snapshot=None if snapshots is None else snapshots.get(repo),
-            )
+            if snapshots is not None and repo not in snapshots:
+                # The snapshot file exists but never recorded THIS repo (provisioned after the
+                # freeze?). Distinct from a missing file: do NOT silently drop to the
+                # student-datable committer-date pin - score zero with a loud per-repo warning.
+                log_err(
+                    f"  ! {repo} has no row in {snapshot_path(slug)} - it was not part of "
+                    f"the deadline freeze; scoring 0 rather than pinning on student-"
+                    f"controlled commit dates"
+                )
+                result = _zero_result(
+                    spec.get("max_auto") or 0, f"absent from {snapshot_path(slug)}"
+                )
+            else:
+                result = _grade_target(
+                    cohort_org,
+                    repo,
+                    spec,
+                    tests_src,
+                    deadline,
+                    snapshot=None if snapshots is None else snapshots[repo],
+                )
             if result is None:
                 unreachable.append(repo)
                 continue
             for line in summary_lines(result):
                 log(line)
-            put_file(
-                cohort_org,
-                CONFIG_REPO,
-                f"{autograde_path(slug)}/{target_key}.json",
-                json.dumps(result, indent=2).encode(),
-                f"autograde: {slug}/{target_key}",
+            archives.append(
+                (
+                    f"{autograde_path(slug)}/{target_key}.json",
+                    json.dumps(result, indent=2).encode(),
+                    f"autograde: {slug}/{target_key}",
+                )
             )
             score = str(result["score"])
             if is_group:
@@ -720,6 +944,20 @@ def collect(
         ):
             log_err(f"could not write {path}")
             return 1
+        # The scores are durably recorded. Only now do the per-target archives go out - and
+        # only if EVERY target was reachable. Their `autograde/<slug>/` directory is the
+        # fire-once marker, so holding it back on any unreachable repo keeps the assignment
+        # eligible for a retry: the next tick regrades (write-once merge_auto leaves the
+        # scores already recorded untouched) and picks up the repo(s) that couldn't be read.
+        if unreachable:
+            log_err(
+                f"{slug}: recorded {len(updates)} score(s), but {len(unreachable)} "
+                f"submission repo(s) could not be read (named above) - NOT marking {slug} "
+                f"machine-graded; the next run retries the missing one(s)"
+            )
+            return 1
+        for apath, acontent, amsg in archives:
+            put_file(cohort_org, CONFIG_REPO, apath, acontent, amsg)
     log_ok(
         f"recorded {len(updates)} auto score(s) -> {path} (faculty & instructors add manual marks, then render)"
     )

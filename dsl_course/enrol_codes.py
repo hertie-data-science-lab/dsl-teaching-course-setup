@@ -21,11 +21,13 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import csv
+import io
 import secrets
 import sys
 
 from . import mailer, roster
-from .utils import log_err, log_ok, log_step, put_file
+from .utils import get_file_content, log_err, log_ok, log_step, put_file, strip_bom
 
 # No ambiguous characters (0/O, 1/l/I) so a student can read the code off an email.
 _ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"
@@ -33,6 +35,34 @@ _ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"
 
 def make_code() -> str:
     return "dsl-" + "".join(secrets.choice(_ALPHABET) for _ in range(6))
+
+
+def fill_enrol_codes_in_csv(text: str, codes_by_row: dict[int, str]) -> str:
+    """Surgically write enrol codes into the RAW students.csv, preserving everything else.
+
+    `codes_by_row` maps a 0-based DATA-row index (matching `roster.parse` order) to the code
+    to drop into that row's blank `enrol_code` cell. Only that one column is touched: every
+    other column - including ones `roster.FIELDS` doesn't know about, e.g. a faculty-added
+    `notes`/`moodle_id` - is carried through untouched, and no cell's raw text is normalised
+    (so a `role` of `audit`/`Auditor` is left exactly as written). This replaces the old
+    round-trip through `roster.dump`, which re-serialised only `roster.FIELDS` and rewrote
+    `role`, silently dropping unknown columns and mangling role text on every code write.
+
+    The `enrol_code` column is appended if the roster predates it."""
+    reader = csv.DictReader(io.StringIO(strip_bom(text)))
+    fieldnames = list(reader.fieldnames or [])
+    if "enrol_code" not in fieldnames:
+        fieldnames.append("enrol_code")
+    rows = list(reader)
+    for i, row in enumerate(rows):
+        if i in codes_by_row and not (row.get("enrol_code") or "").strip():
+            row["enrol_code"] = codes_by_row[i]
+    out = io.StringIO()
+    writer = csv.DictWriter(out, fieldnames=fieldnames)
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({k: row.get(k, "") for k in fieldnames})
+    return out.getvalue()
 
 
 def assign_codes(students: list[roster.Student], gen=make_code) -> int:
@@ -67,20 +97,36 @@ def code_message(student: roster.Student, welcome_url: str) -> mailer.Message:
 
 
 def run(cohort_org: str, dry_run: bool = False) -> int:
-    students = roster.load(cohort_org)
-    if students is None:  # missing/unreadable roster - load() already logged why
+    # Fetch the RAW roster text once: we parse it for the students, and (below) edit the same
+    # text in place so writing codes back never disturbs columns roster doesn't model.
+    raw = get_file_content(cohort_org, roster.CONFIG_REPO, roster.ROSTER_PATH)
+    if raw is None:  # genuinely absent - mirror roster.load's message
+        log_err(
+            f"Could not find {roster.ROSTER_PATH} in {cohort_org}/{roster.CONFIG_REPO} - "
+            f"bootstrap the cohort first (bootstrap_course --cohort)."
+        )
         return 1
+    students = roster.parse(raw)
     if not students:
         log_err(f"roster in {cohort_org} has no rows yet - no codes to generate.")
         return 1
 
+    before = [s.enrol_code for s in students]
     added = assign_codes(students)  # in memory; persisted below unless dry-run
     log_step(
         f"Enrolment codes for {cohort_org}: {added} new code(s), "
         f"emailing not-yet-onboarded students"
     )
     if added and not dry_run:
-        body = roster.dump(students)
+        # Write ONLY the newly filled enrol_code cells back into the raw CSV, preserving every
+        # other column and each cell's raw text (see fill_enrol_codes_in_csv). Row order
+        # matches roster.parse, so index i lines up with students[i].
+        codes_by_row = {
+            i: s.enrol_code
+            for i, s in enumerate(students)
+            if not before[i] and s.enrol_code
+        }
+        body = fill_enrol_codes_in_csv(raw, codes_by_row)
         if not put_file(
             cohort_org,
             roster.CONFIG_REPO,

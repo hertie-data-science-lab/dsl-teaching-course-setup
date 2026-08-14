@@ -83,6 +83,24 @@ def known_handles(students: list[roster.Student] | None) -> set[str]:
     return {s.github_handle for s in students or [] if s.onboarded}
 
 
+def vet_handles(
+    members: list[str], allowed_by_fold: dict[str, str]
+) -> tuple[list[str], list[str]]:
+    """Split `members` against a fold-keyed allowlist (`{handle.casefold(): handle}` built
+    from `known_handles`). Returns (accepted, rejected): accepted in the roster's canonical
+    casing (a case-only mismatch is the same GitHub account), rejected the raw handles that
+    are NOT onboarded roster members. This is the single home of the stranger-invite guard -
+    adding a rejected handle to a team would INVITE an arbitrary account into the private org,
+    so every path that materialises a team (sync and the assignment release) vets through here
+    rather than re-implementing it. Callers log/count rejections in their own words."""
+    accepted: list[str] = []
+    rejected: list[str] = []
+    for m in members:
+        canonical = allowed_by_fold.get(m.casefold())
+        (accepted if canonical is not None else rejected).append(canonical or m)
+    return accepted, rejected
+
+
 def sync(cohort_org: str, prune: bool = False, dry_run: bool = False) -> int:
     wanted = desired_teams(teams.load(cohort_org))
     if not wanted:
@@ -94,17 +112,14 @@ def sync(cohort_org: str, prune: bool = False, dry_run: bool = False) -> int:
     allowed_by_fold = {h.casefold(): h for h in known_handles(roster.load(cohort_org))}
     errors = 0
     for slug in sorted(wanted):
-        members = set()
-        for member in sorted(wanted[slug]):
-            canonical = allowed_by_fold.get(member.casefold())
-            if canonical is None:
-                log_err(
-                    f"{member} in teams.csv is not an onboarded roster handle - "
-                    f"not adding to {slug} (would invite an arbitrary GitHub account)"
-                )
-                errors += 1
-            else:
-                members.add(canonical)
+        accepted, rejected = vet_handles(sorted(wanted[slug]), allowed_by_fold)
+        for member in rejected:
+            log_err(
+                f"{member} in teams.csv is not an onboarded roster handle - "
+                f"not adding to {slug} (would invite an arbitrary GitHub account)"
+            )
+            errors += 1
+        members = set(accepted)
         if dry_run:
             log(
                 f"    DRY-RUN team {slug}: {', '.join('@' + m for m in sorted(members))}"

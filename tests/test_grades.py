@@ -278,3 +278,15 @@ def test_unsent_grade_notifications_are_reported(monkeypatch, capsys):
     monkeypatch.setattr(grades.mailer, "send_bulk", lambda msgs, dry_run=False: 1)
     grades._email_updates("COHORT", ["ada-l", "bob-b"])
     assert "1 of 2 grade notification(s) not sent" in capsys.readouterr().err
+
+
+# ------------------------------------------ render must not clobber a reviewer's edit (fix 16)
+
+
+def test_human_commit_authors_flags_only_non_bot_commits():
+    # `render` refuses to force-overwrite the grades-update branch when it carries a reviewer's
+    # own commit; the decision is this pure split of `git log --format=%an base..branch`.
+    log = "dsl-bot\nDr Reviewer\ndsl-bot\nDr Reviewer\n"
+    assert grades._human_commit_authors(log) == ["Dr Reviewer"]  # de-duplicated, sorted
+    assert grades._human_commit_authors("dsl-bot\ndsl-bot\n") == []  # only bot renders
+    assert grades._human_commit_authors("") == []  # branch absent / no commits
