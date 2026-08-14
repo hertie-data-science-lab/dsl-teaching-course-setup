@@ -125,6 +125,17 @@ def repo_is_private(org: str, name: str) -> bool:
     return out.strip() != "false" if code == 0 else True
 
 
+def repo_is_archived(org: str, name: str) -> bool:
+    """Return True if the repo is archived (assume LIVE if the check fails).
+
+    Archived repos are read-only - every write 403s. The optimistic default is deliberate:
+    a transient API failure must not silently skip a live cohort's refresh. Guess wrong
+    that way and the write itself fails loudly, which is the outcome we want.
+    """
+    code, out = gh("api", f"repos/{org}/{name}", "--jq", ".archived")
+    return out.strip() == "true" if code == 0 else False
+
+
 def get_default_branch(org: str, name: str) -> str:
     """Return the default branch of a repo. Falls back to 'main'."""
     code, out = gh("api", f"repos/{org}/{name}", "--jq", ".default_branch")

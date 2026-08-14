@@ -439,6 +439,7 @@ def _stub_refresh(
     monkeypatch.setattr(seed, "update_profile_readme", lambda org: None)
     monkeypatch.setattr(seed, "refresh_welcome_workflows", welcome_failures)
     monkeypatch.setattr(seed, "refresh_classroom_samples", sample_failures)
+    monkeypatch.setattr(seed, "repo_is_archived", lambda org, repo: False)
 
 
 @pytest.mark.parametrize(
@@ -458,6 +459,38 @@ def test_refresh_reaches_every_registered_cohort(monkeypatch, per_cohort_job):
 
     assert seed.refresh("Course-Org") == 0
     assert refreshed == ["Cohort-f2026", "Cohort-s2027"]
+
+
+def test_refresh_leaves_an_archived_cohort_frozen(monkeypatch, capsys):
+    # A finished semester's repos are archived, so every write 403s - and the config
+    # samples are NEW files, which put_file's identical-sha no-op cannot absorb. The
+    # nightly cron therefore went red every night in any org with a past cohort. Skipping
+    # the archived cohort whole is the fix; the live cohort beside it still converges.
+    refreshed: list[str] = []
+    checked: list[tuple[str, str]] = []
+
+    def refresh_one(org: str) -> int:
+        refreshed.append(org)
+        return 9 if org == "Cohort-f2026" else 0  # what the 403s would have counted as
+
+    def archived(org: str, repo: str) -> bool:
+        checked.append((org, repo))
+        return org == "Cohort-f2026"
+
+    _stub_refresh(
+        monkeypatch, welcome_failures=refresh_one, sample_failures=refresh_one
+    )
+    monkeypatch.setattr(seed, "repo_is_archived", archived)
+
+    assert seed.refresh("Course-Org") == 0
+    assert refreshed == ["Cohort-s2027", "Cohort-s2027"]  # both jobs, live cohort only
+    assert checked == [
+        ("Cohort-f2026", "classroom-config"),
+        ("Cohort-s2027", "classroom-config"),
+    ]
+    out = capsys.readouterr()
+    assert "[skip] Cohort-f2026 (archived cohort - left frozen)" in out.out
+    assert "refresh incomplete" not in out.err
 
 
 @pytest.mark.parametrize(
