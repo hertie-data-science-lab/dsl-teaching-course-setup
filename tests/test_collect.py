@@ -404,13 +404,23 @@ def test_snapshot_assignment_writes_nothing_when_a_lookup_fails(monkeypatch):
     assert written == []
 
 
-def test_snapshot_assignment_fails_when_there_is_nothing_to_snapshot(monkeypatch):
+def test_snapshot_assignment_with_no_targets_yet_writes_nothing_and_is_not_an_error(
+    monkeypatch, capsys
+):
+    # An assignment nobody can submit to yet (nobody onboarded, no teams, not handed out)
+    # must be a no-op, not an hourly failure - AND the snapshot is write-once, so an empty
+    # one would pin it to "nothing submitted" for ever. Nothing written, green, retried.
+    def boom(*args, **kwargs):
+        raise AssertionError("an empty snapshot must never be frozen")
+
     monkeypatch.setattr(collect, "load_snapshots", lambda org, slug: None)
     monkeypatch.setattr(collect, "submission_targets", lambda *a, **k: [])
+    monkeypatch.setattr(collect, "put_file", boom)
     assert (
         collect.snapshot_assignment("Cohort", "assignment-1", "2026-10-15T23:59")
-        is False
+        is True
     )
+    assert "nothing to freeze yet" in capsys.readouterr().out
 
 
 def test_load_snapshots_distinguishes_a_missing_file_from_blank_shas(monkeypatch):
@@ -427,14 +437,35 @@ def test_load_snapshots_distinguishes_a_missing_file_from_blank_shas(monkeypatch
 # --------------------------------------------------------- collect() threads it through
 
 
-def _fake_solution_clone(*args, **kwargs):
-    """`gh repo clone` of the template's solution branch, faked into a real directory."""
-    if args[:2] == ("repo", "clone"):
-        dest = Path(args[3])
-        dest.mkdir(parents=True, exist_ok=True)
-        (dest / "grading.yml").write_text("autograde: true\nmax_auto: 2\n")
-        (dest / "tests").mkdir(exist_ok=True)
-    return (0, "")
+def _clone_writing(grading: str):
+    """A `gh` whose `repo clone` of the template's solution branch is faked into a real
+    directory carrying `grading`."""
+
+    def fake_gh(*args, **kwargs):
+        if args[:2] == ("repo", "clone"):
+            dest = Path(args[3])
+            dest.mkdir(parents=True, exist_ok=True)
+            (dest / "grading.yml").write_text(grading)
+            (dest / "tests").mkdir(exist_ok=True)
+        return (0, "")
+
+    return fake_gh
+
+
+_fake_solution_clone = _clone_writing("autograde: true\nmax_auto: 2\n")
+
+
+def _captured_writes(monkeypatch) -> list[tuple[str, str]]:
+    """The (path, text) writes collect makes into classroom-config."""
+    written: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        collect,
+        "put_file",
+        lambda org, repo, path, content, msg: (
+            written.append((path, content.decode())) or True
+        ),
+    )
+    return written
 
 
 def _stub_collect(monkeypatch, snapshots):
@@ -479,6 +510,109 @@ def test_collect_without_a_snapshot_grades_on_dates_and_says_so(monkeypatch, cap
     assert set(seen.values()) == {None}
     err = capsys.readouterr().err
     assert "snapshots/assignment-1.csv" in err and "students control" in err
+
+
+def test_collect_resolves_the_cohort_type_from_the_entry_not_the_cohort_name(
+    monkeypatch,
+):
+    # schedule.yml is keyed on the SLUG; a `cohort_dest_repo` makes the cohort-side name
+    # differ from that key, so looking the entry up by name finds nothing and a declared
+    # group assignment quietly grades one repo per student. Resolve it by
+    # course_source_repo, exactly as assignment_is_group does.
+    from dsl_course.schedule import AssignmentEntry
+
+    entry = AssignmentEntry(
+        course_source_repo="assignment-4-project-f2026",
+        cohort_dest_repo="group-project",
+        due_datetime=datetime(2026, 11, 15, tzinfo=ZoneInfo("Europe/Berlin")),
+        type="group",
+    )
+    _stub_collect(monkeypatch, None)
+    monkeypatch.setattr(
+        collect.schedule, "load", lambda org: Schedule(assignments={"project": entry})
+    )
+    kinds: list[bool | None] = []
+    monkeypatch.setattr(
+        collect,
+        "submission_targets",
+        lambda org, slug, is_group=None: (
+            kinds.append(is_group) or [(f"{slug}-team-x", "team-x", ["anna", "ben"])]
+        ),
+    )
+    written = _captured_writes(monkeypatch)
+
+    assert collect.collect("Course", "assignment-4-project-f2026", "Cohort") == 0
+
+    assert kinds == [True]  # graded per TEAM, as the cohort declared
+    # every cohort-side artefact keys on the cohort name, and the per-target archive on the
+    # target's own key (the loop variable no longer shadows the schedule key)
+    assert ("autograde/group-project/team-x.json") in [p for p, _t in written]
+    assert "grades/group-project.csv" in [p for p, _t in written]
+
+
+def test_collect_records_a_skip_when_the_template_has_no_solution_branch(monkeypatch):
+    # Fire-once: no marker means the scheduler re-clones this template and re-decides the
+    # same skip on every hourly tick, for ever. Hand-marked assignments are common.
+    monkeypatch.setattr(collect, "gh", lambda *a, **k: (1, "no such branch"))
+    monkeypatch.setattr(collect.schedule, "load", lambda org: Schedule())
+    written = _captured_writes(monkeypatch)
+    assert collect.collect("Course", "assignment-1-f2026", "Cohort") == 0
+    ((path, text),) = written
+    assert path == "autograde/assignment-1/_skipped.json"
+    assert collect.SOLUTION_BRANCH in text  # the record says why
+
+
+def test_collect_records_a_skip_when_autograde_is_disabled(monkeypatch):
+    monkeypatch.setattr(collect, "gh", _clone_writing("autograde: false\n"))
+    monkeypatch.setattr(collect.schedule, "load", lambda org: Schedule())
+    written = _captured_writes(monkeypatch)
+    assert collect.collect("Course", "assignment-1-f2026", "Cohort") == 0
+    ((path, text),) = written
+    assert path == "autograde/assignment-1/_skipped.json"
+    assert "autograde: false" in text
+
+
+def test_collect_dry_run_records_no_skip(monkeypatch):
+    # A dry run must not fire the marker - that would silence the real run that follows.
+    monkeypatch.setattr(collect, "gh", _clone_writing("autograde: false\n"))
+    monkeypatch.setattr(collect.schedule, "load", lambda org: Schedule())
+    written = _captured_writes(monkeypatch)
+    assert collect.collect("Course", "assignment-1-f2026", "Cohort", dry_run=True) == 0
+    assert written == []
+
+
+def test_collect_with_nothing_gradable_records_a_skip_and_succeeds(monkeypatch, capsys):
+    # Every target WAS examined and none of them yielded a grade (here: a group assignment
+    # whose team has no members). The snapshot is frozen, so an hourly retry would see
+    # exactly this and go red every hour - record the skip and stay green.
+    _stub_collect(monkeypatch, {"assignment-1-team-x": ""})
+    monkeypatch.setattr(collect, "gh", _clone_writing("type: group\nautograde: true\n"))
+    monkeypatch.setattr(
+        collect,
+        "submission_targets",
+        lambda org, slug, is_group=None: [(f"{slug}-team-x", "team-x", [])],
+    )
+    written = _captured_writes(monkeypatch)
+    assert collect.collect("Course", "assignment-1-f2026", "Cohort") == 0
+    (skip,) = [(p, t) for p, t in written if p.endswith(collect.SKIP_RECORD)]
+    assert skip[0] == "autograde/assignment-1/_skipped.json"
+    assert "nothing gradable" in skip[1]
+    assert "nothing gradable" in capsys.readouterr().out  # and it is not silent
+
+
+def test_collect_with_every_repo_unreadable_fails_and_records_nothing(
+    monkeypatch, capsys
+):
+    # Infrastructure, not a verdict: repos not generated yet, or the API having a bad
+    # afternoon. Recording a permanent "not machine-graded" on the strength of an outage
+    # would lose the scores for good, so the run goes red with nothing written and the
+    # next hourly tick retries. This is the one empty case that is NOT a skip.
+    _stub_collect(monkeypatch, {"assignment-1-anna": SHA})
+    monkeypatch.setattr(collect, "_grade_target", lambda *a, **k: None)
+    written = _captured_writes(monkeypatch)
+    assert collect.collect("Course", "assignment-1-f2026", "Cohort") == 1
+    assert written == []  # above all: no _skipped.json
+    assert "could be read" in capsys.readouterr().err
 
 
 def test_template_is_group_reads_the_solution_branch_grading_yml(monkeypatch):

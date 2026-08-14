@@ -121,9 +121,16 @@ def _graph_send_one(
 
 
 def _send_via_graph(cfg: GraphConfig, messages: list[Message]) -> int:
+    """Send the whole batch on one token. Returns the number actually sent.
+
+    A failed token request raises rather than returning 0: nothing was sent AND nothing
+    could be, which is a transport failure, not an empty batch - the two must not read
+    the same to the caller."""
     token = _graph_token(cfg)
     if token is None:
-        return 0
+        raise RuntimeError(
+            "Microsoft Graph token request failed - check the GRAPH_* secrets. Nothing sent."
+        )
     sent = 0
     for to, subject, body in messages:
         if _graph_send_one(cfg, token, to, subject, body):

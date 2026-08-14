@@ -716,7 +716,14 @@ def main() -> int:
             return 1
         source_name = args.file
     else:
-        sched, source_name = load(args.cohort_org), f"{args.cohort_org}/{SCHEDULE_PATH}"
+        # A cohort fetch reads schedule.yml over the API: absent is an empty Schedule,
+        # but an unreadable one raises - report it as a line, not a traceback.
+        try:
+            sched = load(args.cohort_org)
+        except RuntimeError as exc:
+            log_err(str(exc))
+            return 1
+        source_name = f"{args.cohort_org}/{SCHEDULE_PATH}"
 
     if not args.validate:
         print(json.dumps(asdict(sched), indent=2, default=str))

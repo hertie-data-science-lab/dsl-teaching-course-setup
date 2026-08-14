@@ -49,6 +49,9 @@ def gh(*args: str, stdin: str | None = None, retries: int = 3) -> tuple[int, str
         )
         time.sleep(delay)
         delay *= 2
+    # Only reachable with a negative `retries` (the loop never runs); callers unpack a
+    # pair, so hand back a failure rather than None.
+    return 1, "gh: not run (retries < 0)"
 
 
 def gh_json(*args: str) -> Any:
@@ -60,7 +63,10 @@ def gh_json(*args: str) -> Any:
         text=True,
     )
     if result.returncode != 0:
-        raise RuntimeError(f"gh command failed: {result.stderr.strip()}")
+        raise RuntimeError(
+            f"`gh {' '.join(args)}` failed (exit {result.returncode}): "
+            f"{result.stderr.strip()[:200]}"
+        )
     return json.loads(result.stdout)
 
 
@@ -230,16 +236,22 @@ def _acting_login() -> str | None:
 
 
 @cache
-def get_org_owners(org: str) -> frozenset[str]:
+def get_org_owners(org: str) -> frozenset[str] | None:
     """Active Owners of `org` - see reconcile_team_members for why these are never
-    pruned from any team."""
+    pruned from any team.
+
+    None means the list could not be read (an empty frozenset means the org genuinely
+    has no owners). The distinction matters: an unreadable list silently disabled the
+    owner-protection guard, so a prune could evict an Owner."""
     code, out = gh("api", f"orgs/{org}/members?role=admin&per_page=100", "--paginate")
     if code != 0:
-        return frozenset()
+        log_err(f"could not read the owners of {org}: {out[:200]}")
+        return None
     try:
         return frozenset(m["login"] for m in json.loads(out))
     except (json.JSONDecodeError, KeyError, TypeError):
-        return frozenset()
+        log_err(f"unparseable owner listing for {org}: {out[:200]}")
+        return None
 
 
 def reconcile_team_members(
@@ -255,6 +267,9 @@ def reconcile_team_members(
     whoever happens to be running this particular sync) means the same protection
     holds no matter who triggers it - a human running this locally under their own
     account no longer evicts the bot, and vice versa.
+
+    If the owner list can't be read at all, the whole prune pass is skipped: pruning
+    blind is how an Owner gets evicted, and adds are still applied.
     """
     current = get_team_members(org, team)
     errors = 0
@@ -266,8 +281,14 @@ def reconcile_team_members(
         else:
             errors += 1
     if prune:
-        acting = _acting_login()
         owners = get_org_owners(org)
+        if owners is None:
+            log_err(
+                f"pruning skipped for {org}/{team}: the org owner list could not be "
+                f"read, and pruning without it risks evicting an Owner"
+            )
+            return errors
+        acting = _acting_login()
         for handle in sorted(current - wanted):
             if handle == acting or handle in owners:
                 continue
@@ -546,7 +567,11 @@ def put_file(org: str, repo: str, path: str, content: bytes, message: str) -> bo
 
 def get_file_content(org: str, repo: str, path: str, ref: str = "") -> str | None:
     """Fetch a file's decoded text content (from `ref`, default branch if empty).
-    Returns None if not found."""
+
+    None means the file is genuinely absent (a 404) - nothing else. Any other failure to
+    read it (no permission, rate limit, network) raises, because callers treat None as
+    "not configured yet" and would otherwise read a transient API failure as an empty
+    roster/schedule/registry and cheerfully do nothing. Same rule as delete_file."""
     url = f"repos/{org}/{repo}/contents/{path}"
     if ref:
         url += f"?ref={ref}"
@@ -557,7 +582,9 @@ def get_file_content(org: str, repo: str, path: str, ref: str = "") -> str | Non
         ".content | @base64d",
     )
     if code != 0:
-        return None
+        if "HTTP 404" in out or "Not Found" in out:
+            return None
+        raise RuntimeError(f"could not read {org}/{repo}/{path}: {out[:200]}")
     return out
 
 

@@ -4,6 +4,8 @@ config, so these pure functions are the whole contract."""
 
 from __future__ import annotations
 
+import pytest
+
 from dsl_course import utils
 
 
@@ -52,8 +54,6 @@ def test_expand_int_spec_handles_lists_ranges_and_mixes():
 
 
 def test_expand_int_spec_rejects_malformed_input():
-    import pytest
-
     with pytest.raises(ValueError, match="empty"):
         utils.expand_int_spec("   ")
     with pytest.raises(ValueError, match="abc"):
@@ -122,6 +122,56 @@ def test_put_file_writes_with_the_fetched_sha_when_the_content_differs(monkeypat
     assert f"sha={_blob_sha(b'something else')}" in calls[1]
 
 
+def test_get_file_content_returns_none_only_for_a_genuine_404(monkeypatch):
+    # None is what every caller reads as "not configured yet" (an unseeded roster, an
+    # empty cohort registry), so only a real 404 may produce it - a rate-limited or
+    # forbidden read has to be loud, or a transient failure looks like an empty course.
+    monkeypatch.setattr(utils, "gh", lambda *a, **k: (1, "gh: Not Found (HTTP 404)"))
+    assert utils.get_file_content("Org", "classroom-config", "students.csv") is None
+    monkeypatch.setattr(utils, "gh", lambda *a, **k: (1, "gh: HTTP 403 - rate limited"))
+    with pytest.raises(RuntimeError, match="Org/classroom-config/students.csv"):
+        utils.get_file_content("Org", "classroom-config", "students.csv")
+
+
+def test_get_file_content_returns_the_decoded_body(monkeypatch):
+    monkeypatch.setattr(utils, "gh", lambda *a, **k: (0, "handle,email\n"))
+    assert utils.get_file_content("Org", "repo", "students.csv") == "handle,email\n"
+
+
+def test_gh_always_returns_a_pair(monkeypatch):
+    # The retry loop is gh's only return path, so a negative `retries` (no attempt at all)
+    # used to fall off the end and hand back None - which every caller unpacks.
+    code, out = utils.gh("api", "user", retries=-1)
+    assert code != 0 and out
+
+
+def test_gh_json_names_the_command_it_failed_to_run(monkeypatch):
+    # This message is what a CLI prints in an Actions log instead of a traceback, so
+    # "gh command failed" on its own leaves nothing to act on.
+    import subprocess
+
+    class Result:
+        returncode = 1
+        stdout = ""
+        stderr = "HTTP 403: rate limited"
+
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: Result())
+    with pytest.raises(RuntimeError, match="`gh search repos topic:dsl-course-hub`"):
+        utils.gh_json("search", "repos", "topic:dsl-course-hub")
+
+
+def test_get_org_owners_distinguishes_no_owners_from_an_unreadable_list(monkeypatch):
+    # An empty frozenset disables the prune guard in reconcile_team_members, so a failed
+    # read must NOT produce one - it produces None, which skips pruning altogether.
+    utils.get_org_owners.cache_clear()
+    monkeypatch.setattr(utils, "gh", lambda *a, **k: (1, "gh: HTTP 502"))
+    assert utils.get_org_owners("Org") is None
+    utils.get_org_owners.cache_clear()
+    monkeypatch.setattr(utils, "gh", lambda *a, **k: (0, "[]"))
+    assert utils.get_org_owners("Org") == frozenset()
+    utils.get_org_owners.cache_clear()
+
+
 def test_reconcile_team_members_adds_missing_and_removes_extra(monkeypatch):
     monkeypatch.setattr(utils, "get_team_members", lambda org, team: {"alice", "bob"})
     monkeypatch.setattr(utils, "_acting_login", lambda: None)
@@ -181,3 +231,27 @@ def test_reconcile_team_members_never_prunes_any_org_owner(monkeypatch):
     errors = utils.reconcile_team_members("org", "course-admin", wanted=set())
     assert errors == 0
     assert removed == ["alice"]  # neither owner touched, despite neither being declared
+
+
+def test_reconcile_team_members_skips_the_prune_when_the_owners_are_unreadable(
+    monkeypatch, capsys
+):
+    # Without the owner list there is no way to tell an Owner from a stray member, and a
+    # blind prune could evict one. Adds still happen; the prune pass is skipped, loudly.
+    monkeypatch.setattr(utils, "get_team_members", lambda org, team: {"alice"})
+    monkeypatch.setattr(utils, "_acting_login", lambda: None)
+    monkeypatch.setattr(utils, "get_org_owners", lambda org: None)
+    added, removed = [], []
+    monkeypatch.setattr(
+        utils,
+        "add_team_member",
+        lambda org, team, h, role="member": added.append(h) or True,
+    )
+    monkeypatch.setattr(
+        utils, "remove_team_member", lambda org, team, h: removed.append(h) or True
+    )
+    errors = utils.reconcile_team_members("org", "course-admin", {"carol"})
+    assert errors == 0
+    assert added == ["carol"]
+    assert removed == []
+    assert "pruning skipped" in capsys.readouterr().err

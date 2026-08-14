@@ -9,6 +9,8 @@ session-folder rule makes the API side disagree with the local-checkout side. No
 
 from __future__ import annotations
 
+import pytest
+
 from dsl_course import discovery, seed, utils
 
 INFRA_AND_CONTENT = [
@@ -74,10 +76,21 @@ def test_list_org_repos_paginates_instead_of_capping(monkeypatch):
     assert "orgs/Org/repos?per_page=100" in calls[0]
 
 
-def test_list_org_repos_reports_a_failed_listing_as_empty(monkeypatch, capsys):
+def test_list_org_repos_raises_instead_of_reporting_an_empty_org(monkeypatch):
+    # [] means the org really is empty. A failed listing used to look identical, so a
+    # transient API error made Refresh converge "0 content repo(s)" and go green, and
+    # made profile_readme file a cohort org (no `welcome` found) as a course org.
     monkeypatch.setattr(discovery, "gh", lambda *args: (1, "gh: HTTP 502"))
+    with pytest.raises(RuntimeError, match="could not list repos in Org"):
+        discovery.list_org_repos("Org")
+    monkeypatch.setattr(discovery, "gh", lambda *args: (0, "not json\n"))
+    with pytest.raises(RuntimeError, match="unparseable repo listing"):
+        discovery.list_org_repos("Org")
+
+
+def test_list_org_repos_reports_a_genuinely_empty_org_as_empty(monkeypatch):
+    monkeypatch.setattr(discovery, "gh", lambda *args: (0, ""))
     assert discovery.list_org_repos("Org") == []
-    assert "Org" in capsys.readouterr().err
 
 
 TREES = {

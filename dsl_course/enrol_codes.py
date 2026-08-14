@@ -112,7 +112,13 @@ def main() -> int:
         help="Preview the codes + emails; write nothing, send nothing.",
     )
     args = parser.parse_args()
-    return run(args.cohort_org, dry_run=args.dry_run)
+    # A read helper (or the mail transport) that couldn't reach its API raises; in an
+    # Actions log a one-line error beats a traceback, and the run still goes red.
+    try:
+        return run(args.cohort_org, dry_run=args.dry_run)
+    except RuntimeError as exc:
+        log_err(str(exc))
+        return 1
 
 
 if __name__ == "__main__":

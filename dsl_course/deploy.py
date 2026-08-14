@@ -237,11 +237,20 @@ def main() -> int:
         f"Releasing {len(pairs)} path(s) from {args.source_org}/{args.course_source_repo} -> "
         f"{args.cohort_org}/{dest_repo}"
     )
-    errors, _ = deploy_many(
-        args.source_org,
-        args.cohort_org,
-        [Deploy(args.course_source_repo, src, dest_repo, dest) for src, dest in pairs],
-    )
+    # A read helper that couldn't reach the API raises; in an Actions log a one-line
+    # error beats a traceback, and the run still goes red.
+    try:
+        errors, _ = deploy_many(
+            args.source_org,
+            args.cohort_org,
+            [
+                Deploy(args.course_source_repo, src, dest_repo, dest)
+                for src, dest in pairs
+            ],
+        )
+    except RuntimeError as e:
+        log_err(str(e))
+        return 1
     if errors:
         return 1
     log("done")

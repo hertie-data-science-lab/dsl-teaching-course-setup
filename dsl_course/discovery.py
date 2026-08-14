@@ -25,7 +25,6 @@ from .utils import (
     get_default_branch,
     get_file_content,
     gh,
-    log_err,
     log_ok,
     put_file,
     session_dirs,
@@ -69,6 +68,10 @@ def list_org_repos(org: str) -> list[dict]:
     parsed as NDJSON rather than concatenated arrays.
 
     Fields are normalised to the names the callers use (`url`, `isTemplate`).
+
+    An empty list means the org genuinely holds no repos; a failed listing raises, since
+    every caller reads "no repos" as "nothing to do" (refresh converges zero repos and
+    reports success, profile_readme misfiles a cohort org as a course org).
     """
     code, out = gh(
         "api",
@@ -79,13 +82,11 @@ def list_org_repos(org: str) -> list[dict]:
         "isTemplate: .is_template, topics: (.topics // [])}",
     )
     if code != 0:
-        log_err(f"could not list repos in {org}: {out[:200]}")
-        return []
+        raise RuntimeError(f"could not list repos in {org}: {out[:200]}")
     try:
         return [json.loads(line) for line in out.splitlines() if line.strip()]
-    except json.JSONDecodeError:
-        log_err(f"unparseable repo listing for {org}: {out[:200]}")
-        return []
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"unparseable repo listing for {org}: {out[:200]}") from exc
 
 
 def _read_cohorts(course_org: str) -> list[str]:

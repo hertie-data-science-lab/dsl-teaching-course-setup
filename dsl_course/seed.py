@@ -45,7 +45,7 @@ from .discovery import (
     register_cohort,
 )
 from .profile_readme import update_profile_readme
-from .utils import delete_file, gh, log_ok, log_step, put_file
+from .utils import delete_file, gh, log_err, log_ok, log_step, put_file
 from .welcome import refresh_welcome_workflows
 from .workflows_render import (
     render_bootstrap_cohort,
@@ -106,35 +106,49 @@ def _push_workflows(
     repo: str,
     cohort_orgs: list[str],
     assignments: list[str],
-) -> None:
-    put_file(
-        org,
-        repo,
-        WORKFLOWS[0],
-        render_release(cohort_orgs, repo).encode(),
-        "ci: release-materials wrapper",
-    )
-    put_file(
-        org,
-        repo,
-        WORKFLOWS[1],
-        render_provision(cohort_orgs, assignments).encode(),
-        "ci: release-assignment wrapper",
-    )
-    for retired in RETIRED_WORKFLOWS:
+) -> int:
+    """Place the run-from-repo buttons in one content repo. Returns the number of writes
+    that failed, so refresh can report a run that didn't converge."""
+    results = [
+        put_file(
+            org,
+            repo,
+            WORKFLOWS[0],
+            render_release(cohort_orgs, repo).encode(),
+            "ci: release-materials wrapper",
+        ),
+        put_file(
+            org,
+            repo,
+            WORKFLOWS[1],
+            render_provision(cohort_orgs, assignments).encode(),
+            "ci: release-assignment wrapper",
+        ),
+    ]
+    results += [
         delete_file(
             org,
             repo,
             retired,
             f"ci: retire {retired.split('/')[-1]} (folded into release-materials.yml)",
         )
-    log_ok(f"workflows -> {org}/{repo}")
+        for retired in RETIRED_WORKFLOWS
+    ]
+    failures = results.count(False)
+    if failures:
+        log_err(f"{failures} workflow file(s) not written to {org}/{repo}")
+    else:
+        log_ok(f"workflows -> {org}/{repo}")
+    return failures
 
 
-def seed_github_workflows(course_org: str) -> None:
+def seed_github_workflows(course_org: str) -> int:
     """Seed/refresh the org-level workflows into the course org's .github repo: the
     CENTRAL Release materials (course-source-repo dropdown), Release assignment, plus Sync
-    enrolment / Bootstrap cohort / Refresh."""
+    enrolment / Bootstrap cohort / Refresh.
+
+    Returns the number of writes that failed - a button that didn't land is exactly the
+    thing a green run must not hide."""
     cohorts = discover_cohorts(course_org)
     source_repos = discover_content_repos(course_org)
     assignments = discover_assignments(course_org)
@@ -163,11 +177,14 @@ def seed_github_workflows(course_org: str) -> None:
         ".github/workflows/scheduled-release.yml": render_scheduler(),
     }
     log_step(f"Seeding org-level workflows into {course_org}/.github")
+    failures = 0
     for path, content in files.items():
         if put_file(
             course_org, ".github", path, content.encode(), f"ci: {path.split('/')[-1]}"
         ):
             log_ok(f".github <- {path.split('/')[-1]}")
+        else:
+            failures += 1
 
     # Retired buttons - remove any copies already seeded into orgs bootstrapped before
     # the change, so faculty never see two buttons for one job. sync-enrolment/sync-teams
@@ -178,12 +195,14 @@ def seed_github_workflows(course_org: str) -> None:
         ".github/workflows/sync-teams.yml",
         ".github/workflows/status.yml",
     ):
-        delete_file(
+        if not delete_file(
             course_org,
             ".github",
             retired,
             f"ci: retire {retired.split('/')[-1]} (superseded by sync-membership.yml)",
-        )
+        ):
+            failures += 1
+    return failures
 
 
 def _propagate_repo_secret(course_org: str, repos: list[str]) -> None:
@@ -212,7 +231,11 @@ def refresh(course_org: str) -> int:
     AND the central org-level workflows in .github; repopulate dropdowns; rebuild the
     org profile README; re-push every registered cohort's welcome workflows; and
     (Free-plan workaround) propagate the token as a repo secret so private content repos
-    can authenticate."""
+    can authenticate.
+
+    Non-zero if any file could not be written: this runs nightly on a cron, so a run that
+    silently failed to converge an org would go unnoticed until someone clicked a button
+    that was never seeded."""
     cohorts = discover_cohorts(course_org)
     targets = discover_content_repos(course_org)
     assignments = discover_assignments(
@@ -221,16 +244,20 @@ def refresh(course_org: str) -> int:
     log_step(
         f"Refreshing {len(targets)} content repo(s) in {course_org} with cohorts {cohorts or 'none'}"
     )
+    failures = 0
     for repo in sorted(targets):
-        _push_workflows(course_org, repo, cohorts, assignments)
+        failures += _push_workflows(course_org, repo, cohorts, assignments)
     _propagate_repo_secret(course_org, targets)
-    seed_github_workflows(course_org)
+    failures += seed_github_workflows(course_org)
     update_profile_readme(course_org)
     # A cohort's onboarding workflows are seeded once, at Bootstrap cohort, and would
     # otherwise stay frozen for the whole semester while the engine they call moves on.
     log_step(f"Refreshing welcome workflows in {len(cohorts)} cohort org(s)")
     for cohort in cohorts:
-        refresh_welcome_workflows(cohort)
+        failures += refresh_welcome_workflows(cohort)
+    if failures:
+        log_err(f"refresh incomplete: {failures} file(s) could not be written")
+        return 1
     return 0
 
 
@@ -240,7 +267,13 @@ def main() -> int:
     pr = sub.add_parser("refresh")
     pr.add_argument("--course-org", required=True)
     args = parser.parse_args()
-    return refresh(args.course_org)
+    # A read helper that couldn't reach the API raises; in an Actions log a one-line
+    # error beats a traceback, and the run still goes red.
+    try:
+        return refresh(args.course_org)
+    except RuntimeError as exc:
+        log_err(str(exc))
+        return 1
 
 
 if __name__ == "__main__":
