@@ -76,7 +76,7 @@ def example_cohort_file(rel: str) -> str:
     """Read a file from the worked example cohort (example-course/cohort-org/<rel>).
 
     Seeded verbatim as a `.sample`: never str.format-rendered, because a worked example is
-    a real cohort's file (DSL-Demo-f2026), not a scaffold to fill in."""
+    a real cohort's file (hertie-dsl-demo-f2026), not a scaffold to fill in."""
     return (EXAMPLE_COHORT / rel).read_text(encoding="utf-8")
 
 

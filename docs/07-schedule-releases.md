@@ -14,7 +14,7 @@ The schedule file can be updated throughout the semester.
 
 > For a fully worked example schedule.yml (a full term) see [here](../example-course/cohort-org/schedule.yml).
 
-> An example of the automatically generated schedule on the deployed `.github.io` site can also be seen live [here](https://dsl-demo-f2026.github.io/schedule/). 
+> An example of the automatically generated schedule on the deployed `.github.io` site can also be seen live [here](https://hertie-dsl-demo-f2026.github.io/schedule/). 
 
 Three blocks carry the whole term, and each is defined by what it **does**:
 
@@ -195,7 +195,7 @@ Parsed schedule.yml
 Three other ways to check, none of them required:
 
 1. **Read the counts.** **Check cohort setup** reports the release plan and term dates, and flags `N entry/ies DROPPED`.
-2. **Validate by hand.** `python3 -m dsl_course.schedule --cohort-org DSL-Demo-f2026 --validate`, or `--file schedule.yml --validate` against a local copy. Without `--validate` it prints the schedule *as parsed*, as JSON.
+2. **Validate by hand.** `python3 -m dsl_course.schedule --cohort-org hertie-dsl-demo-f2026 --validate`, or `--file schedule.yml --validate` against a local copy. Without `--validate` it prints the schedule *as parsed*, as JSON.
 3. **Dry-run the cron.** Run **Scheduled release** by hand; `dry_run` defaults to **`true`**, so it lists what *would* open and releases nothing.
 
 ## Dropped entries
@@ -237,5 +237,5 @@ Each assignment's **grading deadline** is `grading_datetime` if you set it, else
 
 ---
 
-**Demo:** `classroom-config/schedule.yml` in [`DSL-Demo-f2026`](https://github.com/DSL-Demo-f2026),
-run by [Scheduled release](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/scheduled-release.yml).
+**Demo:** `classroom-config/schedule.yml` in [`hertie-dsl-demo-f2026`](https://github.com/hertie-dsl-demo-f2026),
+run by [Scheduled release](https://github.com/hertie-dsl-demo-course-e1234/.github/actions/workflows/scheduled-release.yml).

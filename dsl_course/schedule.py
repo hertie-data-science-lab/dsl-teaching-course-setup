@@ -44,8 +44,8 @@ recorded in `Schedule.dropped` for `load` to log, `--validate` to fail on, and C
 to count.
 
 Usage:
-    python3 -m dsl_course.schedule --cohort-org Deep-Learning-EXAMPLE-f2026
-    python3 -m dsl_course.schedule --cohort-org Deep-Learning-EXAMPLE-f2026 --validate
+    python3 -m dsl_course.schedule --cohort-org hertie-dsl-demo-f2026
+    python3 -m dsl_course.schedule --cohort-org hertie-dsl-demo-f2026 --validate
     python3 -m dsl_course.schedule --file classroom-config/schedule.yml --validate
 """
 

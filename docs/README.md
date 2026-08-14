@@ -107,6 +107,6 @@ Field-by-field rules for all of these: [`DEPLOYMENT-CHECKLIST.md`](DEPLOYMENT-CH
 A standing demo you can inspect at while reading - one course org, two cohorts, running the
 current engine:
 
-- Course org: **[`DSL-Demo-Course-E1234`](https://github.com/DSL-Demo-Course-E1234)** 
-- Cohort org (current): **[`DSL-Demo-f2026`](https://github.com/DSL-Demo-f2026)** <- read here, more filled out with example files.
-- Cohort org (last year): **[`DSL-Demo-f2025`](https://github.com/DSL-Demo-f2025)**  <- empty stub, demonstrates how legacy cohort orgs remain attached to their hub course org for historical & archival reference.
+- Course org: **[`hertie-dsl-demo-course-e1234`](https://github.com/hertie-dsl-demo-course-e1234)** 
+- Cohort org (current): **[`hertie-dsl-demo-f2026`](https://github.com/hertie-dsl-demo-f2026)** <- read here, more filled out with example files.
+- Cohort org (last year): **[`hertie-dsl-demo-f2025`](https://github.com/hertie-dsl-demo-f2025)**  <- empty stub, demonstrates how legacy cohort orgs remain attached to their hub course org for historical & archival reference.

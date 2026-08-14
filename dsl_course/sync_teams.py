@@ -16,8 +16,8 @@ with prune=True - config is meant to be the live truth there; this module's own 
 is only for ad-hoc/CLI use outside that button.
 
 Usage:
-    python3 -m dsl_course.sync_teams --cohort-org Deep-Learning-EXAMPLE-f2026
-    python3 -m dsl_course.sync_teams --cohort-org Deep-Learning-EXAMPLE-f2026 --prune
+    python3 -m dsl_course.sync_teams --cohort-org hertie-dsl-demo-f2026
+    python3 -m dsl_course.sync_teams --cohort-org hertie-dsl-demo-f2026 --prune
 """
 
 from __future__ import annotations

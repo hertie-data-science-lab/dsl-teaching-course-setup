@@ -135,4 +135,4 @@ Copies each merged gradebook to `grades-<handle>/grades.yml` and emails the stud
   > exactly as you left them.
 
 ---
-**Demo:** per-student `grades-<handle>` repos in [`DSL-Demo-f2026`](https://github.com/DSL-Demo-f2026).
+**Demo:** per-student `grades-<handle>` repos in [`hertie-dsl-demo-f2026`](https://github.com/hertie-dsl-demo-f2026).

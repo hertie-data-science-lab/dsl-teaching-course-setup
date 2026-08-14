@@ -12,7 +12,7 @@ the model solution + autograder. One per assignment: `assignment-N-{f/s}YYYY`.
 Live example: [`example-course/course-org/assignment-1-f2026/`](../example-course/course-org/assignment-1-f2026).
 
 1. **Scaffold the template.** 
-   - In the course org → `.github` → **Actions tab** → [New assignment](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/new-assignment.yml). Inputs:
+   - In the course org → `.github` → **Actions tab** → [New assignment](https://github.com/hertie-dsl-demo-course-e1234/.github/actions/workflows/new-assignment.yml). Inputs:
       - `number` = `1`, `2`, etc (the assigment number)
       - `tag` = `f/sYYYY`, 
       - `format` (`py` starter script or `notebook`) - also picked up by the autograder, which
@@ -68,4 +68,4 @@ Repeat for each assignment (`number` = 2, 3, …).
 - [Release to a cohort](09-release-assignment-to-cohort.md) - freeze + hand out per-student repos by hand.
 
 ---
-**Demo:** [`DSL-Demo-Course-E1234`](https://github.com/DSL-Demo-Course-E1234) → New assignment.
+**Demo:** [`hertie-dsl-demo-course-e1234`](https://github.com/hertie-dsl-demo-course-e1234) → New assignment.

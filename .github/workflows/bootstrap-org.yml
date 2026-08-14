@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       org:
-        description: "Course org to bootstrap (e.g. Hertie-School-DSL-Demo-E1234)"
+        description: "Course org to bootstrap (e.g. hertie-dsl-demo-course-e1234)"
         required: true
       org_name:
         description: "Display name for org profile (e.g. DSL Demo)"

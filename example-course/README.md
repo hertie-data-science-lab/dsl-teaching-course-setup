@@ -15,8 +15,8 @@ i.e. what these files were used to create
 
 | Tier | Org | Role | URL|
 |------|-----|------|----|
-| Course | **`Hertie-DSL-Demo-E1234`** | persistent control panel - materials, assignment templates, the buttons | [Course org](https://github.com/DSL-Demo-Course-E1234) | 
-| Cohort | **`Hertie-DSL-Demo-f2026`** | student-facing target - welcome, roster, released materials, the site | [Cohort org](https://github.com/DSL-Demo-f2026) & [Deployed site](https://hertie-dsl-demo-f2026.github.io`)|
+| Course | **`hertie-dsl-demo-course-e1234`** | persistent control panel - materials, assignment templates, the buttons | [Course org](https://github.com/hertie-dsl-demo-course-e1234) | 
+| Cohort | **`hertie-dsl-demo-f2026`** | student-facing target - welcome, roster, released materials, the site | [Cohort org](https://github.com/hertie-dsl-demo-f2026) & [Deployed site](https://hertie-dsl-demo-f2026.github.io)|
 
 ## What's in this dataset
 

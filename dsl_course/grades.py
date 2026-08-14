@@ -22,9 +22,9 @@ Three idempotent stages, each a faculty & instructors button:
 the all-students-at-once preview that the Power Automate flow never gave.
 
 Usage:
-    python3 -m dsl_course.grades sync       --cohort-org Deep-Learning-EXAMPLE-f2026
-    python3 -m dsl_course.grades render     --cohort-org Deep-Learning-EXAMPLE-f2026
-    python3 -m dsl_course.grades distribute --cohort-org Deep-Learning-EXAMPLE-f2026
+    python3 -m dsl_course.grades sync       --cohort-org hertie-dsl-demo-f2026
+    python3 -m dsl_course.grades render     --cohort-org hertie-dsl-demo-f2026
+    python3 -m dsl_course.grades distribute --cohort-org hertie-dsl-demo-f2026
 """
 
 from __future__ import annotations

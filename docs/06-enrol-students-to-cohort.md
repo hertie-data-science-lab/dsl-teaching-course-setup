@@ -65,5 +65,5 @@ and no marks. A **Join team** issue from an auditor is refused and labelled `nee
   let the [schedule](07-schedule-releases.md) hand it out for you.
 
 ---
-**Demo:** [Send enrolment codes](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/send-codes.yml)
-in the demo course org · Join course issue in [`DSL-Demo-f2026/welcome`](https://github.com/DSL-Demo-f2026).
+**Demo:** [Send enrolment codes](https://github.com/hertie-dsl-demo-course-e1234/.github/actions/workflows/send-codes.yml)
+in the demo course org · Join course issue in [`hertie-dsl-demo-f2026/welcome`](https://github.com/hertie-dsl-demo-f2026).

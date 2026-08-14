@@ -27,7 +27,7 @@ advance.
 > assignment went out - and late onboarders get their repo on the next hourly tick.
 
 
-In the course org's `.github` → **Actions** → **Release assignment** (e.g. [Release assignment](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/release-assignment.yml)). Pick the `course_source_repo` - the same field a scheduled handout names in `schedule.yml`.
+In the course org's `.github` → **Actions** → **Release assignment** (e.g. [Release assignment](https://github.com/hertie-dsl-demo-course-e1234/.github/actions/workflows/release-assignment.yml)). Pick the `course_source_repo` - the same field a scheduled handout names in `schedule.yml`.
 - It freezes a cohort-level copy `<name>` of the chosen template (`cohort_dest_repo` from the schedule entry when one names this repo, else the repo minus its tag)
 - then it creates one **private** `<name>-<handle>` repo per onboarded student/group, with that student as
 collaborator.
@@ -113,4 +113,4 @@ assignments:
 - [Grade and return the assignment](10-grade-and-return-assignments.md).
 
 ---
-**Demo:** per-student repos in [`DSL-Demo-f2026`](https://github.com/DSL-Demo-f2026).
+**Demo:** per-student repos in [`hertie-dsl-demo-f2026`](https://github.com/hertie-dsl-demo-f2026).
