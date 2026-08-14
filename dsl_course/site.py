@@ -41,6 +41,7 @@ from datetime import date, datetime, timedelta
 from functools import cache
 from pathlib import Path
 from urllib.parse import quote
+from zoneinfo import ZoneInfo
 
 import yaml
 
@@ -55,6 +56,7 @@ from .utils import (
     get_file_content,
     gh,
     git,
+    is_missing_resource,
     log,
     log_err,
     log_ok,
@@ -108,18 +110,31 @@ def _q(value: str) -> str:
     return " ".join(value.replace("\\", "\\\\").replace('"', "'").split())
 
 
+def _liquid_raw(text: str) -> str:
+    """Fence faculty-written text that is inlined verbatim into a Jekyll document. A `{{`
+    or `{%` in it would otherwise run as Liquid, and a malformed tag fails the whole build;
+    `{% raw %}` renders it literally."""
+    return f"{{% raw %}}\n{text}\n{{% endraw %}}"
+
+
 def _set_config(text: str, key: str, value: str) -> str:
     """Replace a top-level `key: ...` line in _config.yml, preserving the rest.
 
     The value is always written as a one-line double-quoted scalar (see `_q`). Any
     indented continuation lines are consumed with it, so replacing a key someone left as
-    a `>`/`|` block scalar doesn't strand its body as invalid YAML."""
-    return re.sub(
+    a `>`/`|` block scalar doesn't strand its body as invalid YAML.
+
+    A key the template's `_config.yml` doesn't have is a no-op - logged, so template drift
+    (a key the code sets that the site theme dropped) is visible rather than silent."""
+    new, n = re.subn(
         rf"(?m)^({re.escape(key)}:[ \t]*).*(?:\n[ \t]+\S.*)*$",
         lambda m: f'{m.group(1)}"{_q(value)}"',
         text,
         count=1,
     )
+    if n == 0:
+        log(f"  (_config.yml has no `{key}:` key - not written; template drift?)")
+    return new
 
 
 def _site_repo(org: str) -> str:
@@ -136,7 +151,12 @@ def _yaml_file(org: str, repo: str, path: str) -> dict:
 
 
 def _team_people(course_org: str, team: str) -> list[tuple[str, str, str]]:
-    """(display-name, avatar-url, profile-url) for each member of a course-org team."""
+    """(display-name, avatar-url, profile-url) for each member of a course-org team.
+
+    A missing team (404) is an empty list - the site falls back gracefully. Any OTHER
+    failure RAISES rather than returning `[]`: a swallowed failure wrote `instructors: []`
+    and republished the site with the whole teaching team wiped. Fail-loud, like
+    get_team_members."""
     code, out = gh(
         "api",
         "--paginate",
@@ -145,7 +165,11 @@ def _team_people(course_org: str, team: str) -> list[tuple[str, str, str]]:
         ".[].login",
     )
     if code != 0:
-        return []
+        if is_missing_resource(out):
+            return []  # no such team - fall back, don't wipe
+        raise RuntimeError(
+            f"could not read the members of {course_org}/{team}: {out[:200]}"
+        )
     people = []
     for login in out.splitlines():
         if not login.strip():
@@ -304,7 +328,13 @@ def _repo_tree(org: str, repo: str) -> tuple[str, tuple[str, ...]]:
     stable diff. `()` when the tree can't be read (the caller then simply finds no files).
 
     Unbounded cache: this is a one-shot CLI process, and the trees it reads are the
-    handful of repos one cohort released into."""
+    handful of repos one cohort released into.
+
+    A genuinely absent/empty tree (a 404, or an empty repo with no commits) is `()`: the
+    caller simply finds no files. Any OTHER failure - a rate limit, a network drop -
+    RAISES, rather than reporting an empty tree: a swallowed failure returned `()`, so
+    `_session_files` found nothing, and the site was republished with every material link
+    stripped. Same fail-loud discipline as get_file_content."""
     branch = get_default_branch(org, repo)
     code, out = gh(
         "api",
@@ -313,7 +343,11 @@ def _repo_tree(org: str, repo: str) -> tuple[str, tuple[str, ...]]:
         '.tree[] | select(.type=="blob") | .path',
     )
     if code != 0:
-        return branch, ()
+        # An empty repo (409, no commits) is genuinely no files too - a tree-specific
+        # signal on top of the shared 404-absence test.
+        if is_missing_resource(out) or "HTTP 409" in out:
+            return branch, ()  # no such tree / empty repo - genuinely no files
+        raise RuntimeError(f"could not read the file tree of {org}/{repo}: {out[:200]}")
     return branch, tuple(sorted(out.splitlines()))
 
 
@@ -369,12 +403,20 @@ def _singular(label: str) -> str:
     return label[:-1] if len(label) > 1 and label.endswith("s") else label
 
 
-def _iso_when(when: date | datetime, fallback_time: str = "09:00:00") -> str:
+def _iso_when(
+    when: date | datetime, fallback_time: str = "09:00:00", tz: ZoneInfo | None = None
+) -> str:
     """`when` as the offset-free local ISO stamp a front-matter `date:` wants.
 
-    A datetime (a real time from schedule.yml) keeps its own clock time; a bare date (a
-    synthesised fallback, or a whole-day schedule entry) gets `fallback_time`."""
+    A datetime (a real time from schedule.yml) is shown in the cohort timezone when `tz`
+    is given: an entry written with an explicit offset (`...T10:00+00:00`) fires at the
+    cohort's wall-clock time, so the site must DISPLAY that wall-clock time, not the
+    written offset's - stripping the offset without converting printed 10:00 for a class
+    that actually happens at 12:00. A bare date (a synthesised fallback, or a whole-day
+    schedule entry) has no clock and gets `fallback_time`."""
     if isinstance(when, datetime):
+        if tz is not None and when.tzinfo is not None:
+            when = when.astimezone(tz)
         return when.strftime("%Y-%m-%dT%H:%M:%S")
     return f"{when.isoformat()}T{fallback_time}"
 
@@ -386,8 +428,10 @@ def _links_block(sections: list[tuple[str, list[tuple[str, str]]]]) -> str:
     rows = []
     for label, pairs in sections:
         for name, url in pairs:
-            safe = name.replace('"', "'")
-            rows.append(f'    - url: {url}\n      name: "{_singular(label)} - {safe}"')
+            # Route the name through _q (escapes `\` AND `"`): a filename with a backslash
+            # (`\sigma.pdf`) is an invalid YAML escape and fails the whole Jekyll build.
+            safe = _q(f"{_singular(label)} - {name}")
+            rows.append(f'    - url: {url}\n      name: "{safe}"')
     return ("links:\n" + "\n".join(rows)) if rows else "links: []"
 
 
@@ -397,6 +441,7 @@ def _lecture_entry(
     when: date | datetime,
     sources: list[tuple[str, str, str]],
     kind: str = "lecture",
+    tz: ZoneInfo | None = None,
 ) -> str:
     """One row of a teaching week: the lecture (`kind='lecture'`) or the lab
     (`kind='lab'`), which the theme renders as separate schedule lines out of the same
@@ -417,7 +462,7 @@ def _lecture_entry(
     return (
         f"---\n"
         f"type: {kind}\n"
-        f"date: {_iso_when(when)}\n"
+        f"date: {_iso_when(when, tz=tz)}\n"
         f'title: "{title}"\n'
         f'tldr: "Released materials for {title.lower()} (enrolled students only)."\n'
         f"{links_block}\n"
@@ -432,6 +477,7 @@ def _assignment_entry(
     repo: str,
     when: date | datetime,
     handout: datetime | None = None,
+    sched: schedule.Schedule | None = None,
 ) -> str:
     """An assignment's page, plus the two schedule rows it drives: the entry's own
     `date:` is the "released!" row and its `due_event:` sub-block the due row.
@@ -439,21 +485,30 @@ def _assignment_entry(
     `when` is the due date (a real one from schedule.yml, or a synthesised fallback);
     `handout` the scheduled provisioning moment when there is one. A handout dates the
     released-row where it belongs - at hand-out, not at the deadline - while an
-    unscheduled assignment keeps both rows on the due date (the only date known)."""
-    slug = assignment_slug(repo)
+    unscheduled assignment keeps both rows on the due date (the only date known).
+
+    `sched` supplies the cohort timezone (so a written offset displays as the wall-clock
+    time it fires at) and the cohort-side repo name: resolved exactly as assign.py /
+    collect.py do (`cohort_dest_repo` or the schedule slug when the schedule keys this
+    repo, else the course repo minus its -fYYYY/-sYYYY tag), so the page names the repo
+    students actually get. Deriving it from the course repo alone named the wrong repo -
+    and titled the page wrong - whenever an entry set `cohort_dest_repo`."""
+    tz = schedule._tz(sched.timezone) if sched is not None else None
+    found = schedule.entry_for_repo(sched, repo) if sched is not None else None
+    slug = schedule.cohort_name(*found) if found else assignment_slug(repo)
     readme = get_file_content(course_org, repo, "README.md") or ""
     title = slug.replace("-", " ").title()
     for line in readme.splitlines():
         if line.startswith("# "):
             title = line[2:].strip()
             break
-    title = title.replace('"', "'")
+    title = _q(title)
     body = "\n".join(
         ln for ln in readme.splitlines() if not ln.startswith("# ")
     ).strip()
     # An unscheduled assignment's synthesised fallback date is due end-of-day.
-    due = _iso_when(when, "23:59:00")
-    released = _iso_when(handout) if handout is not None else due
+    due = _iso_when(when, "23:59:00", tz)
+    released = _iso_when(handout, tz=tz) if handout is not None else due
     return (
         f"---\n"
         f"type: assignment\n"
@@ -464,20 +519,24 @@ def _assignment_entry(
         f"    date: {due}\n"
         f'    description: "{title}"\n'
         f"---\n"
-        f"{body or 'Assignment brief.'}\n\n"
+        f"{_liquid_raw(body or 'Assignment brief.')}\n\n"
         f"_Your private `{slug}-<your-handle>` repo appears in `{course_org}`'s cohort "
         f"org once the teaching team provisions it._\n"
     )
 
 
 def _exam_entry(
-    title: str, when: date | datetime, tbc: bool = False, dateless: bool = False
+    title: str,
+    when: date | datetime,
+    tbc: bool = False,
+    dateless: bool = False,
+    tz: ZoneInfo | None = None,
 ) -> str:
     """A red exam row (the template's schedule_row_exam.html styles `type: exam`).
 
     `when` is a datetime when schedule.yml gave the exam a real start time, or a bare date
     (whole-day entry, or the synthesised mid/end-of-semester fallback) - which keeps the
-    09:00 placeholder. Rendered offset-free, like `_assignment_entry`'s due time.
+    09:00 placeholder. Shown in the cohort timezone (`tz`), like `_assignment_entry`.
 
     TBC: an undated exam (`date: tbc`) still needs a sortable date for the theme, so the
     caller passes end-of-term as `when` with `dateless=True` - the theme then prints
@@ -488,7 +547,7 @@ def _exam_entry(
     return (
         f"---\n"
         f"type: exam\n"
-        f"date: {_iso_when(when)}\n"
+        f"date: {_iso_when(when, tz=tz)}\n"
         f"{flags}"
         f'description: "{_q(title)}"\n'
         f"---\n"
@@ -553,7 +612,11 @@ def _pretty(label: str) -> str:
 
 
 def _special_event_entry(
-    title: str, when: date | datetime, tbc: bool = False, dateless: bool = False
+    title: str,
+    when: date | datetime,
+    tbc: bool = False,
+    dateless: bool = False,
+    tz: ZoneInfo | None = None,
 ) -> str:
     """A generic schedule row (the theme's schedule_row_special_event.html) for a
     display-only entry: a clinic, a guest lecture, a review session. Nothing is released;
@@ -570,14 +633,16 @@ def _special_event_entry(
         f"---\n"
         f"type: special_event\n"
         f'name: "{_q(title)}"\n'
-        f"date: {_iso_when(when)}\n"
+        f"date: {_iso_when(when, tz=tz)}\n"
         f"{flags}"
         f'description: ""\n'
         f"---\n"
     )
 
 
-def _event_entry(event: schedule.Event, fallback: date) -> str:
+def _event_entry(
+    event: schedule.Event, fallback: date, tz: ZoneInfo | None = None
+) -> str:
     """One `events:` row, rendered as the type it declared - an exam or a special event.
     An event with no title of its own falls back to its prettified label, and an undated
     one (`event_datetime: tbc`) sorts at `fallback` (end of term) as a dateless row."""
@@ -587,6 +652,7 @@ def _event_entry(event: schedule.Event, fallback: date) -> str:
         event.when if event.when is not None else fallback,
         event.tbc,
         event.when is None,
+        tz,
     )
 
 
@@ -743,6 +809,9 @@ def sync_site(course_org: str, cohort_org: str) -> int:
         # from its own classroom-config/people.yml below, NOT the course org (whose
         # dsl-course.yml carries only the multi-year instructor cards).
         sched = schedule.load(cohort_org)
+        # The cohort timezone the site displays times in: an entry written with an explicit
+        # offset fires at this wall-clock time, so it must be shown at it (see _iso_when).
+        tz = schedule._tz(sched.timezone)
         start = sched.semester_start or _semester_start(cohort_org)
         # Real per-row release datetimes from schedule.yml's releases; a row not in the
         # plan falls back to a synthesised weekly date below.
@@ -769,7 +838,7 @@ def sync_site(course_org: str, cohort_org: str) -> int:
         # declared (exam or special event); an undated (TBC) one sorts at end-of-term.
         end = sched.semester_end or start + timedelta(weeks=15)
         event_entries = {
-            f"{i + 1:02d}-{_slug(e.label)}.md": _event_entry(e, end)
+            f"{i + 1:02d}-{_slug(e.label)}.md": _event_entry(e, end, tz)
             for i, e in enumerate(sched.events)
         }
         # Every course has exams, so a schedule that names none still gets stub mid/end
@@ -810,6 +879,7 @@ def sync_site(course_org: str, cohort_org: str) -> int:
                         session_when.get((s, kind), start + timedelta(days=int(s) * 7)),
                         sources_by_row[(s, kind)],
                         kind,
+                        tz,
                     )
                     for s, kind in rows
                 },
@@ -820,6 +890,7 @@ def sync_site(course_org: str, cohort_org: str) -> int:
                         *_assignment_dates(
                             sched, a, start + timedelta(days=(i + 1) * 14)
                         ),
+                        sched=sched,
                     )
                     for i, a in enumerate(assignments)
                 },
@@ -884,7 +955,7 @@ def _public_lecture_entry(
     title = f"{_ROW_NOUN[kind]} {session}"
     body = f"Materials for {title.lower()}."
     if reading_list_md:
-        body += "\n\n### Reading list\n\n" + reading_list_md
+        body += "\n\n### Reading list\n\n" + _liquid_raw(reading_list_md)
     return (
         f"---\n"
         f"type: {kind}\n"

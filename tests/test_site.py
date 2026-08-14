@@ -8,10 +8,13 @@ from __future__ import annotations
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
+import pytest
 import yaml
 
 from dsl_course import site
-from dsl_course.schedule import Deploy, Event, Release, Schedule
+from dsl_course.schedule import AssignmentEntry, Deploy, Event, Release, Schedule
+
+UTC = ZoneInfo("UTC")
 
 BERLIN = ZoneInfo("Europe/Berlin")
 END_OF_TERM = date(2026, 12, 18)
@@ -497,6 +500,106 @@ def test_term_date_rows_only_when_the_schedule_pins_the_bounds(monkeypatch, tmp_
     unbounded = _plan(monkeypatch, tmp_path, Schedule())
     assert "term-start.md" not in unbounded.collections["_events"]
     assert "term-end.md" not in unbounded.collections["_events"]
+
+
+# -------------------------------------------------------- dest_repo mismatch (fix 4)
+
+
+def test_assignment_entry_names_the_cohort_dest_repo_not_the_course_repo(monkeypatch):
+    # assign.py provisions `<cohort_dest_repo or slug>-<handle>`; the site must name the
+    # same repo (and title the page from it), not the course repo minus its tag.
+    monkeypatch.setattr(site, "get_file_content", lambda *a, **k: "")
+    sched = Schedule(
+        assignments={
+            "assignment-1": AssignmentEntry(
+                course_source_repo="assignment-1-f2026",
+                due_datetime=datetime(2026, 10, 13, 23, 59, 59, tzinfo=BERLIN),
+                cohort_dest_repo="homework-1",
+            )
+        }
+    )
+    out = site._assignment_entry(
+        "Course", "assignment-1-f2026", date(2026, 10, 13), sched=sched
+    )
+    assert "`homework-1-<your-handle>`" in out
+    assert 'title: "Homework 1"' in out
+
+
+# ---------------------------------------------- fail-loud reads (fixes 5 and 6)
+
+
+def test_session_files_missing_tree_is_empty(monkeypatch):
+    monkeypatch.setattr(site, "get_default_branch", lambda org, repo: "main")
+    monkeypatch.setattr(site, "gh", lambda *a, **k: (1, "HTTP 404: Not Found"))
+    assert site._session_files("Cohort-f2026", "materials", "lectures", "03_x") == []
+
+
+def test_session_files_fetch_failure_raises_rather_than_stripping_the_site(monkeypatch):
+    # A swallowed failure returned (), the site republished with every material link gone.
+    monkeypatch.setattr(site, "get_default_branch", lambda org, repo: "main")
+    monkeypatch.setattr(site, "gh", lambda *a, **k: (1, "HTTP 502: bad gateway"))
+    with pytest.raises(RuntimeError):
+        site._session_files("Cohort-f2026", "materials", "lectures", "03_x")
+
+
+def test_team_people_missing_team_is_empty(monkeypatch):
+    monkeypatch.setattr(site, "gh", lambda *a, **k: (1, "HTTP 404: Not Found"))
+    assert site._team_people("Course", "instructors") == []
+
+
+def test_team_people_read_failure_raises_rather_than_wiping_the_team(monkeypatch):
+    monkeypatch.setattr(site, "gh", lambda *a, **k: (1, "HTTP 500: boom"))
+    with pytest.raises(RuntimeError):
+        site._team_people("Course", "instructors")
+
+
+# --------------------------------------------- front-matter escaping (fix 7)
+
+
+def test_front_matter_survives_a_backslash_in_a_title(monkeypatch):
+    # `# \sigma review` is an invalid YAML escape unquoted - the whole site build fails
+    # (ScannerError) unless every scalar is routed through _q.
+    monkeypatch.setattr(
+        site, "get_file_content", lambda *a, **k: "# \\sigma review\nBody"
+    )
+    out = site._assignment_entry("Course", "assignment-1-f2026", date(2026, 11, 10))
+    front = yaml.safe_load(out.split("---")[1])  # must parse, no ScannerError
+    assert "sigma" in front["title"]
+
+
+def test_links_block_survives_a_backslash_in_a_filename():
+    block = site._links_block([("lectures", [("notes \\x.pdf", "https://x/1")])])
+    parsed = yaml.safe_load(block)  # must parse, no ScannerError
+    assert "notes" in parsed["links"][0]["name"]
+
+
+def test_assignment_readme_body_is_fenced_as_liquid_raw(monkeypatch):
+    # A `{% ... %}`/`{{ ... }}` in a README would run as Liquid and a malformed tag fails
+    # the build; the inlined body is fenced.
+    monkeypatch.setattr(
+        site, "get_file_content", lambda *a, **k: "# A1\nUse {{ x }} in your code"
+    )
+    out = site._assignment_entry("Course", "assignment-1-f2026", date(2026, 11, 10))
+    assert "{% raw %}" in out and "{% endraw %}" in out
+
+
+# --------------------------------------------- tz-aware display (fix 8)
+
+
+def test_iso_when_converts_an_explicit_offset_to_the_cohort_tz():
+    # 10:00 UTC in a Berlin cohort (CEST, +2 in September) displays as 12:00 - the time it
+    # actually fires - not the written offset's 10:00.
+    when = datetime(2026, 9, 15, 10, 0, tzinfo=UTC)
+    assert site._iso_when(when, tz=BERLIN) == "2026-09-15T12:00:00"
+    assert (
+        site._iso_when(when) == "2026-09-15T10:00:00"
+    )  # no tz -> own clock (unchanged)
+
+
+def test_event_entry_shows_the_cohort_wall_clock_time_for_a_written_offset():
+    e = Event("remote", "Remote talk", datetime(2026, 9, 15, 10, 0, tzinfo=UTC))
+    out = site._event_entry(e, END_OF_TERM, BERLIN)
+    assert "date: 2026-09-15T12:00:00" in out
 
 
 def test_display_only_rows_come_from_events_alone(monkeypatch, tmp_path):

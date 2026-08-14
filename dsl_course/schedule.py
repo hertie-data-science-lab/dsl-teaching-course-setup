@@ -53,6 +53,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, time, timezone
@@ -61,7 +62,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
 
-from .utils import get_file_content, log_err
+from .utils import coerce_date, get_file_content, log_err
 
 CONFIG_REPO = "classroom-config"
 SCHEDULE_PATH = "schedule.yml"
@@ -79,19 +80,10 @@ def _tz(name: str | None) -> ZoneInfo:
         return ZoneInfo(DEFAULT_TZ)
 
 
-def _coerce_date(value: object) -> date | None:
-    """A YAML date/datetime or an ISO `YYYY-MM-DD` string -> date (None if unparseable).
-    Date-level (used for semester bounds and whole-day events)."""
-    if isinstance(value, datetime):
-        return value.date()
-    if isinstance(value, date):
-        return value
-    if isinstance(value, str):
-        try:
-            return date.fromisoformat(value.strip()[:10])
-        except ValueError:
-            return None
-    return None
+# The date-level coercion (semester bounds, whole-day events) is the shared canonical one
+# in utils - `active_today` uses the same, so the two can never drift. Aliased under the
+# module's historical private name for its internal callers (and the tests that pin it).
+_coerce_date = coerce_date
 
 
 def _coerce_datetime(
@@ -279,6 +271,71 @@ def _drop(drops: list[str], where: str, why: str, cost: str) -> None:
     drops.append(f"{where}: {why} - entry dropped, so {cost}")
 
 
+def _require_mapping(
+    raw: object, drops: list[str], block: str, noun: str, cost: str
+) -> dict | None:
+    """A top-level `releases:`/`assignments:`/`events:` block must be a `label -> entry`
+    mapping. Returns it, or None when it is absent (nothing to parse) or authored as a
+    list/scalar - the latter recorded as a drop rather than left to raise on `.items()`,
+    which would break `load`'s never-raise contract (a list is the common mistake, since
+    `deploy:` nested below IS a list)."""
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        _drop(
+            drops,
+            block,
+            f"not a mapping (it must be {noun} -> entry, not a list or value)",
+            cost,
+        )
+        return None
+    return raw
+
+
+# The keys each schema level understands. Anything else - a typo (`grading_dateime:`), a
+# legacy name (`dest_repo:`), or a whole plan under an unknown top-level key
+# (`materials_releases:`) - is silently ignored by the parser and so means something other
+# than what faculty wrote; `_flag_unknown_keys` surfaces it so `--validate` catches it.
+KNOWN_TOP_LEVEL = frozenset(
+    {"timezone", "releases", "semester_start", "semester_end", "assignments", "events"}
+)
+KNOWN_RELEASE = frozenset({"event_datetime", "deploy", "assignment", "title", "tbc"})
+KNOWN_DEPLOY = frozenset(
+    {
+        "course_source_repo",
+        "course_source_path",
+        "cohort_dest_repo",
+        "cohort_dest_path",
+        "deploy_datetime",
+    }
+)
+KNOWN_ASSIGNMENT = frozenset(
+    {
+        "due_datetime",
+        "course_source_repo",
+        "cohort_dest_repo",
+        "grading_datetime",
+        "handout_datetime",
+        "type",
+        "max_team_size",
+    }
+)
+KNOWN_EVENT = frozenset({"type", "title", "event_datetime", "tbc"})
+
+
+def _flag_unknown_keys(
+    drops: list[str], entry: dict, known: frozenset[str], where: str, cost: str
+) -> None:
+    """Record every key of `entry` not in `known`. Unlike `_drop`, the entry itself is
+    KEPT (only the stray key is ignored) - a typo'd or legacy key otherwise passes
+    validation while silently changing what the file means. Only called for entries that
+    parse; a dropped entry already gets its own line."""
+    for key in entry:
+        if str(key) not in known:
+            loc = f"{where}.{key}" if where else str(key)
+            drops.append(f"{loc}: unrecognised key - ignored, so {cost}")
+
+
 def _parse_deploy(
     raw: object, tz: ZoneInfo, drops: list[str], label: str
 ) -> list[Deploy]:
@@ -302,6 +359,9 @@ def _parse_deploy(
             )
             continue
         dest_path = d.get("cohort_dest_path")
+        _flag_unknown_keys(
+            drops, d, KNOWN_DEPLOY, where, "that setting is ignored for this copy"
+        )
         out.append(
             Deploy(
                 course_source_repo=str(src_repo),
@@ -327,7 +387,12 @@ def _parse_releases(raw: object, tz: ZoneInfo, drops: list[str]) -> list[Release
     the site row "(TBC)". An entry with no date and no tbc can never fire or be shown,
     so it's dropped."""
     out: list[Release] = []
-    for label, entry in (raw or {}).items():
+    mapping = _require_mapping(
+        raw, drops, "releases", "label", "the whole release plan is ignored"
+    )
+    if mapping is None:
+        return out
+    for label, entry in mapping.items():
         where = f"releases.{label}"
         if not isinstance(entry, dict):
             _drop(
@@ -345,6 +410,9 @@ def _parse_releases(raw: object, tz: ZoneInfo, drops: list[str]) -> list[Release
                 "nothing deploys and no site row appears",
             )
             continue
+        _flag_unknown_keys(
+            drops, entry, KNOWN_RELEASE, where, "that setting is ignored"
+        )
         assignment = entry.get("assignment")
         out.append(
             Release(
@@ -370,7 +438,16 @@ def _parse_assignments(
     # A malformed `grading_datetime` parses to None and grading falls back to due_datetime.
     out: dict[str, AssignmentEntry] = {}
     cost = "no deadline for students, no submission snapshot and no autograding"
-    for slug, entry in (raw or {}).items():
+    mapping = _require_mapping(
+        raw,
+        drops,
+        "assignments",
+        "slug",
+        "no assignment has a deadline, snapshot or autograding",
+    )
+    if mapping is None:
+        return out
+    for slug, entry in mapping.items():
         where = f"assignments.{slug}"
         if not isinstance(entry, dict):
             _drop(
@@ -385,11 +462,22 @@ def _parse_assignments(
         if not source_repo:
             _drop(drops, where, "no `course_source_repo`", cost)
             continue
+        _flag_unknown_keys(
+            drops, entry, KNOWN_ASSIGNMENT, where, "that setting is ignored"
+        )
         try:
             cap = int(entry["max_team_size"])
         except (KeyError, TypeError, ValueError):
             cap = None
         kind = str(entry.get("type") or "").strip().lower()
+        if kind and kind not in ("group", "individual"):
+            # A typo'd `type` (e.g. `gruop`) silently falls back to individual, so a group
+            # assignment would be provisioned one-repo-per-student. Keep the fallback but
+            # surface it, since the functional consequence is otherwise invisible.
+            drops.append(
+                f"{where}.type: unrecognised value {kind!r} (expected 'group' or "
+                f"'individual') - treated as individual, one repo per student"
+            )
         dest = str(entry.get("cohort_dest_repo") or "").strip()
         out[str(slug)] = AssignmentEntry(
             due_datetime=due,
@@ -416,7 +504,12 @@ def _parse_events(raw: object, tz: ZoneInfo, drops: list[str]) -> list[Event]:
     provisional ("(TBC)"). An entry with no date and no tbc can never be shown, so it's
     dropped."""
     out: list[Event] = []
-    for label, entry in (raw or {}).items():
+    mapping = _require_mapping(
+        raw, drops, "events", "label", "no calendar rows appear on the site"
+    )
+    if mapping is None:
+        return out
+    for label, entry in mapping.items():
         where = f"events.{label}"
         if not isinstance(entry, dict):
             _drop(drops, where, "not a mapping", "the row never appears on the site")
@@ -432,6 +525,7 @@ def _parse_events(raw: object, tz: ZoneInfo, drops: list[str]) -> list[Event]:
                 "the row never appears on the site",
             )
             continue
+        _flag_unknown_keys(drops, entry, KNOWN_EVENT, where, "that setting is ignored")
         kind = str(entry.get("type") or "").strip().lower()
         out.append(
             Event(
@@ -462,6 +556,12 @@ def parse(meta: dict) -> Schedule:
     total, but never silent."""
     meta = meta if isinstance(meta, dict) else {}
     drops: list[str] = []
+    # A whole plan under an unknown top-level key (`materials_releases:` instead of
+    # `releases:`) otherwise validates as "OK: nothing dropped" with zero releases - the
+    # worst kind of silent failure, since the file looks full. Flag it here.
+    _flag_unknown_keys(
+        drops, meta, KNOWN_TOP_LEVEL, "", "nothing it contains is scheduled or shown"
+    )
     tz_name = meta.get("timezone")
     tz = _tz(tz_name)
     if tz_name and str(tz_name).strip() != str(tz):
@@ -610,13 +710,28 @@ def _validate_report(sched: Schedule, source: str) -> str:
     return "\n".join(lines)
 
 
+_HANDOUT_COMMENT = "   # set automatically by the Release assignment button"
+_DUE_TODO = "# TODO: add `due_datetime:` - the date students see (required)"
+
+
 def _insert_handout(text: str, slug: str, stamp: str) -> str | None:
     """Pure text surgery for `record_handout` - schedule.yml is USER-owned and
     comment-rich, so we insert lines rather than re-serialising (which would destroy
-    every comment). Returns the new text, or None when nothing should change (the
-    entry already has a handout - write-once, a scheduled value is never touched)."""
+    every comment).
+
+    Returns the new text, or None when nothing should - or safely can - change: the
+    entry already carries a handout (write-once, a scheduled value is never touched), or
+    the `assignments:` block is shaped in a way this line surgery can't recognise (a flow
+    mapping). In the latter case we leave the file untouched rather than fabricate a
+    duplicate entry - the old code assumed exactly two-space indentation, missed a
+    deeper-nested entry, and injected a fake `  {slug}:` that swallowed the real one,
+    dropping its `due_datetime` for good."""
     lines = text.splitlines(keepends=True)
-    # locate the top-level assignments: block and, inside it, the slug's sub-block
+
+    def indent_of(ln: str) -> int:
+        return len(ln) - len(ln.lstrip())
+
+    # locate the top-level `assignments:` mapping key (a bare block header at column 0)
     a_start = next(
         (
             i
@@ -625,38 +740,81 @@ def _insert_handout(text: str, slug: str, stamp: str) -> str | None:
         ),
         None,
     )
-    entry_line = f"    handout_datetime: {stamp}   # set automatically by the Release assignment button\n"
     if a_start is None:
-        # no assignments block at all: append one, flagging the due date still to add
+        # A flow-style `assignments: {...}` (or any other col-0 line beginning
+        # `assignments:` that isn't a plain block header) can't take a line insertion -
+        # leave it untouched rather than append a second, duplicate key.
+        if any(re.match(r"^assignments:\s*\S", ln.split("#")[0]) for ln in lines):
+            return None
+        # no assignments block at all: append one (the documented 2-space shape),
+        # flagging the due date still to add.
         return (
             (text if text.endswith("\n") or not text else text + "\n")
-            + f"\nassignments:\n  {slug}:\n{entry_line}"
-            + "    # TODO: add `due_datetime:` - the date students see (required)\n"
+            + f"\nassignments:\n  {slug}:\n"
+            + f"    handout_datetime: {stamp}{_HANDOUT_COMMENT}\n"
+            + f"    {_DUE_TODO}\n"
         )
-    # walk the block: find `  <slug>:`; block ends at the next non-comment col-0 line
-    s_start = None
+
+    # The block body runs until the next non-comment column-0 line.
+    block_end = len(lines)
     for i in range(a_start + 1, len(lines)):
         stripped = lines[i].split("#")[0].rstrip()
-        if stripped and not lines[i].startswith(" "):
-            break  # left the assignments block
-        if stripped == f"  {slug}:":
-            s_start = i
+        if stripped and not lines[i].startswith((" ", "\t")):
+            block_end = i
             break
-    if s_start is None:
-        insert = (
-            f"  {slug}:\n{entry_line}"
-            "    # TODO: add `due_datetime:` - the date students see (required)\n"
+
+    # The slug key at WHATEVER indent it sits at - matching only exactly two spaces was
+    # the bug. A positive indent inside the block is required (a col-0 match would be a
+    # sibling top-level key, not an assignment). `(.*)` captures whatever follows the
+    # colon so an inline flow value (`slug: {due_datetime: ...}`) is recognised as the
+    # same key, not missed and then fabricated as a duplicate.
+    slug_re = re.compile(rf"^(\s+){re.escape(slug)}:\s*(.*)$")
+    for i in range(a_start + 1, block_end):
+        m = slug_re.match(lines[i])
+        if not m:
+            continue
+        if m.group(2).split("#")[0].strip():
+            # The slug exists but is authored as an inline value (a flow mapping/scalar),
+            # so there is no block body to append a handout line into. Leave the file
+            # untouched rather than fabricate a duplicate key that PyYAML would silently
+            # drop (losing the handout) - write-once, the operator can add it by hand.
+            return None
+        slug_indent = len(m.group(1))
+        # Scan the slug's sub-block (lines indented deeper than the slug) for an existing
+        # handout, learning the child indent from its first field.
+        child_indent = slug_indent + 2
+        seen_child = False
+        for j in range(i + 1, block_end):
+            stripped = lines[j].split("#")[0].rstrip()
+            if not stripped:
+                continue
+            if indent_of(lines[j]) <= slug_indent:
+                break  # next sibling slug, or out of the block
+            if not seen_child:
+                child_indent, seen_child = indent_of(lines[j]), True
+            if stripped.lstrip().startswith("handout_datetime:"):
+                return None  # write-once - never move a scheduled or recorded handout
+        lines.insert(
+            i + 1, f"{' ' * child_indent}handout_datetime: {stamp}{_HANDOUT_COMMENT}\n"
         )
-        lines.insert(a_start + 1, insert)
         return "".join(lines)
-    # slug found: scan its sub-block (deeper-indented lines) for an existing handout
-    for i in range(s_start + 1, len(lines)):
-        stripped = lines[i].split("#")[0].rstrip()
-        if stripped and (len(lines[i]) - len(lines[i].lstrip())) <= 2:
-            break  # next slug or out of the block
-        if stripped.strip().startswith("handout_datetime:"):
-            return None  # write-once - never move a scheduled or recorded handout
-    lines.insert(s_start + 1, entry_line)
+
+    # Slug genuinely absent: fabricate a new entry, matched to the block's OWN entry
+    # indent (learned from an existing sibling) so we never inject a 2-space entry into a
+    # 4-space block. An empty block has no sibling to learn from - use the documented
+    # 2-space shape.
+    entry_indent = 2
+    for i in range(a_start + 1, block_end):
+        if lines[i].split("#")[0].rstrip():
+            entry_indent = indent_of(lines[i])
+            break
+    pad, child = " " * entry_indent, " " * (entry_indent + 2)
+    lines.insert(
+        a_start + 1,
+        f"{pad}{slug}:\n"
+        f"{child}handout_datetime: {stamp}{_HANDOUT_COMMENT}\n"
+        f"{child}{_DUE_TODO}\n",
+    )
     return "".join(lines)
 
 
