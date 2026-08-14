@@ -22,11 +22,12 @@ type here is exactly what you would have written in the schedule:
 | 1 | `course_source_repo` | yes | *(the repo you run it from; centrally, the latest dated repo)* | repo to release from in the COURSE org |
 | 2 | `course_source_path` | yes | - | folder or file to copy - or a **comma-separated list** |
 | 3 | `cohort_org` | yes | *(latest cohort)* | target cohort org (dropdown) |
-| 4 | `cohort_dest_repo` | no | `materials` | repo in the cohort org (created if missing, private, `students` + `auditors` read) |
-| 5 | `cohort_dest_path` | no | mirrors `course_source_path` | where to put it |
+| 4 | `cohort_dest_repo` | no | blank → `materials` | repo in the cohort org (created if missing, private, `students` + `auditors` read) |
+| 5 | `cohort_dest_path` | no | blank → mirrors `course_source_path` | where to put it |
 
 The boxes run source → target, in the order you fill them in, and each dropdown pre-selects the
-newest org/repo (by the year in its name), so the current cohort needs no scrolling.
+newest org/repo (by the year in its name), so the current cohort needs no scrolling. The two
+optional boxes are left empty - leave them alone to get the defaults above.
 
 In the course org, run it from either (1) the **materials repo's own** `Release materials` button
 (`course_source_repo` pre-filled, editable), or (2) the **course org's `.github` repo's** button

@@ -276,20 +276,23 @@ def test_both_release_buttons_take_exactly_a_deploy_entrys_fields(rendered):
     assert inp["cohort_org"]["required"] is True
     assert inp["course_source_repo"]["required"] is True
     assert inp["course_source_path"]["required"] is True
-    # cohort_dest_repo defaults to the conventional single materials repo; cohort_dest_path
-    # blank mirrors course_source_path (no default at all - the executor treats "" as mirror).
-    assert inp["cohort_dest_repo"]["default"] == "materials"
+    # Both optional boxes ship EMPTY - a `default:` on a free-text field is submitted
+    # verbatim, so pre-filling one puts words in the faculty member's mouth. The executor
+    # supplies the real fallbacks: blank cohort_dest_repo -> materials, blank
+    # cohort_dest_path -> mirror course_source_path (see deploy.main).
+    assert "default" not in inp["cohort_dest_repo"]
     assert inp["cohort_dest_repo"]["required"] is False
     assert "default" not in inp["cohort_dest_path"]
     assert inp["cohort_dest_path"]["required"] is False
+    # ...so each fallback has to be stated on the box itself, or it is invisible.
+    assert "blank = materials" in inp["cohort_dest_repo"]["description"]
+    assert "blank = mirrors" in inp["cohort_dest_path"]["description"]
     # Multi-path is discoverable from the button itself, not just the docs.
     assert "comma-separated" in inp["course_source_path"]["description"]
-    # GitHub has no placeholder attribute, so each free-text box carries a worked example
-    # in its description instead - and every box is numbered in the order it is filled in.
+    # Every box is numbered in the order it is filled in - GitHub renders dispatch inputs
+    # as a flat list with no grouping, so the sequence has to be in the labels.
     for n, name in enumerate(RELEASE_INPUTS, start=1):
         assert inp[name]["description"].startswith(f"{n}. ")
-    for name in ("course_source_path", "cohort_dest_repo", "cohort_dest_path"):
-        assert " - e.g. " in inp[name]["description"]
     # The cohort dropdown pre-selects the latest cohort, not the alphabetically first.
     assert inp["cohort_org"]["default"] == "Cohort-f2026"
     # Gone with the section machinery: no per-section checkboxes, no session list, no

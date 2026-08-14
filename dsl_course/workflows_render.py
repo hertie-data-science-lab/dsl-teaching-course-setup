@@ -125,25 +125,25 @@ def _choice_input(
 # deploy.parse_path_pairs); a blank cohort_dest_path mirrors every course_source_path,
 # exactly as an omitted `cohort_dest_path:` does in the schedule.
 #
-# GitHub has no placeholder attribute for a workflow_dispatch box, and a `default:` on a
-# free-text field would be SUBMITTED rather than shown as a hint - so the format examples
-# live in the description, which renders directly beneath the box.
+# Both optional fields ship EMPTY rather than pre-filled: a `default:` on a free-text box
+# is submitted verbatim, so a pre-filled `materials` reads as a value the faculty member
+# chose. Blank still lands in `materials` - deploy's --cohort-dest-repo falls back to it -
+# and the description says so, which is the honest place for it.
 _COURSE_SOURCE_REPO_DESC = (
     "1. repo to release from in the course org (course_source_repo)"
 )
 
 _COURSE_SOURCE_PATH_INPUT = """\
       course_source_path:
-        description: "2. within-repo folder/file path, or comma-separated list (course_source_path) - e.g. lectures/01_intro  or  lectures/01_intro,data/week-01.csv"
+        description: "2. within-repo folder/file path, or comma-separated list (course_source_path)"
         required: true"""
 
 _COHORT_DEST_INPUTS = """\
       cohort_dest_repo:
-        description: "4. repo to release to in the cohort org; created if missing (cohort_dest_repo) - e.g. materials"
+        description: "4. repo to release to in the cohort org; created if missing; blank = materials (cohort_dest_repo)"
         required: false
-        default: materials
       cohort_dest_path:
-        description: "5. within-repo destination path; blank = mirrors course_source_path (cohort_dest_path) - e.g. week-01  or  week-01,data"
+        description: "5. within-repo destination path; blank = mirrors course_source_path (cohort_dest_path)"
         required: false"""
 
 
