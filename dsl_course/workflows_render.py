@@ -23,6 +23,8 @@ workflow_dispatch cap.
 
 from __future__ import annotations
 
+import re
+
 from .central import CENTRAL, CENTRAL_REF
 
 _CHECK_TEAM = """  check-team:
@@ -84,49 +86,83 @@ def _choice(options: list[str]) -> str:
     return "\n".join(f"          - {o}" for o in opts)
 
 
-# cohort_org alone: the destination REPO is a free-text field of its own (cohort_dest_repo),
-# so the materials button never picks a target repo from a dropdown - it can create one.
-_COHORT_ORG_INPUT = """\
-      cohort_org:
-        description: "Target cohort org"
-        required: true
-        type: choice
-        options:
-{cohort_orgs}"""
+# A trailing academic year in an org/repo name - the naming convention's term marker
+# (`...-f2026`, `course-materials-f2026`). Anchored to 19xx/20xx so a course code that
+# merely ends in four digits (`...-e1234`) is not mistaken for a year.
+_TERM_YEAR = re.compile(r"((?:19|20)\d{2})\D*$")
 
-# The three path fields shared verbatim by both Release materials variants, in the same
-# order and with the same names as a schedule.yml `deploy:` entry's keys. course_source_path
-# and cohort_dest_path are comma-separated PARALLEL lists paired by index (see
-# deploy.parse_path_pairs); a blank cohort_dest_path mirrors every course_source_path,
-# exactly as an omitted `cohort_dest_path:` does in the schedule.
-_DEPLOY_PATH_INPUTS = """\
+
+def _newest(options: list[str]) -> str | None:
+    """The option carrying the latest term year, or None when none of them carries one
+    (in which case GitHub's own "first option is selected" behaviour stands). Faculty
+    almost always want the cohort/materials repo they are teaching now, and the dropdowns
+    are sorted alphabetically, so without this the oldest cohort is pre-selected."""
+    dated = [(m.group(1), o) for o in options if (m := _TERM_YEAR.search(o))]
+    return max(dated)[1] if dated else None
+
+
+def _choice_input(
+    name: str, description: str, options: list[str], default: str | None = None
+) -> str:
+    """A required dropdown input. Pre-selected on `default` if given, otherwise on the
+    latest term year (see _newest) - every org/repo dropdown in every button, so a faculty
+    member never has to scroll past last year's cohort to reach this year's."""
+    default = default or _newest(options)
+    return (
+        f'      {name}:\n        description: "{description}"\n'
+        "        required: true\n        type: choice\n"
+        + (f'        default: "{default}"\n' if default else "")
+        + f"        options:\n{_choice(options)}"
+    )
+
+
+# The five Release materials inputs read top to bottom as the release itself: what to copy
+# (1, 2), then where it lands (3, 4, 5). They are numbered in the UI because GitHub renders
+# workflow_dispatch inputs as a flat list of boxes with no grouping. The input NAMES are
+# still a schedule.yml `deploy:` entry's keys exactly - the mapping is the key itself, not
+# the label, so the descriptions stay plain English rather than echoing the snake_case.
+# course_source_path and cohort_dest_path are comma-separated PARALLEL lists paired by
+# index (see deploy.parse_path_pairs); a blank cohort_dest_path mirrors every
+# course_source_path, exactly as an omitted `cohort_dest_path:` does in the schedule.
+#
+# Only cohort_dest_path is optional, and it ships EMPTY rather than pre-filled - a
+# `default:` on a free-text box is submitted verbatim, so pre-filling one reads as a value
+# the faculty member chose. cohort_dest_repo is REQUIRED on the button (the schedule's
+# `deploy:` may still omit it and take deploy's `materials` fallback): naming the repo a
+# release lands in is the one decision worth forcing, since a typo'd or defaulted target
+# quietly creates a second materials repo the cohort never sees.
+_COURSE_SOURCE_REPO_DESC = "1. repo to release from in the course org"
+
+_COURSE_SOURCE_PATH_INPUT = """\
       course_source_path:
-        description: "course_source_path - folder/file, or a comma-separated list"
-        required: true
+        description: "2. within-repo folder/file path to copy from (or comma-separated list)"
+        required: true"""
+
+_COHORT_DEST_INPUTS = """\
       cohort_dest_repo:
-        description: "cohort_dest_repo - repo in the cohort org (created if missing)"
-        required: false
-        default: materials
+        description: "4. repo to release to in the cohort org; created if missing"
+        required: true
       cohort_dest_path:
-        description: "cohort_dest_path - blank = mirror course_source_path"
+        description: "5. within-repo destination path (blank mirrors box 2's path(s)); created if missing"
         required: false"""
 
 
 def _render_release(header: str, cohort_orgs: list[str], source_repo_input: str) -> str:
     """The Release materials button, shared by both variants. Its five inputs ARE a
-    schedule.yml `deploy:` entry (plus the cohort org): the same names, the same order,
-    the same meaning - and the same executor, deploy.deploy_many, so a batch of
-    paths clones each repo once whether it arrives from the cron or from this button.
-    Only the `course_source_repo` widget differs between variants (a dropdown centrally, a
-    pre-filled string inside a content repo), which is why it is passed in."""
+    schedule.yml `deploy:` entry (plus the cohort org): the same names, the same meaning -
+    and the same executor, deploy.deploy_many, so a batch of paths clones each repo once
+    whether it arrives from the cron or from this button. Only the `course_source_repo`
+    widget differs between variants (a dropdown centrally, a pre-filled string inside a
+    content repo), which is why it is passed in."""
     return f"""name: Release materials
 {header}
 on:
   workflow_dispatch:
     inputs:
-{_COHORT_ORG_INPUT.format(cohort_orgs=_choice(cohort_orgs))}
 {source_repo_input}
-{_DEPLOY_PATH_INPUTS}
+{_COURSE_SOURCE_PATH_INPUT}
+{_choice_input("cohort_org", "3. target cohort org", cohort_orgs)}
+{_COHORT_DEST_INPUTS}
 
 jobs:
 {_CHECK_TEAM}
@@ -154,9 +190,8 @@ def render_release(cohort_orgs: list[str], repo: str) -> str:
     (the repo this workflow is being seeded into), so the common case needs no thought
     but a different source repo in the same org can still be typed in."""
     source_repo_input = (
-        '      course_source_repo:\n        description: "course_source_repo - repo in'
-        ' the COURSE org"\n        required: true\n'
-        f'        default: "{repo}"'
+        f'      course_source_repo:\n        description: "{_COURSE_SOURCE_REPO_DESC}"\n'
+        f'        required: true\n        default: "{repo}"'
     )
     return _render_release(
         header=(
@@ -176,10 +211,8 @@ def render_central_release(source_repos: list[str], cohort_orgs: list[str]) -> s
     """Central copy that lives in .github: `course_source_repo` is a dropdown of the course
     org's content repos (discovery.discover_content_repos), since this button lives
     outside any one of them. Otherwise identical to the run-from-repo button."""
-    source_repo_input = (
-        '      course_source_repo:\n        description: "course_source_repo - repo in'
-        ' the COURSE org"\n        required: true\n        type: choice\n        options:\n'
-        f"{_choice(source_repos)}"
+    source_repo_input = _choice_input(
+        "course_source_repo", _COURSE_SOURCE_REPO_DESC, source_repos
     )
     return _render_release(
         header=(
@@ -199,10 +232,8 @@ def _assignment_input(assignments: list[str]) -> str:
     """The course-org repo to hand out from - a dropdown of discovered assignment
     templates, or free-text. Named as in schedule.yml: `course_source_repo`."""
     if assignments:
-        return (
-            '      course_source_repo:\n        description: "Course-org repo to hand out from"\n'
-            "        required: true\n        type: choice\n        options:\n"
-            + _choice(assignments)
+        return _choice_input(
+            "course_source_repo", "Course-org repo to hand out from", assignments
         )
     return (
         '      course_source_repo:\n        description: "Course-org repo to hand out from (e.g. assignment-1-f2026)"\n'
@@ -222,12 +253,7 @@ def render_provision(
 on:
   workflow_dispatch:
     inputs:
-      cohort_org:
-        description: "Target cohort org"
-        required: true
-        type: choice
-        options:
-{_choice(cohort_orgs)}
+{_choice_input("cohort_org", "Target cohort org", cohort_orgs)}
 {_assignment_input(assignments or [])}
       include_solution:
         description: "Also push the solution (from the template's solution branch) into each student repo"
@@ -291,12 +317,7 @@ def render_grade_assignment(
 on:
   workflow_dispatch:
     inputs:
-      cohort_org:
-        description: "Cohort org (submissions)"
-        required: true
-        type: choice
-        options:
-{_choice(cohort_orgs)}
+{_choice_input("cohort_org", "Cohort org (submissions)", cohort_orgs)}
 {_assignment_input(assignments or [])}
       group:
         description: "Group assignment - grade one repo per team"
@@ -402,12 +423,12 @@ jobs:
 
 
 def _cohort_dropdown(cohort_orgs: list[str], optional: bool = False) -> str:
+    """The plain cohort dropdown. `optional` prepends the faculty-only sentinel and pins
+    the default to it (opting IN to a cohort must stay a deliberate choice); otherwise the
+    latest cohort is pre-selected."""
     options = ([_FACULTY_ONLY] + cohort_orgs) if optional else cohort_orgs
-    default = f'\n        default: "{_FACULTY_ONLY}"' if optional else ""
-    return (
-        '      cohort_org:\n        description: "Cohort org"\n'
-        f"        required: true\n        type: choice{default}\n        options:\n"
-        + _choice(options)
+    return _choice_input(
+        "cohort_org", "Cohort org", options, default=_FACULTY_ONLY if optional else None
     )
 
 
@@ -779,12 +800,7 @@ on:
     - cron: "0 6 * * *"
   workflow_dispatch:
     inputs:
-      cohort_org:
-        description: "Cohort whose site to regenerate from the org structure"
-        required: true
-        type: choice
-        options:
-{_choice(cohort_orgs)}
+{_choice_input("cohort_org", "Cohort whose site to regenerate from the org structure", cohort_orgs)}
 
 jobs:
 {_CHECK_TEAM}
@@ -845,12 +861,7 @@ on:
     - cron: "30 5 * * *"
   workflow_dispatch:
     inputs:
-      source_repo:
-        description: "Source materials repo (in this course org) to publish"
-        required: true
-        type: choice
-        options:
-{_choice(source_repos)}
+{_choice_input("source_repo", "Source materials repo (in this course org) to publish", source_repos)}
       readings_mode:
         description: "Readings: reading-list (citations) / actual-readings (files) / none"
         required: true

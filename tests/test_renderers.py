@@ -22,11 +22,12 @@ from dsl_course import (
 GITHUB_MAX_DISPATCH_INPUTS = 10
 
 # The five inputs of a Release materials button, in the order they must appear: exactly a
-# schedule.yml `deploy:` entry's fields, plus the cohort org.
+# schedule.yml `deploy:` entry's fields, plus the cohort org - ordered source-then-target
+# (what to copy, then where it lands) and numbered 1-5 in their descriptions to match.
 RELEASE_INPUTS = [
-    "cohort_org",
     "course_source_repo",
     "course_source_path",
+    "cohort_org",
     "cohort_dest_repo",
     "cohort_dest_path",
 ]
@@ -66,6 +67,29 @@ ALL_RENDERED = {
 # only re-call idempotent functions (the scheduler's releases, refresh's re-seeding).
 UNGATED = {"scheduler", "refresh"}
 
+# Every renderer that takes a discovered list of orgs/repos, rendered with TWO cohorts
+# (and two of everything else) so dropdown ORDER is observable - ALL_RENDERED passes
+# single-element lists, which cannot tell "newest first" from "oldest first".
+COHORTS_2 = ["Cohort-f2025", "Cohort-f2026"]
+REPOS_2 = ["course-materials-f2025", "course-materials-f2026"]
+ASSIGNMENTS_2 = ["assignment-1-f2025", "assignment-1-f2026"]
+DATED_RENDERED = {
+    "release": workflows_render.render_release(COHORTS_2, "course-materials-f2026"),
+    "central_release": workflows_render.render_central_release(REPOS_2, COHORTS_2),
+    "provision": workflows_render.render_provision(COHORTS_2, ASSIGNMENTS_2),
+    "grade_assignment": workflows_render.render_grade_assignment(
+        COHORTS_2, ASSIGNMENTS_2
+    ),
+    "sync_membership": workflows_render.render_sync_membership(COHORTS_2),
+    "send_codes": workflows_render.render_send_codes(COHORTS_2),
+    "sync_gradebooks": workflows_render.render_sync_gradebooks(COHORTS_2),
+    "render_grades": workflows_render.render_render_grades(COHORTS_2),
+    "distribute_grades": workflows_render.render_distribute_grades(COHORTS_2),
+    "sync_site": workflows_render.render_sync_site(COHORTS_2),
+    "publish_site": workflows_render.render_publish_site(REPOS_2),
+    "status": workflows_render.render_status(COHORTS_2),
+}
+
 
 @pytest.mark.parametrize("name", sorted(ALL_RENDERED))
 def test_renders_valid_yaml(name):
@@ -73,6 +97,25 @@ def test_renders_valid_yaml(name):
     assert isinstance(doc, dict) and doc.get("name")
     # Every faculty workflow is a workflow_dispatch with a check-team gate.
     assert ("check-team" in workflow_jobs(ALL_RENDERED[name])) is (name not in UNGATED)
+
+
+@pytest.mark.parametrize("name", sorted(DATED_RENDERED))
+def test_every_org_repo_dropdown_pre_selects_the_newest(name):
+    # Dropdowns are listed alphabetically, which puts the OLDEST cohort/materials repo
+    # first - and GitHub selects the first option. Every one of them must therefore carry
+    # an explicit `default:` naming the current year's, or faculty release last year's
+    # materials to last year's cohort with one wrong click.
+    for field, spec in workflow_inputs(DATED_RENDERED[name]).items():
+        options = spec.get("options", [])
+        if not any("2026" in o for o in options):
+            continue  # a fixed vocabulary (reading-list / individual / group / ...)
+        default = spec.get("default")
+        # Sync enrolment's cohort_org is the one exception: it stays pinned to the
+        # faculty-only sentinel, because touching a cohort must be opted into.
+        if default == workflows_render._FACULTY_ONLY:
+            continue
+        assert default in options, f"{name}.{field} default must be one of its options"
+        assert "2026" in default, f"{name}.{field} pre-selects {default}, not f2026"
 
 
 def test_every_renderer_is_covered_by_the_yaml_sweep():
@@ -214,9 +257,11 @@ def test_dotgithub_readme_orients_faculty():
 @pytest.mark.parametrize(
     "rendered",
     [
-        workflows_render.render_release(["Cohort-f2026"], "course-materials-f2026"),
+        workflows_render.render_release(
+            ["Cohort-f2025", "Cohort-f2026"], "course-materials-f2026"
+        ),
         workflows_render.render_central_release(
-            ["course-materials-f2026"], ["Cohort-f2026"]
+            ["course-materials-f2026"], ["Cohort-f2025", "Cohort-f2026"]
         ),
     ],
     ids=["run-from-repo", "central"],
@@ -231,14 +276,29 @@ def test_both_release_buttons_take_exactly_a_deploy_entrys_fields(rendered):
     assert inp["cohort_org"]["required"] is True
     assert inp["course_source_repo"]["required"] is True
     assert inp["course_source_path"]["required"] is True
-    # cohort_dest_repo defaults to the conventional single materials repo; cohort_dest_path
-    # blank mirrors course_source_path (no default at all - the executor treats "" as mirror).
-    assert inp["cohort_dest_repo"]["default"] == "materials"
-    assert inp["cohort_dest_repo"]["required"] is False
-    assert "default" not in inp["cohort_dest_path"]
+    # Naming the destination repo is forced rather than defaulted - a release that lands
+    # in an unnoticed second materials repo is invisible to the cohort. (The schedule's
+    # `deploy:` may still omit it; deploy.main's `materials` fallback covers that path.)
+    assert inp["cohort_dest_repo"]["required"] is True
+    assert "default" not in inp["cohort_dest_repo"]
+    # cohort_dest_path is the one optional box, and ships EMPTY - a `default:` on a
+    # free-text field is submitted verbatim, so pre-filling puts words in the faculty
+    # member's mouth. Its fallback is stated on the box instead, or it is invisible.
     assert inp["cohort_dest_path"]["required"] is False
+    assert "default" not in inp["cohort_dest_path"]
+    assert "blank mirrors box 2" in inp["cohort_dest_path"]["description"]
+    # Labels are plain English: the schedule.yml mapping lives in the input NAMES (asserted
+    # above), so no description repeats its own key back at the reader.
+    for name in RELEASE_INPUTS:
+        assert name not in inp[name]["description"]
     # Multi-path is discoverable from the button itself, not just the docs.
     assert "comma-separated" in inp["course_source_path"]["description"]
+    # Every box is numbered in the order it is filled in - GitHub renders dispatch inputs
+    # as a flat list with no grouping, so the sequence has to be in the labels.
+    for n, name in enumerate(RELEASE_INPUTS, start=1):
+        assert inp[name]["description"].startswith(f"{n}. ")
+    # The cohort dropdown pre-selects the latest cohort, not the alphabetically first.
+    assert inp["cohort_org"]["default"] == "Cohort-f2026"
     # Gone with the section machinery: no per-section checkboxes, no session list, no
     # root-files toggle, no cohort_repo dropdown.
     for retired in (
@@ -286,18 +346,39 @@ def test_run_from_repo_button_prefills_course_source_repo_with_its_own_repo():
 
 def test_central_button_offers_the_orgs_content_repos_as_the_source_dropdown():
     # Centrally there is no "own" repo to pre-fill, so course_source_repo is the discovered
-    # dropdown (refreshed by Refresh actions).
+    # dropdown (refreshed by Refresh actions), listed alphabetically but pre-selected on
+    # the latest term year - the repo faculty are teaching from now.
     inp = workflow_inputs(
         workflows_render.render_central_release(
-            ["course-materials-f2026", "lecture-code"], ["Cohort-f2026"]
+            ["course-materials-f2025", "course-materials-f2026", "lecture-code"],
+            ["Cohort-f2026"],
         )
     )
     assert inp["course_source_repo"]["type"] == "choice"
     assert inp["course_source_repo"]["options"] == [
+        "course-materials-f2025",
         "course-materials-f2026",
         "lecture-code",
     ]
+    assert inp["course_source_repo"]["default"] == "course-materials-f2026"
+
+
+def test_undated_dropdown_options_leave_the_default_to_github():
+    # A course org whose repos carry no term year has no "latest" to pre-select; emitting
+    # a `default:` that is not one of the options would break the workflow outright, so
+    # the dropdown ships bare and GitHub selects the first option.
+    inp = workflow_inputs(
+        workflows_render.render_central_release(
+            ["lecture-code", "slides"], ["Cohort-A"]
+        )
+    )
     assert "default" not in inp["course_source_repo"]
+    assert "default" not in inp["cohort_org"]
+    # An org code that merely ends in four digits is not a year (GRAD-E1234 != 1234 AD).
+    inp = workflow_inputs(
+        workflows_render.render_central_release(["mat-e1234"], ["Cohort-e1234"])
+    )
+    assert "default" not in inp["cohort_org"]
 
 
 def test_content_repos_get_both_buttons_and_lose_the_retired_one(monkeypatch):
