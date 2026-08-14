@@ -674,6 +674,15 @@ def put_file(org: str, repo: str, path: str, content: bytes, message: str) -> bo
     return False
 
 
+def is_missing_resource(out: str) -> bool:
+    """Whether a failed `gh` output means the resource is genuinely ABSENT (a 404) rather
+    than a real error to raise on. The one shared marker test: callers that distinguish
+    "not there yet" from "couldn't read it" must agree on what absence looks like, so the
+    marker list lives here instead of being re-inlined (and drifting) at each call site."""
+    lower = out.lower()
+    return "http 404" in lower or "not found" in lower
+
+
 def get_file_content(org: str, repo: str, path: str, ref: str = "") -> str | None:
     """Fetch a file's decoded text content (from `ref`, default branch if empty).
 
@@ -691,7 +700,7 @@ def get_file_content(org: str, repo: str, path: str, ref: str = "") -> str | Non
         ".content | @base64d",
     )
     if code != 0:
-        if "HTTP 404" in out or "Not Found" in out:
+        if is_missing_resource(out):
             return None
         raise RuntimeError(f"could not read {org}/{repo}/{path}: {out[:200]}")
     return out

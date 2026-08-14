@@ -271,6 +271,27 @@ def _drop(drops: list[str], where: str, why: str, cost: str) -> None:
     drops.append(f"{where}: {why} - entry dropped, so {cost}")
 
 
+def _require_mapping(
+    raw: object, drops: list[str], block: str, noun: str, cost: str
+) -> dict | None:
+    """A top-level `releases:`/`assignments:`/`events:` block must be a `label -> entry`
+    mapping. Returns it, or None when it is absent (nothing to parse) or authored as a
+    list/scalar - the latter recorded as a drop rather than left to raise on `.items()`,
+    which would break `load`'s never-raise contract (a list is the common mistake, since
+    `deploy:` nested below IS a list)."""
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        _drop(
+            drops,
+            block,
+            f"not a mapping (it must be {noun} -> entry, not a list or value)",
+            cost,
+        )
+        return None
+    return raw
+
+
 # The keys each schema level understands. Anything else - a typo (`grading_dateime:`), a
 # legacy name (`dest_repo:`), or a whole plan under an unknown top-level key
 # (`materials_releases:`) - is silently ignored by the parser and so means something other
@@ -366,20 +387,12 @@ def _parse_releases(raw: object, tz: ZoneInfo, drops: list[str]) -> list[Release
     the site row "(TBC)". An entry with no date and no tbc can never fire or be shown,
     so it's dropped."""
     out: list[Release] = []
-    if raw is None:
+    mapping = _require_mapping(
+        raw, drops, "releases", "label", "the whole release plan is ignored"
+    )
+    if mapping is None:
         return out
-    if not isinstance(raw, dict):
-        # A `releases:` authored as a list or scalar (a common mistake - `deploy:` right
-        # below IS a list) has no entries to iterate; drop the whole block rather than let
-        # `.items()` raise and break `load`'s never-raise contract.
-        _drop(
-            drops,
-            "releases",
-            "not a mapping (it must be label -> entry, not a list or value)",
-            "the whole release plan is ignored",
-        )
-        return out
-    for label, entry in raw.items():
+    for label, entry in mapping.items():
         where = f"releases.{label}"
         if not isinstance(entry, dict):
             _drop(
@@ -425,17 +438,16 @@ def _parse_assignments(
     # A malformed `grading_datetime` parses to None and grading falls back to due_datetime.
     out: dict[str, AssignmentEntry] = {}
     cost = "no deadline for students, no submission snapshot and no autograding"
-    if raw is None:
+    mapping = _require_mapping(
+        raw,
+        drops,
+        "assignments",
+        "slug",
+        "no assignment has a deadline, snapshot or autograding",
+    )
+    if mapping is None:
         return out
-    if not isinstance(raw, dict):
-        _drop(
-            drops,
-            "assignments",
-            "not a mapping (it must be slug -> entry, not a list or value)",
-            "no assignment has a deadline, snapshot or autograding",
-        )
-        return out
-    for slug, entry in raw.items():
+    for slug, entry in mapping.items():
         where = f"assignments.{slug}"
         if not isinstance(entry, dict):
             _drop(
@@ -492,17 +504,12 @@ def _parse_events(raw: object, tz: ZoneInfo, drops: list[str]) -> list[Event]:
     provisional ("(TBC)"). An entry with no date and no tbc can never be shown, so it's
     dropped."""
     out: list[Event] = []
-    if raw is None:
+    mapping = _require_mapping(
+        raw, drops, "events", "label", "no calendar rows appear on the site"
+    )
+    if mapping is None:
         return out
-    if not isinstance(raw, dict):
-        _drop(
-            drops,
-            "events",
-            "not a mapping (it must be label -> entry, not a list or value)",
-            "no calendar rows appear on the site",
-        )
-        return out
-    for label, entry in raw.items():
+    for label, entry in mapping.items():
         where = f"events.{label}"
         if not isinstance(entry, dict):
             _drop(drops, where, "not a mapping", "the row never appears on the site")

@@ -56,6 +56,7 @@ from .utils import (
     get_file_content,
     gh,
     git,
+    is_missing_resource,
     log,
     log_err,
     log_ok,
@@ -109,6 +110,13 @@ def _q(value: str) -> str:
     return " ".join(value.replace("\\", "\\\\").replace('"', "'").split())
 
 
+def _liquid_raw(text: str) -> str:
+    """Fence faculty-written text that is inlined verbatim into a Jekyll document. A `{{`
+    or `{%` in it would otherwise run as Liquid, and a malformed tag fails the whole build;
+    `{% raw %}` renders it literally."""
+    return f"{{% raw %}}\n{text}\n{{% endraw %}}"
+
+
 def _set_config(text: str, key: str, value: str) -> str:
     """Replace a top-level `key: ...` line in _config.yml, preserving the rest.
 
@@ -157,8 +165,7 @@ def _team_people(course_org: str, team: str) -> list[tuple[str, str, str]]:
         ".[].login",
     )
     if code != 0:
-        lower = out.lower()
-        if "http 404" in lower or "not found" in lower:
+        if is_missing_resource(out):
             return []  # no such team - fall back, don't wipe
         raise RuntimeError(
             f"could not read the members of {course_org}/{team}: {out[:200]}"
@@ -336,8 +343,9 @@ def _repo_tree(org: str, repo: str) -> tuple[str, tuple[str, ...]]:
         '.tree[] | select(.type=="blob") | .path',
     )
     if code != 0:
-        lower = out.lower()
-        if "http 404" in lower or "not found" in lower or "http 409" in lower:
+        # An empty repo (409, no commits) is genuinely no files too - a tree-specific
+        # signal on top of the shared 404-absence test.
+        if is_missing_resource(out) or "http 409" in out.lower():
             return branch, ()  # no such tree / empty repo - genuinely no files
         raise RuntimeError(f"could not read the file tree of {org}/{repo}: {out[:200]}")
     return branch, tuple(sorted(out.splitlines()))
@@ -511,9 +519,7 @@ def _assignment_entry(
         f"    date: {due}\n"
         f'    description: "{title}"\n'
         f"---\n"
-        # The README body is inlined verbatim into a Jekyll document, so a `{{`/`{%` in it
-        # would run as Liquid (and a malformed tag fails the build); fence it as raw.
-        f"{{% raw %}}\n{body or 'Assignment brief.'}\n{{% endraw %}}\n\n"
+        f"{_liquid_raw(body or 'Assignment brief.')}\n\n"
         f"_Your private `{slug}-<your-handle>` repo appears in `{course_org}`'s cohort "
         f"org once the teaching team provisions it._\n"
     )
@@ -949,12 +955,7 @@ def _public_lecture_entry(
     title = f"{_ROW_NOUN[kind]} {session}"
     body = f"Materials for {title.lower()}."
     if reading_list_md:
-        # The reading list is faculty-written text inlined verbatim into a Jekyll
-        # document, so a `{{`/`{%` in it would run as Liquid (a malformed tag fails the
-        # build); fence it as raw.
-        body += (
-            "\n\n### Reading list\n\n{% raw %}\n" + reading_list_md + "\n{% endraw %}"
-        )
+        body += "\n\n### Reading list\n\n" + _liquid_raw(reading_list_md)
     return (
         f"---\n"
         f"type: {kind}\n"
