@@ -1,12 +1,10 @@
 # Bootstrapped Orgs - Live Inventory
 
-**Auto-generated** by the `refresh-inventory` workflow - do not hand-edit the tables. Discovery is GitHub itself: `bootstrap_course.py` tags each org's `.github` repo (`dsl-course-hub` = course org, `dsl-cohort` = cohort org), and this file lists whatever carries those tags.
+**Auto-generated** by the `refresh-inventory` workflow - do not hand-edit the tables. Discovery is GitHub itself: `bootstrap_course.py` tags each org's `.github` repo (`dsl-course-hub` = course org, `dsl-cohort` = cohort org); a cohort's course org is its `dsl-course.yml` `course:` pointer.
 
 ## Course orgs
 
 <!-- DSL-AUTOGEN-COURSE-ORGS-START -->
-
-_Auto-generated from GitHub. Discovered via topic `dsl-course-hub` on each org's `.github` repo._
 
 | Org | Course | Code |
 | --- | --- | --- |
@@ -20,8 +18,6 @@ _Auto-generated from GitHub. Discovered via topic `dsl-course-hub` on each org's
 ## Cohort orgs
 
 <!-- DSL-AUTOGEN-COHORT-ORGS-START -->
-
-_Auto-generated from GitHub. Discovered via topic `dsl-cohort` on each org's `.github` repo; the course org is that org's `dsl-course.yml` `course:` pointer._
 
 | Cohort org | Course org |
 | --- | --- |

@@ -126,8 +126,6 @@ def render_markdown_table(orgs: list[dict]) -> str:
     lines = [
         AUTOGEN_START,
         "",
-        f"_Auto-generated from GitHub. Discovered via topic `{COURSE_HUB_TOPIC}` on each org's `.github` repo._",
-        "",
         "| Org | Course | Code |",
         "| --- | --- | --- |",
     ]
@@ -145,8 +143,6 @@ def render_cohort_table(cohorts: list[dict]) -> str:
     """Render the cohort autogen section, bracketed by its own marker comments."""
     lines = [
         COHORT_START,
-        "",
-        f"_Auto-generated from GitHub. Discovered via topic `{COHORT_TOPIC}` on each org's `.github` repo; the course org is that org's `dsl-course.yml` `course:` pointer._",
         "",
         "| Cohort org | Course org |",
         "| --- | --- |",
