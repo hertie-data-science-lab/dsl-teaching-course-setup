@@ -28,13 +28,11 @@ import sys
 
 from . import roster
 from .utils import (
-    add_team_member,
-    get_team_members,
     log,
     log_err,
     log_ok,
     log_step,
-    remove_team_member,
+    reconcile_team_members,
     set_org_membership,
 )
 
@@ -55,20 +53,12 @@ def desired_members(students: list[roster.Student]) -> dict[str, set[str]]:
     }
 
 
-def enroll(org: str, handle: str, team: str = TEAM) -> bool:
-    """Grant one handle org membership + membership of its role team."""
-    ok = set_org_membership(org, handle, role="member")
-    if add_team_member(org, team, handle):
-        log_ok(f"{handle} -> {team} team")
-    else:
-        ok = False
-    return ok
-
-
 def sync(cohort_org: str, prune: bool = False, dry_run: bool = False) -> int:
     students = roster.load(cohort_org)
-    if not students:
+    if students is None:  # missing/unreadable roster - load() already logged why
         return 1
+    # An empty roster (header only - a freshly bootstrapped cohort) is a valid state,
+    # not an error: reconcile both role teams to empty like any other edit.
     wanted = desired_members(students)
     log_step(
         f"Materialising access for {len(wanted[TEAM])} onboarded student(s) + "
@@ -77,22 +67,16 @@ def sync(cohort_org: str, prune: bool = False, dry_run: bool = False) -> int:
 
     errors = 0
     for team, handles in wanted.items():
-        current = get_team_members(cohort_org, team)
-
         for handle in sorted(handles):
             if dry_run:
-                log(f"    DRY-RUN enroll: {handle} -> {team}")
-            elif not enroll(cohort_org, handle, team):
+                log(f"    DRY-RUN enroll: {handle} -> org member")
+            elif not set_org_membership(cohort_org, handle, role="member"):
                 errors += 1
-
-        if prune:
-            for handle in sorted(current - handles):
-                if dry_run:
-                    log(f"    DRY-RUN remove: {handle} from {team}")
-                elif remove_team_member(cohort_org, team, handle):
-                    log_ok(f"removed {handle} from {team}")
-                else:
-                    errors += 1
+        # Team membership via the shared reconcile so pruning inherits its guard:
+        # an org Owner (or the acting bot) on the roster is never evicted.
+        errors += reconcile_team_members(
+            cohort_org, team, handles, prune=prune, dry_run=dry_run
+        )
     return errors
 
 

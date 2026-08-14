@@ -300,7 +300,10 @@ def sync(cohort_org: str, dry_run: bool = False) -> int:
 
     Auditors are read-only and are never assessed, so they get no gradebook."""
     students = roster.load(cohort_org)
+    if students is None:  # missing/unreadable roster - load() already logged why
+        return 1
     if not students:
+        log_err(f"roster in {cohort_org} has no rows yet - no gradebooks to sync.")
         return 1
     participants = roster.enrolled(students)
     auditing = len(students) - len(participants)
@@ -468,7 +471,9 @@ def _push_gradebook(cohort_org: str, handle: str, content: str) -> str:
 def _email_updates(cohort_org: str, handles: list[str], dry_run: bool = False) -> None:
     """Email each student a 'grades updated' notification to their university inbox,
     linking to their private gradebook repo (the grade's source of truth)."""
-    by_handle = {s.github_handle: s for s in roster.load(cohort_org) if s.github_handle}
+    by_handle = {
+        s.github_handle: s for s in roster.load(cohort_org) or [] if s.github_handle
+    }
     messages = []
     for handle in handles:
         student = by_handle.get(handle)

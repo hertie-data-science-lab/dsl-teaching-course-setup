@@ -139,7 +139,7 @@ def collect(course_org: str, cohort_org: str) -> dict[str, dict]:
         f"{n_admins} active" if has_people_block else "falls back to GitHub teams",
     )
 
-    students = roster.load(cohort_org)
+    students = roster.load(cohort_org) or []
     onboarded = sum(s.onboarded for s in students)
     data["C2"] = _row(
         "C2",

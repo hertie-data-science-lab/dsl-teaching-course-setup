@@ -48,6 +48,27 @@ def test_desired_members_covers_both_teams_even_when_one_is_empty():
     assert wanted[sync_roster.AUDITOR_TEAM] == set()
 
 
+def test_sync_fails_on_a_missing_roster_but_not_an_empty_one(monkeypatch):
+    # Missing/unreadable students.csv (load -> None) is an error; a roster that
+    # exists but has no rows yet (a freshly bootstrapped cohort) is a valid state
+    # and must reconcile cleanly instead of failing every daily cron.
+    monkeypatch.setattr(sync_roster, "reconcile_team_members", lambda *a, **kw: 0)
+
+    monkeypatch.setattr(roster, "load", lambda org: None)
+    assert sync_roster.sync("some-cohort", prune=True) == 1
+
+    monkeypatch.setattr(roster, "load", lambda org: [])
+    assert sync_roster.sync("some-cohort", prune=True) == 0
+
+
+def test_load_distinguishes_missing_from_empty(monkeypatch):
+    monkeypatch.setattr(roster, "get_file_content", lambda *a, **kw: None)
+    assert roster.load("some-cohort") is None
+
+    monkeypatch.setattr(roster, "get_file_content", lambda *a, **kw: HEADER + "\n")
+    assert roster.load("some-cohort") == []
+
+
 def test_a_role_change_moves_the_handle_between_teams():
     before = sync_roster.desired_members(
         _roster("1,ada@uni.edu,Ada,ada-l,42,A,dsl-abc,auditor")

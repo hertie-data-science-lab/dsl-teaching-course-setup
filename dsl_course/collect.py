@@ -248,7 +248,7 @@ def submission_targets(
         ]
     targets = [
         (f"{slug}-{s.github_handle}", s.github_handle, [s.github_handle])
-        for s in roster.load(cohort_org)
+        for s in roster.load(cohort_org) or []
         if s.onboarded
     ]
     if not targets:

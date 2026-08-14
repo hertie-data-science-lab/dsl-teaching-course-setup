@@ -29,7 +29,7 @@ import argparse
 import sys
 
 from . import seed, sync_faculty, sync_roster, sync_teams
-from .utils import log_err, log_ok
+from .utils import _acting_login, log_err, log_ok
 
 
 def sync(
@@ -72,6 +72,19 @@ def main() -> int:
     )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+
+    # Fail fast on a missing/invalid token. Every gh failure below degrades to an
+    # empty list or set (no cohorts, no members, no file content), so an
+    # unauthenticated run would otherwise reconcile nothing and still report
+    # "[ok] Sync complete" - masking e.g. an org secret that stopped being
+    # delivered to this repo.
+    if _acting_login() is None:
+        log_err(
+            "gh is not authenticated (empty or invalid GH_TOKEN?) - "
+            "refusing to run: every read would come back empty and the sync "
+            "would falsely report success."
+        )
+        return 1
 
     errors = sync(
         args.course_org,

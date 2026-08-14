@@ -115,15 +115,19 @@ def dump(students: list[Student]) -> str:
     return out.getvalue()
 
 
-def load(cohort_org: str) -> list[Student]:
-    """Fetch + parse students.csv from the cohort's PRIVATE classroom-config repo."""
+def load(cohort_org: str) -> list[Student] | None:
+    """Fetch + parse students.csv from the cohort's PRIVATE classroom-config repo.
+
+    Returns None (after logging why) when the file can't be fetched at all - callers
+    can then distinguish "roster missing/unreadable" (an error) from a roster that
+    exists but has no rows yet (a valid state for a freshly bootstrapped cohort)."""
     content = get_file_content(cohort_org, CONFIG_REPO, ROSTER_PATH)
     if content is None:
         log_err(
             f"Could not find {ROSTER_PATH} in {cohort_org}/{CONFIG_REPO} - "
             f"bootstrap the cohort first (bootstrap_course --cohort)."
         )
-        return []
+        return None
     return parse(content)
 
 

@@ -43,6 +43,7 @@ from .utils import (
     create_team,
     get_file_content,
     grant_team_repo_access,
+    log,
     log_err,
     log_ok,
     log_step,
@@ -63,8 +64,9 @@ COHORT_PEOPLE_PATH = "people.yml"
 
 def parse_faculty(raw: str) -> dict[str, list[dict]]:
     """Parse a `people:` block's text (course org's dsl-course.yml, or a cohort's
-    people.yml - same schema) for the roles in ROLE_TEAM. Entries missing
-    `github_handle` are skipped (it's the only required field)."""
+    people.yml - same schema) for the roles in ROLE_TEAM. Only entries with a
+    `github_handle` grant access; a named entry without one is a legitimate
+    display-only card (noted, not an error), anything else is junk (flagged)."""
     meta = yaml.safe_load(raw) if raw else {}
     people = meta.get("people") if isinstance(meta, dict) else None
     if not isinstance(people, dict):
@@ -75,6 +77,11 @@ def parse_faculty(raw: str) -> dict[str, list[dict]]:
         for p in people.get(role) or []:
             if isinstance(p, dict) and p.get("github_handle"):
                 entries.append(p)
+            elif isinstance(p, dict) and p.get("name"):
+                log(
+                    f"  ({role} entry '{p['name']}' has no github_handle - "
+                    f"display-only, no access granted)"
+                )
             else:
                 log_err(f"  ! skipping {role} entry with no github_handle: {p!r}")
         faculty[role] = entries
