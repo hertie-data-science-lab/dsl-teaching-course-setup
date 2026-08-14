@@ -25,7 +25,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from . import teams
+from . import roster, teams
 from .utils import (
     create_team,
     log,
@@ -69,15 +69,33 @@ def ensure_team(org: str, slug: str, members: set[str], prune: bool) -> bool:
     return reconcile_team_members(org, slug, members, prune=prune) == 0
 
 
+def known_handles(students: list[roster.Student] | None) -> set[str]:
+    """The onboarded roster handles - the only accounts teams.csv may add.
+
+    Adding a handle to a GitHub Team also INVITES it to the org if it isn't a member
+    yet, so an unvetted teams.csv handle (a typo, or a placeholder name that happens
+    to collide with a real GitHub account) would invite an arbitrary stranger. The
+    roster is the SSOT of who belongs to the cohort; teams.csv only groups them."""
+    return {s.github_handle for s in students or [] if s.onboarded}
+
+
 def sync(cohort_org: str, prune: bool = False, dry_run: bool = False) -> int:
     wanted = desired_teams(teams.load(cohort_org))
     if not wanted:
         log_ok("no project teams defined yet - nothing to sync.")
         return 0
     log_step(f"Materialising {len(wanted)} project team(s) in {cohort_org}")
+    allowed = known_handles(roster.load(cohort_org))
     errors = 0
     for slug in sorted(wanted):
         members = wanted[slug]
+        for unknown in sorted(members - allowed):
+            log_err(
+                f"{unknown} in teams.csv is not an onboarded roster handle - "
+                f"not adding to {slug} (would invite an arbitrary GitHub account)"
+            )
+            errors += 1
+        members = members & allowed
         if dry_run:
             log(
                 f"    DRY-RUN team {slug}: {', '.join('@' + m for m in sorted(members))}"

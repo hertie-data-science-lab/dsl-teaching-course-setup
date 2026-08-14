@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from dsl_course import sync_teams, utils
+from dsl_course import roster, sync_teams, utils
 
 
 def test_team_slug_is_assignment_prefixed_and_lowercased():
@@ -82,3 +82,36 @@ def test_ensure_team_without_prune_only_adds(stub_team):
     assert ok
     assert stub_team["added"] == ["ben-baker"]
     assert stub_team["removed"] == []
+
+
+HEADER = "student_id,hertie_email,name,github_handle,github_id,section,enrol_code,role"
+
+
+def _students(*rows: str) -> list[roster.Student]:
+    return roster.parse("\n".join((HEADER, *rows)) + "\n")
+
+
+def test_known_handles_are_the_onboarded_roster_handles():
+    students = _students(
+        "1,ada@uni.edu,Ada,ada-l,42,A,,enrolled",
+        "2,eve@uni.edu,Eve,,,B,,enrolled",  # not onboarded - no handle to add
+    )
+    assert sync_teams.known_handles(students) == {"ada-l"}
+    assert sync_teams.known_handles(None) == set()  # roster missing/unreadable
+
+
+def test_sync_never_adds_a_handle_that_is_not_on_the_roster(stub_team, monkeypatch):
+    # Adding a handle to a Team also invites it to the org, so a teams.csv handle
+    # that isn't an onboarded roster member (a typo, or a placeholder colliding with
+    # a real GitHub account) must be skipped and reported, never invited.
+    monkeypatch.setattr(
+        sync_teams.teams,
+        "load",
+        lambda org: {"assignment-4-project": {"wizards": ["ben-baker", "m-stranger"]}},
+    )
+    monkeypatch.setattr(
+        roster, "load", lambda org: _students("1,ben@uni.edu,Ben,ben-baker,42,A,,")
+    )
+    errors = sync_teams.sync("org", prune=False)
+    assert errors == 1  # the skipped stranger is surfaced, not silently dropped
+    assert stub_team["added"] == ["ben-baker"]

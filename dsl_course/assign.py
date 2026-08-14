@@ -298,7 +298,10 @@ def provision_all(
             log("  (declared `type: group` - provisioning per team)")
 
     students = roster.load_path(roster_path) if roster_path else roster.load(cohort_org)
+    if students is None:  # missing/unreadable roster - load() already logged why
+        return 1
     if not students:
+        log_err(f"roster in {cohort_org} has no rows yet - nobody to provision for.")
         return 1
     # Auditors are read-only - they see released materials, never an assignment repo.
     participants = roster.enrolled(students)

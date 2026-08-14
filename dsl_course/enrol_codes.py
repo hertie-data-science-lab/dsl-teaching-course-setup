@@ -25,7 +25,7 @@ import secrets
 import sys
 
 from . import mailer, roster
-from .utils import log_ok, log_step, put_file
+from .utils import log_err, log_ok, log_step, put_file
 
 # No ambiguous characters (0/O, 1/l/I) so a student can read the code off an email.
 _ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"
@@ -68,7 +68,10 @@ def code_message(student: roster.Student, welcome_url: str) -> mailer.Message:
 
 def run(cohort_org: str, dry_run: bool = False) -> int:
     students = roster.load(cohort_org)
+    if students is None:  # missing/unreadable roster - load() already logged why
+        return 1
     if not students:
+        log_err(f"roster in {cohort_org} has no rows yet - no codes to generate.")
         return 1
 
     added = assign_codes(students)  # in memory; persisted below unless dry-run
