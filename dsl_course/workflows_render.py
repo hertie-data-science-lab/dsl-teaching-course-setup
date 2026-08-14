@@ -101,13 +101,17 @@ def _newest(options: list[str]) -> str | None:
     return max(dated)[1] if dated else None
 
 
-def _choice_input(name: str, description: str, options: list[str]) -> str:
-    """A required dropdown input, pre-selected on the latest term year (see _newest)."""
-    newest = _newest(options)
+def _choice_input(
+    name: str, description: str, options: list[str], default: str | None = None
+) -> str:
+    """A required dropdown input. Pre-selected on `default` if given, otherwise on the
+    latest term year (see _newest) - every org/repo dropdown in every button, so a faculty
+    member never has to scroll past last year's cohort to reach this year's."""
+    default = default or _newest(options)
     return (
         f'      {name}:\n        description: "{description}"\n'
         "        required: true\n        type: choice\n"
-        + (f'        default: "{newest}"\n' if newest else "")
+        + (f'        default: "{default}"\n' if default else "")
         + f"        options:\n{_choice(options)}"
     )
 
@@ -228,10 +232,8 @@ def _assignment_input(assignments: list[str]) -> str:
     """The course-org repo to hand out from - a dropdown of discovered assignment
     templates, or free-text. Named as in schedule.yml: `course_source_repo`."""
     if assignments:
-        return (
-            '      course_source_repo:\n        description: "Course-org repo to hand out from"\n'
-            "        required: true\n        type: choice\n        options:\n"
-            + _choice(assignments)
+        return _choice_input(
+            "course_source_repo", "Course-org repo to hand out from", assignments
         )
     return (
         '      course_source_repo:\n        description: "Course-org repo to hand out from (e.g. assignment-1-f2026)"\n'
@@ -251,12 +253,7 @@ def render_provision(
 on:
   workflow_dispatch:
     inputs:
-      cohort_org:
-        description: "Target cohort org"
-        required: true
-        type: choice
-        options:
-{_choice(cohort_orgs)}
+{_choice_input("cohort_org", "Target cohort org", cohort_orgs)}
 {_assignment_input(assignments or [])}
       include_solution:
         description: "Also push the solution (from the template's solution branch) into each student repo"
@@ -320,12 +317,7 @@ def render_grade_assignment(
 on:
   workflow_dispatch:
     inputs:
-      cohort_org:
-        description: "Cohort org (submissions)"
-        required: true
-        type: choice
-        options:
-{_choice(cohort_orgs)}
+{_choice_input("cohort_org", "Cohort org (submissions)", cohort_orgs)}
 {_assignment_input(assignments or [])}
       group:
         description: "Group assignment - grade one repo per team"
@@ -431,12 +423,12 @@ jobs:
 
 
 def _cohort_dropdown(cohort_orgs: list[str], optional: bool = False) -> str:
+    """The plain cohort dropdown. `optional` prepends the faculty-only sentinel and pins
+    the default to it (opting IN to a cohort must stay a deliberate choice); otherwise the
+    latest cohort is pre-selected."""
     options = ([_FACULTY_ONLY] + cohort_orgs) if optional else cohort_orgs
-    default = f'\n        default: "{_FACULTY_ONLY}"' if optional else ""
-    return (
-        '      cohort_org:\n        description: "Cohort org"\n'
-        f"        required: true\n        type: choice{default}\n        options:\n"
-        + _choice(options)
+    return _choice_input(
+        "cohort_org", "Cohort org", options, default=_FACULTY_ONLY if optional else None
     )
 
 
@@ -808,12 +800,7 @@ on:
     - cron: "0 6 * * *"
   workflow_dispatch:
     inputs:
-      cohort_org:
-        description: "Cohort whose site to regenerate from the org structure"
-        required: true
-        type: choice
-        options:
-{_choice(cohort_orgs)}
+{_choice_input("cohort_org", "Cohort whose site to regenerate from the org structure", cohort_orgs)}
 
 jobs:
 {_CHECK_TEAM}
@@ -874,12 +861,7 @@ on:
     - cron: "30 5 * * *"
   workflow_dispatch:
     inputs:
-      source_repo:
-        description: "Source materials repo (in this course org) to publish"
-        required: true
-        type: choice
-        options:
-{_choice(source_repos)}
+{_choice_input("source_repo", "Source materials repo (in this course org) to publish", source_repos)}
       readings_mode:
         description: "Readings: reading-list (citations) / actual-readings (files) / none"
         required: true
