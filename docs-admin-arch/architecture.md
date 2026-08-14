@@ -444,9 +444,12 @@ Self-contained - workflows and their Python implementation both live in this rep
 - `templates/` - the files bootstrap seeds into a fresh org, verbatim from disk
   (`welcome.template`), one subdirectory per destination:
   - `welcome/` - the cohort onboarding + team-formation workflows and their issue forms.
-  - `classroom-config/` - that repo's starter roster, README contract, tag-rendered
-    `schedule.yml` / `people.yml` scaffolds, the `*.csv.sample` worked examples
-    (roster, teams, grades), and its two dispatch workflows.
+  - `classroom-config/` - that repo's README contract, its three dispatch/validate
+    workflows, and the **scaffold** half of every user-editable file: header-only
+    `students.csv` / `teams.csv`, tag-rendered `schedule.yml` / `people.yml` skeletons.
+    The **sample** half (`<file>.sample`) is not authored here - it is injected from
+    `example-course/cohort-org/` (`welcome.CLASSROOM_SAMPLES`), so the shipped worked
+    examples and the documented ones are the same files.
   - `course/` - the course org's `.github/dsl-course.yml` (identity + the `people:` block,
     assembled from the `people-*.yml` fragments).
   - `cohort/` - a cohort org's `.github/dsl-course.yml` pointer back to its course org.

@@ -13,11 +13,14 @@ edit these files; the buttons in the **course org's** Actions tab read them.
 Canonical, engine-wide schema:
 <https://github.com/hertie-data-science-lab/dsl-teaching-toolkit/blob/main/docs/DEPLOYMENT-CHECKLIST.md>.
 
-**The `.sample` pattern:** every CSV the engine ingests sits next to a `*.csv.sample`
-showing filled-out example rows (`students.csv.sample`, `teams.csv.sample`,
-`grades/assignment-1.csv.sample`). Samples are documentation - the engine never reads
-them, and bootstrap keeps them current. Copy rows into the real file (or rename the
-sample) to activate; never grade or enrol the example people.
+**Scaffold + sample.** Every file you edit here ships as a pair: `<file>` is the live,
+minimal scaffold you fill in (a header-only CSV, a commented YAML skeleton), and
+`<file>.sample` next to it is a filled, realistic example of the same file -
+`students.csv.sample`, `teams.csv.sample`, `schedule.yml.sample`, `people.yml.sample`, and
+one per graded assignment under `grades/`. Samples are documentation: the engine never reads a
+`.sample`, and every bootstrap and nightly refresh re-pushes them so they can never go
+schema-stale. Copy what you need into the real file to activate it; never grade or enrol
+the example people.
 
 ## students.csv - the roster (required)
 
@@ -43,7 +46,8 @@ there is no separate off-boarding step).
 ## grades/<assignment>.csv - marks (optional, when returning grades)
 
 One file per assignment, e.g. `grades/assignment-1.csv` (see
-`grades/assignment-1.csv.sample` for both an individual and a team-graded example row):
+`grades/assignment-1.csv.sample` for a filled individual-graded table and
+`grades/assignment-4-project.csv.sample` for a team-graded one):
 `github_handle, team, auto, manual, team_grade, adjustment, final, comments, team_comments`.
 The autograder pre-fills `auto`/`team_grade` from hidden tests, creating the file if it
 doesn't exist; faculty & instructors fill the rest, then **Sync gradebooks** -> **Render
@@ -61,12 +65,12 @@ button** - autograding and your review happen entirely in this private repo.
 
 ## teams.csv - group membership (optional, for group assignments)
 
-`assignment, team, github_handle`. Students self-select via the welcome "Join team" issue,
-or edit directly - a push here also triggers **Sync membership**. Auditors (`role: auditor`
-above) are refused by that issue: no assignment repos means no project teams. The issue flow
-also enforces a **team-size cap**: set `max_team_size` per assignment under `assignments:`
-in `schedule.yml` (default 5 when unset). See
-`teams.csv.sample` - **the engine only acts on a real `teams.csv`.**
+`assignment, team, github_handle`. Seeded header-only (see `teams.csv.sample` for a filled
+three-team example). Students self-select via the welcome "Join team" issue, which appends
+rows here, or edit directly - a push here also triggers **Sync membership**. Auditors
+(`role: auditor` above) are refused by that issue: no assignment repos means no project
+teams. The issue flow also enforces a **team-size cap**: set `max_team_size` per assignment
+under `assignments:` in `schedule.yml` (default 5 when unset).
 
 ## schedule.yml - the release plan + due dates + events (optional)
 
@@ -86,8 +90,9 @@ Also holds
 `semester_start`/`semester_end` (term-date rows on the site) and `assignments` (due dates for
 the website, shown alongside each handout date, plus each
 assignment's `grading_datetime` - the moment its snapshot freezes and it is autograded,
-once; grading needs no release entry). Seeded mostly-commented - uncomment and
-fill what you want; anything left out is synthesised or simply not scheduled. Minimal is
+once; grading needs no release entry). Seeded as a commented skeleton - uncomment and
+fill what you want; anything left out is synthesised or simply not scheduled, and
+`schedule.yml.sample` is a full worked term to copy from. Minimal is
 the recommended shape: on a deploy only `course_source_repo` + `course_source_path` are
 required (`cohort_dest_repo` defaults to `materials`, `cohort_dest_path` mirrors
 `course_source_path`, ship time
@@ -107,5 +112,6 @@ see above) - instructors/TAs are declared here, per cohort. **Sync membership**
 reconciles them into this cohort's own `instructors` team AND a course-org
 `instructors-<tag>` team (push access scoped to just this year's content repos, plus
 the central `.github` repo so they can use the central dispatch buttons too), so they
-can push materials without a course-level declaration. Seeded mostly-commented -
-uncomment and fill what you want to pin.
+can push materials without a course-level declaration. It also supplies this cohort's
+website staff cards. Seeded as a commented skeleton - uncomment and fill what you want to
+pin; `people.yml.sample` is a filled example.

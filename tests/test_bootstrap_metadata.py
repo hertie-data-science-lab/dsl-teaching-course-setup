@@ -88,15 +88,11 @@ def test_starter_roster_seeds_the_full_column_set():
     # A cohort discovers the roster schema from its own config repo, so the seeded header
     # must be exactly roster.FIELDS - a short header (no `enrol_code`/`role`) sends faculty
     # looking for code-based onboarding and auditors that the columns don't offer. The
-    # live file is header-only; the worked example rows live in students.csv.sample.
+    # live file is header-only; the worked example rows live in students.csv.sample
+    # (covered by the seeding tests, which validate every shipped sample).
     starter = welcome.template("classroom-config/students.csv")
     assert tuple(starter.splitlines()[0].split(",")) == roster.FIELDS
     assert roster.parse(starter) == []  # header-only: nobody to enrol by accident
-    enrolled, auditor = roster.parse(
-        welcome.template("classroom-config/students.csv.sample")
-    )
-    assert enrolled.is_enrolled and not enrolled.onboarded
-    assert auditor.is_auditor and not auditor.onboarded
 
 
 def test_classroom_readme_documents_every_roster_column():

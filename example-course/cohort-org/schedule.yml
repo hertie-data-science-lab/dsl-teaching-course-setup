@@ -1,30 +1,14 @@
-# Worked example - the DSL-Demo-f2026 cohort's schedule + auto-release plan, in one file
-# (classroom-config/schedule.yml). Each block encodes BEHAVIOUR:
-#   releases:     entries that DEPLOY materials (course org -> this cohort org)
-#   assignments:  each assignment's handout / due / grading lifecycle
-#   events:       display-only calendar rows - nothing deploys
-# A release's `event_datetime` is when the thing HAPPENS (what the site's schedule shows);
-# the hourly cron fires its deploys at that moment, except deploys carrying their own
-# `deploy_datetime`. Sources are read from the COURSE org; destinations written to this
-# COHORT org. Full schema: docs/DEPLOYMENT-CHECKLIST.md#scheduleyml
-#
-# Changing a date later? Just commit the edit to this file on main - the GitHub web UI
-# is the recommended way (or edit a local clone, commit, push). The hourly cron reads
-# whatever is on main at each tick, so the change simply takes effect within the hour.
-# Only already-fired ONE-SHOT actions don't rewind: a release already shipped stays
-# shipped, and a snapshot/autograde that already ran needs its marker deleted to redo.
+# Worked example - the DSL-Demo-f2026 cohort's whole term in one file. What each block
+# DOES, and when the hourly cron reads it, is explained once in the scaffold this sits
+# next to (classroom-config/schedule.yml); full schema:
+# https://github.com/hertie-data-science-lab/dsl-teaching-toolkit/blob/main/docs/07-schedule-releases.md
 timezone: Europe/Berlin
 semester_start: 2026-09-07
 semester_end: 2026-12-18
 
 releases:
-  # Deploys are MINIMAL where the defaults fit: only course_source_repo + course_source_path are
-  # required; cohort_dest_repo defaults to `materials`, cohort_dest_path mirrors course_source_path, and each
-  # copy ships at the entry's event_datetime. The lecture lines add ONE option -
-  # deploy_datetime - to ship an hour before class. (Paths are relative to their repo.)
-  #
-  # Lecture vs lab is NOT a field: it comes from the section folder deployed here -
-  # `lectures/...` renders a lecture row on the site, `labs/...` a lab row.
+  # Every deploy below is the MINIMAL shape (the defaults fit); the lecture lines add one
+  # option, deploy_datetime, to ship an hour before class.
   course-intro:
     event_datetime: 2026-08-31T09:00   # week 0 - the course opens before teaching starts
     title: Course opens
@@ -106,9 +90,6 @@ releases:
       - course_source_repo: course-materials-f2026
         course_source_path: labs/05_week-5
 
-# Autograding needs no entry here: at each assignment's grading deadline the hourly cron
-# freezes the submission snapshot and runs the autograder once (individual/group comes from
-# the template's own grading.yml).
 assignments:                    # each assignment's whole lifecycle in one block
   assignment-1:
     course_source_repo: assignment-1-f2026  # REQUIRED - the course-org repo it hands out from
@@ -128,9 +109,6 @@ assignments:                    # each assignment's whole lifecycle in one block
     due_datetime: 2026-11-15T23:59
     max_team_size: 4              # the welcome "Join team" flow refuses a 5th member
 
-# DISPLAY-ONLY rows: nothing is released, the site's schedule simply shows them.
-# `type: exam` colours the row as an exam; leave `type` out for anything else
-# (a clinic, a guest lecture, a review session).
 events:
   mid-term:
     type: exam
