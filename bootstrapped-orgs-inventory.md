@@ -6,20 +6,20 @@
 
 | Org | Course | Code |
 | --- | --- | --- |
-| [DSL-Demo-Course-E1234](https://github.com/DSL-Demo-Course-E1234) | Machine Learning Fundamentals (Demo) | E1234 |
-| [Hertie-School-Maths-Data-Science-C23](https://github.com/Hertie-School-Maths-Data-Science-C23) | Maths for Data Science | GRAD-C23 |
-| [intro-to-data-science-c11](https://github.com/intro-to-data-science-c11) | Introduction to Data Science | C11 |
+| [hertie-dsl-demo-course-e1234](https://github.com/hertie-dsl-demo-course-e1234) | Machine Learning Fundamentals (Demo) | E1234 |
+| [hertie-intro-to-data-science-c11](https://github.com/hertie-intro-to-data-science-c11) | Introduction to Data Science | C11 |
+| [hertie-maths-data-science-C23](https://github.com/hertie-maths-data-science-C23) | Maths for Data Science | GRAD-C23 |
 
 ## Cohort orgs
 
 | Cohort org | Course org |
 | --- | --- |
-| [DSL-Demo-f2025](https://github.com/DSL-Demo-f2025) | [DSL-Demo-Course-E1234](https://github.com/DSL-Demo-Course-E1234) |
-| [DSL-Demo-f2026](https://github.com/DSL-Demo-f2026) | [DSL-Demo-Course-E1234](https://github.com/DSL-Demo-Course-E1234) |
-| [DSL-Demo-f2027](https://github.com/DSL-Demo-f2027) | [DSL-Demo-Course-E1234](https://github.com/DSL-Demo-Course-E1234) |
-| [Hertie-School-Maths-Data-Science-f2026](https://github.com/Hertie-School-Maths-Data-Science-f2026) | [Hertie-School-Maths-Data-Science-C23](https://github.com/Hertie-School-Maths-Data-Science-C23) |
-| [Intro-to-Data-Science-f2025](https://github.com/Intro-to-Data-Science-f2025) | [intro-to-data-science-c11](https://github.com/intro-to-data-science-c11) |
-| [Intro-to-Data-Science-f2026](https://github.com/Intro-to-Data-Science-f2026) | [intro-to-data-science-c11](https://github.com/intro-to-data-science-c11) |
+| [hertie-dsl-demo-f2025](https://github.com/hertie-dsl-demo-f2025) | [hertie-dsl-demo-course-e1234](https://github.com/hertie-dsl-demo-course-e1234) |
+| [hertie-dsl-demo-f2026](https://github.com/hertie-dsl-demo-f2026) | [hertie-dsl-demo-course-e1234](https://github.com/hertie-dsl-demo-course-e1234) |
+| [hertie-dsl-demo-f2027](https://github.com/hertie-dsl-demo-f2027) | [hertie-dsl-demo-course-e1234](https://github.com/hertie-dsl-demo-course-e1234) |
+| [hertie-intro-to-data-science-f2026](https://github.com/hertie-intro-to-data-science-f2026) | [hertie-intro-to-data-science-c11](https://github.com/hertie-intro-to-data-science-c11) |
+| [hertie-maths-data-science-f2026](https://github.com/hertie-maths-data-science-f2026) | [hertie-maths-data-science-C23](https://github.com/hertie-maths-data-science-C23) |
+| [hertie-intro-to-data-science-f2025](https://github.com/hertie-intro-to-data-science-f2025) | [intro-to-data-science-c11](https://github.com/intro-to-data-science-c11) |
 
 ## Regenerate on demand
 
