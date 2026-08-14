@@ -8,7 +8,7 @@ first-run guard - the guard has to be per file. These tests pin the split:
 - USER-owned (classroom-config roster/teams/schedule/people/grades, welcome's
   student-facing README, and the course org's dsl-course.yml SSOT): seeded once, NEVER
   rewritten - a rewrite destroyed a live roster (enrol codes + onboarded handles) in
-  DSL-Demo-f2026.
+  hertie-dsl-demo-f2026.
 - SYSTEM-owned (welcome's onboard/team-formation workflows + the issue forms they parse,
   classroom-config's dispatch-sync*.yml, its README contract and `*.sample` worked
   examples, the cohort's generated dsl-course.yml pointer): re-pushed on every run so

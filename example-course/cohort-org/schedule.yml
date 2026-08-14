@@ -1,6 +1,6 @@
-# Worked example - the DSL-Demo-f2026 cohort's whole term in one file. What each block
-# DOES, and when the hourly cron reads it, is explained once in the scaffold this sits
-# next to (classroom-config/schedule.yml); full schema:
+# Worked example - the hertie-dsl-demo-f2026 cohort's whole term in one file. What each
+# block DOES, and when the hourly cron reads it, is explained once in the scaffold this
+# sits next to (classroom-config/schedule.yml); full schema:
 # https://github.com/hertie-data-science-lab/dsl-teaching-toolkit/blob/main/docs/07-schedule-releases.md
 timezone: Europe/Berlin
 semester_start: 2026-09-07

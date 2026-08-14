@@ -14,8 +14,8 @@ Every roster row gets a code, auditors included - the code is how anyone onboard
 their `role` column is what routes them to the read-only `auditors` team on the way in.
 
 Usage:
-    python3 -m dsl_course.enrol_codes --cohort-org Deep-Learning-EXAMPLE-f2026 --dry-run
-    python3 -m dsl_course.enrol_codes --cohort-org Deep-Learning-EXAMPLE-f2026
+    python3 -m dsl_course.enrol_codes --cohort-org hertie-demo-f2026 --dry-run
+    python3 -m dsl_course.enrol_codes --cohort-org hertie-demo-f2026
 """
 
 from __future__ import annotations

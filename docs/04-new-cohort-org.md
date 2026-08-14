@@ -19,22 +19,22 @@ Once each year; the [course org](01-new-course-org.md) it hangs off is permanent
 Live example of every file below: [`example-course/cohort-org/`](../example-course/cohort-org).
 
 1. **Create the cohort org** in the [web UI](https://github.com/account/organizations/new?plan=free&ref_cta=Create%2520a%2520free%2520organization&ref_loc=cards&ref_page=%2Forganizations%2Fplan), 
-    - Named **`<course-name>-f/sYYYY`** (e.g. `DSL-Demo-f2026`). 
+    - Named **`hertie-<course-slug>-<termtag>`**, termtag `fYYYY`/`sYYYY` - lowercase-kebab (e.g. `hertie-demo-f2026`). 
       - The `fYYYY`/`sYYYY` tag is necessary; it drives the semester label ("Fall 2026") and which year's `assignment-*` templates the site lists.
     - Select a buisness/institutional account, and enter `hertie-data-science-lab` into the text box.
 
 2. **Invite `hertie-dsl-bot` as Owner** (Org → People → Invite → role *Owner*).
 
-3. **Run [Bootstrap cohort](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/bootstrap-cohort.yml)**
+3. **Run [Bootstrap cohort](https://github.com/hertie-demo-e1234/.github/actions/workflows/bootstrap-cohort.yml)**
     - From the **course** org's `.github` Actions tab: `Bootrap cohort`.
-    - `cohort_org` = select the newly created `<course-name>-f/sYYYY`. 
+    - `cohort_org` = select the newly created `hertie-<course-slug>-<termtag>`. 
     - This seeds: 
       - **`welcome`** repo (public) - for student onboarding via `join course` issue tickets.
       - **`README.md`** (private student-facing) telling them how to join - yours to reword, it is never overwritten
       - **`classroom-config`** repo (hidden-from-students) - containing empty templates for `students.csv`, `teams.csv`, `schedule.yml`, `people.yml`, `grades/`
       - **`students` + `auditors` teams** (empty) - do not edit directly these, these will be populated by the workflow, 
       - **`course-admin` team** for this cohort
-      - **`dsl-demo-f2026.github.io`** auto-deployed website - what it shows, and what you must not hand-edit: [11](11-configure-cohort-site.md)
+      - **`hertie-demo-f2026.github.io`** auto-deployed website - what it shows, and what you must not hand-edit: [11](11-configure-cohort-site.md)
 
 4. **Fill in `classroom-config/schedule.yml` for the whole term** (edit locally or in the web UI → commit to `main`).
     - Its dates drive every release, the grading deadlines and the website
@@ -86,7 +86,7 @@ Live example of every file below: [`example-course/cohort-org/`](../example-cour
          end: "2027-01-31"       # optional - omit for "indefinite"
    ```
 
-    - `github_handle` is the only required field. 
+    - `github_handle` grants access; a named entry with no `github_handle` is also valid - it is display-only (a site card, no access granted). 
     - The optional `start`/`end` dates **bound when the access is live**: it is granted from `start` and revoked after `end`, automatically - this is how you hand a guest lecturer or a fixed-term TA push access for one term. 
       - Course-wide admins are declared at the **course** level instead (`.github/dsl-course.yml` → `course_admins`), not here. 
       - Full guide, including removing people   and how quickly changes land: [05 Manage the teaching team](05-manage-teaching-team.md).
@@ -108,5 +108,5 @@ Live example of every file below: [`example-course/cohort-org/`](../example-cour
 - [Configure the cohort website](11-configure-cohort-site.md) - the site step 3 just seeded.
 
 ---
-**Demo:** cohort [`DSL-Demo-f2026`](https://github.com/DSL-Demo-f2026), bootstrapped from
-[`DSL-Demo-Course-E1234`](https://github.com/DSL-Demo-Course-E1234/.github/actions/workflows/bootstrap-cohort.yml).
+**Demo:** cohort [`hertie-demo-f2026`](https://github.com/hertie-demo-f2026), bootstrapped from
+[`hertie-demo-e1234`](https://github.com/hertie-demo-e1234/.github/actions/workflows/bootstrap-cohort.yml).

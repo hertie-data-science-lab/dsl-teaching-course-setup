@@ -18,9 +18,9 @@ config is the live truth, so a deleted roster row or a lapsed faculty `end` date
 revokes access on the very next sync.
 
 Usage:
-    python3 -m dsl_course.sync_membership --course-org Deep-Learning-EXAMPLE
-    python3 -m dsl_course.sync_membership --course-org Deep-Learning-EXAMPLE --cohort-org Deep-Learning-EXAMPLE-f2026
-    python3 -m dsl_course.sync_membership --course-org Deep-Learning-EXAMPLE --all-cohorts
+    python3 -m dsl_course.sync_membership --course-org hertie-demo-e1234
+    python3 -m dsl_course.sync_membership --course-org hertie-demo-e1234 --cohort-org hertie-demo-f2026
+    python3 -m dsl_course.sync_membership --course-org hertie-demo-e1234 --all-cohorts
 """
 
 from __future__ import annotations
