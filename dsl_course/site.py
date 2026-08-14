@@ -345,7 +345,7 @@ def _repo_tree(org: str, repo: str) -> tuple[str, tuple[str, ...]]:
     if code != 0:
         # An empty repo (409, no commits) is genuinely no files too - a tree-specific
         # signal on top of the shared 404-absence test.
-        if is_missing_resource(out) or "http 409" in out.lower():
+        if is_missing_resource(out) or "HTTP 409" in out:
             return branch, ()  # no such tree / empty repo - genuinely no files
         raise RuntimeError(f"could not read the file tree of {org}/{repo}: {out[:200]}")
     return branch, tuple(sorted(out.splitlines()))

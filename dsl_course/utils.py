@@ -678,9 +678,12 @@ def is_missing_resource(out: str) -> bool:
     """Whether a failed `gh` output means the resource is genuinely ABSENT (a 404) rather
     than a real error to raise on. The one shared marker test: callers that distinguish
     "not there yet" from "couldn't read it" must agree on what absence looks like, so the
-    marker list lives here instead of being re-inlined (and drifting) at each call site."""
-    lower = out.lower()
-    return "http 404" in lower or "not found" in lower
+    marker list lives here instead of being re-inlined (and drifting) at each call site.
+
+    Matches gh's own casing (`gh: Not Found (HTTP 404)`) exactly - deliberately case-
+    SENSITIVE, so a lowercase `not found` inside some other error's text (a jq key miss,
+    say) is NOT misread as a 404 and does not suppress a real failure."""
+    return "HTTP 404" in out or "Not Found" in out
 
 
 def get_file_content(org: str, repo: str, path: str, ref: str = "") -> str | None:

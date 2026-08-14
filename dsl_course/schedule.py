@@ -765,12 +765,20 @@ def _insert_handout(text: str, slug: str, stamp: str) -> str | None:
 
     # The slug key at WHATEVER indent it sits at - matching only exactly two spaces was
     # the bug. A positive indent inside the block is required (a col-0 match would be a
-    # sibling top-level key, not an assignment).
-    slug_re = re.compile(rf"^(\s+){re.escape(slug)}:\s*(#.*)?$")
+    # sibling top-level key, not an assignment). `(.*)` captures whatever follows the
+    # colon so an inline flow value (`slug: {due_datetime: ...}`) is recognised as the
+    # same key, not missed and then fabricated as a duplicate.
+    slug_re = re.compile(rf"^(\s+){re.escape(slug)}:\s*(.*)$")
     for i in range(a_start + 1, block_end):
         m = slug_re.match(lines[i])
         if not m:
             continue
+        if m.group(2).split("#")[0].strip():
+            # The slug exists but is authored as an inline value (a flow mapping/scalar),
+            # so there is no block body to append a handout line into. Leave the file
+            # untouched rather than fabricate a duplicate key that PyYAML would silently
+            # drop (losing the handout) - write-once, the operator can add it by hand.
+            return None
         slug_indent = len(m.group(1))
         # Scan the slug's sub-block (lines indented deeper than the slug) for an existing
         # handout, learning the child indent from its first field.

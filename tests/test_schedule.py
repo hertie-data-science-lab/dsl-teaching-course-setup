@@ -969,6 +969,16 @@ def test_insert_handout_leaves_an_unrecognisable_flow_block_untouched():
     assert _insert_handout(flow, "assignment-1", "2026-09-22T14:05") is None
 
 
+def test_insert_handout_leaves_an_inline_flow_value_entry_untouched():
+    from dsl_course.schedule import _insert_handout
+
+    # `assignments:` is a block header but the slug itself is authored as an inline flow
+    # value: there's no block body to append into, so leaving it alone is correct - the
+    # old scan missed the slug and fabricated a duplicate key that swallowed the real one.
+    base = "assignments:\n  assignment-1: {due_datetime: 2026-10-13}\n"
+    assert _insert_handout(base, "assignment-1", "2026-09-22T14:05") is None
+
+
 def test_validate_cli_reports_an_unreadable_cohort_schedule(monkeypatch, capsys):
     # An absent schedule.yml is an empty Schedule (valid: nothing planned yet), but a read
     # that failed outright now raises - the CLI turns that into a line and a red run,

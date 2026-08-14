@@ -11,6 +11,8 @@ from datetime import date, datetime
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from dsl_course import site
 
 
@@ -277,7 +279,17 @@ def test_repo_tree_is_fetched_once_per_repo(monkeypatch):
     assert len(calls) == 1
 
 
-def test_session_files_api_failure_is_empty(monkeypatch):
+def test_session_files_absent_repo_is_empty(monkeypatch):
+    # A genuine 404 (repo/tree absent) is empty - gh's real wording, case included.
     monkeypatch.setattr(site, "get_default_branch", lambda org, repo: "main")
-    monkeypatch.setattr(site, "gh", lambda *a, **k: (1, "not found"))
+    monkeypatch.setattr(site, "gh", lambda *a, **k: (1, "gh: Not Found (HTTP 404)"))
     assert site._session_files("Cohort-f2026", "materials", "lectures", "03_x") == []
+
+
+def test_session_files_real_failure_raises(monkeypatch):
+    # A non-404 failure must NOT be read as "no files" (which republishes the site with
+    # every material link stripped) - it raises instead.
+    monkeypatch.setattr(site, "get_default_branch", lambda org, repo: "main")
+    monkeypatch.setattr(site, "gh", lambda *a, **k: (1, "gh: HTTP 500 Server Error"))
+    with pytest.raises(RuntimeError, match="could not read the file tree"):
+        site._session_files("Cohort-f2026", "materials", "lectures", "03_x")
