@@ -7,7 +7,6 @@
 | Org | Course | Code |
 | --- | --- | --- |
 | [DSL-Demo-Course-E1234](https://github.com/DSL-Demo-Course-E1234) | Machine Learning Fundamentals (Demo) | E1234 |
-| [Hertie-DSL-Demo](https://github.com/Hertie-DSL-Demo) | Deep Learning (Demo) | GRAD-DEMO |
 | [Hertie-School-Maths-Data-Science-C23](https://github.com/Hertie-School-Maths-Data-Science-C23) | Maths for Data Science | GRAD-C23 |
 | [intro-to-data-science-c11](https://github.com/intro-to-data-science-c11) | Introduction to Data Science | C11 |
 
