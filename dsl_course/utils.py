@@ -727,6 +727,34 @@ def get_file_content(org: str, repo: str, path: str, ref: str = "") -> str | Non
     return out
 
 
+def repo_tree(org: str, repo: str, branch: str, kind: str) -> tuple[str, ...]:
+    """Every path of type `kind` in `org/repo`'s `branch`, sorted - ONE recursive git-tree
+    fetch, shared by both transports that need a repo's structure: `kind="tree"` is the
+    directories (dsl_course.discovery's session-folder discovery), `kind="blob"` the files
+    (site._repo_tree's material links). The two used to fetch the same tree with their own
+    error handling, and only one of them was fail-loud.
+
+    A genuinely absent or empty tree is `()`: a 404 (no such repo/branch) or a 409 (a repo
+    with no commits at all) really does hold no paths, and the caller correctly finds
+    nothing. Any OTHER failure - a rate limit, a network drop - RAISES rather than
+    reporting an empty tree: swallowed, it republished a cohort site with every material
+    link AND every session row deleted, silently and green. Same rule as get_file_content.
+    """
+    code, out = gh(
+        "api",
+        f"repos/{org}/{repo}/git/trees/{branch}?recursive=1",
+        "--jq",
+        f'.tree[] | select(.type=="{kind}") | .path',
+    )
+    if code != 0:
+        # 404 = no such tree; 409 = an empty repo (no commits) - a tree-specific signal on
+        # top of the shared 404-absence test.
+        if is_missing_resource(out) or "HTTP 409" in out:
+            return ()
+        raise RuntimeError(f"could not read the file tree of {org}/{repo}: {out[:200]}")
+    return tuple(sorted(out.splitlines()))
+
+
 def load_yaml_config(org: str, repo: str, path: str) -> dict | None:
     """Fetch + parse a YAML config file into a mapping, correctly distinguishing the three
     states callers that prune depend on:

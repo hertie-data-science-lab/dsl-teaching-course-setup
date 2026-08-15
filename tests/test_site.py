@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 import pytest
 import yaml
 
-from dsl_course import site
+from dsl_course import site, utils
 from dsl_course.schedule import AssignmentEntry, Deploy, Event, Release, Schedule
 
 UTC = ZoneInfo("UTC")
@@ -530,14 +530,14 @@ def test_assignment_entry_names_the_cohort_dest_repo_not_the_course_repo(monkeyp
 
 def test_session_files_missing_tree_is_empty(monkeypatch):
     monkeypatch.setattr(site, "get_default_branch", lambda org, repo: "main")
-    monkeypatch.setattr(site, "gh", lambda *a, **k: (1, "HTTP 404: Not Found"))
+    monkeypatch.setattr(utils, "gh", lambda *a, **k: (1, "HTTP 404: Not Found"))
     assert site._session_files("Cohort-f2026", "materials", "lectures", "03_x") == []
 
 
 def test_session_files_fetch_failure_raises_rather_than_stripping_the_site(monkeypatch):
     # A swallowed failure returned (), the site republished with every material link gone.
     monkeypatch.setattr(site, "get_default_branch", lambda org, repo: "main")
-    monkeypatch.setattr(site, "gh", lambda *a, **k: (1, "HTTP 502: bad gateway"))
+    monkeypatch.setattr(utils, "gh", lambda *a, **k: (1, "HTTP 502: bad gateway"))
     with pytest.raises(RuntimeError):
         site._session_files("Cohort-f2026", "materials", "lectures", "03_x")
 
@@ -551,6 +551,48 @@ def test_team_people_read_failure_raises_rather_than_wiping_the_team(monkeypatch
     monkeypatch.setattr(site, "gh", lambda *a, **k: (1, "HTTP 500: boom"))
     with pytest.raises(RuntimeError):
         site._team_people("Course", "instructors")
+
+
+def _member_gh(profile: tuple[int, str]):
+    """Fake gh: the team lists one member, whose profile lookup returns `profile`."""
+
+    def fake(*args, **kwargs):
+        return (0, "jane\n") if any(a.endswith("/members") for a in args) else profile
+
+    return fake
+
+
+def test_team_people_skips_a_deleted_account_but_says_so(monkeypatch, capsys):
+    monkeypatch.setattr(site, "gh", _member_gh((1, "gh: Not Found (HTTP 404)")))
+    assert site._team_people("Course", "instructors") == []
+    assert "jane" in capsys.readouterr().out  # one card fewer, not silently
+
+
+def test_team_people_per_member_failure_raises_rather_than_dropping_one_card(
+    monkeypatch,
+):
+    # The team read is fail-loud; the per-MEMBER read used to swallow everything, so a
+    # transient error republished the site one instructor short with nothing to show for it.
+    monkeypatch.setattr(site, "gh", _member_gh((1, "gh: HTTP 502 Bad Gateway")))
+    with pytest.raises(RuntimeError, match="could not read the GitHub profile of jane"):
+        site._team_people("Course", "instructors")
+
+
+def test_yaml_file_raises_on_a_malformed_file_rather_than_wiping_what_it_feeds(
+    monkeypatch,
+):
+    # A cohort's people.yml with one bad indent used to parse to `{}` - "nothing declared" -
+    # and republish the site with every teaching-team card gone, green.
+    monkeypatch.setattr(
+        site, "load_yaml_config", lambda *a: (_ for _ in ()).throw(RuntimeError("bad"))
+    )
+    with pytest.raises(RuntimeError):
+        site._yaml_file("Cohort-f2026", "classroom-config", "people.yml")
+
+
+def test_yaml_file_reads_an_absent_file_as_nothing_declared(monkeypatch):
+    monkeypatch.setattr(site, "load_yaml_config", lambda *a: None)
+    assert site._yaml_file("Cohort-f2026", "classroom-config", "people.yml") == {}
 
 
 # --------------------------------------------- front-matter escaping (fix 7)
@@ -586,20 +628,33 @@ def test_assignment_readme_body_is_fenced_as_liquid_raw(monkeypatch):
 # --------------------------------------------- tz-aware display (fix 8)
 
 
-def test_iso_when_converts_an_explicit_offset_to_the_cohort_tz():
-    # 10:00 UTC in a Berlin cohort (CEST, +2 in September) displays as 12:00 - the time it
-    # actually fires - not the written offset's 10:00.
-    when = datetime(2026, 9, 15, 10, 0, tzinfo=UTC)
-    assert site._iso_when(when, tz=BERLIN) == "2026-09-15T12:00:00"
-    assert (
-        site._iso_when(when) == "2026-09-15T10:00:00"
-    )  # no tz -> own clock (unchanged)
+def test_iso_when_prints_the_datetime_it_is_given_offset_free():
+    # The cohort-tz conversion happens ONCE, in schedule's parser (below), so every
+    # datetime reaching the renderers is already cohort wall-clock: printing it is just
+    # dropping the offset, with no zone for a renderer to forget to pass.
+    assert site._iso_when(datetime(2026, 9, 15, 12, 0, tzinfo=BERLIN)) == (
+        "2026-09-15T12:00:00"
+    )
+    assert site._iso_when(datetime(2026, 9, 15, 10, 0, tzinfo=UTC)) == (
+        "2026-09-15T10:00:00"
+    )
 
 
-def test_event_entry_shows_the_cohort_wall_clock_time_for_a_written_offset():
-    e = Event("remote", "Remote talk", datetime(2026, 9, 15, 10, 0, tzinfo=UTC))
-    out = site._event_entry(e, END_OF_TERM, BERLIN)
-    assert "date: 2026-09-15T12:00:00" in out
+def test_a_written_offset_reaches_the_site_as_the_cohort_wall_clock_time():
+    # End to end: 10:00 UTC in a Berlin cohort (CEST, +2 in September) is shown as 12:00 -
+    # the time the class actually happens - not the written offset's 10:00.
+    (event,) = site.schedule.parse(
+        {
+            "timezone": "Europe/Berlin",
+            "events": {
+                "remote": {
+                    "title": "Remote talk",
+                    "event_datetime": "2026-09-15T10:00+00:00",
+                }
+            },
+        }
+    ).events
+    assert "date: 2026-09-15T12:00:00" in site._event_entry(event, END_OF_TERM)
 
 
 def test_display_only_rows_come_from_events_alone(monkeypatch, tmp_path):

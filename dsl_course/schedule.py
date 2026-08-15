@@ -36,7 +36,9 @@ Every field is optional - a cohort with no schedule.yml (or a blank one) behaves
 as before everywhere that reads it (releases are skipped, dates synthesised).
 
 Times are timezone-aware: a naive datetime/date is interpreted in `timezone`; an explicit
-offset (e.g. `...T14:00+02:00`) is honoured as written.
+offset (e.g. `...T14:00+02:00`) names the same instant and is converted into `timezone`,
+so every parsed datetime is already the cohort's own wall clock (what the site shows, and
+what it fires at, are then the same number).
 
 Parsing is total but never silent: an entry that is valid YAML yet not a valid schedule
 entry (a typo'd key, a missing date) is dropped so the rest of the term still parses, and
@@ -89,10 +91,17 @@ _coerce_date = coerce_date
 def _coerce_datetime(
     value: object, tz: ZoneInfo, *, end_of_day: bool = False
 ) -> datetime | None:
-    """A YAML datetime/date or ISO string -> a timezone-aware datetime (None if
-    unparseable). A bare date has no time, so it becomes start-of-day (00:00) or, when
-    `end_of_day`, 23:59:59. A naive datetime is stamped with `tz`; one that already
-    carries an offset keeps it."""
+    """A YAML datetime/date or ISO string -> a datetime in the cohort timezone `tz` (None
+    if unparseable). A bare date has no time, so it becomes start-of-day (00:00) or, when
+    `end_of_day`, 23:59:59.
+
+    A naive datetime is stamped with `tz`; one written with an explicit offset
+    (`...T10:00+00:00`) names the same instant, and is CONVERTED to `tz` here - so every
+    datetime this module hands out is already the cohort's wall clock. Instant-preserving,
+    so firing and sorting are untouched; what it buys is that no consumer has to re-derive
+    the cohort zone to display a time (the site used to thread `tz` through every renderer
+    to convert at print time, and a consumer that forgot printed 10:00 for a class that
+    happens at 12:00)."""
 
     def _from_date(d: date) -> datetime:
         return datetime.combine(d, time(23, 59, 59) if end_of_day else time(0, 0))
@@ -117,15 +126,16 @@ def _coerce_datetime(
     else:
         return None
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=tz)
-    return dt
+        return dt.replace(tzinfo=tz)
+    return dt.astimezone(tz)  # same instant, expressed in the cohort's own clock
 
 
 def _coerce_date_or_datetime(value: object, tz: ZoneInfo) -> date | datetime | None:
-    """A whole-day value -> `date`; one that carries a time -> a tz-aware `datetime`
-    (coerced exactly like a release `when`: naive is stamped with `tz`, an explicit offset
-    is kept). Keeping the two distinct is what lets a reader tell "no time was given" from
-    "midnight" - the website renders a placeholder time for the former."""
+    """A whole-day value -> `date`; one that carries a time -> a `datetime` in the cohort
+    timezone (coerced exactly like a release `when`: naive is stamped with `tz`, an
+    explicit offset is converted to `tz`). Keeping the two distinct is what lets a reader
+    tell "no time was given" from "midnight" - the website renders a placeholder time for
+    the former."""
     if isinstance(value, datetime) or (
         isinstance(value, str) and ("T" in value or ":" in value)
     ):
@@ -257,10 +267,12 @@ class Schedule:
     semester_end: date | None = None
     assignments: dict[str, AssignmentEntry] = field(default_factory=dict)
     events: list[Event] = field(default_factory=list)
-    # Every entry this parse threw away, one human-readable line each, naming the YAML
-    # path and what it costs the cohort. A malformed entry can't be rescued - it has no
-    # date, or no source - but it must never vanish quietly: `load` logs each of these,
-    # `--validate` exits non-zero on them, and Check cohort setup counts them. See `_drop`.
+    # Everything this parse could not use, one human-readable line each, naming the YAML
+    # path and what it costs the cohort: entries thrown away outright (`_drop` - no date,
+    # no source), and entries KEPT but not as written (`_flag_unknown_keys` for a stray
+    # key, `_flag_bad_value` for a value that had to fall back). None of it may vanish
+    # quietly: `load` logs each line, `--validate` exits non-zero on them, and Check cohort
+    # setup counts them.
     dropped: list[str] = field(default_factory=list)
 
 
@@ -336,12 +348,49 @@ def _flag_unknown_keys(
             drops.append(f"{loc}: unrecognised key - ignored, so {cost}")
 
 
+def _flag_bad_value(
+    drops: list[str], where: str, key: str, value: object, cost: str
+) -> None:
+    """Record a key whose value is PRESENT but unusable - a date that doesn't parse, a cap
+    that isn't a number, a `type:` that isn't one of the known ones.
+
+    Like `_flag_unknown_keys` (and unlike `_drop`), the entry itself is KEPT: the parser
+    falls back exactly as it always has. The fallback is the problem - it is invisible.
+    `handout_datetime: 2026-13-01` reads as a scheduled handout and provisions nothing;
+    `grading_datetime: nxt week` silently grades at the due date. Both leave a green run
+    and a plan that is not the one faculty wrote, so both belong in `dropped`."""
+    drops.append(f"{where}.{key}: unusable value {value!r} - ignored, so {cost}")
+
+
+def _flagged_datetime(
+    entry: dict,
+    key: str,
+    tz: ZoneInfo,
+    drops: list[str],
+    where: str,
+    cost: str,
+    *,
+    end_of_day: bool = False,
+) -> datetime | None:
+    """`entry[key]` as a datetime, flagging a value that is there but does not parse.
+
+    An ABSENT key is a legitimate None everywhere this is used (hand out manually, grade
+    at the due date, ship at the event) - only a value faculty actually wrote and we
+    cannot read is a fault worth surfacing."""
+    raw = entry.get(key)
+    when = _coerce_datetime(raw, tz, end_of_day=end_of_day)
+    if when is None and raw is not None:
+        _flag_bad_value(drops, where, key, raw, cost)
+    return when
+
+
 def _parse_deploy(
     raw: object, tz: ZoneInfo, drops: list[str], label: str
 ) -> list[Deploy]:
     """Parse a release's `deploy:` - a list (or a single mapping) of source->dest copies.
     Entries missing course_source_repo/course_source_path are skipped (nothing to copy).
-    A malformed `deploy_datetime` parses to None (ship at the entry's event_datetime)."""
+    A malformed `deploy_datetime` parses to None - the copy ships at the entry's
+    event_datetime, and the unusable value is flagged (see `_flag_bad_value`)."""
     items = [raw] if isinstance(raw, dict) else (raw or [])
     out: list[Deploy] = []
     for i, d in enumerate(items):
@@ -368,7 +417,15 @@ def _parse_deploy(
                 course_source_path=str(src_path),
                 cohort_dest_repo=str(d.get("cohort_dest_repo") or "materials"),
                 cohort_dest_path=str(dest_path) if dest_path else None,
-                deploy_datetime=_coerce_datetime(d.get("deploy_datetime"), tz),
+                deploy_datetime=_flagged_datetime(
+                    d,
+                    "deploy_datetime",
+                    tz,
+                    drops,
+                    where,
+                    "this copy ships at the entry's `event_datetime` instead of the "
+                    "time written here",
+                ),
             )
         )
     return out
@@ -435,7 +492,8 @@ def _parse_assignments(
 ) -> dict[str, AssignmentEntry]:
     # Only the nested {due_datetime, ...} form is accepted - matching the one schema
     # documented everywhere - rather than also silently accepting a bare due-date scalar.
-    # A malformed `grading_datetime` parses to None and grading falls back to due_datetime.
+    # A malformed `grading_datetime`/`handout_datetime`/`max_team_size`/`type` keeps the
+    # entry on its documented fallback, and is flagged (see `_flag_bad_value`).
     out: dict[str, AssignmentEntry] = {}
     cost = "no deadline for students, no submission snapshot and no autograding"
     mapping = _require_mapping(
@@ -465,29 +523,59 @@ def _parse_assignments(
         _flag_unknown_keys(
             drops, entry, KNOWN_ASSIGNMENT, where, "that setting is ignored"
         )
-        try:
-            cap = int(entry["max_team_size"])
-        except (KeyError, TypeError, ValueError):
-            cap = None
+        raw_cap = entry.get("max_team_size")
+        cap = None
+        if raw_cap is not None:
+            try:
+                cap = int(raw_cap)
+            except (TypeError, ValueError):
+                _flag_bad_value(
+                    drops,
+                    where,
+                    "max_team_size",
+                    raw_cap,
+                    "no cap is set, so the welcome repo's 'Join team' flow falls back "
+                    "to its own default team size",
+                )
         kind = str(entry.get("type") or "").strip().lower()
         if kind and kind not in ("group", "individual"):
             # A typo'd `type` (e.g. `gruop`) silently falls back to individual, so a group
             # assignment would be provisioned one-repo-per-student. Keep the fallback but
             # surface it, since the functional consequence is otherwise invisible.
-            drops.append(
-                f"{where}.type: unrecognised value {kind!r} (expected 'group' or "
-                f"'individual') - treated as individual, one repo per student"
+            _flag_bad_value(
+                drops,
+                where,
+                "type",
+                kind,
+                "the assignment is treated as individual - one repo per student, not one "
+                "per team (expected 'group' or 'individual')",
             )
         dest = str(entry.get("cohort_dest_repo") or "").strip()
         out[str(slug)] = AssignmentEntry(
             due_datetime=due,
             course_source_repo=source_repo,
             cohort_dest_repo=dest or None,
-            grading_datetime=_coerce_datetime(
-                entry.get("grading_datetime"), tz, end_of_day=True
+            grading_datetime=_flagged_datetime(
+                entry,
+                "grading_datetime",
+                tz,
+                drops,
+                where,
+                "grading falls back to the due date - the submission snapshot freezes "
+                "and the autograder fires then, not when this says",
+                end_of_day=True,
             ),
-            handout_datetime=_coerce_datetime(entry.get("handout_datetime"), tz),
-            # anything other than the two known values -> None (silent-drop style)
+            handout_datetime=_flagged_datetime(
+                entry,
+                "handout_datetime",
+                tz,
+                drops,
+                where,
+                "the handout NEVER fires - no student or team repos are provisioned "
+                "from it, and nobody gets the assignment",
+            ),
+            # anything other than the two known values -> None, i.e. the grading.yml
+            # fallback (flagged above, not silent)
             type=kind if kind in ("group", "individual") else None,
             max_team_size=cap,
         )
@@ -527,13 +615,24 @@ def _parse_events(raw: object, tz: ZoneInfo, drops: list[str]) -> list[Event]:
             continue
         _flag_unknown_keys(drops, entry, KNOWN_EVENT, where, "that setting is ignored")
         kind = str(entry.get("type") or "").strip().lower()
+        if kind and kind not in ("exam", "special_event"):
+            # A typo'd `type` (e.g. `exma`) still shows the row, but as a plain special
+            # event - the exam styling, and "this is an exam", quietly disappear.
+            _flag_bad_value(
+                drops,
+                where,
+                "type",
+                kind,
+                "the row is shown as a plain special event, not an exam "
+                "(expected 'exam' or 'special_event')",
+            )
         out.append(
             Event(
                 label=str(label),
                 title=str(entry.get("title") or ""),
                 when=when,
-                # anything other than the two known values -> the display-only default
-                # (silent-drop style): a typo'd `type` still shows the row
+                # anything other than the two known values -> the display-only default:
+                # a typo'd `type` still shows the row (flagged above, not silent)
                 type="exam" if kind == "exam" else "special_event",
                 tbc=tbc,
             )
@@ -714,18 +813,30 @@ _HANDOUT_COMMENT = "   # set automatically by the Release assignment button"
 _DUE_TODO = "# TODO: add `due_datetime:` - the date students see (required)"
 
 
-def _insert_handout(text: str, slug: str, stamp: str) -> str | None:
+class _Declined:
+    """What `_insert_handout` returns when the file's shape defeats its line surgery.
+
+    Distinct from its None, and the distinction is the point: None means "already on
+    record" (the correct write-once no-op), DECLINED means the handout HAPPENED and is
+    NOT recorded anywhere. Both used to be None, so a lost record looked exactly like a
+    successful one."""
+
+
+DECLINED = _Declined()
+
+
+def _insert_handout(text: str, slug: str, stamp: str) -> str | _Declined | None:
     """Pure text surgery for `record_handout` - schedule.yml is USER-owned and
     comment-rich, so we insert lines rather than re-serialising (which would destroy
     every comment).
 
-    Returns the new text, or None when nothing should - or safely can - change: the
-    entry already carries a handout (write-once, a scheduled value is never touched), or
-    the `assignments:` block is shaped in a way this line surgery can't recognise (a flow
-    mapping). In the latter case we leave the file untouched rather than fabricate a
-    duplicate entry - the old code assumed exactly two-space indentation, missed a
-    deeper-nested entry, and injected a fake `  {slug}:` that swallowed the real one,
-    dropping its `due_datetime` for good."""
+    Returns the new text; None when the entry already carries a handout (write-once, a
+    scheduled value is never touched); or DECLINED when the `assignments:` block is shaped
+    in a way this line surgery can't recognise (a flow mapping). Declining leaves the file
+    untouched rather than fabricating a duplicate entry - the old code assumed exactly
+    two-space indentation, missed a deeper-nested entry, and injected a fake `  {slug}:`
+    that swallowed the real one, dropping its `due_datetime` for good - and the caller
+    says so out loud, because nothing was recorded."""
     lines = text.splitlines(keepends=True)
 
     def indent_of(ln: str) -> int:
@@ -745,7 +856,7 @@ def _insert_handout(text: str, slug: str, stamp: str) -> str | None:
         # `assignments:` that isn't a plain block header) can't take a line insertion -
         # leave it untouched rather than append a second, duplicate key.
         if any(re.match(r"^assignments:\s*\S", ln.split("#")[0]) for ln in lines):
-            return None
+            return DECLINED
         # no assignments block at all: append one (the documented 2-space shape),
         # flagging the due date still to add.
         return (
@@ -778,7 +889,7 @@ def _insert_handout(text: str, slug: str, stamp: str) -> str | None:
             # so there is no block body to append a handout line into. Leave the file
             # untouched rather than fabricate a duplicate key that PyYAML would silently
             # drop (losing the handout) - write-once, the operator can add it by hand.
-            return None
+            return DECLINED
         slug_indent = len(m.group(1))
         # Scan the slug's sub-block (lines indented deeper than the slug) for an existing
         # handout, learning the child indent from its first field.
@@ -823,7 +934,8 @@ def record_handout(cohort_org: str, slug: str, stamp: str | None = None) -> None
     so the schedule stays the one record of when every assignment went out - whether
     the cron released it or a person clicked the button. Write-once: an existing
     handout_datetime (scheduled, or recorded by an earlier click) is never modified. Best
-    effort - a failure here must never fail the release itself."""
+    effort - a failure here must never fail the release itself, but it is never silent
+    either: a file this can't edit means the handout happened and is on record nowhere."""
     from .utils import log, put_file
 
     text = get_file_content(cohort_org, CONFIG_REPO, SCHEDULE_PATH) or ""
@@ -838,8 +950,20 @@ def record_handout(cohort_org: str, slug: str, stamp: str | None = None) -> None
             _tz(tz_name if isinstance(tz_name, str) else None)
         ).strftime("%Y-%m-%dT%H:%M")
     new = _insert_handout(text, slug, stamp)
-    if new is None:
+    if isinstance(new, _Declined):
+        # The handout HAPPENED; the record of it is what we just failed to write. Say so -
+        # the alternative (a silent return, indistinguishable from the write-once no-op)
+        # leaves the schedule claiming the assignment was never handed out.
+        log_err(
+            f"could NOT record the {slug} handout in {cohort_org}/{CONFIG_REPO}/"
+            f"{SCHEDULE_PATH}: its `assignments:` block is authored in a shape this edit "
+            f"cannot extend safely (a flow mapping). The handout went out at {stamp} but "
+            f"is on record nowhere - add `handout_datetime: {stamp}` to "
+            f"`assignments.{slug}` by hand."
+        )
         return
+    if new is None:
+        return  # already recorded - write-once, nothing to do
     if put_file(
         cohort_org,
         CONFIG_REPO,
