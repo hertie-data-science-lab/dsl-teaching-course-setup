@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from dsl_course import seed, site
+from dsl_course import seed, site, utils
 
 COURSE = "Course-Org"
 SOURCE = "course-materials-f2026"
@@ -74,6 +74,10 @@ def _install_fakes(monkeypatch) -> dict[str, str]:
     monkeypatch.setattr(site, "git", fake_git)
     monkeypatch.setattr(site, "repo_exists", lambda org, name: True)
     monkeypatch.setattr(site, "get_file_content", lambda *a, **k: "")
+    # site._yaml_file now reads via utils.load_yaml_config, which resolves
+    # get_file_content in the UTILS namespace - stub it there too, or the real gh
+    # runs (green on an authenticated dev box, red in tokenless CI).
+    monkeypatch.setattr(utils, "get_file_content", lambda *a, **k: "")
     monkeypatch.setattr(seed, "discover_sessions", lambda org, repo: ["1", "2", "3"])
     return committed
 
