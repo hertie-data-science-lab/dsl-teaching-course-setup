@@ -294,6 +294,32 @@ def test_run_tests_py_format_never_converts_anything(monkeypatch, tmp_path):
     assert not (work / "starter.py").exists() and not (work / "starter.txt").exists()
 
 
+def test_run_tests_abandons_the_submission_on_the_first_convert_timeout(
+    monkeypatch, tmp_path, capsys
+):
+    # Tolerating a timeout PER notebook multiplies the budget: 100 hanging .ipynb would cost
+    # 100 x RUN_TIMEOUT, blow the 6h Actions cap and kill the job before the fire-once sentinel
+    # is written - so the next hourly tick regrades the same submission, for ever. The first
+    # timeout abandons the submission instead; the caller records the usual zero.
+    calls: list[list[str]] = []
+
+    def always_times_out(argv, *, cwd, env, timeout):
+        calls.append(argv)
+        return False
+
+    monkeypatch.setattr(collect, "_run_limited", always_times_out)
+    work = tmp_path / "sub"
+    work.mkdir()
+    for stem in ("a", "b", "c"):
+        (work / f"{stem}.ipynb").write_text("{}")
+    tests = tmp_path / "hidden"
+    tests.mkdir()
+
+    assert collect._run_tests(work, "notebook", tests) is None
+    assert len(calls) == 1  # bailed on the FIRST timeout, not once per notebook
+    assert "abandoning this submission" in capsys.readouterr().err
+
+
 def test_stray_conversion_ignores_a_same_stem_directory(tmp_path):
     (tmp_path / "starter").mkdir()  # extensionless candidate that is not a file
     assert collect._stray_conversion(tmp_path / "starter.ipynb") is None
@@ -659,6 +685,40 @@ def test_collect_with_every_repo_unreadable_fails_and_records_nothing(
     assert "could be read" in capsys.readouterr().err
 
 
+def test_collect_with_every_target_failing_to_grade_records_nothing(
+    monkeypatch, capsys
+):
+    # Every repo cloned fine and every grading run broke the same way - a bad runner image, a
+    # missing dependency, an rlimit the host won't satisfy. Recording that would write a whole
+    # cohort of write-once zeros and then lock them in behind the fire-once sentinel, so it is
+    # treated like the unreachable case: nothing written, red run, next tick retries.
+    _stub_collect(monkeypatch, None)
+    monkeypatch.setattr(
+        collect,
+        "_grade_target",
+        lambda *a, **k: collect._zero_result(2, collect.GRADE_FAILED_NOTE),
+    )
+    written = _captured_writes(monkeypatch)
+    assert collect.collect("Course", "assignment-1-f2026", "Cohort") == 1
+    assert written == []  # no grades CSV, no archives, above all no _graded.json
+    assert "runner-wide failure" in capsys.readouterr().err
+
+
+def test_collect_records_a_cohort_of_genuine_non_submissions(monkeypatch):
+    # The guard above keys on the failed-to-run note ALONE. A cohort that simply didn't submit
+    # is a real verdict: the zeros are recorded and the assignment IS marked machine-graded,
+    # or nobody's deadline would ever land.
+    _stub_collect(monkeypatch, None)
+    monkeypatch.setattr(
+        collect,
+        "_grade_target",
+        lambda *a, **k: collect._zero_result(2, "no submission on/before 2026-11-15"),
+    )
+    written = _captured_writes(monkeypatch)
+    assert collect.collect("Course", "assignment-1-f2026", "Cohort") == 0
+    assert "autograde/assignment-1/_graded.json" in [p for p, _t in written]
+
+
 def test_template_is_group_reads_the_solution_branch_grading_yml(monkeypatch):
     seen = {}
 
@@ -973,7 +1033,7 @@ def test_collect_refuses_an_unparseable_deadline(monkeypatch, capsys):
 
 def test_apply_rlimits_lowers_the_childs_cap(monkeypatch):
     # Prove the preexec_fn actually applies our module-level caps to the graded child, WITHOUT
-    # depending on a platform enforcing RLIMIT_AS (macOS does not). RLIMIT_CPU is settable
+    # depending on a platform enforcing RLIMIT_DATA (macOS does not). RLIMIT_CPU is settable
     # everywhere: dial it to a distinctive value and read it back from inside the child.
     monkeypatch.setattr(collect, "RLIMIT_CPU_SECONDS", 123)
     out = subprocess.run(

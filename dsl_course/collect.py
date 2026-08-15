@@ -110,25 +110,31 @@ SNAPSHOT_DIR = "snapshots"  # classroom-config/snapshots/<slug>.csv
 SNAPSHOT_FIELDS = ("repo", "sha", "recorded_at")
 GRADING_FILE = "grading.yml"  # on the template's solution branch
 RUN_TIMEOUT = 300  # wall-clock seconds per graded subprocess
+# The note on the one zero that means "the RUNNER broke", not "the student didn't submit".
+# `collect` keys its systemic-failure guard on it, so it is a constant, not a loose string.
+GRADE_FAILED_NOTE = "grading failed to run"
 
 # POSIX resource caps applied (via `_apply_rlimits`) to every subprocess that runs student
 # code, so one hostile submission can't take the whole grading job down with it. Module-level
 # and overridable so a test can dial one down to a tiny value. Each is lowered defensively
 # (never raised above the inherited hard cap, and a platform that refuses one just skips it),
 # so these are ceilings on the grading host, not guarantees on every dev box.
-RLIMIT_AS_BYTES = (
-    2 * 1024**3
-)  # address space: caps an allocate-until-OOM memory bomb (2 GiB,
-# generous for legitimate numpy/pandas submissions) before it can OOM-kill the runner
-RLIMIT_CPU_SECONDS = (
-    RUN_TIMEOUT * 2
-)  # CPU-seconds (per process, summed across threads): a
-# backstop should the wall-clock group-kill be evaded; >wall so it never preempts a legit run
-RLIMIT_NPROC_MAX = (
-    2048  # processes for the real uid: caps a fork bomb. Counts the WHOLE
-)
-# user's processes, so it sits well above a normal run yet far below system exhaustion
-RLIMIT_FSIZE_BYTES = 512 * 1024**2  # bytes per file: caps a disk-fill bomb (512 MiB)
+# Heap (data segment): caps an allocate-until-OOM memory bomb (2 GiB, generous for legitimate
+# numpy/pandas submissions) before it can OOM-kill the runner. Deliberately NOT RLIMIT_AS:
+# virtual address space counts glibc malloc arenas and BLAS thread stacks, so an honest
+# small-RSS scientific process on a many-core host blows a 2 GiB VSZ cap and dies before pytest
+# can write junit - zeroing the whole cohort behind the sentinel, and unreproducible on macOS
+# (which ignores RLIMIT_AS). The heap is what a memory bomb actually allocates.
+RLIMIT_DATA_BYTES = 2 * 1024**3
+# CPU-seconds (per process, summed across threads): a backstop should the wall-clock
+# group-kill be evaded; > wall-clock so it never preempts a legit run.
+RLIMIT_CPU_SECONDS = RUN_TIMEOUT * 2
+# Processes for the real uid: caps a fork bomb. Counts the WHOLE user's processes, so it sits
+# well above a normal run yet far below system exhaustion.
+RLIMIT_NPROC_MAX = 2048
+# Bytes per file: caps a disk-fill bomb (512 MiB).
+RLIMIT_FSIZE_BYTES = 512 * 1024**2
+
 # `_snapshot_sha` sentinel: the repo is ABSENT (404), distinct from a reachable-but-empty repo
 # (""). Can't collide with a real sha (40 hex) or "". Recorded as "" if the snapshot is frozen.
 _REPO_ABSENT = "\x00absent"
@@ -311,6 +317,9 @@ def _sanitised_env() -> dict:
     env = dict(os.environ)
     for key in ("GH_TOKEN", "GITHUB_TOKEN", "GITHUB_API_TOKEN", "GH_ENTERPRISE_TOKEN"):
         env.pop(key, None)
+    # Caps glibc arena proliferation, which would otherwise reserve a heap arena per core and
+    # push a legitimate multi-threaded run past RLIMIT_DATA_BYTES.
+    env["MALLOC_ARENA_MAX"] = "2"
     return env
 
 
@@ -482,7 +491,7 @@ def mark_graded(cohort_org: str, slug: str) -> bool:
         f"{autograde_path(slug)}/{GRADED_RECORD}",
         json.dumps(
             {
-                "graded_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "recorded_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             },
             indent=2,
         ).encode(),
@@ -680,10 +689,10 @@ def _apply_rlimits() -> None:
 
     Defensive by design: each limit is only ever LOWERED (never raised above the inherited hard
     cap), and a platform that refuses one is skipped rather than killing the child before it can
-    exec - macOS, for instance, does not enforce RLIMIT_AS, so a hard cap there is a ceiling on
-    the Linux grading host, not a guarantee everywhere the tests run."""
+    exec - macOS, for instance, does not enforce RLIMIT_DATA, so a hard cap there is a ceiling
+    on the Linux grading host, not a guarantee everywhere the tests run."""
     for name, cap in (
-        ("RLIMIT_AS", RLIMIT_AS_BYTES),
+        ("RLIMIT_DATA", RLIMIT_DATA_BYTES),
         ("RLIMIT_CPU", RLIMIT_CPU_SECONDS),
         ("RLIMIT_NPROC", RLIMIT_NPROC_MAX),
         ("RLIMIT_FSIZE", RLIMIT_FSIZE_BYTES),
@@ -709,24 +718,34 @@ def _run_limited(argv: list[str], *, cwd: str, env: dict, timeout: int) -> bool:
     fires. That is the self-perpetuating DoS this closes: the run aborts, the fire-once sentinel
     never lands, and the next hourly tick regrades the same bomb, so the assignment never
     completes for ANY student. So we start a new session (start_new_session=True) and, on
-    timeout, SIGKILL the entire process GROUP, then reap the leader."""
+    timeout, SIGKILL the entire process GROUP, then reap the leader.
+
+    Output goes to DEVNULL, never a pipe: the rlimits cap the CHILD, so a submission printing
+    in a loop fills the PARENT's memory with output nothing here reads (measured: 4.2 GB in 4
+    seconds) - a memory bomb wearing the runner's own uid. Discarding at the fd means the
+    child's writes cost us nothing, and `proc.wait(timeout=)` replaces the `communicate()`
+    that only existed to drain those pipes."""
     proc = subprocess.Popen(
         argv,
         cwd=cwd,
         env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
         start_new_session=True,
         # The grading process is single-threaded, so the window between fork and exec runs no
         # Python that could deadlock on a lock another thread held - the PLW1509 hazard.
         preexec_fn=_apply_rlimits,  # noqa: PLW1509
     )
     try:
-        proc.communicate(timeout=timeout)
+        proc.wait(timeout=timeout)
         return True
     except subprocess.TimeoutExpired:
         try:
-            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            # Kill proc.pid AS the group id, not `getpgid(proc.pid)`: start_new_session makes
+            # the child its own group leader (pgid == pid) at exec, and re-reading the pgid now
+            # would follow a child that has since setsid()'d away - killing its NEW group and
+            # leaving the original group's workers (the fork bomb) alive.
+            os.killpg(proc.pid, signal.SIGKILL)
         except (ProcessLookupError, PermissionError):
             proc.kill()  # group already gone / kill not permitted - fall back to the child
         proc.wait()  # reap the (killed) group leader so it isn't left a zombie
@@ -771,9 +790,13 @@ def _run_tests(workdir: Path, fmt: str, tests_src: Path) -> dict | None:
         for nb in _walk_files(workdir):
             if nb.suffix != ".ipynb":
                 continue
-            # A failed or timed-out convert is tolerated per notebook (the missing script just
-            # scores the submission zero, like any unimportable one).
-            _run_limited(
+            # A timed-out convert ABORTS this submission rather than continuing to the next
+            # notebook: tolerating one per notebook multiplies the budget (100 hanging .ipynb
+            # = 100 x RUN_TIMEOUT), blowing the 6h Actions cap so the job dies before the
+            # fire-once sentinel is written and the hourly tick regrades the same bomb for
+            # ever. A hanging conversion means this submission cannot be graded, so we bail
+            # here and the caller records the usual "grading failed to run" zero.
+            if not _run_limited(
                 [
                     sys.executable,
                     "-m",
@@ -786,7 +809,12 @@ def _run_tests(workdir: Path, fmt: str, tests_src: Path) -> dict | None:
                 cwd=str(workdir),
                 env=env,
                 timeout=RUN_TIMEOUT,
-            )
+            ):
+                log_err(
+                    f"  ! converting {nb.name} timed out after {RUN_TIMEOUT}s "
+                    f"(process group killed) - abandoning this submission"
+                )
+                return None
             script = nb.with_suffix(".py")
             if not script.exists() and (stray := _stray_conversion(nb)):
                 stray.rename(script)
@@ -876,7 +904,7 @@ def _grade_target(
             return _zero_result(max_auto, f"no submission on/before {deadline}")
         result = _run_tests(wd, spec["format"], tests_src)
         if result is None:
-            return _zero_result(max_auto, "grading failed to run")
+            return _zero_result(max_auto, GRADE_FAILED_NOTE)
         result["commit"] = sha
         return result
 
@@ -1020,6 +1048,10 @@ def collect(
         # recorded non-submission still comes back as a zero result) and "never examined" -
         # and the fire-once record below must never be written on the strength of the latter.
         unreachable: list[str] = []
+        # Targets whose grading run itself broke (timeout / no report), as opposed to a genuine
+        # non-submission. If that is EVERY graded target the fault is the runner, not the
+        # cohort - see the systemic-failure guard below.
+        failed_to_run: list[str] = []
         for repo, target_key, members in targets:
             log_step(repo)
             if dry_run:
@@ -1055,6 +1087,8 @@ def collect(
             if result is None:
                 unreachable.append(repo)
                 continue
+            if result.get("note") == GRADE_FAILED_NOTE:
+                failed_to_run.append(repo)
             for line in summary_lines(result):
                 log(line)
             archives.append(
@@ -1099,6 +1133,19 @@ def collect(
                 f"nothing gradable across {len(targets)} target(s) as of {deadline}",
             )
             return 0
+        if failed_to_run and len(failed_to_run) == len(archives):
+            # EVERY target that was examined failed to grade for the same class of reason -
+            # a broken image, a missing dependency, an rlimit the runner can't satisfy. That
+            # is a runner fault, not a cohort of non-submitters, so it is treated like the
+            # unreachable case: nothing recorded, no sentinel, red run, next tick retries.
+            # Recording it would write a whole cohort of write-once zeros and then lock them
+            # in behind the fire-once marker.
+            log_err(
+                f"{slug}: all {len(failed_to_run)} graded target(s) came back "
+                f"'{GRADE_FAILED_NOTE}' - a runner-wide failure, not a cohort of bad "
+                f"submissions; nothing recorded, and NOT marking machine-graded"
+            )
+            return 1
 
         path = f"{grades.GRADES_DIR}/{slug}.csv"
         existing = get_file_content(cohort_org, CONFIG_REPO, path) or ""

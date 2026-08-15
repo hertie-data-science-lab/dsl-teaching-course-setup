@@ -178,7 +178,7 @@ Full schema, field by field, see [here](DEPLOYMENT-CHECKLIST.md#scheduleyml).
 
 Just commit the edit to `classroom-config/schedule.yml` on `main` - the **GitHub web UI is the recommended way** (or edit a local clone → commit → push). The hourly cron readswhatever is on `main` at each tick, so the change takes effect within the hour; there is nothing to re-arm or re-deploy. 
 
-The one caveat: already-fired **one-shot** actions don't rewind - a release already shipped stays shipped, and a snapshot/autograde that already ran re-runs only if you delete its marker (`snapshots/<slug>.csv` / `autograde/<slug>/`).
+The one caveat: already-fired **one-shot** actions don't rewind - a release already shipped stays shipped, and a snapshot/autograde that already ran re-runs only if you delete its marker (`snapshots/<slug>.csv` / the `_graded.json` or `_skipped.json` record in `autograde/<slug>/` - deleting the whole folder works too).
 
 ## Verifying your schedule
 

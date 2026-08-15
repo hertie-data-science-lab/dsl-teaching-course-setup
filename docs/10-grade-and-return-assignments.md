@@ -145,7 +145,8 @@ Copies each merged gradebook to `grades-<handle>/grades.yml` and emails the stud
   [Schedule releases](07-schedule-releases.md).
 
   > ℹ️ **Autograding fires once**, at each assignment's grading deadline, and never again -
-  > the `autograde/<slug>/` folder is the marker. To re-grade: delete that folder (the next
+  > the `_graded.json` / `_skipped.json` record inside `autograde/<slug>/` is the marker. To
+  > re-grade: delete that folder (the next
   > hourly tick regrades) or press **Grade assignment**. Either way, clear the `auto` /
   > `team_grade` cells you want recomputed first - they are write-once and are otherwise left
   > exactly as you left them.
