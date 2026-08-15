@@ -301,15 +301,17 @@ def main() -> int:
             f"DRY-RUN release {len(pairs)} path(s) from "
             f"{args.source_org}/{args.course_source_repo} -> {args.cohort_org}/{dest_repo}"
         )
-        # The cheap root/empty check needs no clone, so catch it here - a source path that
-        # strips to the repo root would drag the source's own .git/.github over the dest.
-        # (The full escape-check needs the clone and stays at copy time in deploy_many.)
+        # The cheap structural checks need no clone, so catch them here: a source path that
+        # strips to the repo root (drags the source's own .git/.github over the dest), or one
+        # that contains `..` (rejected at run for resolving to the root or escaping the clone).
+        # (The full clone-relative escape-check stays at copy time in deploy_many.)
         unsafe = False
         for src, dest in pairs:
-            if src.strip("/") in ("", "."):
+            cleaned = src.strip("/")
+            if cleaned in ("", ".") or ".." in cleaned.split("/"):
                 log(
-                    f"  UNSAFE  {args.course_source_repo}/{src}: names the repo root - "
-                    f"release a subfolder instead"
+                    f"  UNSAFE  {args.course_source_repo}/{src}: names the repo root or "
+                    f"escapes the clone - release a named subfolder instead"
                 )
                 unsafe = True
             else:

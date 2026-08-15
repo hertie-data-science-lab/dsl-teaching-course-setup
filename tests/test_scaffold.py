@@ -163,6 +163,15 @@ def test_rerun_never_overwrites_an_authored_assignment_starter(fake, monkeypatch
     assert "assignment-1-f2026/starter.py" in fake.skips
 
 
+def test_assignment_reds_when_a_starter_seed_fails(fake, monkeypatch):
+    # A failed create-only write of the starter/README (not a skip of a live file) must red
+    # the assignment scaffold, matching scaffold_materials - a half-written template is not
+    # a green "ready".
+    _clone_ok(monkeypatch, lambda *a: (0, ""))
+    monkeypatch.setattr(utils, "put_file", lambda *a, **k: False)  # USER seeds fail
+    assert scaffold.scaffold_assignment("Org", "1", "f2026") == 1
+
+
 def test_assignment_reports_a_failed_solution_branch_checkout(
     fake, monkeypatch, capsys
 ):

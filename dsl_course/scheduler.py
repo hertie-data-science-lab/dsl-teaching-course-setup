@@ -411,7 +411,7 @@ def main() -> int:
                 rc |= run(args.course_org, cohort, now, dry_run=args.dry_run)
             except Exception as exc:
                 log_err(f"scheduler run for {cohort} failed: {exc}")
-                rc = 1
+                rc |= 1  # accumulate, don't clobber prior cohorts' status bits
         return rc
 
     if not args.cohort_org:

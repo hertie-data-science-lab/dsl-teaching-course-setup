@@ -277,21 +277,26 @@ def scaffold_assignment(
     # main: starter only (what students receive on generate). No tests, no autograder -
     # grading runs faculty-side from the solution branch (see Grade assignment). Create-only:
     # a re-run against a repo whose starter faculty have since authored must not revert it.
-    seed_if_absent(
+    # Count a failed create-only seed (not a skip of a live file) so a half-written starter
+    # reds the scaffold, matching scaffold_materials rather than reporting a green "ready".
+    seed_failures = 0
+    if not seed_if_absent(
         org,
         repo,
         "README.md",
         f"# Assignment {number}\n\nComplete the TODOs in `{starter_name}` and push to "
         f"`main` ({submission}).\n".encode(),
         "init: assignment starter",
-    )
+    ):
+        seed_failures += 1
     starter_code = "def solve():\n    raise NotImplementedError  # TODO"
     starter = (
         _notebook([f"# Assignment {number}"], starter_code)
         if fmt == "notebook"
         else f'"""Assignment {number}."""\n\n\n{starter_code}\n'
     )
-    seed_if_absent(org, repo, starter_name, starter.encode(), "init: starter")
+    if not seed_if_absent(org, repo, starter_name, starter.encode(), "init: starter"):
+        seed_failures += 1
     set_repo_topics(org, repo, [f"assignment-{number}", "assignment"])
 
     # solution branch: the model solution, grading.yml, and the HIDDEN tests - all kept OFF
@@ -350,6 +355,12 @@ def scaffold_assignment(
         ):
             log_err("  ! could not push the solution branch")
             return 1
+    if seed_failures:
+        log_err(
+            f"  ! {seed_failures} starter file(s) could not be written - the assignment "
+            f"template is incomplete"
+        )
+        return 1
     log_ok(f"assignment template ready: {org}/{repo} (main + solution)")
     return 0
 
