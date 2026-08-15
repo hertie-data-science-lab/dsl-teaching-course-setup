@@ -140,8 +140,9 @@ def deploy_many(
             if srcp is None:
                 log_err(
                     f"unsafe course_source_path `{d.course_source_path}` for "
-                    f"{source_org}/{d.course_source_repo} - refusing to release the repo "
-                    f"root or a path escaping the clone. skipped."
+                    f"{source_org}/{d.course_source_repo}: it names the repo root or escapes "
+                    f"the clone - name a subfolder (e.g. lectures/02_intro) to release. "
+                    f"skipped."
                 )
                 errors += 1
                 continue
@@ -300,11 +301,23 @@ def main() -> int:
             f"DRY-RUN release {len(pairs)} path(s) from "
             f"{args.source_org}/{args.course_source_repo} -> {args.cohort_org}/{dest_repo}"
         )
+        # The cheap root/empty check needs no clone, so catch it here - a source path that
+        # strips to the repo root would drag the source's own .git/.github over the dest.
+        # (The full escape-check needs the clone and stays at copy time in deploy_many.)
+        unsafe = False
         for src, dest in pairs:
-            log(
-                f"  DRY-RUN  {args.course_source_repo}/{src} -> {dest_repo}/{dest or src}"
-            )
-        return 0
+            if src.strip("/") in ("", "."):
+                log(
+                    f"  UNSAFE  {args.course_source_repo}/{src}: names the repo root - "
+                    f"release a subfolder instead"
+                )
+                unsafe = True
+            else:
+                log(
+                    f"  DRY-RUN  {args.course_source_repo}/{src} -> "
+                    f"{dest_repo}/{dest or src}"
+                )
+        return 1 if unsafe else 0
 
     log_step(
         f"Releasing {len(pairs)} path(s) from {args.source_org}/{args.course_source_repo} -> "

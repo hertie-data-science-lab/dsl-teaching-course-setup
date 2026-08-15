@@ -678,13 +678,17 @@ def seed_if_absent(
     org: str, repo: str, path: str, content: bytes, message: str
 ) -> bool:
     """Write a file create-only, never an overwrite - the single home of the "USER-owned
-    file, leave it exactly as faculty left it" rule. Returns True if the file was written,
-    False if it was already present (logged as a skip, so a re-run's output shows what was
-    left alone) or the write failed. Callers keep their own comment on WHY a given file is
-    create-only; this owns HOW."""
+    file, leave it exactly as faculty left it" rule.
+
+    Returns True whenever the file is now present as intended - whether it was WRITTEN just
+    now, OR was already present and left untouched (logged as a skip, so a re-run's output
+    shows what was left alone). Returns False ONLY when a write was attempted and FAILED, so
+    a caller can `if not seed_if_absent(...): failures += 1` to count real failures without a
+    skip of a live file counting as one. Callers keep their own comment on WHY a given file
+    is create-only; this owns HOW."""
     if get_file_content(org, repo, path) is not None:
         log_skip(f"{repo}/{path}")
-        return False
+        return True
     return put_file(org, repo, path, content, message)
 
 

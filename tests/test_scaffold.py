@@ -37,10 +37,12 @@ class FakeRepo:
 @pytest.fixture
 def fake(monkeypatch):
     f = FakeRepo()
-    # Scaffold writes every file through utils.seed_if_absent (create-if-absent), which
-    # resolves get_file_content / put_file / log_skip in the utils namespace.
+    # USER-owned scaffolds go through utils.seed_if_absent (create-if-absent), which resolves
+    # get_file_content / put_file / log_skip in the utils namespace; SYSTEM-owned MAINTAINING.md
+    # is written by scaffold.put_file directly. Fake both layers to the same recorder.
     monkeypatch.setattr(utils, "get_file_content", f.get_file_content)
     monkeypatch.setattr(utils, "put_file", f.put_file)
+    monkeypatch.setattr(scaffold, "put_file", f.put_file)
     monkeypatch.setattr(utils, "log_skip", lambda msg: f.skips.append(msg))
     monkeypatch.setattr(scaffold, "log_skip", lambda msg: f.skips.append(msg))
     monkeypatch.setattr(scaffold, "create_repo", lambda *a, **k: True)
@@ -91,12 +93,39 @@ def test_rerun_does_not_resurrect_a_deleted_section_directory(fake):
     assert "lectures/01_session-1/.gitkeep" in fake.written("course-materials-f2026")
 
 
+def test_maintaining_refreshes_on_rerun_while_readme_stays_create_only(fake):
+    # MAINTAINING.md is SYSTEM-owned generated docs (built from the actions table): a re-run
+    # must refresh it so a toolkit change reaches the repo. README.md beside it is USER-owned
+    # and stays create-only, so a faculty-authored README is never clobbered.
+    stale = "# stale maintainer guide\n"
+    overview = "# faculty overview\n"
+    fake.files[("course-materials-f2026", "MAINTAINING.md")] = stale
+    fake.files[("course-materials-f2026", "README.md")] = overview
+
+    assert scaffold.scaffold_materials("Org", "f2026") == 0
+    # MAINTAINING.md re-written (refreshed from the template), README.md left as faculty had it.
+    assert "MAINTAINING.md" in fake.written("course-materials-f2026")
+    assert fake.files[("course-materials-f2026", "MAINTAINING.md")] != stale
+    assert "README.md" not in fake.written("course-materials-f2026")
+    assert fake.files[("course-materials-f2026", "README.md")] == overview
+    assert "course-materials-f2026/README.md" in fake.skips
+
+
 def test_materials_repo_reports_non_zero_when_release_buttons_do_not_seed(
     fake, monkeypatch
 ):
     # A materials repo with no Release buttons (workflow writes failed) must not report a
     # green "ready" - _push_workflows' failure count is the exit code.
     monkeypatch.setattr(seed, "_push_workflows", lambda *a, **k: 2)
+    assert scaffold.scaffold_materials("Org", "f2026") == 1
+
+
+def test_materials_repo_reds_when_a_user_file_seed_fails(fake, monkeypatch):
+    # A USER-owned skeleton file that is absent and whose write FAILS must red the scaffold:
+    # seed_if_absent now returns False only on a real write failure, and that count folds
+    # into the exit code (a mere skip of a present file is a success, not a failure).
+    monkeypatch.setattr(utils, "put_file", lambda *a, **k: False)  # USER seeds fail
+    monkeypatch.setattr(scaffold, "put_file", lambda *a, **k: True)  # MAINTAINING ok
     assert scaffold.scaffold_materials("Org", "f2026") == 1
 
 

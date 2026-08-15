@@ -56,6 +56,7 @@ from .utils import (
     log_ok,
     log_step,
     put_file,
+    repo_is_archived,
 )
 from .welcome import refresh_classroom_samples, refresh_welcome_workflows
 from .workflows_render import (
@@ -289,17 +290,17 @@ def refresh(course_org: str) -> int:
         f"Refreshing welcome workflows + config samples in {len(cohorts)} cohort org(s)"
     )
     for cohort in cohorts:
-        # A cohort org DELETED after it was registered 404s on every write, which would red
-        # the nightly cron forever. Skip a genuinely-gone cohort with a prune hint instead
-        # (distinct from an archived cohort, which still exists but is read-only). A
-        # transient read failure is NOT a 404, so a live cohort is never skipped by mistake.
-        # One repo GET answers both states: `.archived` on success, the 404 marker on
-        # failure. A genuinely-gone cohort (404) is skipped with a prune hint; a transient
-        # non-404 error is neither "true" nor a 404, so it falls through and fails loud below.
-        code, out = gh("api", f"repos/{cohort}/{CONFIG_REPO}", "--jq", ".archived")
+        # A cohort ORG DELETED after it was registered 404s on every write, which would red
+        # the nightly cron forever. Detect a genuinely-gone org by probing the ORG itself: a
+        # 404 there means the org is gone -> skip with a prune hint. Probing one of its repos
+        # instead wrongly skipped a live org that had only lost its classroom-config repo (and
+        # skipped its welcome refresh too) - a live cohort missing its config repo is a real
+        # problem that must fail loud in refresh_classroom_samples below, not be pruned.
+        # A transient read failure is NOT a 404, so a live cohort is never skipped by mistake.
+        code, out = gh("api", f"orgs/{cohort}")
         if code != 0 and is_missing_resource(out):
             log(
-                f"  [skip] {cohort} (no {CONFIG_REPO} repo - deleted cohort org? prune it "
+                f"  [skip] {cohort} (org not found - deleted cohort org? prune it "
                 f"from {course_org}/.github/{COHORTS_PATH})"
             )
             continue
@@ -307,7 +308,9 @@ def refresh(course_org: str) -> int:
         # every write 403s, and the samples are new files so put_file's sha no-op can't
         # absorb it. A past cohort is meant to stay frozen anyway, so skip it whole rather
         # than turn the nightly cron red in every org that has ever finished a semester.
-        if out.strip() == "true":
+        # repo_is_archived assumes LIVE on a transient read failure, so a live cohort's
+        # refresh is never silently skipped.
+        if repo_is_archived(cohort, CONFIG_REPO):
             log(f"  [skip] {cohort} (archived cohort - left frozen)")
             continue
         failures += refresh_welcome_workflows(cohort)

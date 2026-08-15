@@ -37,6 +37,7 @@ from .utils import (
     log_ok,
     log_skip,
     log_step,
+    put_file,
     repo_exists,
     seed_if_absent,
     set_repo_topics,
@@ -208,18 +209,28 @@ def scaffold_materials(org: str, tag: str) -> int:
         "of the list by leaving them as non-text files) or `actual-readings` (every reading "
         "file is hosted and downloadable - you carry the copyright responsibility).\n"
     )
-    files = {
+    failures = 0
+    # MAINTAINING.md is SYSTEM-owned generated docs, built from the actions table above (like
+    # classroom-config's README contract): it must refresh on a re-run when the toolkit
+    # changes it, so it's written unconditionally with put_file - never frozen create-only. A
+    # failed write reds the scaffold rather than shipping a stale/absent maintainer guide.
+    if not put_file(
+        org, repo, "MAINTAINING.md", maintaining.encode(), "docs: maintaining guide"
+    ):
+        failures += 1
+    # USER-owned skeletons: create-only, so a re-run against a repo faculty have since
+    # authored must not revert their README/SYLLABUS to the stub or resurrect a deleted
+    # starter directory. A failed seed (an absent file whose write failed) reds the scaffold.
+    user_files = {
         "README.md": readme.encode(),
-        "MAINTAINING.md": maintaining.encode(),
         "lectures/01_session-1/.gitkeep": b"",
         "readings/01_session-1/.gitkeep": b"",
         "labs/01_session-1/.gitkeep": b"",
         "SYLLABUS.md": f"# {tag} syllabus\n\nReplace with the real syllabus.\n".encode(),
     }
-    # Create-only: a re-run against a repo faculty have since authored must not revert
-    # their README/SYLLABUS to the stub or resurrect a deleted starter directory.
-    for path, content in files.items():
-        seed_if_absent(org, repo, path, content, "init: materials skeleton")
+    for path, content in user_files.items():
+        if not seed_if_absent(org, repo, path, content, "init: materials skeleton"):
+            failures += 1
     # Equip the run-from-repo Release buttons (same as Refresh does for content repos).
     # _push_workflows returns the count of writes that failed - a materials repo with no
     # Release buttons must not report success.
@@ -231,6 +242,8 @@ def scaffold_materials(org: str, tag: str) -> int:
         log_err(
             f"materials repo incomplete: {workflow_failures} Release button(s) not seeded"
         )
+    failures += workflow_failures
+    if failures:
         return 1
     log_ok(f"materials repo ready: {org}/{repo}")
     return 0

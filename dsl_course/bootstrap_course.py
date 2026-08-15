@@ -477,18 +477,29 @@ def setup_cohort_extras(org: str) -> int:
             "org tightened (default_repository_permission=none, no member repo creation)"
         )
     else:
+        # Without this PATCH the cohort stays open (members get default repo access) - a
+        # real misconfiguration, so it must red the bootstrap, not just log and pass.
+        failures += 1
         log_err(f"could not tighten org settings: {out[:120]}")
 
     # NB: this block (and the classroom-config one below) runs on EVERY bootstrap, re-runs
     # included - create_repo reports an existing repo as success. That is deliberate for
     # SYSTEM-owned files (they refresh so fixes reach running cohorts); USER-owned files are
     # protected per-file by utils.seed_if_absent. See the ownership note at the top of this file.
-    if create_repo(
+    # A failed create_repo (post-PR1, a genuine failure, not the idempotent 422) leaves the
+    # cohort with no student-facing front door, so it must red the bootstrap and skip the
+    # seeding rather than the create's False being silently dropped by a bare `if`.
+    if not create_repo(
         org,
         "welcome",
         private=False,
         description="Course front door - open a Join issue to enrol",
     ):
+        failures += 1
+        log_err(
+            f"could not create the welcome repo in {org} - students have no front door"
+        )
+    else:
         welcome_failures = refresh_welcome_workflows(org)
         if welcome_failures:
             failures += welcome_failures
@@ -500,20 +511,27 @@ def setup_cohort_extras(org: str) -> int:
         # link back to the issue chooser is org-specific, so the template carries `{org}`.
         # USER-owned (it is the cohort's front door, and faculty may reword it), so
         # create-only - a repair re-run must not clobber their edits.
-        seed_if_absent(
+        if not seed_if_absent(
             org,
             "welcome",
             "README.md",
             template("welcome/README.md").format(org=org).encode(),
             "docs: seed welcome README (how to join)",
-        )
+        ):
+            failures += 1
 
-    if create_repo(
+    # A failed create_repo here leaves the cohort with no roster/schedule/dispatcher repo -
+    # membership sync never triggers - so count it and skip the seeding rather than drop the
+    # False on a bare `if`.
+    if not create_repo(
         org,
         "classroom-config",
         private=True,
         description="PRIVATE cohort config - roster (students.csv). No PII leaves here.",
     ):
+        failures += 1
+        log_err(f"could not create the classroom-config repo in {org}")
+    else:
         # USER-owned files are create-only: this repo holds the cohort's LIVE state - the
         # roster with enrol codes and onboarded handles, the schedule the scheduler
         # releases from, this cohort's people.yml, and returned grades. Re-running
@@ -528,32 +546,35 @@ def setup_cohort_extras(org: str) -> int:
         # `.format` over the whole table keeps the YAML examples tag-aware (this cohort's
         # fYYYY/sYYYY, so they are copy-paste-correct) without a per-file special case.
         for path, (rel, message) in CLASSROOM_SCAFFOLDS.items():
-            seed_if_absent(
+            if not seed_if_absent(
                 org,
                 "classroom-config",
                 path,
                 template(rel).format(tag=tag, year=year, year_next=year + 1).encode(),
                 message,
-            )
-        seed_if_absent(
+            ):
+                failures += 1
+        if not seed_if_absent(
             org,
             "classroom-config",
             "grades/.gitkeep",
             b"",
             "init: grades/ (add one <assignment>.csv per assignment to return marks)",
-        )
+        ):
+            failures += 1
         # SYSTEM-owned documentation, refreshed on every run so it never goes stale: the
         # schema contract README, and a `.sample` twin for every file in the worked example
         # cohort. Samples keep the `.sample` suffix so the engine (sync_membership,
         # sync_teams, grade sync) never ingests them - only the real names; activation =
         # copying rows into the real file.
-        put_file(
+        if not put_file(
             org,
             "classroom-config",
             "README.md",
             template("classroom-config/README.md").encode(),
             "docs: classroom-config schema + contract",
-        )
+        ):
+            failures += 1
         sample_failures = refresh_classroom_samples(org)
         if sample_failures:
             failures += sample_failures
@@ -561,28 +582,32 @@ def setup_cohort_extras(org: str) -> int:
                 f"the classroom-config samples in {org} are not fully seeded - re-run "
                 f"Bootstrap cohort (or wait for the nightly Refresh)"
             )
-        # SYSTEM-owned dispatchers: refreshed on every run so fixes reach running cohorts.
-        put_file(
+        # SYSTEM-owned dispatchers: refreshed on every run so fixes reach running cohorts. A
+        # failed dispatcher write means membership/site sync never triggers, so count it.
+        if not put_file(
             org,
             "classroom-config",
             ".github/workflows/dispatch-sync.yml",
             template("classroom-config/dispatch-sync.yml").encode(),
             "ci: seed dispatch-sync workflow",
-        )
-        put_file(
+        ):
+            failures += 1
+        if not put_file(
             org,
             "classroom-config",
             ".github/workflows/dispatch-sync-site.yml",
             template("classroom-config/dispatch-sync-site.yml").encode(),
             "ci: seed dispatch-sync-site workflow",
-        )
-        put_file(
+        ):
+            failures += 1
+        if not put_file(
             org,
             "classroom-config",
             ".github/workflows/validate-schedule.yml",
             _validate_schedule_workflow().encode(),
             "ci: seed validate-schedule workflow",
-        )
+        ):
+            failures += 1
         log_ok("classroom-config ready (config preserved, dispatchers refreshed)")
 
     # Faculty access on the two repos just seeded - unconditional (not inside the
@@ -766,13 +791,20 @@ def _run(args: argparse.Namespace) -> int:
             # classroom-config/schedule.yml), so refreshing it is what repairs a cohort
             # bootstrapped before this pointer existed. Unlike the COURSE org's
             # dsl-course.yml, which is the faculty SSOT and therefore create-only.
-            put_file(
+            # A failed write leaves the classroom-config dispatchers unable to resolve the
+            # course org, so Sync membership / Sync site never fire - count it into the exit.
+            if not put_file(
                 args.org,
                 ".github",
                 "dsl-course.yml",
                 _cohort_metadata(args.org, args.course).encode(),
                 "ci: seed cohort -> course pointer (dispatchers read this)",
-            )
+            ):
+                failures += 1
+                log_err(
+                    f"could not seed the cohort -> course pointer in {args.org}/.github - "
+                    f"the classroom-config dispatchers cannot resolve {args.course}"
+                )
             # register_cohort returns False on a failed registry write. A cohort that is
             # invisible to discover_cohorts is invisible to every nightly sync, so a claimed
             # -but-unregistered cohort must red the bootstrap rather than proceed silently.
