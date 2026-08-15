@@ -602,20 +602,37 @@ def test_refresh_does_not_prune_on_a_transient_read_failure(monkeypatch):
 def test_propagate_repo_secret_refuses_a_personal_gh_token(monkeypatch, capsys):
     # A maintainer running `seed refresh` by hand usually has their PERSONAL GH_TOKEN
     # exported; publishing it as the shared repo secret would leak their PAT into every
-    # content repo. With only GH_TOKEN set we refuse and warn - nothing is published.
+    # content repo. With only GH_TOKEN set we refuse - nothing is published.
+    #
+    # The refusal counts EVERY repo as unpropagated: an org that has not yet had the
+    # nightly refresh land still runs the pre-fix new-assignment.yml (no DSL_BOT_TOKEN in
+    # env), so a green refusal reports a healthy org whose live buttons have no auth.
     monkeypatch.delenv("DSL_BOT_TOKEN", raising=False)
     monkeypatch.setenv("GH_TOKEN", "ghp_personal")
     called: list = []
     monkeypatch.setattr(seed, "gh", lambda *a, **k: called.append((a, k)) or (0, ""))
 
-    assert seed._propagate_repo_secret("Course-Org", ["cm-f2026"]) == 0
+    assert seed._propagate_repo_secret("Course-Org", ["cm-f2026", "cm-s2027"]) == 2
     assert called == []
     assert "refusing to publish a personal token" in capsys.readouterr().err
 
 
+def test_propagate_repo_secret_reds_when_no_token_at_all_is_set(monkeypatch, capsys):
+    # Neither token in env: nothing can be published, so every repo is left unpropagated
+    # and the refresh must go red rather than report a converged org.
+    monkeypatch.delenv("DSL_BOT_TOKEN", raising=False)
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    monkeypatch.setattr(seed, "gh", lambda *a, **k: (0, ""))
+
+    assert seed._propagate_repo_secret("Course-Org", ["cm-f2026"]) == 1
+    assert "cannot propagate the repo secret" in capsys.readouterr().err
+
+
 def test_propagate_repo_secret_uses_stdin_and_counts_failures(monkeypatch, capsys):
-    # The token goes over stdin (--body-file -), never an argv --body (which `ps` exposes),
-    # and a repo the secret could not be set on counts into the refresh exit code.
+    # The token goes over stdin - `gh secret set` reads it from there when --body is
+    # omitted - never an argv --body (which `ps` exposes). `gh secret set` has no
+    # --body-file flag at all, so passing one makes every call fail with "unknown flag".
+    # A repo the secret could not be set on counts into the refresh exit code.
     monkeypatch.setenv("DSL_BOT_TOKEN", "s3cret")
     monkeypatch.delenv("GH_TOKEN", raising=False)
     calls: list = []
@@ -628,9 +645,103 @@ def test_propagate_repo_secret_uses_stdin_and_counts_failures(monkeypatch, capsy
 
     assert seed._propagate_repo_secret("Course-Org", ["one", "two"]) == 1
     for a, k in calls:
-        assert "--body-file" in a and "--body" not in a
+        assert not any(x.startswith("--body") for x in a)
+        assert "s3cret" not in a
         assert k.get("stdin") == "s3cret"
     assert "could not set DSL_BOT_TOKEN on Course-Org/two" in capsys.readouterr().err
+
+
+# ------------------------------------------------- --propagate-secret (org-level secret)
+
+
+def test_propagate_secret_refuses_a_personal_gh_token(monkeypatch, capsys):
+    # The ORG secret has a WIDER blast radius than the repo secret _propagate_repo_secret
+    # already guards: publishing a maintainer's personal PAT here hands it to every
+    # workflow in .github/welcome/classroom-config. Refuse, and red the bootstrap - a
+    # silent skip leaves an org whose buttons all fail weeks later with no auth.
+    _stub_bootstrap(monkeypatch)
+    monkeypatch.delenv("DSL_BOT_TOKEN", raising=False)
+    monkeypatch.setenv("GH_TOKEN", "ghp_personal")
+    published: list = []
+    monkeypatch.setattr(bc, "set_org_secret", lambda *a: published.append(a) or True)
+    monkeypatch.setattr(
+        "sys.argv", ["bootstrap_course", "--org", "Course-Org", "--propagate-secret"]
+    )
+
+    assert bc.main() == 1
+    assert published == []
+    err = capsys.readouterr().err
+    assert "refusing to publish a personal token" in err
+    assert "bootstrap incomplete" in err
+
+
+def test_propagate_secret_reds_when_the_org_secret_write_fails(monkeypatch, capsys):
+    # set_org_secret returns False on a failed write; that used to be dropped, reporting a
+    # green bootstrap for an org whose workflows have no token.
+    _stub_bootstrap(monkeypatch)
+    monkeypatch.setenv("DSL_BOT_TOKEN", "s3cret")
+    monkeypatch.setattr(bc, "set_org_secret", lambda *a: False)
+    monkeypatch.setattr(
+        "sys.argv", ["bootstrap_course", "--org", "Course-Org", "--propagate-secret"]
+    )
+
+    assert bc.main() == 1
+    assert "bootstrap incomplete" in capsys.readouterr().err
+
+
+def test_set_org_secret_sends_the_value_over_stdin(monkeypatch):
+    # Never an argv --body: the org bootstrap runs on a shared runner, where `ps` would
+    # expose the bot token to anything else on the box. Both the org secret and the
+    # private-infra-repo mirror go over stdin.
+    calls: list = []
+    monkeypatch.setattr(bc, "repo_exists", lambda org, r: r in (".github", "welcome"))
+    monkeypatch.setattr(bc, "repo_is_private", lambda org, r: r == "welcome")
+    monkeypatch.setattr(bc, "gh", lambda *a, **k: calls.append((a, k)) or (0, ""))
+
+    assert bc.set_org_secret("Course-Org", "DSL_BOT_TOKEN", "s3cret") is True
+    assert len(calls) == 2  # org secret + the private `welcome` mirror
+    for a, k in calls:
+        assert not any(x.startswith("--body") for x in a)
+        assert "s3cret" not in a
+        assert k.get("stdin") == "s3cret"
+
+
+def test_set_org_secret_reds_when_a_private_infra_mirror_fails(monkeypatch, capsys):
+    # The org-secret write succeeding is not success on its own: on GitHub Free an org
+    # secret is never delivered to a PRIVATE repo, so a failed classroom-config mirror
+    # re-arms exactly the delivery gap the mirror exists to close - its dispatch
+    # workflows read an empty DSL_BOT_TOKEN while the bootstrap reports green.
+    monkeypatch.setattr(bc, "repo_exists", lambda org, r: True)
+    monkeypatch.setattr(bc, "repo_is_private", lambda org, r: r == "classroom-config")
+    monkeypatch.setattr(
+        bc, "gh", lambda *a, **k: (1, "gh: HTTP 403") if "--repo" in a else (0, "")
+    )
+
+    assert bc.set_org_secret("Course-Org", "DSL_BOT_TOKEN", "s3cret") is False
+    assert "failed to set repo secret on Course-Org/classroom-config" in (
+        capsys.readouterr().err
+    )
+
+
+def test_set_secret_refuses_an_empty_secret_file(monkeypatch, capsys, tmp_path):
+    # An empty/whitespace file used to write an EMPTY org secret and report success -
+    # every seeded workflow then fails with "set the GH_TOKEN environment variable"
+    # weeks later, with a green bootstrap behind it.
+    _stub_bootstrap(monkeypatch)
+    published: list = []
+    monkeypatch.setattr(bc, "set_org_secret", lambda *a: published.append(a) or True)
+    empty = tmp_path / "token.txt"
+    empty.write_text("   \n")
+    monkeypatch.setattr(
+        "sys.argv",
+        ["bootstrap_course", "--org", "Course-Org", "--set-secret", str(empty)],
+    )
+
+    assert bc.main() == 1
+    assert published == []
+    err = capsys.readouterr().err
+    assert "secret file is empty" in err
+    assert "bootstrap incomplete" in err
 
 
 # ------------------------------------- bootstrap threads sub-step failures into its exit

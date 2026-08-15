@@ -528,6 +528,21 @@ def test_new_assignment_button_exposes_format_and_type():
     assert '--format "$FORMAT"' in rendered and '--type "$TYPE"' in rendered
 
 
+@pytest.mark.parametrize("name", sorted(ALL_RENDERED))
+def test_seed_refresh_steps_carry_dsl_bot_token(name):
+    # `seed refresh` propagates the token as a repo secret onto every private content repo
+    # (the Free-plan delivery gap), and it reads ONLY the DSL_BOT_TOKEN env var - handing
+    # it just GH_TOKEN makes it log a refusal and leave the repo with no token. Any step
+    # that runs it must export both. New assignment was the button that regressed.
+    for job in workflow_jobs(ALL_RENDERED[name]).values():
+        for step in job.get("steps", []):
+            if "seed refresh" not in step.get("run", ""):
+                continue
+            assert step.get("env", {}).get("DSL_BOT_TOKEN") == (
+                "${{ secrets.DSL_BOT_TOKEN }}"
+            ), f"{name}: '{step.get('name')}' runs seed refresh without DSL_BOT_TOKEN"
+
+
 def test_validate_schedule_workflow_is_seeded_with_the_central_repo_pinned():
     # Seeded into a cohort's classroom-config, so it must carry the central repo and ref
     # baked in - the cohort repo has no other way to reach the parser.

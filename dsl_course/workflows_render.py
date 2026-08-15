@@ -757,6 +757,7 @@ jobs:
 {_RUN_PREAMBLE}      - name: Scaffold assignment
         env:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
+          DSL_BOT_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
           ORG: ${{{{ github.repository_owner }}}}
           NUMBER: ${{{{ inputs.number }}}}
           TAG: ${{{{ inputs.tag }}}}

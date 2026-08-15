@@ -76,7 +76,7 @@ def test_cohort_setup_grants_faculty_access_even_when_nothing_is_seeded(monkeypa
     monkeypatch.setattr(bootstrap_course, "create_cohort_teams", lambda org: None)
     monkeypatch.setattr(bootstrap_course, "create_repo", lambda *a, **k: False)
     monkeypatch.setattr(bootstrap_course, "put_file", lambda *a, **k: True)
-    monkeypatch.setattr(bootstrap_course.scaffold, "scaffold_site", lambda org: None)
+    monkeypatch.setattr(bootstrap_course.scaffold, "scaffold_site", lambda org: 0)
     monkeypatch.setattr(bootstrap_course, "grant_cohort_faculty_access", granted.append)
     bootstrap_course.setup_cohort_extras("Course-f2026")
     assert granted == ["Course-f2026"]
