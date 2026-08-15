@@ -367,6 +367,17 @@ def test_create_team_only_treats_an_already_exists_422_as_success(monkeypatch):
         utils, "gh", lambda *a, **k: (1, "HTTP 422: name already_exists")
     )
     assert utils.create_team("Org", "students") is True
+    # The body GitHub's teams endpoint ACTUALLY returns for a duplicate team, verbatim.
+    # It says neither "already exists" nor `already_exists`, so it read as a hard failure
+    # and every membership sync after a team's first creation died on it.
+    duplicate_team_422 = (
+        '{"message":"Validation Failed","errors":[{"resource":"Team",'
+        '"code":"unprocessable","field":"data",'
+        '"message":"Name must be unique for this org"}],'
+        '"documentation_url":"https://docs.github.com/rest/teams..."}'
+    )
+    monkeypatch.setattr(utils, "gh", lambda *a, **k: (1, duplicate_team_422))
+    assert utils.create_team("Org", "students") is True
     monkeypatch.setattr(
         utils, "gh", lambda *a, **k: (1, "HTTP 422: Validation Failed - name too long")
     )

@@ -73,6 +73,8 @@ def _install_fakes(monkeypatch) -> dict[str, str]:
     monkeypatch.setattr(site, "gh", fake_gh)
     monkeypatch.setattr(site, "git", fake_git)
     monkeypatch.setattr(site, "repo_exists", lambda org, name: True)
+    monkeypatch.setattr(site, "repo_is_archived", lambda org, name: False)
+    monkeypatch.setattr(site, "_acting_login", lambda: None)
     monkeypatch.setattr(site, "get_file_content", lambda *a, **k: "")
     # site._yaml_file now reads via utils.load_yaml_config, which resolves
     # get_file_content in the UTILS namespace - stub it there too, or the real gh
@@ -158,6 +160,16 @@ def test_people_are_written_even_when_the_clone_has_no_data_dir(published):
     files = published(readings_mode="none")
     assert "_data/people.yml" in files
     assert "instructors:" in files["_data/people.yml"]
+
+
+def test_an_archived_site_repo_is_a_quiet_skip_not_a_daily_failure(monkeypatch, capsys):
+    # A past cohort's site repo is frozen read-only. The clone and the commit both succeed
+    # and only the push 403s, so the nightly Sync site run failed on it every single day.
+    committed = _install_fakes(monkeypatch)
+    monkeypatch.setattr(site, "repo_is_archived", lambda org, name: True)
+    assert site.sync_public_site(COURSE, SOURCE, "actual-readings") == 0
+    assert not committed  # nothing was even cloned
+    assert "is archived" in capsys.readouterr().out
 
 
 def test_nothing_to_publish_at_all_is_an_error():

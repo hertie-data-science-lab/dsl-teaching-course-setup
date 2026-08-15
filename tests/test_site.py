@@ -20,6 +20,14 @@ BERLIN = ZoneInfo("Europe/Berlin")
 END_OF_TERM = date(2026, 12, 18)
 
 
+@pytest.fixture(autouse=True)
+def _no_acting_login(monkeypatch):
+    """_team_people asks who the sync is authenticated as, and the real lookup shells out
+    to `gh` (green on an authenticated dev box, red in tokenless CI). None excludes
+    nobody, which is what every test here but the bot-card one wants."""
+    monkeypatch.setattr(site, "_acting_login", lambda: None)
+
+
 def _sched(releases: list[Release]) -> Schedule:
     return Schedule(releases=releases)
 
@@ -576,6 +584,25 @@ def test_team_people_per_member_failure_raises_rather_than_dropping_one_card(
     monkeypatch.setattr(site, "gh", _member_gh((1, "gh: HTTP 502 Bad Gateway")))
     with pytest.raises(RuntimeError, match="could not read the GitHub profile of jane"):
         site._team_people("Course", "instructors")
+
+
+def test_team_people_never_renders_the_syncs_own_bot_account(monkeypatch, capsys):
+    # The bot is in `instructors` for the access it needs, and it rendered on the public
+    # site as a member of the teaching team. Its own profile lookup must not even happen.
+    def fake(*args, **kwargs):
+        if any(a.endswith("/members") for a in args):
+            return (0, "hertie-dsl-bot\njane\n")
+        assert "users/hertie-dsl-bot" not in args
+        return (0, "Jane\thttps://a/j.png\thttps://gh/jane")
+
+    monkeypatch.setattr(site, "gh", fake)
+    monkeypatch.setattr(
+        site, "_acting_login", lambda: "Hertie-DSL-Bot"
+    )  # logins fold case
+    assert site._team_people("Course", "instructors") == [
+        ("Jane", "https://a/j.png", "https://gh/jane")
+    ]
+    assert "hertie-dsl-bot" in capsys.readouterr().out  # skipped out loud
 
 
 def _bad_indent_error() -> yaml.YAMLError:
