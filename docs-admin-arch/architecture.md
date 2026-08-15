@@ -119,7 +119,7 @@ Why three paths, and why `selected` visibility:
 - The same gap hits the private **infra** repo `classroom-config`, whose workflows (a push to
   `students.csv`/`teams.csv`/`people.yml` fires **Sync membership**, a push to
   `schedule.yml`/`people.yml` fires **Sync site**, both cross-org) also run under
-  `DSL_BOT_TOKEN`. Refresh only ever touches *content* repos, so **Bootstrap** mirrors the token
+  `DSL_BOT_TOKEN`. Refresh sets the repo secret only on *content* repos, so **Bootstrap** mirrors the token
   as a **repo** secret onto each private infra repo in the same run that sets the org secret
   (`bootstrap_course.set_org_secret`) - that is the only path the token reaches
   `classroom-config`.
@@ -223,7 +223,9 @@ real config lives in `classroom-config`.
 
 Every user-editable file in `classroom-config` ships as a **pair**: `<file>` is a minimal
 commented scaffold, seeded once and never rewritten, so faculty edits are safe; `<file>.sample`
-is a filled worked example, re-converged on every refresh. Partial provisioning fails the run
+is a filled worked example, re-converged on every refresh. The SYSTEM-owned half - the README
+contract and the three workflows under `.github/` (`welcome.CLASSROOM_SYSTEM_FILES`) - is
+re-converged the same way, so a dispatcher fix reaches running cohorts without re-bootstrapping. Partial provisioning fails the run
 loudly rather than leaving a half-built org.
 
 ### Release
@@ -450,7 +452,8 @@ cron 05:27, ungated`"| sr["seed refresh (per course org)"]
   sr --> sec["repo secrets on content repos"]
   sr --> pr["profile READMEs + dropdowns"]
   sr --> coh["`each registered cohort:
-welcome workflows + config samples`"]
+welcome workflows + classroom-config
+system files + config samples`"]
   sr --> hb[".github/.last-refresh heartbeat"]
 ```
 
@@ -652,17 +655,19 @@ Self-contained - workflows and their Python implementation both live in this rep
     (`grant_cohort_faculty_access` / `COHORT_FACULTY_REPOS` = `welcome`, `classroom-config`, so
     non-owner instructors get write and course-admin gets admin under
     `default_repository_permission=none`); propagate the secret.
-  - `seed` - place the workflows (central + run-from-repo) and the `refresh` CLI; it delegates
-    to four modules and re-exports a few of their names (see `__all__`; new code imports from
-    the owner):
+  - `seed` - place the workflows (central + run-from-repo) and the `refresh` CLI, whose nightly
+    run also loops every registered cohort (gone orgs pruned with a hint, archived ones left
+    frozen) re-converging its welcome workflows, classroom-config system files and samples; it
+    delegates to four modules and re-exports a few of their names (see `__all__`; new code
+    imports from the owner):
     - `workflows_render` - the workflow YAML templates + every `render_*` function, plus the
       shared preamble policy (gating, permissions, timeouts, concurrency, cron failure notices);
     - `discovery` - the cohort registry and all live org/repo/section/session discovery,
       including the shared infra-repo predicate;
     - `profile_readme` - the org landing page + the `.github` repo's own README;
     - `welcome` - the SYSTEM-owned cohort seeding (onboarding workflows, issue forms,
-      `classroom-config` scaffolds and samples), split out so `seed.refresh` can re-push it
-      without importing `bootstrap_course` back.
+      `classroom-config` scaffolds, samples and system files), split out so `seed.refresh` can
+      re-push it without importing `bootstrap_course` back.
   - `scheduler` - the hourly cron: freeze passed deadlines, autograde, then fire due releases.
   - `schedule` - parse and validate `schedule.yml` (the three blocks, timezone normalisation,
     dropped-entry reporting, write-once handout records).
