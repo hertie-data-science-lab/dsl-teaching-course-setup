@@ -395,6 +395,33 @@ def test_deploy_many_releases_the_whole_repo_from_a_root_source_path(monkeypatch
     assert sorted(staged) == ["SYLLABUS.md", "labs/.github/keep.yml", "labs/01.md"]
 
 
+def test_a_copied_in_gitignore_cannot_swallow_released_files(monkeypatch):
+    # A whole-repo release brings the source's own `.gitignore` with it. `git add -A` would
+    # then honour it and skip every released file it matches - and a source that force-added
+    # its lecture PDFs past a `*.pdf` rule is exactly the repo whose faculty would never
+    # think to check. The release would report success having shipped nothing. Asserting on
+    # the argv, not on the copied tree: these fakes never run real git, so only the flag
+    # itself can prove the staged set is the copied set.
+    calls: list[tuple[str, ...]] = []
+    _no_io(
+        monkeypatch,
+        _clone_with_tree({".gitignore": "*.pdf\n", "lectures/slides.pdf": "%PDF"}),
+    )
+
+    def recording_git(*args):
+        calls.append(args)
+        return _git_with_staged_changes(*args)
+
+    monkeypatch.setattr(deploy, "git", recording_git)
+
+    errors, changed = deploy.deploy_many(
+        "Course-Org", "Cohort-Org", [Deploy("cm", "/", "materials", None)], sync=False
+    )
+    assert (errors, changed) == (0, True)
+    add = next(c for c in calls if "add" in c)
+    assert "-f" in add, f"release staged without --force: {add}"
+
+
 def test_deploy_many_rejects_a_dotdot_escaping_source_path(monkeypatch):
     _no_io(monkeypatch, _clone_with_tree({"lectures/00_x/f.txt": "x"}))
     errors, changed = deploy.deploy_many(

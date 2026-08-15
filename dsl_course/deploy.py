@@ -201,7 +201,11 @@ def deploy_many(
         # 4. one commit + push per touched dest (skip if it has no net change)
         for repo in sorted(touched):
             dd = dest_dirs[repo]
-            git("-C", str(dd), *_GIT_ENV, "add", "-A")
+            # -f: what was copied IS the release. A whole-repo release brings the source's
+            # own `.gitignore` along, and without -f `git add` would then silently drop any
+            # file the source force-added past it (lecture PDFs under a `*.pdf` rule are the
+            # usual case) - reporting the release as shipped while those files never left.
+            git("-C", str(dd), *_GIT_ENV, "add", "-A", "-f")
             # Distinguish "nothing staged" (genuinely nothing new to release - the
             # idempotent no-op) from a real commit failure (disk, lock, hook): git commit
             # exits non-zero for BOTH, so a failed commit would otherwise be reported as
@@ -330,18 +334,23 @@ def main() -> int:
         # (The full clone-relative escape-check stays at copy time in deploy_many.)
         unsafe = False
         for src, dest in pairs:
-            cleaned = src.strip("/")
-            if cleaned in ("", ".") or ".." in cleaned.split("/"):
+            # The root is a legal path now (it means "everything"), so only an escaping
+            # path is still unsafe - that half of the check survives unchanged.
+            if ".." in src.strip("/").split("/"):
                 log(
-                    f"  UNSAFE  {args.course_source_repo}/{src}: names the repo root or "
-                    f"escapes the clone - release a named subfolder instead"
+                    f"  UNSAFE  {args.course_source_repo}/{src}: escapes the clone - "
+                    f"release a path inside the repo"
                 )
                 unsafe = True
-            else:
-                log(
-                    f"  DRY-RUN  {args.course_source_repo}/{src} -> "
-                    f"{dest_repo}/{dest or src}"
-                )
+                continue
+            # Mirror deploy_many's own destination rule exactly (a root path means the dest
+            # repo's ROOT, with no mirror-the-source fallback) - a dry-run that models the
+            # release differently from the release is worse than no dry-run.
+            landing = (dest or src).strip("/")
+            log(
+                f"  DRY-RUN  {args.course_source_repo}/{src} -> "
+                f"{dest_repo}/{landing or '(repo root)'}"
+            )
         return 1 if unsafe else 0
 
     log_step(

@@ -221,31 +221,48 @@ def test_dry_run_prints_the_resolved_pairs_without_deploying(monkeypatch, capsys
     assert "course-materials-f2026/labs/02 -> materials/week02/lab" in out
 
 
-def test_dry_run_flags_an_unsafe_root_path(monkeypatch, capsys):
-    # The cheapest guard, needing no clone: a source path that strips to the repo root (a
-    # whole-repo release would drag the source's own .git/.github into the cohort tree) is
-    # caught in the dry-run and reds the run, before anything is cloned or copied.
+def _dry_run_argv(source_path):
+    return [
+        "deploy",
+        "--source-org",
+        "Course",
+        "--course-source-repo",
+        "course-materials-f2026",
+        "--cohort-org",
+        "Cohort-f2026",
+        "--course-source-path",
+        source_path,
+        "--dry-run",
+    ]
+
+
+def test_dry_run_shows_a_whole_repo_release_landing_at_the_dest_root(
+    monkeypatch, capsys
+):
+    # The case a dry-run most needs to get right is the one that ships the most. It must
+    # model deploy_many's destination rule, not a near-miss of it: a root path means the
+    # dest repo's root, so printing `materials//` would misdescribe the release.
     monkeypatch.setattr(
         deploy, "deploy_many", lambda *a, **k: pytest.fail("must not deploy")
     )
+    monkeypatch.setattr("sys.argv", _dry_run_argv("/"))
+    assert deploy.main() == 0
+    out = capsys.readouterr().out
+    assert "course-materials-f2026// -> materials/(repo root)" in out
+    assert "materials//" not in out
+
+
+def test_dry_run_still_flags_a_path_escaping_the_clone(monkeypatch, capsys):
+    # The root half of this guard retired when the root became a legal release, but the
+    # escape half did not: it is still the cheapest catch, needing no clone, and it must
+    # red the run rather than print a plausible-looking destination.
     monkeypatch.setattr(
-        "sys.argv",
-        [
-            "deploy",
-            "--source-org",
-            "Course",
-            "--course-source-repo",
-            "course-materials-f2026",
-            "--cohort-org",
-            "Cohort-f2026",
-            "--course-source-path",
-            "lectures/02,/",  # one safe path, one that names the repo root
-            "--dry-run",
-        ],
+        deploy, "deploy_many", lambda *a, **k: pytest.fail("must not deploy")
     )
+    monkeypatch.setattr("sys.argv", _dry_run_argv("lectures/02,../../etc/passwd"))
     assert deploy.main() == 1
     out = capsys.readouterr().out
-    assert "UNSAFE" in out and "names the repo root" in out
+    assert "UNSAFE" in out and "escapes the clone" in out
     # the safe pair is still shown, so the operator sees the whole batch
     assert "course-materials-f2026/lectures/02 -> materials/lectures/02" in out
 
