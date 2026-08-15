@@ -337,14 +337,12 @@ def test_rerun_retires_the_pre_rename_issue_forms(fake):
 def _stub_bootstrap(monkeypatch) -> None:
     """Neutralise everything a cohort bootstrap does EXCEPT the site sync - the org-level
     gh/git layer, the repo seeding (covered above) and the summary output."""
-    for name in (
-        "set_org_settings",
-        "create_default_teams",
-        "setup_cohort_extras",
-        "grant_button_access",
-        "seed_workflows",
-    ):
+    for name in ("set_org_settings", "create_default_teams", "grant_button_access"):
         monkeypatch.setattr(bc, name, lambda *a, **k: None)
+    # setup_cohort_extras / seed_workflows report a failure count that _run threads into
+    # its exit code - a clean stub reports zero failures.
+    for name in ("setup_cohort_extras", "seed_workflows"):
+        monkeypatch.setattr(bc, name, lambda *a, **k: 0)
     monkeypatch.setattr(bc, "preflight", lambda org: True)
     monkeypatch.setattr(bc, "create_profile_repo", lambda *a, **k: None)
     monkeypatch.setattr(bc, "add_course_admins", lambda org, handles: None)
@@ -439,12 +437,15 @@ def _stub_refresh(
     )
     monkeypatch.setattr(seed, "discover_content_repos", lambda org: [])
     monkeypatch.setattr(seed, "discover_assignments", lambda org: [])
-    monkeypatch.setattr(seed, "_propagate_repo_secret", lambda org, repos: None)
+    monkeypatch.setattr(seed, "_propagate_repo_secret", lambda org, repos: 0)
     monkeypatch.setattr(seed, "seed_github_workflows", lambda org: seed_failures)
     monkeypatch.setattr(seed, "update_profile_readme", lambda org: None)
     monkeypatch.setattr(seed, "refresh_welcome_workflows", welcome_failures)
     monkeypatch.setattr(seed, "refresh_classroom_samples", sample_failures)
     monkeypatch.setattr(seed, "repo_is_archived", lambda org, repo: False)
+    # The per-cohort loop first probes the cohort's config repo to tell a genuinely-deleted
+    # (404) cohort org from a live one; (0, "") = the repo is present, so proceed.
+    monkeypatch.setattr(seed, "gh", lambda *a, **k: (0, ""))
 
 
 @pytest.mark.parametrize(
@@ -496,6 +497,145 @@ def test_refresh_leaves_an_archived_cohort_frozen(monkeypatch, capsys):
     out = capsys.readouterr()
     assert "[skip] Cohort-f2026 (archived cohort - left frozen)" in out.out
     assert "refresh incomplete" not in out.err
+
+
+def test_refresh_prunes_a_deleted_cohort_org(monkeypatch, capsys):
+    # A cohort org DELETED after it was registered 404s on every write - which reds the
+    # nightly cron forever (distinct from an archived cohort, which still exists). Skip a
+    # genuinely-gone cohort with a prune hint; the live cohort beside it still converges.
+    refreshed: list[str] = []
+    _stub_refresh(
+        monkeypatch,
+        welcome_failures=lambda org: refreshed.append(org) or 0,
+        sample_failures=lambda org: refreshed.append(org) or 0,
+    )
+
+    def fake_gh(*a, **k):
+        # the per-cohort config-repo probe: Cohort-f2026's org was deleted -> genuine 404
+        if "Cohort-f2026" in a[1]:
+            return (1, "gh: Not Found (HTTP 404)")
+        return (0, "")
+
+    monkeypatch.setattr(seed, "gh", fake_gh)
+
+    assert seed.refresh("Course-Org") == 0
+    assert refreshed == ["Cohort-s2027", "Cohort-s2027"]  # deleted cohort skipped whole
+    out = capsys.readouterr()
+    assert "[skip] Cohort-f2026" in out.out and "prune" in out.out
+    assert "refresh incomplete" not in out.err
+
+
+def test_refresh_does_not_prune_on_a_transient_read_failure(monkeypatch):
+    # A non-404 read error is NOT proof the cohort is gone - it must still be refreshed
+    # (and fail loud there), never silently skipped on a rate-limit or 502.
+    refreshed: list[str] = []
+    _stub_refresh(
+        monkeypatch,
+        welcome_failures=lambda org: refreshed.append(org) or 0,
+        sample_failures=lambda org: refreshed.append(org) or 0,
+    )
+    monkeypatch.setattr(seed, "gh", lambda *a, **k: (1, "gh: HTTP 502"))
+
+    assert seed.refresh("Course-Org") == 0
+    assert refreshed == ["Cohort-f2026", "Cohort-f2026", "Cohort-s2027", "Cohort-s2027"]
+
+
+# ----------------------------------------------- _propagate_repo_secret (Free-plan gap)
+
+
+def test_propagate_repo_secret_refuses_a_personal_gh_token(monkeypatch, capsys):
+    # A maintainer running `seed refresh` by hand usually has their PERSONAL GH_TOKEN
+    # exported; publishing it as the shared repo secret would leak their PAT into every
+    # content repo. With only GH_TOKEN set we refuse and warn - nothing is published.
+    monkeypatch.delenv("DSL_BOT_TOKEN", raising=False)
+    monkeypatch.setenv("GH_TOKEN", "ghp_personal")
+    called: list = []
+    monkeypatch.setattr(seed, "gh", lambda *a, **k: called.append((a, k)) or (0, ""))
+
+    assert seed._propagate_repo_secret("Course-Org", ["cm-f2026"]) == 0
+    assert called == []
+    assert "refusing to publish a personal token" in capsys.readouterr().err
+
+
+def test_propagate_repo_secret_uses_stdin_and_counts_failures(monkeypatch, capsys):
+    # The token goes over stdin (--body-file -), never an argv --body (which `ps` exposes),
+    # and a repo the secret could not be set on counts into the refresh exit code.
+    monkeypatch.setenv("DSL_BOT_TOKEN", "s3cret")
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    calls: list = []
+
+    def fake_gh(*a, **k):
+        calls.append((a, k))
+        return (1, "gh: HTTP 403") if a[4].endswith("/two") else (0, "")
+
+    monkeypatch.setattr(seed, "gh", fake_gh)
+
+    assert seed._propagate_repo_secret("Course-Org", ["one", "two"]) == 1
+    for a, k in calls:
+        assert "--body-file" in a and "--body" not in a
+        assert k.get("stdin") == "s3cret"
+    assert "could not set DSL_BOT_TOKEN on Course-Org/two" in capsys.readouterr().err
+
+
+# ------------------------------------- bootstrap threads sub-step failures into its exit
+
+
+def test_course_bootstrap_reds_when_workflow_seeding_fails(monkeypatch, capsys):
+    # All 17 org workflows failing to write (e.g. the token lost `workflow` scope) used to
+    # exit 0 - a half-configured org that reports success. seed_workflows' failure count is
+    # now threaded into the bootstrap exit code.
+    _stub_bootstrap(monkeypatch)
+    monkeypatch.setattr(bc, "seed_workflows", lambda org: 17)
+    monkeypatch.setattr("sys.argv", ["bootstrap_course", "--org", "Course-Org"])
+
+    assert bc.main() == 1
+    assert "bootstrap incomplete" in capsys.readouterr().err
+
+
+def _cohort_argv() -> list[str]:
+    return [
+        "bootstrap_course",
+        "--org",
+        "Cohort-f2026",
+        "--cohort",
+        "--course",
+        "Course-Org",
+    ]
+
+
+def test_cohort_bootstrap_reds_when_registration_fails(monkeypatch, capsys):
+    # register_cohort returns False on a failed registry write: a cohort invisible to
+    # discover_cohorts is invisible to every nightly sync, so it must red the bootstrap.
+    _stub_bootstrap(monkeypatch)
+    monkeypatch.setattr(bc.seed, "register_cohort", lambda course, cohort: False)
+    monkeypatch.setattr(bc.site, "sync_site", lambda c, o: 0)
+    monkeypatch.setattr("sys.argv", _cohort_argv())
+
+    assert bc.main() == 1
+    err = capsys.readouterr().err
+    assert "could not register Cohort-f2026" in err
+    assert "bootstrap incomplete" in err
+
+
+def test_cohort_bootstrap_reds_when_faculty_sync_reports_errors(monkeypatch, capsys):
+    _stub_bootstrap(monkeypatch)
+    monkeypatch.setattr(bc.sync_faculty, "sync", lambda course, cohorts=None: 2)
+    monkeypatch.setattr(bc.site, "sync_site", lambda c, o: 0)
+    monkeypatch.setattr("sys.argv", _cohort_argv())
+
+    assert bc.main() == 1
+    assert "bootstrap incomplete" in capsys.readouterr().err
+
+
+def test_cohort_bootstrap_reds_when_student_repos_half_seeded(monkeypatch, capsys):
+    # setup_cohort_extras returns the count of welcome/config-sample writes that failed.
+    _stub_bootstrap(monkeypatch)
+    monkeypatch.setattr(bc, "setup_cohort_extras", lambda org: 4)
+    monkeypatch.setattr(bc.site, "sync_site", lambda c, o: 0)
+    monkeypatch.setattr("sys.argv", _cohort_argv())
+
+    assert bc.main() == 1
+    assert "bootstrap incomplete" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(

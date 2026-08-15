@@ -453,7 +453,7 @@ def validate_secret_presence(org: str, secret_name: str) -> bool:
     return exists
 
 
-def setup_cohort_extras(org: str) -> None:
+def setup_cohort_extras(org: str) -> int:
     """Cohort-only: tighten the org and seed the student-facing repos.
 
     Layered on top of the common bootstrap when --cohort is passed:
@@ -466,9 +466,14 @@ def setup_cohort_extras(org: str) -> None:
     Safe to re-run on a LIVE cohort: the USER-owned classroom-config files (roster,
     schedule, people, grades) are only ever created, never rewritten, while the
     SYSTEM-owned workflows refresh. See the ownership note at the top of this file.
+
+    Returns the number of student-facing workflow/sample writes that failed, so a cohort
+    left half-seeded (onboarding workflow or config samples never landed) reds the
+    bootstrap rather than reporting success.
     """
     log_step("Cohort setup: tighten org + seed welcome/classroom-config")
 
+    failures = 0
     create_cohort_teams(org)
 
     code, out = gh(
@@ -498,7 +503,9 @@ def setup_cohort_extras(org: str) -> None:
         private=False,
         description="Course front door - open a Join issue to enrol",
     ):
-        if refresh_welcome_workflows(org):
+        welcome_failures = refresh_welcome_workflows(org)
+        if welcome_failures:
+            failures += welcome_failures
             log_err(
                 f"the welcome repo in {org} is not fully seeded - re-run Bootstrap "
                 f"cohort (or wait for the nightly Refresh) once the cause is cleared"
@@ -561,7 +568,9 @@ def setup_cohort_extras(org: str) -> None:
             template("classroom-config/README.md").encode(),
             "docs: classroom-config schema + contract",
         )
-        if refresh_classroom_samples(org):
+        sample_failures = refresh_classroom_samples(org)
+        if sample_failures:
+            failures += sample_failures
             log_err(
                 f"the classroom-config samples in {org} are not fully seeded - re-run "
                 f"Bootstrap cohort (or wait for the nightly Refresh)"
@@ -597,12 +606,17 @@ def setup_cohort_extras(org: str) -> None:
     # Public, auto-deployed cohort website (from course-website-template).
     scaffold.scaffold_site(org)
 
+    return failures
 
-def seed_workflows(org: str) -> None:
+
+def seed_workflows(org: str) -> int:
     """Seed the org-level workflows into the course org's .github repo. The full set
     (central Release materials/assignment + Sync membership/Bootstrap-cohort/Refresh) is
-    rendered by dsl_course.seed (single source of truth)."""
-    seed.seed_github_workflows(org)
+    rendered by dsl_course.seed (single source of truth).
+
+    Returns the number of writes that failed - a button that never landed (e.g. the token
+    lost `workflow` scope) is exactly what a green bootstrap must not hide."""
+    return seed.seed_github_workflows(org)
 
 
 def preflight(org: str) -> bool:
@@ -718,6 +732,10 @@ def _run(args: argparse.Namespace) -> int:
     org_name = args.org_name or args.org
     course_name = args.course_name or org_name
     admin_logins = _parse_handles(args.admins)
+    # Sub-steps that write machinery (workflows, welcome/config seeds, the cohort
+    # registration, the faculty sync) each report a failure count; a half-configured org
+    # must exit non-zero, so they are threaded here rather than logged and dropped.
+    failures = 0
 
     log(f"Bootstrapping org: {args.org}")
     log(f"  Org name: {org_name}")
@@ -750,7 +768,7 @@ def _run(args: argparse.Namespace) -> int:
     # 3b. Course vs cohort wiring.
     if args.cohort:
         # Cohort: student-facing welcome + roster + tightened perms.
-        setup_cohort_extras(args.org)
+        failures += setup_cohort_extras(args.org)
         if args.course:
             # Pointer back to the course org, in this cohort's .github/dsl-course.yml -
             # the classroom-config dispatchers read its `course:` line to know where to
@@ -769,12 +787,20 @@ def _run(args: argparse.Namespace) -> int:
                 _cohort_metadata(args.org, args.course).encode(),
                 "ci: seed cohort -> course pointer (dispatchers read this)",
             )
-            seed.register_cohort(args.course, args.org)
+            # register_cohort returns False on a failed registry write. A cohort that is
+            # invisible to discover_cohorts is invisible to every nightly sync, so a claimed
+            # -but-unregistered cohort must red the bootstrap rather than proceed silently.
+            if not seed.register_cohort(args.course, args.org):
+                failures += 1
+                log_err(
+                    f"could not register {args.org} in {args.course}'s cohort registry - "
+                    f"it will be missing from the faculty dropdowns and every nightly sync"
+                )
             # Give this cohort the course's current, currently-active faculty roster
             # from day one (instructors/course-admin), rather than waiting for the
             # next push/cron sync. Scoped to just this cohort (cohorts=[args.org]) so
             # bootstrapping one more cohort doesn't re-touch every already-registered one.
-            sync_faculty.sync(args.course, cohorts=[args.org])
+            failures += sync_faculty.sync(args.course, cohorts=[args.org])
             # Populate + prune + wire the freshly-scaffolded site from the org structure.
             # This ONE sync is what replaces the website template's placeholders ("Fall
             # 2025", "Course Name (Code)") with this course's identity and the cohort's
@@ -803,7 +829,7 @@ def _run(args: argparse.Namespace) -> int:
             )
     else:
         # Course: seed the org-level buttons (incl. the central Release actions) into .github.
-        seed_workflows(args.org)
+        failures += seed_workflows(args.org)
 
     # 3c. Button access: grant this course's own instructors/course-admin teams write/admin
     # on .github (without it only the org owner can run the buttons), then seed the named
@@ -910,6 +936,12 @@ then run bootstrap with --cohort (seeds welcome + roster + tightens perms).
             f"triage onboarding issues\n"
         )
 
+    if failures:
+        log_err(
+            f"bootstrap incomplete: {failures} configuration step(s) failed - re-run "
+            f"once the cause is cleared (Actions log above has the failing write(s))"
+        )
+        return 1
     return 0
 
 

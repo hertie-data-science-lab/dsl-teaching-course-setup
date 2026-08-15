@@ -48,6 +48,23 @@ from .utils import (
 _GIT_ENV = GIT_ENV
 
 
+def _resolve_within(base: Path, rel: str) -> Path | None:
+    """Resolve `rel` under the clone `base`, or None if it is unsafe to copy.
+
+    Rejected: a path that strips to empty or `.` (the repo ROOT - copying it would drag the
+    clone's own `.git` over the dest and redirect the subsequent push into the wrong repo),
+    and any `..` path that resolves outside the clone. Both are impossible copies, caught
+    before any file is touched."""
+    cleaned = rel.strip("/")
+    if not cleaned or cleaned == ".":
+        return None
+    base_r = base.resolve()
+    target = (base / cleaned).resolve()
+    if target == base_r or not target.is_relative_to(base_r):
+        return None
+    return target
+
+
 def deploy_many(
     source_org: str,
     cohort_org: str,
@@ -116,30 +133,59 @@ def deploy_many(
             ):
                 continue  # its source/dest failed to clone (already counted)
             src_path = d.course_source_path.strip("/")
-            dest_path = (d.cohort_dest_path or d.course_source_path).strip(
+            dest_rel = (d.cohort_dest_path or d.course_source_path).strip(
                 "/"
             ) or src_path
-            srcp = src_dirs[d.course_source_repo] / src_path
+            srcp = _resolve_within(src_dirs[d.course_source_repo], d.course_source_path)
+            if srcp is None:
+                log_err(
+                    f"unsafe course_source_path `{d.course_source_path}` for "
+                    f"{source_org}/{d.course_source_repo} - refusing to release the repo "
+                    f"root or a path escaping the clone. skipped."
+                )
+                errors += 1
+                continue
+            destp = _resolve_within(dest_dirs[d.cohort_dest_repo], dest_rel)
+            if destp is None:
+                log_err(
+                    f"unsafe cohort_dest_path `{dest_rel}` for "
+                    f"{cohort_org}/{d.cohort_dest_repo} - skipped."
+                )
+                errors += 1
+                continue
             if not srcp.exists():
                 log_err(
                     f"`{src_path}` not found in {source_org}/{d.course_source_repo} - skipped."
                 )
                 errors += 1
                 continue
-            destp = dest_dirs[d.cohort_dest_repo] / dest_path
             if srcp.is_dir():
-                shutil.copytree(srcp, destp, dirs_exist_ok=True)
+                # Never copy a `.git` directory: it would overwrite the dest's own git
+                # metadata and misdirect the push.
+                shutil.copytree(
+                    srcp,
+                    destp,
+                    dirs_exist_ok=True,
+                    ignore=shutil.ignore_patterns(".git"),
+                )
             else:
                 destp.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(srcp, destp)
-            log_ok(f"+ {d.cohort_dest_repo}/{dest_path}")
+            log_ok(f"+ {d.cohort_dest_repo}/{dest_rel}")
             touched.add(d.cohort_dest_repo)
 
         # 4. one commit + push per touched dest (skip if it has no net change)
         for repo in sorted(touched):
             dd = dest_dirs[repo]
             git("-C", str(dd), *_GIT_ENV, "add", "-A")
-            code, _ = git(
+            # Distinguish "nothing staged" (genuinely nothing new to release - the
+            # idempotent no-op) from a real commit failure (disk, lock, hook): git commit
+            # exits non-zero for BOTH, so a failed commit would otherwise be reported as
+            # "nothing new to release" and silently lost.
+            if git("-C", str(dd), "diff", "--cached", "--quiet")[0] == 0:
+                log_ok(f"  {repo}: nothing new to release")
+                continue
+            code, out = git(
                 "-C",
                 str(dd),
                 *_GIT_ENV,
@@ -150,7 +196,8 @@ def deploy_many(
                 f"release: sync materials into {repo}",
             )
             if code != 0:
-                log_ok(f"  {repo}: nothing new to release")
+                log_err(f"  {repo}: commit failed - {out[:200]}")
+                errors += 1
                 continue
             if git("-C", str(dd), *_GIT_ENV, "push", "-q", "origin", "HEAD")[0] != 0:
                 log_err(f"  {repo}: push failed")
@@ -162,7 +209,16 @@ def deploy_many(
     if sync and changed:
         from . import site
 
-        site.sync_site(source_org, cohort_org)
+        # site.sync_site RAISES on a genuine tree/team read failure - one cohort's
+        # site-sync failure must be logged and counted (making the release non-zero), not
+        # an unhandled traceback that aborts the batch.
+        try:
+            if site.sync_site(source_org, cohort_org) != 0:
+                log_err("site sync incomplete after release")
+                errors += 1
+        except Exception as exc:
+            log_err(f"site sync failed after release: {exc}")
+            errors += 1
     return errors, changed
 
 
@@ -221,6 +277,12 @@ def main() -> int:
         help="Destination path(s), paired with --course-source-path by index "
         "(default: mirror each --course-source-path)",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print the resolved source -> dest path pairs and exit without cloning or "
+        "copying anything (the cheapest check that a release will land where you expect).",
+    )
     args = parser.parse_args()
 
     dest_repo = args.cohort_dest_repo.strip() or "materials"
@@ -232,6 +294,17 @@ def main() -> int:
     except ValueError as e:
         log_err(f"{e}.")
         return 1
+
+    if args.dry_run:
+        log_step(
+            f"DRY-RUN release {len(pairs)} path(s) from "
+            f"{args.source_org}/{args.course_source_repo} -> {args.cohort_org}/{dest_repo}"
+        )
+        for src, dest in pairs:
+            log(
+                f"  DRY-RUN  {args.course_source_repo}/{src} -> {dest_repo}/{dest or src}"
+            )
+        return 0
 
     log_step(
         f"Releasing {len(pairs)} path(s) from {args.source_org}/{args.course_source_repo} -> "

@@ -189,6 +189,38 @@ def test_cohort_dest_repo_defaults_to_materials(monkeypatch):
     assert captured[0][0].cohort_dest_repo == "materials"
 
 
+def test_dry_run_prints_the_resolved_pairs_without_deploying(monkeypatch, capsys):
+    # The human-pressed release path gets the scheduler's dry-run: print the resolved
+    # source -> dest pairs and exit, cloning/copying nothing (the cheapest guard against a
+    # root-path release landing somewhere unexpected).
+    monkeypatch.setattr(
+        deploy,
+        "deploy_many",
+        lambda *a, **k: pytest.fail("must not deploy on --dry-run"),
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "deploy",
+            "--source-org",
+            "Course",
+            "--course-source-repo",
+            "course-materials-f2026",
+            "--cohort-org",
+            "Cohort-f2026",
+            "--course-source-path",
+            "lectures/02,labs/02",
+            "--cohort-dest-path",
+            "week02/lecture,week02/lab",
+            "--dry-run",
+        ],
+    )
+    assert deploy.main() == 0
+    out = capsys.readouterr().out
+    assert "course-materials-f2026/lectures/02 -> materials/week02/lecture" in out
+    assert "course-materials-f2026/labs/02 -> materials/week02/lab" in out
+
+
 def test_released_repos_are_read_by_both_cohort_role_teams():
     # Auditors see exactly what enrolled students see once it's released - the read grant
     # is one helper covering both teams, so no release site can grant only `students`.

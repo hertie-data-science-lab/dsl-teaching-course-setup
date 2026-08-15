@@ -50,6 +50,7 @@ from .roster import CONFIG_REPO
 from .utils import (
     delete_file,
     gh,
+    is_missing_resource,
     log,
     log_err,
     log_ok,
@@ -216,25 +217,45 @@ def seed_github_workflows(course_org: str) -> int:
     return failures
 
 
-def _propagate_repo_secret(course_org: str, repos: list[str]) -> None:
+def _propagate_repo_secret(course_org: str, repos: list[str]) -> int:
     """On GitHub Free, org secrets don't reach PRIVATE repos - so set DSL_BOT_TOKEN as a
     repo secret on each content repo (from the token this run already holds), letting
-    their run-from-repo workflows authenticate."""
-    token = os.environ.get("DSL_BOT_TOKEN") or os.environ.get("GH_TOKEN")
+    their run-from-repo workflows authenticate. Returns the number of repos the secret
+    could NOT be set on: a repo left with an empty DSL_BOT_TOKEN runs its Release buttons
+    with no auth and fails weeks later when faculty press them, so a failure here must
+    count into refresh's exit code rather than pass silently.
+
+    Only DSL_BOT_TOKEN is published. A maintainer running `seed refresh` by hand usually
+    has their PERSONAL GH_TOKEN exported; publishing that as the shared repo secret would
+    leak their PAT into every content repo, so if only GH_TOKEN is set we refuse and warn
+    rather than propagate it. The value goes over stdin (`--body-file -`), never argv, so
+    it is not visible in `ps`."""
+    token = os.environ.get("DSL_BOT_TOKEN")
     if not token:
-        return
+        if os.environ.get("GH_TOKEN"):
+            log_err(
+                "DSL_BOT_TOKEN not set (only GH_TOKEN is) - refusing to publish a personal "
+                "token as the DSL_BOT_TOKEN repo secret; set DSL_BOT_TOKEN to propagate it."
+            )
+        return 0
+    failures = 0
     for repo in repos:
-        code, _ = gh(
+        code, out = gh(
             "secret",
             "set",
             "DSL_BOT_TOKEN",
             "--repo",
             f"{course_org}/{repo}",
-            "--body",
-            token,
+            "--body-file",
+            "-",
+            stdin=token,
         )
         if code == 0:
             log_ok(f"repo secret -> {repo}")
+        else:
+            log_err(f"could not set DSL_BOT_TOKEN on {course_org}/{repo}: {out[:120]}")
+            failures += 1
+    return failures
 
 
 def refresh(course_org: str) -> int:
@@ -259,7 +280,7 @@ def refresh(course_org: str) -> int:
     failures = 0
     for repo in sorted(targets):
         failures += _push_workflows(course_org, repo, cohorts, assignments)
-    _propagate_repo_secret(course_org, targets)
+    failures += _propagate_repo_secret(course_org, targets)
     failures += seed_github_workflows(course_org)
     update_profile_readme(course_org)
     # A cohort's onboarding workflows and config samples are seeded once, at Bootstrap
@@ -269,6 +290,17 @@ def refresh(course_org: str) -> int:
         f"Refreshing welcome workflows + config samples in {len(cohorts)} cohort org(s)"
     )
     for cohort in cohorts:
+        # A cohort org DELETED after it was registered 404s on every write, which would red
+        # the nightly cron forever. Skip a genuinely-gone cohort with a prune hint instead
+        # (distinct from an archived cohort, which still exists but is read-only). A
+        # transient read failure is NOT a 404, so a live cohort is never skipped by mistake.
+        code, out = gh("api", f"repos/{cohort}/{CONFIG_REPO}")
+        if code != 0 and is_missing_resource(out):
+            log(
+                f"  [skip] {cohort} (no {CONFIG_REPO} repo - deleted cohort org? prune it "
+                f"from {course_org}/.github/{COHORTS_PATH})"
+            )
+            continue
         # A finished semester's cohort is archived, and an archived repo is read-only:
         # every write 403s, and the samples are new files so put_file's sha no-op can't
         # absorb it. A past cohort is meant to stay frozen anyway, so skip it whole rather

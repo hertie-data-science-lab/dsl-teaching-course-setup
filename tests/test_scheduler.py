@@ -206,6 +206,15 @@ def test_execute_nondeploy_assignment_calls_provision_all(monkeypatch):
     assert calls[0] == ("Course-Org", "assignment-2-f2026", "Cohort-Org")
 
 
+def _git_with_staged_changes(*args):
+    """A git fake that reports staged changes: `git diff --cached --quiet` exits 1 (there
+    IS something to commit - what a real copytree leaves behind), so the deploy commits and
+    pushes; every other git call (add/commit/push) succeeds."""
+    if "diff" in args and "--cached" in args:
+        return (1, "")  # non-zero = staged changes present
+    return (0, "")
+
+
 def test_deploy_many_clones_each_repo_once(monkeypatch):
     # The optimisation: 3 deploys from one source into two dests clone the source ONCE
     # and each dest ONCE (3 clones total), not once per copy (6).
@@ -228,7 +237,9 @@ def test_deploy_many_clones_each_repo_once(monkeypatch):
         return (0, "")
 
     monkeypatch.setattr(deploy, "gh", fake_gh)
-    monkeypatch.setattr(deploy, "git", lambda *a: (0, ""))  # commit + push succeed
+    # `git diff --cached --quiet` reports staged changes (exit 1) so the copies commit;
+    # everything else (add/commit/push) succeeds.
+    monkeypatch.setattr(deploy, "git", _git_with_staged_changes)
     monkeypatch.setattr(deploy, "create_repo", lambda *a, **k: True)
     monkeypatch.setattr(deploy, "grant_read_teams", lambda *a, **k: None)
 
@@ -315,6 +326,161 @@ def test_deploy_many_counts_each_unrunnable_deploy_once(monkeypatch):
         3,
         False,
     )
+
+
+# ------------------------------------------------ deploy path-safety + commit failures
+
+
+def _clone_with_tree(tree: dict[str, str]):
+    """A gh fake whose source clone is seeded with `tree` (relpath -> file text); dest
+    clones are empty. `tree` may include a `.git/...` entry to prove it is never copied."""
+
+    def fake_gh(*args):
+        if args[:2] == ("repo", "clone"):
+            spec, dest = args[2], args[3]
+            base = Path(dest)
+            base.mkdir(parents=True, exist_ok=True)
+            if spec.startswith("Course-Org/"):
+                for rel, text in tree.items():
+                    p = base / rel
+                    p.parent.mkdir(parents=True, exist_ok=True)
+                    p.write_text(text)
+            return (0, "")
+        return (0, "")
+
+    return fake_gh
+
+
+def test_deploy_many_rejects_a_repo_root_source_path(monkeypatch):
+    # A `.`/`/`/"" course_source_path resolves to the clone ROOT; copying it would drag the
+    # source's own .git over the dest and redirect the push into the COURSE repo. Reject it.
+    _no_io(monkeypatch, _clone_with_tree({"f.txt": "x", ".git/config": "[core]"}))
+    for bad in (".", "/", ""):
+        errors, changed = deploy.deploy_many(
+            "Course-Org",
+            "Cohort-Org",
+            [Deploy("cm", bad, "materials", None)],
+            sync=False,
+        )
+        assert (errors, changed) == (1, False), bad
+
+
+def test_deploy_many_rejects_a_dotdot_escaping_source_path(monkeypatch):
+    _no_io(monkeypatch, _clone_with_tree({"lectures/00_x/f.txt": "x"}))
+    errors, changed = deploy.deploy_many(
+        "Course-Org",
+        "Cohort-Org",
+        [Deploy("cm", "../../etc/passwd", "materials", None)],
+        sync=False,
+    )
+    assert (errors, changed) == (1, False)
+
+
+def test_deploy_many_never_copies_a_dot_git_directory(monkeypatch):
+    # Even a legitimate folder copy must exclude any nested .git: it would clobber the
+    # dest's git metadata and misdirect the push. Inspect the dest tree at `git add` time,
+    # before the TemporaryDirectory is cleaned up.
+    monkeypatch.setattr(
+        deploy,
+        "gh",
+        _clone_with_tree(
+            {"lectures/00_x/f.txt": "hi", "lectures/00_x/.git/config": "x"}
+        ),
+    )
+    copied_rel: list[str] = []
+
+    def spy_git(*args):
+        if "add" in args:
+            dd = Path(args[args.index("-C") + 1])
+            copied_rel.extend(
+                str(p.relative_to(dd)) for p in dd.rglob("*") if p.is_file()
+            )
+        return _git_with_staged_changes(*args)
+
+    monkeypatch.setattr(deploy, "git", spy_git)
+    monkeypatch.setattr(deploy, "create_repo", lambda *a, **k: True)
+    monkeypatch.setattr(deploy, "grant_read_teams", lambda *a, **k: None)
+
+    errors, changed = deploy.deploy_many(
+        "Course-Org",
+        "Cohort-Org",
+        [Deploy("cm", "lectures/00_x", "materials", None)],
+        sync=False,
+    )
+    assert (errors, changed) == (0, True)
+    assert "lectures/00_x/f.txt" in copied_rel
+    assert not any(".git" in rel for rel in copied_rel)
+
+
+def _git_commit_failing(*args):
+    """git fake: staged changes present (diff --cached exits 1), but the commit itself
+    fails (exit 1) - a real disk/lock/hook failure, distinct from an empty index."""
+    if "diff" in args and "--cached" in args:
+        return (1, "")
+    if "commit" in args:
+        return (1, "error: could not write commit - No space left on device")
+    return (0, "")
+
+
+def test_deploy_many_counts_a_real_commit_failure(monkeypatch, capsys):
+    # A non-zero commit with staged changes is a real failure (disk/lock/hook), NOT the
+    # "nothing new to release" no-op - it must count as an error, not be silently dropped.
+    monkeypatch.setattr(deploy, "gh", _clone_with_tree({"lectures/00_x/f.txt": "x"}))
+    monkeypatch.setattr(deploy, "git", _git_commit_failing)
+    monkeypatch.setattr(deploy, "create_repo", lambda *a, **k: True)
+    monkeypatch.setattr(deploy, "grant_read_teams", lambda *a, **k: None)
+
+    errors, changed = deploy.deploy_many(
+        "Course-Org",
+        "Cohort-Org",
+        [Deploy("cm", "lectures/00_x", "materials", None)],
+        sync=False,
+    )
+    assert (errors, changed) == (1, False)
+    out = capsys.readouterr()
+    assert "commit failed" in out.err
+    assert "nothing new to release" not in out.out
+
+
+def test_deploy_many_reports_nothing_new_when_index_is_empty(monkeypatch, capsys):
+    # An empty index (diff --cached exits 0) is the genuine idempotent no-op: no error, no
+    # commit attempted, "nothing new to release".
+    monkeypatch.setattr(deploy, "gh", _clone_with_tree({"lectures/00_x/f.txt": "x"}))
+    monkeypatch.setattr(
+        deploy, "git", lambda *a: (0, "")
+    )  # diff --cached: nothing staged
+    monkeypatch.setattr(deploy, "create_repo", lambda *a, **k: True)
+    monkeypatch.setattr(deploy, "grant_read_teams", lambda *a, **k: None)
+
+    errors, changed = deploy.deploy_many(
+        "Course-Org",
+        "Cohort-Org",
+        [Deploy("cm", "lectures/00_x", "materials", None)],
+        sync=False,
+    )
+    assert (errors, changed) == (0, False)
+    assert "nothing new to release" in capsys.readouterr().out
+
+
+def test_deploy_many_counts_a_raised_site_sync(monkeypatch):
+    # site.sync_site RAISES on a genuine read failure - deploy_many must catch it, count it,
+    # and return non-zero, not let the traceback escape.
+    monkeypatch.setattr(deploy, "gh", _clone_with_tree({"lectures/00_x/f.txt": "x"}))
+    monkeypatch.setattr(deploy, "git", _git_with_staged_changes)
+    monkeypatch.setattr(deploy, "create_repo", lambda *a, **k: True)
+    monkeypatch.setattr(deploy, "grant_read_teams", lambda *a, **k: None)
+
+    def boom(course, cohort):
+        raise RuntimeError("tree read failed")
+
+    monkeypatch.setattr("dsl_course.site.sync_site", boom)
+    errors, changed = deploy.deploy_many(
+        "Course-Org",
+        "Cohort-Org",
+        [Deploy("cm", "lectures/00_x", "materials", None)],
+        sync=True,
+    )
+    assert errors == 1 and changed is True
 
 
 # ------------------------------------------------------------- deadline snapshots
@@ -849,3 +1015,47 @@ def test_run_survives_an_unparseable_schedule_and_exits_zero(monkeypatch, capsys
     captured = capsys.readouterr()
     assert "is NOT valid YAML" in captured.err
     assert "0/0 release(s) due" in captured.out
+
+
+# ---------------------------------------------- per-cohort isolation (--all-cohorts)
+
+
+def test_run_releases_counts_a_raised_site_sync(monkeypatch):
+    # site.sync_site RAISES on a genuine tree/team read failure (post-PR2). _run_releases
+    # must catch it, count it, and return non-zero - not let the traceback abort the tick
+    # (and, under --all-cohorts, every cohort scheduled after it).
+    monkeypatch.setattr(
+        "dsl_course.deploy.deploy_many",
+        lambda *a, **k: (0, True),  # something changed
+    )
+
+    def boom(course, cohort):
+        raise RuntimeError("tree read failed")
+
+    monkeypatch.setattr("dsl_course.site.sync_site", boom)
+    due = [_r("wk1", WHEN, deploy=[Deploy("cm", "lectures/01", "materials", None)])]
+    assert scheduler._run_releases("Course-Org", "Cohort-Org", due, WHEN) == 1
+
+
+def test_all_cohorts_loop_survives_one_cohorts_raised_failure(monkeypatch, capsys):
+    # The lesson PR #151/#146 applied to the nightly refresh: one cohort's raised failure
+    # (unreachable API, a blown-up site sync) must not abort the remaining cohorts' work.
+    # main() imports discover_cohorts from .seed at call time, so patch it at the source.
+    monkeypatch.setattr(seed, "discover_cohorts", lambda org: ["Cohort-A", "Cohort-B"])
+    seen: list[str] = []
+
+    def fake_run(course, cohort, now, dry_run=False):
+        seen.append(cohort)
+        if cohort == "Cohort-A":
+            raise RuntimeError("Cohort-A: gh: HTTP 502")
+        return 0
+
+    monkeypatch.setattr(scheduler, "run", fake_run)
+    monkeypatch.setattr(
+        "sys.argv",
+        ["scheduler", "--course-org", "Course-Org", "--all-cohorts"],
+    )
+    # Cohort-A raises, Cohort-B must still run, and the batch reports failure.
+    assert scheduler.main() == 1
+    assert seen == ["Cohort-A", "Cohort-B"]
+    assert "Cohort-A" in capsys.readouterr().err
