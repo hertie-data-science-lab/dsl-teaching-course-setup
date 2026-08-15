@@ -43,6 +43,19 @@ def code_of(script: str) -> str:
     )
 
 
+def retry_loop(code: str) -> str:
+    """The read-modify-write retry loop only - `for (let attempt` through its matching
+    closing brace - so an assertion about the loop can't be satisfied (or broken) by code
+    that merely happens to sit after it."""
+    start = code.index("for (let attempt")
+    depth = 0
+    for j in range(code.index("{", start), len(code)):
+        depth += {"{": 1, "}": -1}.get(code[j], 0)
+        if depth == 0:
+            return code[start : j + 1]
+    raise AssertionError("unbalanced braces in the retry loop")
+
+
 def csv_helpers(script: str) -> str:
     """The parseCsv/csvCell/serialiseCsv block, for cross-workflow drift checks."""
     start = script.index("const parseCsv")
@@ -194,6 +207,80 @@ def test_forms_have_no_confirmation_checkbox_and_fixed_titles():
         doc = yaml.safe_load((WELCOME / rel).read_text())
         assert doc["title"] == fixed
         assert all(b.get("type") != "checkboxes" for b in doc["body"]), rel
+
+
+@pytest.mark.parametrize("rel", sorted(CSV_WORKFLOWS))
+def test_onboarding_concurrency_is_scoped_per_issue(rel):
+    # A repo-wide group with cancel-in-progress: false looks like serialisation but isn't:
+    # GitHub keeps exactly ONE pending run per group, so on a first-day burst of Join
+    # issues the third arrival CANCELS the second - and a cancelled run posts no comment
+    # and adds no label, so those students are dropped in silence. Scoping the group to the
+    # issue lets the burst run in parallel; the CSV's `sha` + the retry below is what makes
+    # the concurrent writes safe (a stale sha is a 409, never a lost update).
+    doc = yaml.safe_load((WELCOME / rel).read_text())
+    assert "github.event.issue.number" in doc["concurrency"]["group"]
+    assert doc["concurrency"]["cancel-in-progress"] is False
+
+
+@pytest.mark.parametrize("rel", sorted(CSV_WORKFLOWS))
+def test_onboarding_workflows_are_minimally_scoped(rel):
+    # Bounded jobs and sha-pinned actions are swept over every shipped workflow in
+    # test_shipped_workflows.py; what is UNIQUE to these two is the exact scope. The
+    # ambient token comments on, labels and closes the issue in THIS repo and gets nothing
+    # else: the CSV they write lives in classroom-config, which only DSL_BOT_TOKEN reaches,
+    # so `contents:` here would be scope with no purpose.
+    doc = yaml.safe_load((WELCOME / rel).read_text())
+    assert doc["permissions"] == {"issues": "write"}
+
+
+@pytest.mark.parametrize("rel,job", sorted(CSV_WORKFLOWS.items()))
+def test_the_csv_write_retries_and_ends_in_a_comment_not_a_stack_trace(rel, job):
+    # Many issues are in flight at once now that they run in parallel, and each is a
+    # read-modify-write of the same file. A stale sha is a 409; a first-day burst can also
+    # draw a 403 naming GitHub's SECONDARY rate limit. Both are retried, with JITTER (a
+    # burst retrying in lockstep just collides again on the same schedule).
+    code = code_of(script_of(rel, job))
+    assert "e.status === 409" in code
+    assert "secondary rate limit" in code
+    assert "Math.random()" in code, "backoff must be jittered"
+    assert "ATTEMPTS = 8" in code
+    # Exhaustion is a RESULT, not a crash: a bare throw leaves a red run with no comment
+    # and no label, so the student is dropped in silence and nobody triages it.
+    loop = retry_loop(code)
+    assert "throw e" not in loop, "a terminal path must comment + label, not throw"
+    assert "attempt === ATTEMPTS) return fail(" in loop
+
+
+def test_onboard_retries_the_roster_write_on_a_conflict():
+    # The write RE-READS and re-applies rather than giving up (or, worse, writing a stale
+    # table back) - and everything read afterwards comes off that fresh snapshot.
+    code = code_of(script_of("onboard.yml", "onboard"))
+    assert code.count("await readRoster()") >= 2, "a retry must re-read, not re-send"
+    # Only this student's row is touched, keyed on their unique code, so a retry can never
+    # undo the row a competing run committed in between.
+    assert "rows.find(r => r[iCode]" in code
+    loop = retry_loop(code)
+    # Two issues quoting the same code race here: the "already bound to another handle"
+    # guard must be RE-TAKEN on the re-read row, or the loser overwrites the winner.
+    assert "boundElsewhere(matched)" in loop
+    assert loop.index("boundElsewhere(matched)") < loop.index(
+        "matched[iHandle] = handle"
+    )
+    # ...and the role read further down addresses the fresh row, not the first snapshot's.
+    assert "(matched[iRole] || '')" in code
+    assert "(row[iRole] || '')" not in code
+
+
+def test_team_formation_retakes_the_cap_decision_on_every_attempt():
+    code = code_of(script_of("team-formation.yml", "form-team"))
+    loop = retry_loop(code)
+    # The read, the duplicate-membership check and the size cap all live INSIDE the retry
+    # loop: two students committing at the same moment must not both slip past a full team.
+    for fragment in ("await readTeams()", "size >= cap", "createOrUpdateFileContents"):
+        assert fragment in loop, fragment
+    # 422 is the create-on-first-use race: our request carried no sha because the file did
+    # not exist when we read it, but it does now.
+    assert "e.status === 422" in code
 
 
 def test_team_cap_is_read_from_schedule_yml_per_assignment():

@@ -60,6 +60,35 @@ def test_metadata_is_empty_only_for_an_org_that_carries_none(monkeypatch):
         list_orgs._fetch_metadata("Cohort-f2026")
 
 
+def test_a_full_search_page_is_read_as_truncation(monkeypatch):
+    # `gh search repos --limit N` returns one page. A result set that exactly fills it is
+    # indistinguishable from a truncated one, and this page is fully generated and merged
+    # unattended - so every org past the limit would be silently deleted from the
+    # inventory. Fail the run instead.
+    monkeypatch.setattr(
+        list_orgs,
+        "gh_json",
+        lambda *a: [
+            {"name": ".github", "owner": {"login": f"Org-{i}"}}
+            for i in range(list_orgs.SEARCH_LIMIT)
+        ],
+    )
+    with pytest.raises(RuntimeError, match="truncated"):
+        list_orgs._tagged_orgs(list_orgs.COURSE_HUB_TOPIC)
+
+
+def test_a_partial_search_page_is_read_normally(monkeypatch):
+    monkeypatch.setattr(
+        list_orgs,
+        "gh_json",
+        lambda *a: [
+            {"name": ".github", "owner": {"login": "Org-A"}},
+            {"name": "course-materials", "owner": {"login": "Org-B"}},  # not a .github
+        ],
+    )
+    assert list_orgs._tagged_orgs(list_orgs.COURSE_HUB_TOPIC) == ["Org-A"]
+
+
 def test_metadata_parses_the_yaml_body(monkeypatch):
     monkeypatch.setattr(list_orgs, "gh", lambda *a, **k: (0, "course: My-Course\n"))
     assert list_orgs._fetch_metadata("Cohort-f2026") == {"course": "My-Course"}

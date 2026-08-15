@@ -24,6 +24,12 @@ from .utils import gh, gh_json, log_err
 COURSE_HUB_TOPIC = "dsl-course-hub"
 COHORT_TOPIC = "dsl-cohort"
 
+# How many results one `gh search repos` page returns. This inventory is fully generated
+# and merged unattended, so silently reading only the first page would quietly delete every
+# org past it from the page - _tagged_orgs raises instead when the result set fills the
+# limit. Raise this (gh allows up to 1000) when the estate outgrows it.
+SEARCH_LIMIT = 100
+
 # The full inventory page. Entirely generated - hand edits are overwritten on the next
 # refresh, so layout/prose changes belong HERE, not in the .md.
 PAGE = """\
@@ -57,16 +63,25 @@ Or run **Refresh Course Orgs Inventory** from the Actions tab.
 
 
 def _tagged_orgs(topic: str) -> list[str]:
-    """Owner logins of every `.github` repo carrying `topic`."""
+    """Owner logins of every `.github` repo carrying `topic`.
+
+    Raises when the search comes back exactly full: that is indistinguishable from a
+    truncated result set, and an inventory silently missing its tail is worse than none."""
     results = gh_json(
         "search",
         "repos",
         f"topic:{topic}",
         "--limit",
-        "100",
+        str(SEARCH_LIMIT),
         "--json",
         "name,owner",
     )
+    if len(results) >= SEARCH_LIMIT:
+        raise RuntimeError(
+            f"`gh search repos topic:{topic}` returned the full {SEARCH_LIMIT}-result "
+            f"page, so the result set is truncated and any org past it would be dropped "
+            f"from the inventory. Raise SEARCH_LIMIT in dsl_course/list_orgs.py."
+        )
 
     owners = []
     for repo in results:

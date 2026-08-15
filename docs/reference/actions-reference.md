@@ -44,3 +44,12 @@ Full flow: [Grade and return assignments](../10-grade-and-return-assignments.md)
 | Action | Effect |
 | --- | --- |
 | **Publish course website** | Build/refresh a **public** `<course-org>.github.io` sharing this course's lectures + readings. Pick a `source_repo`; `readings_mode` = `reading-list` (citations only, default), `actual-readings` (host the files) or `none`. The first run opts in and records its settings in `_publish-config.yml`; a daily cron re-syncs from them - delete that file to stop. |
+
+## When a scheduled run fails
+
+The five scheduled actions (Scheduled release, Sync membership, Sync site, Refresh actions,
+Publish course website) run with nobody watching, so a failure **opens an issue in your
+`.github` repo** titled *"&lt;action&gt; is failing"*, with a link to the run. It comments on
+that same issue while the failure persists, and closes it as soon as a run succeeds - so an
+open one always means "still broken". Don't close it by hand; fix the cause and re-run the
+action.

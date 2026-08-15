@@ -1204,6 +1204,25 @@ def main() -> int:
                     )
                     rc |= 1  # accumulate, don't clobber prior cohorts' status bits
             return rc
+        # --cohort-org arrives on the automatic path straight from a repository_dispatch's
+        # `client_payload.cohort_org`, written by whoever holds a cohort's DSL_BOT_TOKEN - a
+        # lower trust tier than the course org. Naming SOMEONE ELSE'S cohort would rebuild
+        # that cohort's site from this dispatch. The registry is the authority on which
+        # cohorts this course org owns, so an unregistered name is refused. Checked here
+        # rather than inside sync_site, because every internal caller (a release, the
+        # scheduler, the --all-cohorts loop above) already passes a cohort it read FROM the
+        # registry - only the CLI takes one from outside. Casefold: GitHub org names are
+        # case-insensitive.
+        registered = seed.discover_cohorts(args.course_org)
+        if registered and args.cohort_org.casefold() not in {
+            c.casefold() for c in registered
+        }:
+            log_err(
+                f"{args.cohort_org} is not registered under {args.course_org} "
+                f"({seed.COHORTS_PATH} lists {', '.join(sorted(registered))}) - refusing "
+                f"to sync its site."
+            )
+            return 1
         return sync_site(args.course_org, args.cohort_org)
     except (RuntimeError, yaml.YAMLError) as exc:
         log_err(str(exc))

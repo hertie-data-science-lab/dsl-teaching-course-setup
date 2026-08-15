@@ -51,6 +51,24 @@ def sync(
             f"org itself will be reconciled. Expected for a brand-new course org; a "
             f"problem if this course has live cohorts."
         )
+    # A named cohort reaches here straight from a repository_dispatch's
+    # `client_payload.cohort_org`, which is written by whoever holds a cohort's
+    # DSL_BOT_TOKEN - a lower trust tier than the course org. Naming SOMEONE ELSE'S cohort
+    # would have this run reconcile (and prune) that cohort's roster and teams. The
+    # registry is the authority on which cohorts this course org owns, so a name that is
+    # not in it is refused rather than acted on. Compared casefold: GitHub org names are
+    # case-insensitive, and the registry's spelling need not match the dispatch's.
+    if (
+        cohort_org
+        and all_registered
+        and cohort_org.casefold() not in {c.casefold() for c in all_registered}
+    ):
+        log_err(
+            f"{cohort_org} is not registered under {course_org} "
+            f"({seed.COHORTS_PATH} lists {', '.join(sorted(all_registered))}) - refusing "
+            f"to reconcile it. Register the cohort first if this is genuinely its course org."
+        )
+        return 1
     errors = sync_faculty.sync_course_admins(
         course_org, all_registered, dry_run=dry_run
     )
