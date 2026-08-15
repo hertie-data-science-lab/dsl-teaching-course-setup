@@ -21,8 +21,8 @@ else `due_datetime`), whether or not the cohort uses `releases` at all:
    `classroom-config/snapshots/<slug>.csv` (see `dsl_course.collect`). That timestamp is the
    server's, not the student's, which is the only reason the pin can be trusted.
 2. AUTOGRADE, ONCE. Then run the autograder for those same assignments - template
-   `<slug>-<tag>` in the course org. The fire-once marker is the `autograde/<slug>/`
-   results directory: present means already graded, so never again.
+   `<slug>-<tag>` in the course org. The fire-once marker is the `autograde/<slug>/_graded.json`
+   sentinel (or the `_skipped.json` record): present means already graded, so never again.
 
 Sources are always read from the course org and destinations always written to the cohort
 org - the two orgs come from the invocation (`--course-org` / `--cohort-org`), never from
@@ -151,6 +151,7 @@ def _snapshot_passed_deadlines(
     the first. Returns the error count."""
     from .collect import (
         load_snapshots,
+        resolve_is_group,
         snapshot_assignment,
         snapshot_path,
         template_is_group,
@@ -167,17 +168,22 @@ def _snapshot_passed_deadlines(
             log(f"    DRY-RUN  snapshot {snapshot_path(name)} (deadline {deadline})")
             continue
         log_step(f"  snapshot {name} (deadline {deadline})")
-        # Resolve group-ness the SAME way grading does - cohort schedule `type:` wins, else
-        # the template's grading.yml - so the snapshot freezes the exact repos grading scores.
-        # Deriving it from the schedule alone would miss a group assignment declared ONLY in
-        # grading.yml, freezing individual repos while grading targets group repos (every team
-        # then reads as "absent from the snapshot" and scores zero). Resolved from the sched
-        # already in hand, reading grading.yml only when the schedule leaves type unset.
+        # Resolve group-ness the SAME way grading does, through the one `resolve_is_group`
+        # precedence - cohort schedule `type:` wins, else the template's grading.yml - so the
+        # snapshot freezes the exact repos grading scores. Deriving it from the schedule alone
+        # would miss a group assignment declared ONLY in grading.yml, freezing individual repos
+        # while grading targets group repos (every team then reads as "absent from the snapshot"
+        # and scores zero). grading.yml is read only when the schedule leaves type unset.
         if entry.type is not None:
-            is_group = entry.type == "group"
+            template_group = None
         else:
             template = _assignment_template(course_org, slug, entry)
-            is_group = template_is_group(course_org, template) if template else None
+            template_group = (
+                template_is_group(course_org, template) if template else None
+            )
+        is_group = resolve_is_group(
+            force=False, schedule_type=entry.type, template_group=template_group
+        )
         if not snapshot_assignment(cohort_org, name, deadline, is_group=is_group):
             errors += 1
     return errors
@@ -211,10 +217,11 @@ def _autograde_passed_deadlines(
     """Autograde every passed-deadline assignment exactly once - zero config. Returns the
     error count.
 
-    Fire-once: `autograde/<slug>/` in classroom-config is the marker. Absent means never
-    machine-graded, so grade now; present means graded already, so never again - which is
-    what stops an hourly re-run from recomputing scores a marker has since hand-edited. A
-    deliberate re-grade = delete that directory (or use the Grade assignment button).
+    Fire-once: the `autograde/<slug>/_graded.json` sentinel (or the `_skipped.json` record) in
+    classroom-config is the marker. Absent means never machine-graded, so grade now; present
+    means graded already, so never again - which is what stops an hourly re-run from recomputing
+    scores a marker has since hand-edited. A deliberate re-grade = delete `autograde/<slug>/`
+    (or use the Grade assignment button).
 
     A missing template repo, a template with no `solution` branch, and `autograde: false`
     are all skips, not failures: plenty of assignments are hand-marked. Group vs individual

@@ -37,12 +37,17 @@ cron interval shortens it further. (To deliberately re-freeze - e.g. an assignme
 repos were provisioned late - delete the snapshot CSV and let the next tick rebuild it.)
 
 FIRE-ONCE.  The hourly scheduler autogrades each assignment exactly once, just after its
-grading deadline. The marker is the `autograde/<slug>/` directory this module writes: while
-it is absent the assignment has never been machine-graded, and once it exists it is never
-graded again automatically. A DECISION not to grade (no `solution` branch, `autograde:
-false`, nothing gradable) writes the marker too - as `<slug>/_skipped.json`, saying why -
-because a skip that leaves it absent is re-decided, at the cost of a template clone, every
-hour for ever. Machine-written grade cells are write-once too (see
+grading deadline. The marker is an explicit SENTINEL file this module writes as the very last
+action of a successful run - `autograde/<slug>/_graded.json` - NOT the mere existence of the
+`autograde/<slug>/` directory: an unchecked archive write used to create that directory
+first, so an aborted run left the marker present over unwritten scores and un-graded everyone.
+While no sentinel exists the assignment has never been machine-graded, and once one exists it
+is never graded again automatically. A DECISION not to grade (no `solution` branch,
+`autograde: false`, nothing gradable) writes the sentinel's sibling `<slug>/_skipped.json`
+instead, saying why - because a skip that leaves the directory empty is re-decided, at the
+cost of a template clone, every hour for ever. `has_autograde_results` tests for either
+record, never bare directory existence, so a stray early write into the directory can no
+longer be mistaken for a completed grade. Machine-written grade cells are write-once too (see
 `grades.merge_auto`), so a marker's hand-edit is never clobbered. To re-grade deliberately,
 delete `autograde/<slug>/` (the next tick regrades) or press the Grade assignment button -
 and clear the `auto`/`team_grade` cells you want recomputed.
@@ -67,11 +72,14 @@ import csv
 import io
 import json
 import os
+import resource
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
+from collections.abc import Iterator
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -96,11 +104,31 @@ from .utils import (
 
 CONFIG_REPO = roster.CONFIG_REPO  # classroom-config
 AUTOGRADE_DIR = "autograde"  # classroom-config/autograde/<slug>/<key>.json
+GRADED_RECORD = "_graded.json"  # fire-once sentinel: a successful run's LAST write
 SKIP_RECORD = "_skipped.json"  # the same marker, for an assignment nothing grades
 SNAPSHOT_DIR = "snapshots"  # classroom-config/snapshots/<slug>.csv
 SNAPSHOT_FIELDS = ("repo", "sha", "recorded_at")
 GRADING_FILE = "grading.yml"  # on the template's solution branch
-RUN_TIMEOUT = 300  # seconds per submission
+RUN_TIMEOUT = 300  # wall-clock seconds per graded subprocess
+
+# POSIX resource caps applied (via `_apply_rlimits`) to every subprocess that runs student
+# code, so one hostile submission can't take the whole grading job down with it. Module-level
+# and overridable so a test can dial one down to a tiny value. Each is lowered defensively
+# (never raised above the inherited hard cap, and a platform that refuses one just skips it),
+# so these are ceilings on the grading host, not guarantees on every dev box.
+RLIMIT_AS_BYTES = (
+    2 * 1024**3
+)  # address space: caps an allocate-until-OOM memory bomb (2 GiB,
+# generous for legitimate numpy/pandas submissions) before it can OOM-kill the runner
+RLIMIT_CPU_SECONDS = (
+    RUN_TIMEOUT * 2
+)  # CPU-seconds (per process, summed across threads): a
+# backstop should the wall-clock group-kill be evaded; >wall so it never preempts a legit run
+RLIMIT_NPROC_MAX = (
+    2048  # processes for the real uid: caps a fork bomb. Counts the WHOLE
+)
+# user's processes, so it sits well above a normal run yet far below system exhaustion
+RLIMIT_FSIZE_BYTES = 512 * 1024**2  # bytes per file: caps a disk-fill bomb (512 MiB)
 # `_snapshot_sha` sentinel: the repo is ABSENT (404), distinct from a reachable-but-empty repo
 # (""). Can't collide with a real sha (40 hex) or "". Recorded as "" if the snapshot is frozen.
 _REPO_ABSENT = "\x00absent"
@@ -113,6 +141,17 @@ _REPO_ABSENT = "\x00absent"
 # boundary regression. Deliberately NOT here: `pyproject.toml`/`setup.cfg`/`tox.ini` - they are
 # never read as pytest config from the checkout (the rootdir is the runspace) and a legitimate
 # package submission needs them to import. Matched ANYWHERE in the checkout, not just its root.
+#
+# SCOPE (be honest about it): this closes STATIC rigging - artefacts the student COMMITTED.
+# It does NOT stop the student's own code, once imported in-process by the hidden tests, from
+# rewriting the junit report pytest wrote (an `atexit` handler, or `os._exit` after a forged
+# write) to fake all-pass. That in-process forgery is a KNOWN, ACCEPTED residual, not a hole
+# these strips or the boundary claim to cover: it is tolerated because an autograde score is
+# never a standalone verdict - faculty add manual marks and review before the grades pipeline
+# distributes anything, and a student never sees the machine score in their own repo. If that
+# ever changes, the fix is a trusted out-of-band result channel (a streaming pytest plugin
+# that reports each outcome to the faculty process as it runs, so the final report can't be
+# retroactively rewritten) - it would live alongside the junit read in `_run_tests`.
 _STUDENT_TEST_RIGGING = (
     "report.xml",
     "conftest.py",
@@ -152,19 +191,44 @@ def template_is_group(master_org: str, template: str) -> bool:
     return parse_grading_spec(text or "")["type"] == "group"
 
 
+def resolve_is_group(
+    *, force: bool, schedule_type: str | None, template_group: bool | None
+) -> bool:
+    """The SINGLE precedence for group-vs-individual, shared by every resolver.
+
+    An explicit force (the Grade-assignment button's checkbox / `--group`) wins; else the
+    COHORT's declaration - `assignments.<slug>.type` in classroom-config/schedule.yml, passed
+    as `schedule_type`; else the template's design-time grading.yml `type:`, passed as
+    `template_group` (True/False, or None when not consulted); else individual. Pure: each
+    caller passes the inputs it already holds, so no consumer re-derives its own precedence
+    (and none re-trusts student-writable teams.csv to decide the kind)."""
+    if force:
+        return True
+    if schedule_type is not None:
+        return schedule_type == "group"
+    if template_group is not None:
+        return template_group
+    return False
+
+
 def assignment_is_group(master_org: str, cohort_org: str, template: str) -> bool:
     """The one resolution of group-vs-individual every consumer (handout, grading) uses.
 
-    Precedence: the COHORT's own declaration - `assignments.<slug>.type` in
-    classroom-config/schedule.yml - wins; else the template's design-time grading.yml
-    `type:` (solution branch, written by the New assignment scaffold); else individual.
-    Read-side only: the cohort setting never writes back into the course org's
-    grading.yml - sources are read course-ward, state written cohort-ward."""
+    Precedence (via `resolve_is_group`): the COHORT's own declaration -
+    `assignments.<slug>.type` in classroom-config/schedule.yml - wins; else the template's
+    design-time grading.yml `type:` (solution branch, written by the New assignment scaffold);
+    else individual. Read-side only: the cohort setting never writes back into the course org's
+    grading.yml - sources are read course-ward, state written cohort-ward. The template's
+    grading.yml is read only when the cohort leaves `type` unset."""
     found = schedule.entry_for_repo(schedule.load(cohort_org), template)
     entry = found[1] if found else None
-    if entry is not None and entry.type is not None:
-        return entry.type == "group"
-    return template_is_group(master_org, template)
+    schedule_type = entry.type if entry else None
+    template_group = (
+        None if schedule_type is not None else template_is_group(master_org, template)
+    )
+    return resolve_is_group(
+        force=False, schedule_type=schedule_type, template_group=template_group
+    )
 
 
 def score_from_junit(xml_text: str) -> dict:
@@ -251,20 +315,19 @@ def _sanitised_env() -> dict:
 
 
 def submission_targets(
-    cohort_org: str, slug: str, is_group: bool | None = None
+    cohort_org: str, slug: str, is_group: bool
 ) -> list[tuple[str, str, list[str]]]:
     """The submission units for `slug` as (repo, key, members): one per team for a group
     assignment, one per onboarded student otherwise. Empty - with the reason logged - when
     there is nothing to grade.
 
-    `is_group=None` infers it: teams.csv rows keyed on this slug mean a group assignment.
-    That lets the scheduler's snapshot step find the repos without reading grading.yml,
-    which lives on the course template's `solution` branch (a clone away, in the other org).
-    """
-    groups = (
-        teams.teams_for(teams.load(cohort_org), slug) if is_group is not False else {}
-    )
-    if is_group or (is_group is None and groups):
+    `is_group` is decided upstream by `resolve_is_group` (force -> schedule -> grading.yml)
+    and passed in; it is NEVER inferred from teams.csv here. teams.csv is student-writable (a
+    "Join team" issue can add a row against an individual assignment), so trusting its rows to
+    decide the assignment's KIND would let a student turn an individual assignment into a group
+    one - it is read only to enumerate a KNOWN-group assignment's teams."""
+    if is_group:
+        groups = teams.teams_for(teams.load(cohort_org), slug)
         if not groups:
             log_err(f"no teams for `{slug}` in {cohort_org}/{CONFIG_REPO}/teams.csv.")
             return []
@@ -362,25 +425,33 @@ def _warn_if_late_commits_only(cohort_org: str, repo: str, deadline: str) -> Non
 
 
 def has_autograde_results(cohort_org: str, slug: str) -> bool:
-    """Whether `autograde/<slug>/` already exists in the cohort's classroom-config.
+    """Whether `slug` carries the autograder's FIRE-ONCE marker in classroom-config: the
+    `_graded.json` sentinel of a completed run, or the `_skipped.json` record of a decision
+    not to grade. NOT bare `autograde/<slug>/` existence - an aborted run can leave that
+    directory populated with archives but no sentinel, and it must then still regrade.
 
-    This directory is the autograder's FIRE-ONCE marker: the scheduler grades an assignment
-    only while it is absent, so a machine score is written once and never silently refreshed
-    under a marker's hand-edits. A deliberate re-grade means deleting the directory (the next
-    hourly tick then regrades) or pressing the Grade assignment button."""
-    code, _ = gh(
-        "api", f"repos/{cohort_org}/{CONFIG_REPO}/contents/{autograde_path(slug)}"
-    )
-    return code == 0
+    The scheduler grades an assignment only while neither record is present, so a machine score
+    is written once and never silently refreshed under a marker's hand-edits. A deliberate
+    re-grade means deleting `autograde/<slug>/` (the next tick then regrades) or pressing the
+    Grade assignment button."""
+    for record in (GRADED_RECORD, SKIP_RECORD):
+        code, _ = gh(
+            "api",
+            f"repos/{cohort_org}/{CONFIG_REPO}/contents/{autograde_path(slug)}/{record}",
+        )
+        if code == 0:
+            return True
+    return False
 
 
 def mark_not_autograded(cohort_org: str, slug: str, why: str) -> bool:
     """Record that this assignment will never be machine-graded, and why.
 
-    `autograde/<slug>/` IS the fire-once marker (see `has_autograde_results`), so a skip
-    that leaves it absent is not a skip at all: the scheduler re-clones the template and
-    re-decides the same skip on every hourly tick, for ever. The note is what tells a
-    marker reading the archive that the empty result set was deliberate."""
+    The `_skipped.json` record is one of the two fire-once markers (see
+    `has_autograde_results`), so a skip that leaves it absent is not a skip at all: the
+    scheduler re-clones the template and re-decides the same skip on every hourly tick, for
+    ever. The note is what tells a marker reading the archive that the empty result set was
+    deliberate."""
     return put_file(
         cohort_org,
         CONFIG_REPO,
@@ -396,6 +467,29 @@ def mark_not_autograded(cohort_org: str, slug: str, why: str) -> bool:
     )
 
 
+def mark_graded(cohort_org: str, slug: str) -> bool:
+    """Write the fire-once sentinel `autograde/<slug>/_graded.json` - the LAST action of a
+    fully successful run, once every per-target archive is durably written.
+
+    Making the marker an EXPLICIT file (rather than the mere existence of `autograde/<slug>/`,
+    which the first archive `put_file` created as a side effect) decouples "this assignment is
+    graded" from any single archive write: a future early write into the directory can no
+    longer be mistaken for a completed grade, and a run that fails part-way through the archives
+    withholds this sentinel and so stays eligible for a retry."""
+    return put_file(
+        cohort_org,
+        CONFIG_REPO,
+        f"{autograde_path(slug)}/{GRADED_RECORD}",
+        json.dumps(
+            {
+                "graded_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            },
+            indent=2,
+        ).encode(),
+        f"autograde: {slug} machine-graded",
+    )
+
+
 def load_snapshots(cohort_org: str, slug: str) -> dict[str, str] | None:
     """{repo: sha} from this assignment's snapshot CSV, or None if no snapshot was ever
     taken (the two are different: a recorded blank sha means "no submission", while no
@@ -404,28 +498,8 @@ def load_snapshots(cohort_org: str, slug: str) -> dict[str, str] | None:
     return parse_snapshots(content) if content is not None else None
 
 
-def _snapshot_is_group(cohort_org: str, slug: str) -> bool | None:
-    """How the SNAPSHOT step should resolve group-vs-individual for `slug`, WITHOUT trusting
-    teams.csv (a student can grow it by opening a "Join team" issue that names an individual
-    assignment). A scheduled assignment's kind is faculty-declared: its schedule entry's
-    `type:` decides, defaulting to individual when the entry exists but leaves it unset.
-
-    Returns True/False for a scheduled assignment, or None only when no schedule entry keys
-    to this cohort-side name (an ad-hoc handout) - then the caller may fall back to teams.csv.
-    The scheduler only ever snapshots scheduled assignments, so in practice the teams.csv
-    inference is never reached from there."""
-    sched = schedule.load(cohort_org)
-    entry = next(
-        (e for k, e in sched.assignments.items() if schedule.cohort_name(k, e) == slug),
-        None,
-    )
-    if entry is None:
-        return None
-    return entry.type == "group"
-
-
 def snapshot_assignment(
-    cohort_org: str, slug: str, deadline: str, is_group: bool | None = None
+    cohort_org: str, slug: str, deadline: str, *, is_group: bool
 ) -> bool:
     """Freeze, at a server-chosen moment, the commit each of `slug`'s submission repos will
     be graded at. Write-once: an existing snapshot is never re-taken or overwritten, so a
@@ -435,13 +509,13 @@ def snapshot_assignment(
     An assignment with no submission units yet is a no-op, not a failure: nothing is frozen
     and nothing is written, so a later handout still gets its own snapshot.
 
-    `is_group` decides which repos are targets; when the caller leaves it None it is resolved
-    from the cohort schedule (never guessed from teams.csv - see `_snapshot_is_group`)."""
+    `is_group` is REQUIRED (keyword-only): it decides which repos are frozen, so a silent
+    default would let a forgetful future caller pin individual repos for a group assignment.
+    The caller resolves it once, upstream, via `resolve_is_group` - it is never guessed here
+    from student-writable teams.csv."""
     if load_snapshots(cohort_org, slug) is not None:
         log_skip(f"snapshot {snapshot_path(slug)}")
         return True
-    if is_group is None:
-        is_group = _snapshot_is_group(cohort_org, slug)
     targets = submission_targets(cohort_org, slug, is_group)
     if not targets:
         # Nobody onboarded, or no teams for a group assignment - which is also what an
@@ -563,30 +637,121 @@ def _stray_conversion(nb: Path) -> Path | None:
     return None
 
 
+def _walk_files(root: Path) -> Iterator[Path]:
+    """Every file under `root`, walked WITHOUT following symlinks - the symlink-safe stand-in
+    for `Path.rglob` on a student checkout (see `_strip_student_test_rigging` for the hazard)."""
+    for dirpath, _dirnames, filenames in os.walk(root, followlinks=False):
+        base = Path(dirpath)
+        for name in filenames:
+            yield base / name
+
+
 def _strip_student_test_rigging(workdir: Path) -> None:
     """Second-line removal of anything the student could have committed to steer their own
     grading run (see `_STUDENT_TEST_RIGGING`) plus pytest/py caches, before any subprocess
-    touches the tree. One walk of the checkout, deleting by name."""
+    touches the tree. One walk of the checkout, deleting by name.
+
+    Walked with `followlinks=False` so a committed symlink cycle (a->b, b->a) or a symlink to
+    `/` can never loop the walk or drag it out of the checkout. `Path.rglob` FOLLOWS directory
+    symlinks, and this runs BEFORE any subprocess timeout could fire, so a followed cycle would
+    hang the whole grading job (the same never-completes DoS the sandbox limits close) or walk
+    the entire runner filesystem. Symlinks are never traversed, and a name-matching symlink is
+    removed by `unlink`, never `rmtree` (which refuses a symlink)."""
     targets = frozenset(_STUDENT_TEST_RIGGING) | {".pytest_cache", "__pycache__"}
-    for hit in workdir.rglob("*"):
-        if hit.name not in targets:
-            continue
-        if hit.is_dir():
-            shutil.rmtree(hit, ignore_errors=True)
-        else:
-            hit.unlink(missing_ok=True)
+    for dirpath, dirnames, filenames in os.walk(workdir, followlinks=False):
+        base = Path(dirpath)
+        for name in filenames:
+            if name in targets:
+                (base / name).unlink(missing_ok=True)
+        for name in list(dirnames):
+            if name not in targets:
+                continue
+            hit = base / name
+            if hit.is_symlink():
+                hit.unlink(missing_ok=True)
+            else:
+                shutil.rmtree(hit, ignore_errors=True)
+            dirnames.remove(name)  # pruned - don't descend into what we just deleted
+
+
+def _apply_rlimits() -> None:
+    """`preexec_fn` for a graded subprocess: runs in the CHILD after fork, before exec, and
+    lowers the POSIX resource caps a hostile submission can burn (see the RLIMIT_* constants).
+
+    Defensive by design: each limit is only ever LOWERED (never raised above the inherited hard
+    cap), and a platform that refuses one is skipped rather than killing the child before it can
+    exec - macOS, for instance, does not enforce RLIMIT_AS, so a hard cap there is a ceiling on
+    the Linux grading host, not a guarantee everywhere the tests run."""
+    for name, cap in (
+        ("RLIMIT_AS", RLIMIT_AS_BYTES),
+        ("RLIMIT_CPU", RLIMIT_CPU_SECONDS),
+        ("RLIMIT_NPROC", RLIMIT_NPROC_MAX),
+        ("RLIMIT_FSIZE", RLIMIT_FSIZE_BYTES),
+    ):
+        res = getattr(resource, name, None)
+        if res is None:
+            continue  # a limit this platform doesn't define
+        try:
+            _soft, hard = resource.getrlimit(res)
+            new = cap if hard == resource.RLIM_INFINITY else min(cap, hard)
+            resource.setrlimit(res, (new, hard))
+        except (ValueError, OSError):
+            pass  # a platform that won't take this limit must not abort the run
+
+
+def _run_limited(argv: list[str], *, cwd: str, env: dict, timeout: int) -> bool:
+    """Run `argv` in its OWN session/process group under `_apply_rlimits`. Returns True if it
+    exited on its own (ANY exit code - a non-zero pytest run is still a valid grading result),
+    False if it blew the wall-clock `timeout` and the whole group was killed.
+
+    `subprocess.run(timeout=)` SIGKILLs only the direct child, orphaning the grandchildren a
+    fork/memory bomb spawns - and the bomb can OOM-kill the whole job before the timeout even
+    fires. That is the self-perpetuating DoS this closes: the run aborts, the fire-once sentinel
+    never lands, and the next hourly tick regrades the same bomb, so the assignment never
+    completes for ANY student. So we start a new session (start_new_session=True) and, on
+    timeout, SIGKILL the entire process GROUP, then reap the leader."""
+    proc = subprocess.Popen(
+        argv,
+        cwd=cwd,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+        # The grading process is single-threaded, so the window between fork and exec runs no
+        # Python that could deadlock on a lock another thread held - the PLW1509 hazard.
+        preexec_fn=_apply_rlimits,  # noqa: PLW1509
+    )
+    try:
+        proc.communicate(timeout=timeout)
+        return True
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            proc.kill()  # group already gone / kill not permitted - fall back to the child
+        proc.wait()  # reap the (killed) group leader so it isn't left a zombie
+        return False
 
 
 def _run_tests(workdir: Path, fmt: str, tests_src: Path) -> dict | None:
     """Run the hidden tests against the checked-out submission, token-free and sandboxed.
-    Returns the result.json dict, or None if grading could not run.
+    Returns the result.json dict, or None if grading could not run (a wall-clock timeout, a
+    process-group kill, or a run that wrote no report).
 
     Integrity: the hidden tests and the scored report live OUTSIDE the checkout, in a fresh
     runspace the student never touched, and pytest runs from there with config/plugin/cache
-    discovery cut off at that runspace - so nothing the student committed can be collected as
+    discovery cut off at that runspace - so nothing the student COMMITTED can be collected as
     a test, read as configuration, or scored as a pre-baked report. The credential the clone
     stored in `.git` is removed and the student's own rigging files are stripped before any
-    subprocess runs."""
+    subprocess runs, which itself runs in a resource-capped process group (`_run_limited`) so a
+    memory/fork/disk bomb is contained rather than taking down the whole grading job.
+
+    KNOWN residual: this is a defence against STATIC rigging. It does NOT stop the student's own
+    code, once imported in-process by the hidden tests, from rewriting the junit report we wrote
+    (an `atexit`/`os._exit` forge) to fake all-pass. That is an accepted residual - autograde
+    scores are faculty-reviewed before the grades pipeline distributes anything and are never
+    shown to the student directly. See the `_STUDENT_TEST_RIGGING` note for where the
+    trusted-out-of-band-result plugin would go if that ever needs closing."""
     env = _sanitised_env()
     # Keep cwd/'' off sys.path so a committed `pytest.py`/`sitecustomize.py` can't shadow real
     # modules. The submission is NOT put on PYTHONPATH: every PYTHONPATH entry precedes the
@@ -599,80 +764,85 @@ def _run_tests(workdir: Path, fmt: str, tests_src: Path) -> dict | None:
     # and student code runs next and can read the workspace - so drop `.git` first (fix 10).
     shutil.rmtree(workdir / ".git", ignore_errors=True)
     _strip_student_test_rigging(workdir)
-    try:
-        if fmt == "notebook":
-            # Convert each notebook to an importable script first (Otter can slot in here).
-            for nb in workdir.rglob("*.ipynb"):
-                subprocess.run(  # noqa: PLW1510 - a failed convert is tolerated per notebook
-                    [
-                        sys.executable,
-                        "-m",
-                        "jupyter",
-                        "nbconvert",
-                        "--to",
-                        "script",
-                        str(nb),
-                    ],
-                    cwd=workdir,
-                    env=env,
-                    timeout=RUN_TIMEOUT,
-                    capture_output=True,
-                )
-                script = nb.with_suffix(".py")
-                if not script.exists() and (stray := _stray_conversion(nb)):
-                    stray.rename(script)
-                    log(
-                        f"    ({nb.name} declares no python file_extension - "
-                        f"{stray.name} -> {script.name})"
-                    )
-        with tempfile.TemporaryDirectory() as run:
-            tests_dir = Path(run) / "tests"
-            shutil.copytree(tests_src, tests_dir)
-            # Make the submission importable by the hidden tests WITHOUT letting a student
-            # module shadow a stdlib/site name (`operator.py`, `json.py`) a hidden test imports.
-            # A `sitecustomize` in its own dir - the ONLY thing on PYTHONPATH - runs at
-            # interpreter startup (before any conftest) and appends the submission to sys.path
-            # AFTER the stdlib, so a real module always wins the import while the submission's
-            # own uniquely-named module still resolves. This touches neither the faculty
-            # conftest (a `from __future__` first line stays first) nor sys.path[0]
-            # (PYTHONSAFEPATH), and the student's own sitecustomize isn't on the path to run.
-            startup = Path(run) / "startup"
-            startup.mkdir()
-            (startup / "sitecustomize.py").write_text(
-                f"import sys\nsys.path.append({str(workdir)!r})\n"
-            )
-            env["PYTHONPATH"] = str(startup)
-            report = Path(run) / "report.xml"
-            subprocess.run(  # noqa: PLW1510 - a non-zero pytest run IS the grading result
+    if fmt == "notebook":
+        # Convert each notebook to an importable script first (Otter can slot in here). Walked
+        # with os.walk(followlinks=False), like the strip above, so a symlink cycle can't hang
+        # this discovery before the per-convert timeout could fire.
+        for nb in _walk_files(workdir):
+            if nb.suffix != ".ipynb":
+                continue
+            # A failed or timed-out convert is tolerated per notebook (the missing script just
+            # scores the submission zero, like any unimportable one).
+            _run_limited(
                 [
                     sys.executable,
                     "-m",
-                    "pytest",
-                    "-q",
-                    "-p",
-                    "no:cacheprovider",
-                    f"--confcutdir={tests_dir}",
-                    str(tests_dir),
-                    f"--junitxml={report}",
+                    "jupyter",
+                    "nbconvert",
+                    "--to",
+                    "script",
+                    str(nb),
                 ],
-                # Run FROM the runspace, NOT the checkout. On Python < 3.11 (no PYTHONSAFEPATH)
-                # `python -m` puts cwd on sys.path[0], so a checkout cwd would let a committed
-                # `operator.py`/`collections.py` shadow the stdlib during interpreter startup -
-                # before any sitecustomize could undo it - crashing or hijacking the run. The
-                # runspace holds no student files, so its cwd is inert. (Trade-off: a submission
-                # reading a repo-relative data file by bare name isn't supported - a hidden test
-                # must pass an absolute path.)
-                cwd=run,
+                cwd=str(workdir),
                 env=env,
                 timeout=RUN_TIMEOUT,
-                capture_output=True,
             )
-            if not report.exists():
-                return None
-            return score_from_junit(report.read_text())
-    except subprocess.TimeoutExpired:
-        log_err(f"  ! grading timed out after {RUN_TIMEOUT}s")
-        return None
+            script = nb.with_suffix(".py")
+            if not script.exists() and (stray := _stray_conversion(nb)):
+                stray.rename(script)
+                log(
+                    f"    ({nb.name} declares no python file_extension - "
+                    f"{stray.name} -> {script.name})"
+                )
+    with tempfile.TemporaryDirectory() as run:
+        tests_dir = Path(run) / "tests"
+        shutil.copytree(tests_src, tests_dir)
+        # Make the submission importable by the hidden tests WITHOUT letting a student
+        # module shadow a stdlib/site name (`operator.py`, `json.py`) a hidden test imports.
+        # A `sitecustomize` in its own dir - the ONLY thing on PYTHONPATH - runs at
+        # interpreter startup (before any conftest) and appends the submission to sys.path
+        # AFTER the stdlib, so a real module always wins the import while the submission's
+        # own uniquely-named module still resolves. This touches neither the faculty
+        # conftest (a `from __future__` first line stays first) nor sys.path[0]
+        # (PYTHONSAFEPATH), and the student's own sitecustomize isn't on the path to run.
+        startup = Path(run) / "startup"
+        startup.mkdir()
+        (startup / "sitecustomize.py").write_text(
+            f"import sys\nsys.path.append({str(workdir)!r})\n"
+        )
+        env["PYTHONPATH"] = str(startup)
+        report = Path(run) / "report.xml"
+        completed = _run_limited(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                "-q",
+                "-p",
+                "no:cacheprovider",
+                f"--confcutdir={tests_dir}",
+                str(tests_dir),
+                f"--junitxml={report}",
+            ],
+            # Run FROM the runspace, NOT the checkout. On Python < 3.11 (no PYTHONSAFEPATH)
+            # `python -m` puts cwd on sys.path[0], so a checkout cwd would let a committed
+            # `operator.py`/`collections.py` shadow the stdlib during interpreter startup -
+            # before any sitecustomize could undo it - crashing or hijacking the run. The
+            # runspace holds no student files, so its cwd is inert. (Trade-off: a submission
+            # reading a repo-relative data file by bare name isn't supported - a hidden test
+            # must pass an absolute path.)
+            cwd=run,
+            env=env,
+            timeout=RUN_TIMEOUT,
+        )
+        if not completed:
+            log_err(
+                f"  ! grading timed out after {RUN_TIMEOUT}s (process group killed)"
+            )
+            return None
+        if not report.exists():
+            return None
+        return score_from_junit(report.read_text())
 
 
 def _grade_target(
@@ -801,19 +971,16 @@ def collect(
                     cohort_org, slug, f"`autograde: false` in {GRADING_FILE}"
                 )
             return 0
-        # group-vs-individual precedence: an explicit force (the button's checkbox) wins;
-        # else the COHORT's declaration (schedule.yml assignments.<slug>.type); else the
-        # template's design-time grading.yml `type:`. The entry is the one found above by
-        # course_source_repo - `slug` is the cohort-side NAME, which is `cohort_dest_repo`
-        # when that is set and so is not a key into `sched.assignments` at all.
+        # group-vs-individual via the single `resolve_is_group` precedence (force -> cohort
+        # schedule `type:` -> template grading.yml -> individual). The entry is the one found
+        # above by course_source_repo - `slug` is the cohort-side NAME, which is
+        # `cohort_dest_repo` when that is set and so is not a key into `sched.assignments`.
         entry = found[1] if found else None
-        cohort_kind = entry.type if entry else None
-        if group:
-            is_group = True
-        elif cohort_kind is not None:
-            is_group = cohort_kind == "group"
-        else:
-            is_group = spec["type"] == "group"
+        is_group = resolve_is_group(
+            force=group,
+            schedule_type=entry.type if entry else None,
+            template_group=spec["type"] == "group",
+        )
         tests_src = soldir / str(spec["tests"])
         if not tests_src.is_dir():
             log_err(
@@ -843,9 +1010,10 @@ def collect(
 
         updates: list[tuple[str, dict[str, str]]] = []
         # The per-target result archives are held here and written only AFTER the grades CSV
-        # is durable (see below). Their `autograde/<slug>/` directory IS the fire-once marker,
-        # so writing one mid-loop is what let an aborted run un-grade everyone: the marker
-        # existed, but no score had been recorded.
+        # is durable (see below), with the `_graded.json` sentinel written last of all. Writing
+        # archives mid-loop is what let an aborted run un-grade everyone back when bare
+        # `autograde/<slug>/` existence was the marker; the explicit sentinel now decouples the
+        # marker from any archive write, but the ordering is kept as defence in depth.
         archives: list[tuple[str, bytes, str]] = []
         # `_grade_target` returns None for one reason only: the submission repo could not be
         # cloned. That is the line between "examined, and there was nothing to grade" (a
@@ -945,8 +1113,8 @@ def collect(
             log_err(f"could not write {path}")
             return 1
         # The scores are durably recorded. Only now do the per-target archives go out - and
-        # only if EVERY target was reachable. Their `autograde/<slug>/` directory is the
-        # fire-once marker, so holding it back on any unreachable repo keeps the assignment
+        # only if EVERY target was reachable. The `_graded.json` sentinel written after them is
+        # the fire-once marker, so holding it back on any unreachable repo keeps the assignment
         # eligible for a retry: the next tick regrades (write-once merge_auto leaves the
         # scores already recorded untouched) and picks up the repo(s) that couldn't be read.
         if unreachable:
@@ -956,8 +1124,21 @@ def collect(
                 f"machine-graded; the next run retries the missing one(s)"
             )
             return 1
+        # A failed archive write must red the run and WITHHOLD the sentinel: the marker is now
+        # a single explicit file, not the first archive's side effect, so partial detail can
+        # never be mistaken for a completed grade. The next tick regrades (merge_auto leaves the
+        # recorded scores untouched) and rewrites the missing archive(s) + the sentinel.
+        archive_ok = True
         for apath, acontent, amsg in archives:
-            put_file(cohort_org, CONFIG_REPO, apath, acontent, amsg)
+            if not put_file(cohort_org, CONFIG_REPO, apath, acontent, amsg):
+                log_err(f"could not write {apath}")
+                archive_ok = False
+        if not (archive_ok and mark_graded(cohort_org, slug)):
+            log_err(
+                f"{slug}: recorded {len(updates)} score(s) but a result archive or the "
+                f"fire-once sentinel failed to write - NOT marking machine-graded; retrying"
+            )
+            return 1
     log_ok(
         f"recorded {len(updates)} auto score(s) -> {path} (faculty & instructors add manual marks, then render)"
     )

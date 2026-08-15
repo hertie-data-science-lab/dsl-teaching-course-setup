@@ -7,7 +7,11 @@ answer, so the pin's every branch is pinned down here with git/gh stubbed.
 
 from __future__ import annotations
 
+import os
+import signal
 import subprocess
+import sys
+import time
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -215,11 +219,12 @@ _JUNIT = '<testsuite><testcase name="test_solve"/></testsuite>'
 
 
 def _fake_nbconvert(monkeypatch, written_suffix: str | None):
-    """Stub the two subprocess boundaries `_run_tests` crosses. `written_suffix` is the
-    extension nbconvert is pretended to have chosen for its script output (None = it wrote
-    nothing at all); pytest always drops a passing junit report."""
+    """Stub the sandboxed subprocess boundary (`_run_limited`) `_run_tests` crosses.
+    `written_suffix` is the extension nbconvert is pretended to have chosen for its script
+    output (None = it wrote nothing at all); pytest always drops a passing junit report. The
+    stub returns True (the process exited on its own) - the killpg/timeout path is False."""
 
-    def fake_run(argv, **kwargs):
+    def fake_run_limited(argv, *, cwd, env, timeout):
         if "nbconvert" in argv and written_suffix is not None:
             nb = Path(argv[-1])
             (nb.parent / (nb.stem + written_suffix)).write_text(
@@ -228,9 +233,9 @@ def _fake_nbconvert(monkeypatch, written_suffix: str | None):
         if "pytest" in argv:
             report = next(a for a in argv if a.startswith("--junitxml="))
             Path(report.split("=", 1)[1]).write_text(_JUNIT)
-        return subprocess.CompletedProcess(argv, 0)
+        return True
 
-    monkeypatch.setattr(collect.subprocess, "run", fake_run)
+    monkeypatch.setattr(collect, "_run_limited", fake_run_limited)
 
 
 @pytest.mark.parametrize("suffix", [".txt", ""])
@@ -308,21 +313,23 @@ _TEAMS = {"assignment-4-project": {"team-y": ["carla"], "team-x": ["anna-adams"]
 def test_submission_targets_individual_skips_unonboarded(monkeypatch):
     monkeypatch.setattr(collect.roster, "load", lambda org: _STUDENTS)
     monkeypatch.setattr(collect.teams, "load", lambda org: {})
-    assert collect.submission_targets("Cohort", "assignment-1") == [
+    assert collect.submission_targets("Cohort", "assignment-1", False) == [
         ("assignment-1-anna-adams", "anna-adams", ["anna-adams"]),
         ("assignment-1-ben-baker", "ben-baker", ["ben-baker"]),
     ]
 
 
-def test_submission_targets_infers_group_from_teams_csv(monkeypatch):
-    # The snapshot step has no grading.yml to read (it lives on the course template's
-    # solution branch, in the other org), so teams.csv rows keyed on the slug are what
-    # make an assignment a group one.
+def test_submission_targets_individual_ignores_teams_csv(monkeypatch):
+    # Replaces the old "infer group from teams.csv" test: that inference is REMOVED. A student
+    # can grow teams.csv by opening a "Join team" issue naming an INDIVIDUAL assignment, so
+    # with is_group=False submission_targets must never consult teams.csv - the faculty-owned
+    # schedule/grading.yml decides the kind upstream (resolve_is_group). Here a team row exists
+    # for the slug, yet the individual (one-repo-per-student) targets are returned regardless.
     monkeypatch.setattr(collect.teams, "load", lambda org: _TEAMS)
     monkeypatch.setattr(collect.roster, "load", lambda org: _STUDENTS)
-    assert collect.submission_targets("Cohort", "assignment-4-project") == [
-        ("assignment-4-project-team-x", "team-x", ["anna-adams"]),
-        ("assignment-4-project-team-y", "team-y", ["carla"]),
+    assert collect.submission_targets("Cohort", "assignment-4-project", False) == [
+        ("assignment-4-project-anna-adams", "anna-adams", ["anna-adams"]),
+        ("assignment-4-project-ben-baker", "ben-baker", ["ben-baker"]),
     ]
 
 
@@ -367,14 +374,11 @@ def test_snapshot_sha_asks_the_api_for_one_commit_before_a_utc_cutoff(monkeypatc
 def _stub_snapshot_write(monkeypatch, shas: dict[str, str | None], existing=None):
     """Wire snapshot_assignment onto stubs; returns the (path, text) writes it makes."""
     written: list[tuple[str, str]] = []
-    # snapshot_assignment resolves is_group from the cohort schedule when the caller leaves
-    # it None; stub the load so these tests stay network-free (and default to individual).
-    monkeypatch.setattr(collect.schedule, "load", lambda org: Schedule())
     monkeypatch.setattr(collect, "load_snapshots", lambda org, slug: existing)
     monkeypatch.setattr(
         collect,
         "submission_targets",
-        lambda org, slug, is_group=None: [(r, r.split("-")[-1], []) for r in shas],
+        lambda org, slug, is_group=False: [(r, r.split("-")[-1], []) for r in shas],
     )
     monkeypatch.setattr(
         collect, "_snapshot_sha", lambda org, repo, deadline: shas[repo]
@@ -394,7 +398,7 @@ def test_snapshot_assignment_records_one_row_per_repo(monkeypatch):
         monkeypatch, {"assignment-1-anna": SHA, "assignment-1-ben": ""}
     )
     assert collect.snapshot_assignment(
-        "Cohort", "assignment-1", "2026-10-15T23:59:59+02:00"
+        "Cohort", "assignment-1", "2026-10-15T23:59:59+02:00", is_group=False
     )
     ((path, text),) = written
     assert path == "snapshots/assignment-1.csv"
@@ -416,7 +420,9 @@ def test_snapshot_assignment_never_overwrites_an_existing_snapshot(monkeypatch):
     monkeypatch.setattr(collect, "_snapshot_sha", boom)
     monkeypatch.setattr(collect, "put_file", boom)
     assert (
-        collect.snapshot_assignment("Cohort", "assignment-1", "2026-10-15T23:59")
+        collect.snapshot_assignment(
+            "Cohort", "assignment-1", "2026-10-15T23:59", is_group=False
+        )
         is True
     )
 
@@ -428,7 +434,9 @@ def test_snapshot_assignment_writes_nothing_when_a_lookup_fails(monkeypatch):
         monkeypatch, {"assignment-1-anna": SHA, "assignment-1-ben": None}
     )
     assert (
-        collect.snapshot_assignment("Cohort", "assignment-1", "2026-10-15T23:59")
+        collect.snapshot_assignment(
+            "Cohort", "assignment-1", "2026-10-15T23:59", is_group=False
+        )
         is False
     )
     assert written == []
@@ -448,7 +456,9 @@ def test_snapshot_assignment_with_no_targets_yet_writes_nothing_and_is_not_an_er
     monkeypatch.setattr(collect, "submission_targets", lambda *a, **k: [])
     monkeypatch.setattr(collect, "put_file", boom)
     assert (
-        collect.snapshot_assignment("Cohort", "assignment-1", "2026-10-15T23:59")
+        collect.snapshot_assignment(
+            "Cohort", "assignment-1", "2026-10-15T23:59", is_group=False
+        )
         is True
     )
     assert "nothing to freeze yet" in capsys.readouterr().out
@@ -859,32 +869,26 @@ def test_collect_holds_the_marker_when_some_repos_are_unreachable(monkeypatch):
 # ------------------------------------------------------ snapshot integrity (fix 3B, 4b)
 
 
-def test_snapshot_assignment_takes_group_from_the_schedule_not_teams_csv(monkeypatch):
-    # A student can grow teams.csv by opening a "Join team" issue that names an INDIVIDUAL
-    # assignment. The snapshot must resolve group-vs-individual from the faculty-owned
-    # schedule, never guess it from teams.csv - so a scheduled individual assignment stays
-    # individual even when a team row exists for it.
-    from dsl_course.schedule import AssignmentEntry
-
-    entry = AssignmentEntry(
-        course_source_repo="assignment-1-f2026",
-        due_datetime=datetime(2026, 11, 15, tzinfo=ZoneInfo("Europe/Berlin")),
-        type=None,  # scheduled, but group-ness left unset -> individual, not teams.csv
-    )
-    monkeypatch.setattr(
-        collect.schedule,
-        "load",
-        lambda org: Schedule(assignments={"assignment-1": entry}),
-    )
+def test_snapshot_assignment_requires_and_passes_is_group_through(monkeypatch):
+    # snapshot_assignment no longer resolves group-vs-individual itself (the removed
+    # `_snapshot_is_group` did, weakly): the caller resolves it once via resolve_is_group and
+    # passes it in - and the argument is REQUIRED (keyword-only), so a forgetful future caller
+    # can't silently freeze individual repos for a group assignment. Never inferred from
+    # student-writable teams.csv (see test_submission_targets_*_ignores_*).
     monkeypatch.setattr(collect, "load_snapshots", lambda org, slug: None)
-    seen: list[bool | None] = []
+    seen: list[bool] = []
     monkeypatch.setattr(
         collect,
         "submission_targets",
-        lambda org, slug, is_group=None: seen.append(is_group) or [],
+        lambda org, slug, is_group: seen.append(is_group) or [],
     )
-    collect.snapshot_assignment("Cohort", "assignment-1", "2026-11-15")
-    assert seen == [False]  # individual, from the schedule - teams.csv never consulted
+    collect.snapshot_assignment("Cohort", "assignment-1", "2026-11-15", is_group=False)
+    collect.snapshot_assignment("Cohort", "assignment-1", "2026-11-15", is_group=True)
+    assert seen == [False, True]  # exactly what each caller passed
+    with pytest.raises(
+        TypeError
+    ):  # omitting it is a caller bug, caught at the signature
+        collect.snapshot_assignment("Cohort", "assignment-1", "2026-11-15")
 
 
 def test_snapshot_assignment_skips_when_every_repo_is_absent(monkeypatch, capsys):
@@ -904,7 +908,9 @@ def test_snapshot_assignment_skips_when_every_repo_is_absent(monkeypatch, capsys
 
     monkeypatch.setattr(collect, "put_file", boom)
     assert (
-        collect.snapshot_assignment("Cohort", "assignment-1", "2026-10-15T23:59")
+        collect.snapshot_assignment(
+            "Cohort", "assignment-1", "2026-10-15T23:59", is_group=False
+        )
         is True
     )
     assert "every target repo is absent" in capsys.readouterr().out
@@ -918,7 +924,9 @@ def test_snapshot_assignment_freezes_reachable_empty_repos_as_zero(monkeypatch):
         monkeypatch, {"assignment-1-anna": "", "assignment-1-ben": ""}
     )
     assert (
-        collect.snapshot_assignment("Cohort", "assignment-1", "2026-10-15T23:59")
+        collect.snapshot_assignment(
+            "Cohort", "assignment-1", "2026-10-15T23:59", is_group=False
+        )
         is True
     )
     assert len(written) == 1  # the snapshot WAS frozen
@@ -938,7 +946,7 @@ def test_submission_targets_individual_excludes_auditors(monkeypatch):
     ]
     monkeypatch.setattr(collect.roster, "load", lambda org: students)
     monkeypatch.setattr(collect.teams, "load", lambda org: {})
-    assert collect.submission_targets("Cohort", "assignment-1") == [
+    assert collect.submission_targets("Cohort", "assignment-1", False) == [
         ("assignment-1-anna-adams", "anna-adams", ["anna-adams"]),
     ]
 
@@ -954,3 +962,169 @@ def test_collect_refuses_an_unparseable_deadline(monkeypatch, capsys):
         == 1
     )
     assert "not an ISO date" in capsys.readouterr().err
+
+
+# ---------------------------------------------- resource limits + group-kill (fix 1)
+# The highest-value fix: a memory/fork bomb (or an infinite loop) in ONE submission must be
+# contained, never abort the whole job. A subprocess.run(timeout=) SIGKILLs only the direct
+# child; the graded pytest runs in its own process GROUP under POSIX rlimits, and a wall-clock
+# breach kills the whole group and returns None (couldn't grade) - fast, never a hang.
+
+
+def test_apply_rlimits_lowers_the_childs_cap(monkeypatch):
+    # Prove the preexec_fn actually applies our module-level caps to the graded child, WITHOUT
+    # depending on a platform enforcing RLIMIT_AS (macOS does not). RLIMIT_CPU is settable
+    # everywhere: dial it to a distinctive value and read it back from inside the child.
+    monkeypatch.setattr(collect, "RLIMIT_CPU_SECONDS", 123)
+    out = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import resource; print(resource.getrlimit(resource.RLIMIT_CPU)[0])",
+        ],
+        preexec_fn=collect._apply_rlimits,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert out.stdout.strip() == "123"  # our cap reached the child's process
+
+
+def test_run_limited_kills_the_whole_process_group_on_timeout(monkeypatch, tmp_path):
+    # On a wall-clock breach the ENTIRE process group is SIGKILLed (not just the direct child a
+    # fork bomb would orphan), and the helper returns False fast rather than waiting the sleep
+    # out. The spy calls the real killpg so the process is genuinely reaped (no hang, no zombie).
+    real_killpg = os.killpg
+    calls: list[tuple[int, int]] = []
+    monkeypatch.setattr(
+        collect.os,
+        "killpg",
+        lambda pg, sig: calls.append((pg, sig)) or real_killpg(pg, sig),
+    )
+    t0 = time.monotonic()
+    completed = collect._run_limited(
+        [sys.executable, "-c", "import time; time.sleep(30)"],
+        cwd=str(tmp_path),
+        env=dict(os.environ),
+        timeout=1,
+    )
+    assert completed is False
+    assert time.monotonic() - t0 < 15  # killed near the 1s budget, not waited out
+    assert calls and calls[0][1] == signal.SIGKILL  # the whole group, hard
+
+
+def test_run_tests_returns_none_on_a_wall_clock_timeout_without_hanging(
+    monkeypatch, tmp_path, capsys
+):
+    # The self-perpetuating DoS core: a submission whose hidden-test run never returns (here an
+    # infinite loop) must be contained. With a short wall-clock budget the graded pytest group
+    # is killed and _run_tests returns None - no report, no score, fast. _grade_target then
+    # scores it a recorded zero ("grading failed to run"), so the run COMPLETES and the marker
+    # can land - the assignment is no longer stuck regrading the same bomb every hour for ever.
+    monkeypatch.setattr(collect, "RUN_TIMEOUT", 2)
+    work = tmp_path / "sub"
+    work.mkdir()
+    (work / "starter.py").write_text("x = 1\n")
+    tests = tmp_path / "hidden"
+    tests.mkdir()
+    (tests / "test_hang.py").write_text(
+        "def test_spin():\n    while True:\n        pass\n"
+    )
+    t0 = time.monotonic()
+    assert collect._run_tests(work, "py", tests) is None
+    assert time.monotonic() - t0 < 30  # killed near the 2s budget, nowhere near a hang
+    assert "timed out" in capsys.readouterr().err
+
+
+# ------------------------------------------------ symlink-cycle strip walk (fix 2)
+
+
+def test_strip_student_test_rigging_survives_a_symlink_cycle(tmp_path):
+    # A committed symlink cycle (a->b, b->a) makes Path.rglob loop for ever - and the strip
+    # runs BEFORE any subprocess timeout, so a followed cycle hangs the whole job. os.walk with
+    # followlinks=False never traverses it, so the walk still terminates and the real rigging
+    # (a committed conftest.py) is stripped.
+    work = tmp_path / "sub"
+    work.mkdir()
+    (work / "conftest.py").write_text(
+        "def pytest_ignore_collect(*a, **k):\n    return True\n"
+    )
+    (work / "a").symlink_to(work / "b")
+    (work / "b").symlink_to(work / "a")  # a <-> b cycle
+    t0 = time.monotonic()
+    collect._strip_student_test_rigging(work)
+    assert time.monotonic() - t0 < 10  # terminated, did not loop the cycle
+    assert not (work / "conftest.py").exists()  # rigging still stripped
+
+
+# --------------------------------------------------- single group resolver (fix 3)
+
+
+@pytest.mark.parametrize(
+    "force,schedule_type,template_group,expected",
+    [
+        (True, None, None, True),  # force (button / --group) wins
+        (True, "individual", False, True),  # ... over everything below it
+        (False, "group", False, True),  # cohort schedule beats the template
+        (False, "individual", True, False),
+        (False, None, True, True),  # template grading.yml is the fallback
+        (False, None, False, False),
+        (False, None, None, False),  # nothing declared -> individual
+    ],
+)
+def test_resolve_is_group_precedence(force, schedule_type, template_group, expected):
+    assert (
+        collect.resolve_is_group(
+            force=force, schedule_type=schedule_type, template_group=template_group
+        )
+        is expected
+    )
+
+
+# ------------------------------------------- explicit fire-once sentinel (fix 4)
+
+
+def test_has_autograde_results_checks_the_records_not_bare_directory(monkeypatch):
+    # The marker is the _graded.json sentinel OR the _skipped.json record - NEVER bare
+    # autograde/<slug>/ existence, which an aborted run can leave populated but un-sentineled.
+    def only(record: str):
+        return lambda *args: (0, "") if args[-1].endswith(record) else (1, "not found")
+
+    monkeypatch.setattr(collect, "gh", only("_graded.json"))
+    assert collect.has_autograde_results("Cohort", "assignment-1")  # a completed run
+    monkeypatch.setattr(collect, "gh", only("_skipped.json"))
+    assert collect.has_autograde_results("Cohort", "assignment-1")  # a recorded skip
+    # a populated directory with neither record present is NOT graded (the old bug)
+    monkeypatch.setattr(collect, "gh", lambda *a: (1, "not found"))
+    assert not collect.has_autograde_results("Cohort", "assignment-1")
+
+
+def test_collect_writes_the_graded_sentinel_as_the_last_autograde_write(monkeypatch):
+    # A successful run ends by writing autograde/<slug>/_graded.json - AFTER every per-target
+    # archive - so the fire-once marker is decoupled from any single archive write.
+    _stub_collect(monkeypatch, None)
+    written = _captured_writes(monkeypatch)
+    assert collect.collect("Course", "assignment-1-f2026", "Cohort") == 0
+    paths = [p for p, _ in written]
+    assert "autograde/assignment-1/_graded.json" in paths
+    autograde = [p for p in paths if p.startswith("autograde/")]
+    assert (
+        autograde[-1] == "autograde/assignment-1/_graded.json"
+    )  # the LAST marker write
+
+
+def test_collect_withholds_the_sentinel_when_an_archive_write_fails(monkeypatch):
+    # A failed archive write reds the run and WITHHOLDS the sentinel, so the assignment stays
+    # eligible for a retry - the recorded scores (write-once) are untouched, the marker is not
+    # set, and the next tick rewrites the missing archive plus the sentinel.
+    _stub_collect(monkeypatch, None)
+    written: list[str] = []
+
+    def failing_put(org, repo, path, content, msg):
+        written.append(path)
+        return not path.endswith("ben.json")  # one archive write fails
+
+    monkeypatch.setattr(collect, "put_file", failing_put)
+    assert collect.collect("Course", "assignment-1-f2026", "Cohort") == 1
+    assert "grades/assignment-1.csv" in written  # scores still durably recorded
+    assert "autograde/assignment-1/_graded.json" not in written  # marker withheld
