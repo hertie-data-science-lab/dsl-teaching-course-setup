@@ -706,6 +706,143 @@ class _SitePlan:
     done: str = "synced + redeploying"
 
 
+def _git_identity(key: str) -> str:
+    """What GIT_ENV sets `user.name` / `user.email` to - read off GIT_ENV itself, so the
+    machine-author test below cannot drift from the identity the sync commits under."""
+    prefix = f"{key}="
+    return next(v[len(prefix) :] for v in _GIT_ENV if v.startswith(prefix))
+
+
+def _is_machine_author(name: str, email: str) -> bool:
+    """Whether a commit's author is this engine rather than a person: the sync's own git
+    identity, the token account (which authors the commits made through the API - the
+    scaffold's "Initial commit"), or any GitHub App. An unreadable acting login is None
+    and matches nobody, which errs towards calling a commit human - the wrong guess there
+    is one unnecessary issue, the other way round is a silently discarded edit."""
+    acting = _acting_login()
+    return (
+        name == _git_identity("user.name")
+        or email == _git_identity("user.email")
+        or (acting is not None and name.casefold() == acting.casefold())
+        or name.endswith("[bot]")
+    )
+
+
+def _overwritten_edits(wd: Path) -> dict[str, tuple[str, list[str]]]:
+    """The human commits the sync commit at HEAD just discarded: `{sha: (author, paths)}`.
+
+    For every path HEAD rewrote, the last commit to touch it BEFORE HEAD is the edit that
+    was replaced; a machine author there is the previous sync (nothing lost), anything
+    else is a person. A path no earlier commit touched is a file this sync created.
+    HEAD^ always exists - the clone carries at least the scaffold's initial commit."""
+    code, out = git("-C", str(wd), "show", "--name-only", "--format=", "HEAD")
+    if code != 0:
+        raise RuntimeError(f"could not list the files the sync commit changed: {out}")
+    overwritten: dict[str, tuple[str, list[str]]] = {}
+    for path in (ln.strip() for ln in out.splitlines()):
+        if not path:
+            continue
+        code, out = git(
+            "-C", str(wd), "log", "-1", "--format=%H%x09%an%x09%ae", "HEAD^", "--", path
+        )
+        if code != 0 or not out.strip():
+            continue
+        sha, _, rest = out.strip().partition("\t")
+        name, _, email = rest.partition("\t")
+        if _is_machine_author(name, email):
+            continue
+        overwritten.setdefault(sha, (name, []))[1].append(path)
+    return overwritten
+
+
+OVERWRITE_ISSUE_TITLE = (
+    "Manual edits to generated site files are overwritten by the sync"
+)
+
+
+def _commit_login(org: str, site: str, sha: str) -> str | None:
+    """The GitHub login behind a commit, or None when its git email is linked to no
+    account - then the caller falls back to the git author name, which is all GitHub
+    itself knows about that author either."""
+    code, out = gh("api", f"repos/{org}/{site}/commits/{sha}", "--jq", ".author.login")
+    login = out.strip()
+    return login if code == 0 and login and login != "null" else None
+
+
+def _notify_overwritten_edits(
+    org: str, site: str, overwritten: dict[str, tuple[str, list[str]]]
+) -> None:
+    """Open (or comment on) one issue in the site repo naming the edits this sync just
+    replaced, linking the discarded commits and pointing at the files to edit instead.
+
+    A courtesy, not data: every failure here is logged and swallowed, including by the
+    caller. The site is already regenerated and pushed by the time this runs, so making
+    the notice able to fail the sync would turn a helper against silent data loss into a
+    new source of red crons - inverting the incident it exists to prevent."""
+    rows = []
+    for sha, (name, paths) in overwritten.items():
+        # An @-mention when the git email is linked to an account, else the git author
+        # name - which is all GitHub knows about that author either.
+        login = _commit_login(org, site, sha)
+        who = f"@{login}" if login else f"`{name}`"
+        for path in paths:
+            rows.append(
+                f"- `{path}` - edited by {who} in "
+                f"[`{sha[:7]}`](https://github.com/{org}/{site}/commit/{sha})"
+            )
+    body = (
+        "The site sync regenerates parts of this repo from the org structure, so an edit "
+        "made directly here is replaced the next time it runs. It has just replaced:\n\n"
+        + "\n".join(rows)
+        + "\n\nNothing is lost - each link above is the commit that was overwritten, so "
+        "the change can be copied back out of it.\n\nMake the edit at the source "
+        "instead, and it survives every sync:\n\n"
+        "- **Staff cards** - the cohort's `classroom-config/people.yml` (for a public "
+        "course site, the `people:` block of the course org's "
+        "`.github/dsl-course.yml`).\n"
+        "- **Schedule rows, sessions, assignments** - the org structure and the cohort's "
+        "`classroom-config/schedule.yml`.\n\n"
+        "The sync owns `_lectures/`, `_assignments/`, `_events/`, `_data/people.yml` and "
+        "a few `_config.yml` keys, and names the source in a header where the file format "
+        "allows one. Everything else in this repo is yours and is never rewritten.\n"
+    )
+    repo = f"{org}/{site}"
+    code, out = gh(
+        "issue",
+        "list",
+        "--repo",
+        repo,
+        "--state",
+        "open",
+        "--search",
+        f"{OVERWRITE_ISSUE_TITLE} in:title",
+        "--json",
+        "number",
+        "--jq",
+        ".[0].number",
+    )
+    # A lookup that failed (or answered with anything but a number) is not fatal: filing a
+    # duplicate issue beats not telling anyone their edit was discarded.
+    existing = out.strip() if code == 0 and out.strip().isdigit() else ""
+    if existing:
+        code, out = gh("issue", "comment", existing, "--repo", repo, "--body", body)
+    else:
+        code, out = gh(
+            "issue",
+            "create",
+            "--repo",
+            repo,
+            "--title",
+            OVERWRITE_ISSUE_TITLE,
+            "--body",
+            body,
+        )
+    if code != 0:
+        log_err(f"could not notify {repo} about the overwritten edits: {out[:200]}")
+    else:
+        log(f"  (manual edits to {len(rows)} file(s) were overwritten - issue filed)")
+
+
 def _sync_site_repo(
     org: str,
     build: Callable[[Path], _SitePlan | None],
@@ -722,7 +859,10 @@ def _sync_site_repo(
     `scaffold_missing` - the public course site's opt-in first publish, which creates it.
     An ARCHIVED one is the same quiet no-op: a past cohort's site is deliberately frozen,
     and it clones and commits happily before 403ing on the push, so without the check the
-    daily cron failed on it every day forever."""
+    daily cron failed on it every day forever.
+
+    A pushed sync that discarded someone's manual edit also files an issue naming it - a
+    courtesy that never changes this function's exit code."""
     site = _site_repo(org)
     just_scaffolded = False
     if not repo_exists(org, site):
@@ -791,6 +931,19 @@ def _sync_site_repo(
         if git("-C", str(wd), *_GIT_ENV, "push", "-q", "origin", "HEAD")[0] != 0:
             log_err(f"{plan.label} push failed")
             return 1
+        # Only now is anything actually overwritten on the remote: a run that committed
+        # nothing replaced nothing, and a failed push left the remote as it was. Whatever
+        # happens in here, the site is correct and published - so the return code below is
+        # deliberately untouched (see _notify_overwritten_edits).
+        try:
+            overwritten = _overwritten_edits(wd)
+            if overwritten:
+                _notify_overwritten_edits(org, site, overwritten)
+        except Exception as exc:
+            log_err(
+                f"could not check {org}/{site} for overwritten manual edits "
+                f"({type(exc).__name__}): {exc}"
+            )
     log_ok(f"{plan.label} {plan.done} -> https://{site}/")
     return 0
 

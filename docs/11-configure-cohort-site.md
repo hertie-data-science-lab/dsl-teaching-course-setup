@@ -19,7 +19,8 @@ You never edit what the site shows - you edit the file it reads, and it re-syncs
 
 ## What never to touch
 
-These are rewritten on every sync. A hand edit is lost **silently** - no error, no warning.
+These are rewritten on every sync. A hand edit is lost - the sync then opens an issue in the site
+repo linking the overwritten commit and naming the file to edit instead.
 
 | In the site repo | What happens |
 |---|---|
