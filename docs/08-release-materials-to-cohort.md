@@ -46,6 +46,10 @@ e.g. → [Release materials](https://github.com/hertie-dsl-demo-course-e1234/.gi
   mismatch fails the run loudly rather than guessing.
 - Root files are just paths too: `course_source_path` = `SYLLABUS.md` (name the actual file - there is
   no syllabus glob) or `README.md`.
+- **Everything in one press:** `course_source_path` = `/` (or `.`) releases the whole repo. Two things
+  are deliberately left behind: `.git` (copying it would repoint the cohort repo at the course repo)
+  and `.github` (the faculty Release buttons, which have no business in a student-facing repo). Name
+  `.github` explicitly if you ever do want it.
 
 Re-releasing is safe to re-run - copies are additive and idempotent.
 

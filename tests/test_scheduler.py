@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import pytest
 import yaml
 
 from dsl_course import collect, deploy, scheduler, seed
@@ -351,18 +352,44 @@ def _clone_with_tree(tree: dict[str, str]):
     return fake_gh
 
 
-def test_deploy_many_rejects_a_repo_root_source_path(monkeypatch):
-    # A `.`/`/`/"" course_source_path resolves to the clone ROOT; copying it would drag the
-    # source's own .git over the dest and redirect the push into the COURSE repo. Reject it.
-    _no_io(monkeypatch, _clone_with_tree({"f.txt": "x", ".git/config": "[core]"}))
-    for bad in (".", "/", ""):
-        errors, changed = deploy.deploy_many(
-            "Course-Org",
-            "Cohort-Org",
-            [Deploy("cm", bad, "materials", None)],
-            sync=False,
-        )
-        assert (errors, changed) == (1, False), bad
+@pytest.mark.parametrize("root", [".", "/", "", "./"])
+def test_deploy_many_releases_the_whole_repo_from_a_root_source_path(monkeypatch, root):
+    # "Release everything" has to be sayable, and `/` and `.` are what faculty reach for.
+    # The root resolves and copies - minus the plumbing: `.git` would overwrite the dest's
+    # own git metadata and redirect the push into the COURSE repo, and `.github` would
+    # carry the faculty Release buttons into a student-facing repo.
+    monkeypatch.setattr(
+        deploy,
+        "gh",
+        _clone_with_tree(
+            {
+                "labs/01.md": "lab one",
+                "SYLLABUS.md": "syllabus",
+                ".git/config": "SOURCE-REMOTE",
+                ".github/workflows/release-materials.yml": "BUTTON",
+            }
+        ),
+    )
+    staged: list[str] = []
+
+    def spy_git(*args):
+        if "add" in args:
+            dd = Path(args[args.index("-C") + 1])
+            staged.extend(str(p.relative_to(dd)) for p in dd.rglob("*") if p.is_file())
+        return _git_with_staged_changes(*args)
+
+    monkeypatch.setattr(deploy, "git", spy_git)
+    monkeypatch.setattr(deploy, "create_repo", lambda *a, **k: True)
+    monkeypatch.setattr(deploy, "grant_read_teams", lambda *a, **k: None)
+
+    errors, changed = deploy.deploy_many(
+        "Course-Org",
+        "Cohort-Org",
+        [Deploy("cm", root, "materials", None)],
+        sync=False,
+    )
+    assert (errors, changed) == (0, True), root
+    assert sorted(staged) == ["SYLLABUS.md", "labs/01.md"], root
 
 
 def test_deploy_many_rejects_a_dotdot_escaping_source_path(monkeypatch):

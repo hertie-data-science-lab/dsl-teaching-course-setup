@@ -49,20 +49,33 @@ _GIT_ENV = GIT_ENV
 
 
 def _resolve_within(base: Path, rel: str) -> Path | None:
-    """Resolve `rel` under the clone `base`, or None if it is unsafe to copy.
+    """Resolve `rel` under the clone `base`, or None if it escapes the clone.
 
-    Rejected: a path that strips to empty or `.` (the repo ROOT - copying it would drag the
-    clone's own `.git` over the dest and redirect the subsequent push into the wrong repo),
-    and any `..` path that resolves outside the clone. Both are impossible copies, caught
-    before any file is touched."""
+    `""`, `/` and `.` all mean the repo ROOT - the spelling for "release everything", which
+    faculty reach for often enough that it has to work. The root is a legal target; what
+    made it dangerous was copying the clone's own `.git` over the dest (which overwrites the
+    dest's git metadata and redirects the subsequent push into the SOURCE repo), and that is
+    handled at copy time by _copy_ignore rather than by banning the path.
+
+    A `..` path resolving outside the clone is still refused: there is no reading of it that
+    is a release, and it is caught before any file is touched."""
     cleaned = rel.strip("/")
-    if not cleaned or cleaned == ".":
-        return None
     base_r = base.resolve()
-    target = (base / cleaned).resolve()
-    if target == base_r or not target.is_relative_to(base_r):
-        return None
-    return target
+    target = (base / cleaned).resolve() if cleaned else base_r
+    return target if target.is_relative_to(base_r) else None
+
+
+def _copy_ignore(srcp: Path, clone_root: Path):
+    """What never travels with a directory copy.
+
+    `.git` always: copying it over the dest overwrites the dest's own git metadata and
+    misdirects the push. `.github` only when the whole repo is being released - at the root
+    it would carry the faculty Release buttons (and their bot-token wiring) into a
+    student-facing repo, whereas a faculty member who names `.github` explicitly means it."""
+    skip = [".git"]
+    if srcp.resolve() == clone_root.resolve():
+        skip.append(".github")
+    return shutil.ignore_patterns(*skip)
 
 
 def deploy_many(
@@ -136,13 +149,12 @@ def deploy_many(
             dest_rel = (d.cohort_dest_path or d.course_source_path).strip(
                 "/"
             ) or src_path
-            srcp = _resolve_within(src_dirs[d.course_source_repo], d.course_source_path)
+            src_root = src_dirs[d.course_source_repo]
+            srcp = _resolve_within(src_root, d.course_source_path)
             if srcp is None:
                 log_err(
                     f"unsafe course_source_path `{d.course_source_path}` for "
-                    f"{source_org}/{d.course_source_repo}: it names the repo root or escapes "
-                    f"the clone - name a subfolder (e.g. lectures/02_intro) to release. "
-                    f"skipped."
+                    f"{source_org}/{d.course_source_repo} - it escapes the clone. skipped."
                 )
                 errors += 1
                 continue
@@ -161,18 +173,16 @@ def deploy_many(
                 errors += 1
                 continue
             if srcp.is_dir():
-                # Never copy a `.git` directory: it would overwrite the dest's own git
-                # metadata and misdirect the push.
                 shutil.copytree(
                     srcp,
                     destp,
                     dirs_exist_ok=True,
-                    ignore=shutil.ignore_patterns(".git"),
+                    ignore=_copy_ignore(srcp, src_root),
                 )
             else:
                 destp.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(srcp, destp)
-            log_ok(f"+ {d.cohort_dest_repo}/{dest_rel}")
+            log_ok(f"+ {d.cohort_dest_repo}/{dest_rel or '(repo root)'}")
             touched.add(d.cohort_dest_repo)
 
         # 4. one commit + push per touched dest (skip if it has no net change)

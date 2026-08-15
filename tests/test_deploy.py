@@ -8,6 +8,8 @@ batching itself is exercised in test_scheduler.py, which drives the same
 
 from __future__ import annotations
 
+import shutil
+
 import pytest
 
 from dsl_course import deploy, utils
@@ -255,3 +257,71 @@ def test_released_repos_are_read_by_both_cohort_role_teams():
     # is one helper covering both teams, so no release site can grant only `students`.
     assert utils.READ_TEAMS == ("students", "auditors")
     assert deploy.grant_read_teams is utils.grant_read_teams
+
+
+# --- releasing the whole repo -------------------------------------------------------
+# "/" (or "." or blank) is the spelling for "release everything". It resolves to the clone
+# root, which is only safe because the copy skips the plumbing - so the two halves are
+# pinned together here: the path resolves, AND `.git`/`.github` never travel with it.
+
+
+@pytest.mark.parametrize("spelling", ["/", ".", "", "./", "//"])
+def test_every_spelling_of_the_repo_root_resolves_to_the_clone_root(tmp_path, spelling):
+    # Faculty type whichever of these feels natural; all of them mean "everything".
+    assert deploy._resolve_within(tmp_path, spelling) == tmp_path.resolve()
+
+
+@pytest.mark.parametrize("escape", ["../outside", "labs/../../outside", "/../outside"])
+def test_a_path_escaping_the_clone_is_still_refused(tmp_path, escape):
+    # Allowing the root must not have widened the door to paths outside it.
+    assert deploy._resolve_within(tmp_path, escape) is None
+
+
+def test_a_normal_subpath_still_resolves_under_the_clone(tmp_path):
+    (tmp_path / "labs").mkdir()
+    assert deploy._resolve_within(tmp_path, "labs/") == (tmp_path / "labs").resolve()
+
+
+def test_releasing_the_whole_repo_leaves_git_and_the_faculty_buttons_behind(tmp_path):
+    # The bug this guards: copying the clone root drags its `.git` over the destination,
+    # which repoints the dest's `origin` at the COURSE repo - so the release's own push
+    # lands in the source. `.github` is excluded too: at the root it would carry the
+    # faculty Release buttons, and their bot-token wiring, into a student-facing repo.
+    src, dst = tmp_path / "src", tmp_path / "dst"
+    (src / ".git").mkdir(parents=True)
+    (src / ".git" / "config").write_text("SOURCE-REMOTE")
+    (src / ".github" / "workflows").mkdir(parents=True)
+    (src / ".github" / "workflows" / "release-materials.yml").write_text("BUTTON")
+    (src / "labs").mkdir()
+    (src / "labs" / "01.md").write_text("lab one")
+    (src / "SYLLABUS.md").write_text("syllabus")
+    (dst / ".git").mkdir(parents=True)
+    (dst / ".git" / "config").write_text("DEST-REMOTE")
+
+    shutil.copytree(src, dst, dirs_exist_ok=True, ignore=deploy._copy_ignore(src, src))
+
+    assert (
+        dst / ".git" / "config"
+    ).read_text() == "DEST-REMOTE"  # push still goes home
+    assert not (dst / ".github").exists()
+    assert (dst / "labs" / "01.md").read_text() == "lab one"
+    assert (dst / "SYLLABUS.md").read_text() == "syllabus"
+
+
+def test_naming_dot_github_explicitly_still_releases_it(tmp_path):
+    # The `.github` skip is a whole-repo courtesy, not a ban: a faculty member who types
+    # the path means it. `.git` is skipped either way - it is never releasable.
+    src, dst = tmp_path / "src", tmp_path / "dst"
+    (src / ".github" / "workflows").mkdir(parents=True)
+    (src / ".github" / "workflows" / "ci.yml").write_text("CI")
+    (src / ".github" / ".git").mkdir()
+    (src / ".github" / ".git" / "config").write_text("NOPE")
+    dst.mkdir()
+
+    sub = src / ".github"
+    shutil.copytree(
+        sub, dst / ".github", dirs_exist_ok=True, ignore=deploy._copy_ignore(sub, src)
+    )
+
+    assert (dst / ".github" / "workflows" / "ci.yml").read_text() == "CI"
+    assert not (dst / ".github" / ".git").exists()
