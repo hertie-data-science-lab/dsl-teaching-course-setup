@@ -306,10 +306,32 @@ def scaffold_assignment(
         if gh("repo", "clone", f"{org}/{repo}", str(wd), "--", "-q")[0] != 0:
             log_err("  ! could not clone to add the solution branch")
             return 1
+        # A solution branch left by a prior run holds a real model solution and hidden
+        # tests; overwriting it would destroy faculty work. Probe the REMOTE, because in
+        # this fresh clone no local `solution` exists yet - `checkout -b` would happily
+        # succeed and the run would only fail much later, at the push, with a misleading
+        # error. ls-remote exits 0 when the branch exists, 2 when it does not.
+        if (
+            git(
+                "-C",
+                str(wd),
+                "ls-remote",
+                "--exit-code",
+                "--heads",
+                "origin",
+                "solution",
+            )[0]
+            == 0
+        ):
+            log_err(
+                "  ! solution branch already exists - re-run refuses to overwrite it "
+                f"(delete {org}/{repo}'s solution branch first if you really want it rebuilt)"
+            )
+            return 1
         if git("-C", str(wd), *_GIT_ENV, "checkout", "-q", "-b", "solution")[0] != 0:
-            # A real failure here (e.g. a solution branch already exists from a prior run)
-            # must not be swallowed and then misreported as a push failure below.
-            log_err("  ! could not create the solution branch (does it already exist?)")
+            # Any other local failure here must not be swallowed and then misreported as
+            # a push failure below.
+            log_err("  ! could not create the solution branch")
             return 1
         sol = wd / "solution"
         sol.mkdir()

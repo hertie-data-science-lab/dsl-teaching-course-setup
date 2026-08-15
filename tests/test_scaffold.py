@@ -146,14 +146,20 @@ def _clone_ok(monkeypatch, git_fake):
     monkeypatch.setattr(scaffold, "git", git_fake)
 
 
+def _git_ok(*args):
+    """Every git call succeeds, and `ls-remote --exit-code` reports NO remote solution
+    branch (exit 2) - the fresh-assignment case."""
+    return (2, "") if "ls-remote" in args else (0, "")
+
+
 def test_fresh_assignment_seeds_the_starter(fake, monkeypatch):
-    _clone_ok(monkeypatch, lambda *a: (0, ""))
+    _clone_ok(monkeypatch, _git_ok)
     assert scaffold.scaffold_assignment("Org", "1", "f2026") == 0
     assert {"README.md", "starter.py"} <= fake.written("assignment-1-f2026")
 
 
 def test_rerun_never_overwrites_an_authored_assignment_starter(fake, monkeypatch):
-    _clone_ok(monkeypatch, lambda *a: (0, ""))
+    _clone_ok(monkeypatch, _git_ok)
     authored = '"""Assignment 1."""\n\n\ndef solve():\n    return real_work()\n'
     fake.files[("assignment-1-f2026", "starter.py")] = authored
 
@@ -167,7 +173,7 @@ def test_assignment_reds_when_a_starter_seed_fails(fake, monkeypatch):
     # A failed create-only write of the starter/README (not a skip of a live file) must red
     # the assignment scaffold, matching scaffold_materials - a half-written template is not
     # a green "ready".
-    _clone_ok(monkeypatch, lambda *a: (0, ""))
+    _clone_ok(monkeypatch, _git_ok)
     monkeypatch.setattr(utils, "put_file", lambda *a, **k: False)  # USER seeds fail
     assert scaffold.scaffold_assignment("Org", "1", "f2026") == 1
 
@@ -175,11 +181,35 @@ def test_assignment_reds_when_a_starter_seed_fails(fake, monkeypatch):
 def test_assignment_reports_a_failed_solution_branch_checkout(
     fake, monkeypatch, capsys
 ):
-    # A failed `git checkout -b solution` (e.g. the branch already exists) must be reported,
-    # not swallowed and then misreported as a push failure further down.
+    # A failed local `git checkout -b solution` must be reported, not swallowed and then
+    # misreported as a push failure further down.
     def git_fake(*args):
+        if "ls-remote" in args:
+            return (2, "")
         return (1, "") if "checkout" in args else (0, "")
 
     _clone_ok(monkeypatch, git_fake)
     assert scaffold.scaffold_assignment("Org", "1", "f2026") == 1
     assert "solution branch" in capsys.readouterr().err
+
+
+def test_assignment_refuses_to_rebuild_an_existing_solution_branch(
+    fake, monkeypatch, capsys
+):
+    # The clone is FRESH, so no LOCAL solution branch exists and `checkout -b` would
+    # succeed even when the remote already carries a faculty-authored solution branch -
+    # the run then died at the push with a misleading error. Probe the remote first:
+    # ls-remote --exit-code exits 0 when the branch is there, and we refuse outright.
+    pushed: list[tuple] = []
+
+    def git_fake(*args):
+        if "ls-remote" in args:
+            return (0, "abc123\trefs/heads/solution")
+        if "push" in args:
+            pushed.append(args)
+        return (0, "")
+
+    _clone_ok(monkeypatch, git_fake)
+    assert scaffold.scaffold_assignment("Org", "1", "f2026") == 1
+    assert "already exists" in capsys.readouterr().err
+    assert pushed == []

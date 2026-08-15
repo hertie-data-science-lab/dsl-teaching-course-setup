@@ -123,7 +123,10 @@ def set_org_secret(org: str, secret_name: str, secret_value: str) -> bool:
     variable". Scope it explicitly to the infra repos that exist, which also keeps
     this org-admin credential out of student-facing/content repos (`visibility=all`
     would expose it to every workflow in the org) - classroom-config is already
-    private/faculty-only, the same trust tier as `.github`."""
+    private/faculty-only, the same trust tier as `.github`.
+
+    The value goes over stdin - `gh secret set` reads it from there whenever `--body` is
+    omitted - never argv, so it is not visible in `ps` to anyone on the runner."""
     infra = [
         r for r in (".github", "welcome", "classroom-config") if repo_exists(org, r)
     ] or [".github"]
@@ -137,8 +140,7 @@ def set_org_secret(org: str, secret_name: str, secret_value: str) -> bool:
         "selected",
         "--repos",
         ",".join(infra),
-        "--body",
-        secret_value,
+        stdin=secret_value,
     )
     if code != 0:
         log_err(f"failed to set org secret {secret_name}: {out[:200]}")
@@ -153,7 +155,7 @@ def set_org_secret(org: str, secret_name: str, secret_value: str) -> bool:
         if not repo_is_private(org, r):
             continue
         rc, rout = gh(
-            "secret", "set", secret_name, "--repo", f"{org}/{r}", "--body", secret_value
+            "secret", "set", secret_name, "--repo", f"{org}/{r}", stdin=secret_value
         )
         if rc == 0:
             log_ok(f"repo secret set (private infra): {org}/{r}")
@@ -615,7 +617,7 @@ def setup_cohort_extras(org: str) -> int:
     grant_cohort_faculty_access(org)
 
     # Public, auto-deployed cohort website (from course-website-template).
-    scaffold.scaffold_site(org)
+    failures += scaffold.scaffold_site(org)
 
     return failures
 
@@ -861,18 +863,33 @@ def _run(args: argparse.Namespace) -> int:
         try:
             with open(args.set_secret) as f:
                 token = f.read().strip()
-            set_org_secret(args.org, "DSL_BOT_TOKEN", token)
+            if not set_org_secret(args.org, "DSL_BOT_TOKEN", token):
+                failures += 1
         except (OSError, FileNotFoundError) as e:
             log_err(f"could not read secret file: {e}")
             return 1
     elif args.propagate_secret:
         # Copy the bot token onto this org so its seeded workflows can run. Lets the
         # central bootstrap auto-provision the secret - no per-course manual step.
-        token = os.environ.get("DSL_BOT_TOKEN") or os.environ.get("GH_TOKEN")
+        #
+        # Only DSL_BOT_TOKEN is published. A maintainer running this by hand usually has
+        # their PERSONAL GH_TOKEN exported; publishing that as the org secret would hand
+        # their PAT to every workflow in the infra repos - a wider blast radius than the
+        # repo secret seed.py already refuses to leak - so if only GH_TOKEN is set we
+        # refuse, and the refusal counts as a failed step rather than a silent no-op.
+        token = os.environ.get("DSL_BOT_TOKEN")
         if token:
-            set_org_secret(args.org, "DSL_BOT_TOKEN", token)
+            if not set_org_secret(args.org, "DSL_BOT_TOKEN", token):
+                failures += 1
+        elif os.environ.get("GH_TOKEN"):
+            log_err(
+                "DSL_BOT_TOKEN not set (only GH_TOKEN is) - refusing to publish a personal "
+                "token as the DSL_BOT_TOKEN org secret; set DSL_BOT_TOKEN to propagate it."
+            )
+            failures += 1
         else:
-            log_err("--propagate-secret set but no DSL_BOT_TOKEN/GH_TOKEN in env")
+            log_err("--propagate-secret set but no DSL_BOT_TOKEN in env")
+            failures += 1
     else:
         # Validate the secret exists (it should have been set manually or by another bootstrap run)
         if not validate_secret_presence(args.org, "DSL_BOT_TOKEN"):

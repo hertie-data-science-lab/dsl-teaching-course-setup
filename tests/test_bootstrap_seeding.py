@@ -614,8 +614,10 @@ def test_propagate_repo_secret_refuses_a_personal_gh_token(monkeypatch, capsys):
 
 
 def test_propagate_repo_secret_uses_stdin_and_counts_failures(monkeypatch, capsys):
-    # The token goes over stdin (--body-file -), never an argv --body (which `ps` exposes),
-    # and a repo the secret could not be set on counts into the refresh exit code.
+    # The token goes over stdin - `gh secret set` reads it from there when --body is
+    # omitted - never an argv --body (which `ps` exposes). `gh secret set` has no
+    # --body-file flag at all, so passing one makes every call fail with "unknown flag".
+    # A repo the secret could not be set on counts into the refresh exit code.
     monkeypatch.setenv("DSL_BOT_TOKEN", "s3cret")
     monkeypatch.delenv("GH_TOKEN", raising=False)
     calls: list = []
@@ -628,9 +630,65 @@ def test_propagate_repo_secret_uses_stdin_and_counts_failures(monkeypatch, capsy
 
     assert seed._propagate_repo_secret("Course-Org", ["one", "two"]) == 1
     for a, k in calls:
-        assert "--body-file" in a and "--body" not in a
+        assert not any(x.startswith("--body") for x in a)
+        assert "s3cret" not in a
         assert k.get("stdin") == "s3cret"
     assert "could not set DSL_BOT_TOKEN on Course-Org/two" in capsys.readouterr().err
+
+
+# ------------------------------------------------- --propagate-secret (org-level secret)
+
+
+def test_propagate_secret_refuses_a_personal_gh_token(monkeypatch, capsys):
+    # The ORG secret has a WIDER blast radius than the repo secret _propagate_repo_secret
+    # already guards: publishing a maintainer's personal PAT here hands it to every
+    # workflow in .github/welcome/classroom-config. Refuse, and red the bootstrap - a
+    # silent skip leaves an org whose buttons all fail weeks later with no auth.
+    _stub_bootstrap(monkeypatch)
+    monkeypatch.delenv("DSL_BOT_TOKEN", raising=False)
+    monkeypatch.setenv("GH_TOKEN", "ghp_personal")
+    published: list = []
+    monkeypatch.setattr(bc, "set_org_secret", lambda *a: published.append(a) or True)
+    monkeypatch.setattr(
+        "sys.argv", ["bootstrap_course", "--org", "Course-Org", "--propagate-secret"]
+    )
+
+    assert bc.main() == 1
+    assert published == []
+    err = capsys.readouterr().err
+    assert "refusing to publish a personal token" in err
+    assert "bootstrap incomplete" in err
+
+
+def test_propagate_secret_reds_when_the_org_secret_write_fails(monkeypatch, capsys):
+    # set_org_secret returns False on a failed write; that used to be dropped, reporting a
+    # green bootstrap for an org whose workflows have no token.
+    _stub_bootstrap(monkeypatch)
+    monkeypatch.setenv("DSL_BOT_TOKEN", "s3cret")
+    monkeypatch.setattr(bc, "set_org_secret", lambda *a: False)
+    monkeypatch.setattr(
+        "sys.argv", ["bootstrap_course", "--org", "Course-Org", "--propagate-secret"]
+    )
+
+    assert bc.main() == 1
+    assert "bootstrap incomplete" in capsys.readouterr().err
+
+
+def test_set_org_secret_sends_the_value_over_stdin(monkeypatch):
+    # Never an argv --body: the org bootstrap runs on a shared runner, where `ps` would
+    # expose the bot token to anything else on the box. Both the org secret and the
+    # private-infra-repo mirror go over stdin.
+    calls: list = []
+    monkeypatch.setattr(bc, "repo_exists", lambda org, r: r in (".github", "welcome"))
+    monkeypatch.setattr(bc, "repo_is_private", lambda org, r: r == "welcome")
+    monkeypatch.setattr(bc, "gh", lambda *a, **k: calls.append((a, k)) or (0, ""))
+
+    assert bc.set_org_secret("Course-Org", "DSL_BOT_TOKEN", "s3cret") is True
+    assert len(calls) == 2  # org secret + the private `welcome` mirror
+    for a, k in calls:
+        assert not any(x.startswith("--body") for x in a)
+        assert "s3cret" not in a
+        assert k.get("stdin") == "s3cret"
 
 
 # ------------------------------------- bootstrap threads sub-step failures into its exit

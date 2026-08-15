@@ -228,8 +228,8 @@ def _propagate_repo_secret(course_org: str, repos: list[str]) -> int:
     Only DSL_BOT_TOKEN is published. A maintainer running `seed refresh` by hand usually
     has their PERSONAL GH_TOKEN exported; publishing that as the shared repo secret would
     leak their PAT into every content repo, so if only GH_TOKEN is set we refuse and warn
-    rather than propagate it. The value goes over stdin (`--body-file -`), never argv, so
-    it is not visible in `ps`."""
+    rather than propagate it. The value goes over stdin - `gh secret set` reads it from
+    there whenever `--body` is omitted - never argv, so it is not visible in `ps`."""
     token = os.environ.get("DSL_BOT_TOKEN")
     if not token:
         if os.environ.get("GH_TOKEN"):
@@ -246,8 +246,6 @@ def _propagate_repo_secret(course_org: str, repos: list[str]) -> int:
             "DSL_BOT_TOKEN",
             "--repo",
             f"{course_org}/{repo}",
-            "--body-file",
-            "-",
             stdin=token,
         )
         if code == 0:
