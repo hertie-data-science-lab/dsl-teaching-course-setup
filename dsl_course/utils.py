@@ -674,6 +674,20 @@ def put_file(org: str, repo: str, path: str, content: bytes, message: str) -> bo
     return False
 
 
+def seed_if_absent(
+    org: str, repo: str, path: str, content: bytes, message: str
+) -> bool:
+    """Write a file create-only, never an overwrite - the single home of the "USER-owned
+    file, leave it exactly as faculty left it" rule. Returns True if the file was written,
+    False if it was already present (logged as a skip, so a re-run's output shows what was
+    left alone) or the write failed. Callers keep their own comment on WHY a given file is
+    create-only; this owns HOW."""
+    if get_file_content(org, repo, path) is not None:
+        log_skip(f"{repo}/{path}")
+        return False
+    return put_file(org, repo, path, content, message)
+
+
 def is_missing_resource(out: str) -> bool:
     """Whether a failed `gh` output means the resource is genuinely ABSENT (a 404) rather
     than a real error to raise on. The one shared marker test: callers that distinguish

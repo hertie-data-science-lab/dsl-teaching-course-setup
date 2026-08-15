@@ -29,17 +29,16 @@ from .utils import (
     COURSE_TEAM_ACCESS,
     create_repo,
     create_team,
-    get_file_content,
     gh,
     grant_team_repo_access,
     log,
     log_err,
     log_ok,
-    log_skip,
     log_step,
     put_file,
     repo_exists,
     repo_is_private,
+    seed_if_absent,
     set_repo_topics,
 )
 from .welcome import (
@@ -79,7 +78,7 @@ def _profile_topics(is_cohort: bool, course_code: str = "") -> list[str]:
 #   In a cohort: classroom-config/{students.csv, teams.csv, schedule.yml, people.yml,
 #   grades/** (except *.sample)} and welcome/README.md (the student landing page). On a
 #   course org: .github/dsl-course.yml (the faculty/course_admins SSOT). Seed these ONLY
-#   when absent (_seed_user_file) - rewriting them on a re-run destroys live enrolment
+#   when absent (utils.seed_if_absent) - rewriting them on a re-run destroys live enrolment
 #   state (roster rows, enrol codes, onboarded handles) and the faculty's schedule.
 #
 #   SYSTEM-owned - machinery and documentation this repo generates and must be able to fix
@@ -111,19 +110,6 @@ def _cohort_tag(org: str) -> tuple[str, int]:
     if not m:
         return "f2026", 2026
     return f"{m.group(1).lower()}{m.group(2)}", int(m.group(2))
-
-
-def _seed_user_file(
-    org: str, repo: str, path: str, content: bytes, message: str
-) -> bool:
-    """Seed a USER-owned file - create-only, never an overwrite.
-
-    Returns True if the file was written, False if it was already present (logged as a
-    skip, so a re-run's output shows exactly what was left alone) or the write failed."""
-    if get_file_content(org, repo, path) is not None:
-        log_skip(f"{repo}/{path}")
-        return False
-    return put_file(org, repo, path, content, message)
 
 
 def set_org_secret(org: str, secret_name: str, secret_value: str) -> bool:
@@ -406,7 +392,7 @@ def create_profile_repo(
         # (The org-overview profile/README.md is generated at the end of bootstrap,
         # once all repos exist, by seed.update_profile_readme - see main.)
         metadata = _course_metadata(org, org_name, course_name, course_code, admins)
-        _seed_user_file(
+        seed_if_absent(
             org,
             ".github",
             "dsl-course.yml",
@@ -496,7 +482,7 @@ def setup_cohort_extras(org: str) -> int:
     # NB: this block (and the classroom-config one below) runs on EVERY bootstrap, re-runs
     # included - create_repo reports an existing repo as success. That is deliberate for
     # SYSTEM-owned files (they refresh so fixes reach running cohorts); USER-owned files are
-    # protected per-file by _seed_user_file. See the ownership note at the top of this file.
+    # protected per-file by utils.seed_if_absent. See the ownership note at the top of this file.
     if create_repo(
         org,
         "welcome",
@@ -514,7 +500,7 @@ def setup_cohort_extras(org: str) -> int:
         # link back to the issue chooser is org-specific, so the template carries `{org}`.
         # USER-owned (it is the cohort's front door, and faculty may reword it), so
         # create-only - a repair re-run must not clobber their edits.
-        _seed_user_file(
+        seed_if_absent(
             org,
             "welcome",
             "README.md",
@@ -542,14 +528,14 @@ def setup_cohort_extras(org: str) -> int:
         # `.format` over the whole table keeps the YAML examples tag-aware (this cohort's
         # fYYYY/sYYYY, so they are copy-paste-correct) without a per-file special case.
         for path, (rel, message) in CLASSROOM_SCAFFOLDS.items():
-            _seed_user_file(
+            seed_if_absent(
                 org,
                 "classroom-config",
                 path,
                 template(rel).format(tag=tag, year=year, year_next=year + 1).encode(),
                 message,
             )
-        _seed_user_file(
+        seed_if_absent(
             org,
             "classroom-config",
             "grades/.gitkeep",

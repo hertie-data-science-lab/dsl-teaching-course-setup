@@ -28,7 +28,6 @@ from .utils import (
     GIT_ENV,
     create_repo,
     generate_from_template,
-    get_file_content,
     gh,
     git,
     grant_course_team_access,
@@ -38,8 +37,8 @@ from .utils import (
     log_ok,
     log_skip,
     log_step,
-    put_file,
     repo_exists,
+    seed_if_absent,
     set_repo_topics,
 )
 
@@ -111,21 +110,6 @@ def _notebook(title_lines: list[str], code: str) -> str:
         "nbformat_minor": 5,
     }
     return json.dumps(nb, indent=1) + "\n"
-
-
-def _seed_file(org: str, repo: str, path: str, content: bytes, message: str) -> bool:
-    """Seed a starter file create-only, never an overwrite.
-
-    `create_repo` reports an already-existing repo as success, so "New materials repo" /
-    "New assignment" re-run against the same tag lands here on a repo faculty have since
-    authored. These files (README.md, SYLLABUS.md, the starter, the section .gitkeep
-    scaffolds) are faculty-owned once written, so a re-run must leave them exactly as
-    faculty left them - and must not resurrect a deleted starter directory. A brand-new
-    repo still gets the full skeleton. Returns True if the file was written."""
-    if get_file_content(org, repo, path) is not None:
-        log_skip(f"{repo}/{path}")
-        return False
-    return put_file(org, repo, path, content, message)
 
 
 def scaffold_materials(org: str, tag: str) -> int:
@@ -235,7 +219,7 @@ def scaffold_materials(org: str, tag: str) -> int:
     # Create-only: a re-run against a repo faculty have since authored must not revert
     # their README/SYLLABUS to the stub or resurrect a deleted starter directory.
     for path, content in files.items():
-        _seed_file(org, repo, path, content, "init: materials skeleton")
+        seed_if_absent(org, repo, path, content, "init: materials skeleton")
     # Equip the run-from-repo Release buttons (same as Refresh does for content repos).
     # _push_workflows returns the count of writes that failed - a materials repo with no
     # Release buttons must not report success.
@@ -280,7 +264,7 @@ def scaffold_assignment(
     # main: starter only (what students receive on generate). No tests, no autograder -
     # grading runs faculty-side from the solution branch (see Grade assignment). Create-only:
     # a re-run against a repo whose starter faculty have since authored must not revert it.
-    _seed_file(
+    seed_if_absent(
         org,
         repo,
         "README.md",
@@ -294,7 +278,7 @@ def scaffold_assignment(
         if fmt == "notebook"
         else f'"""Assignment {number}."""\n\n\n{starter_code}\n'
     )
-    _seed_file(org, repo, starter_name, starter.encode(), "init: starter")
+    seed_if_absent(org, repo, starter_name, starter.encode(), "init: starter")
     set_repo_topics(org, repo, [f"assignment-{number}", "assignment"])
 
     # solution branch: the model solution, grading.yml, and the HIDDEN tests - all kept OFF

@@ -25,7 +25,16 @@ import pytest
 import yaml
 
 from dsl_course import bootstrap_course as bc
-from dsl_course import grades, roster, schedule, seed, sync_faculty, teams, welcome
+from dsl_course import (
+    grades,
+    roster,
+    schedule,
+    seed,
+    sync_faculty,
+    teams,
+    utils,
+    welcome,
+)
 
 # Derived from the seeding tables, so a sixth config file cannot silently miss the set
 # these tests police - which is the whole point of the tables existing.
@@ -74,14 +83,18 @@ class FakeOrg:
 @pytest.fixture
 def fake(monkeypatch):
     f = FakeOrg()
-    monkeypatch.setattr(bc, "get_file_content", f.get_file_content)
+    # USER-owned files go through utils.seed_if_absent (create-if-absent), which resolves
+    # get_file_content / put_file / log_skip in the utils namespace; SYSTEM-owned files are
+    # written by bc.put_file directly. Fake both layers to the same recorder.
+    monkeypatch.setattr(utils, "get_file_content", f.get_file_content)
+    monkeypatch.setattr(utils, "put_file", f.put_file)
+    monkeypatch.setattr(utils, "log_skip", lambda msg: f.skips.append(msg))
     monkeypatch.setattr(bc, "put_file", f.put_file)
     # The welcome repo's SYSTEM-owned files are written by dsl_course.welcome (so that
     # seed.refresh can re-push them without importing bootstrap_course), so its own
     # put_file/delete_file have to be faked too.
     monkeypatch.setattr(welcome, "put_file", f.put_file)
     monkeypatch.setattr(welcome, "delete_file", f.delete_file)
-    monkeypatch.setattr(bc, "log_skip", lambda msg: f.skips.append(msg))
     # everything else setup_cohort_extras does is repo-level and safe to re-run; it is
     # stubbed out so these tests stay pure (no gh calls).
     monkeypatch.setattr(bc, "create_repo", lambda *a, **k: True)
@@ -175,11 +188,11 @@ def test_rerun_logs_one_skip_per_preserved_file(fake):
     ]
 
 
-def test_seed_user_file_skips_an_empty_existing_file(fake):
+def test_seed_if_absent_skips_an_empty_existing_file(fake):
     # get_file_content returns "" for an existing empty file (grades/.gitkeep) - falsy but
     # present, so it must still count as existing.
     fake.files[("classroom-config", "grades/.gitkeep")] = ""
-    assert not bc._seed_user_file(
+    assert not utils.seed_if_absent(
         "Cohort-f2026", "classroom-config", "grades/.gitkeep", b"x", "msg"
     )
     assert fake.writes == []
@@ -442,10 +455,10 @@ def _stub_refresh(
     monkeypatch.setattr(seed, "update_profile_readme", lambda org: None)
     monkeypatch.setattr(seed, "refresh_welcome_workflows", welcome_failures)
     monkeypatch.setattr(seed, "refresh_classroom_samples", sample_failures)
-    monkeypatch.setattr(seed, "repo_is_archived", lambda org, repo: False)
-    # The per-cohort loop first probes the cohort's config repo to tell a genuinely-deleted
-    # (404) cohort org from a live one; (0, "") = the repo is present, so proceed.
-    monkeypatch.setattr(seed, "gh", lambda *a, **k: (0, ""))
+    # The per-cohort loop probes the cohort's config repo once (`--jq .archived`): a 404
+    # marker = deleted (prune + skip), "true" = archived (skip frozen), else live. (0, "false")
+    # = the repo is present and live, so proceed.
+    monkeypatch.setattr(seed, "gh", lambda *a, **k: (0, "false"))
 
 
 @pytest.mark.parametrize(
@@ -473,26 +486,27 @@ def test_refresh_leaves_an_archived_cohort_frozen(monkeypatch, capsys):
     # nightly cron therefore went red every night in any org with a past cohort. Skipping
     # the archived cohort whole is the fix; the live cohort beside it still converges.
     refreshed: list[str] = []
-    checked: list[tuple[str, str]] = []
+    checked: list[str] = []
 
     def refresh_one(org: str) -> int:
         refreshed.append(org)
         return 9 if org == "Cohort-f2026" else 0  # what the 403s would have counted as
 
-    def archived(org: str, repo: str) -> bool:
-        checked.append((org, repo))
-        return org == "Cohort-f2026"
+    def fake_gh(*a, **k):
+        # the per-cohort archived/deleted probe (repos/<cohort>/classroom-config --jq .archived)
+        checked.append(a[1])
+        return (0, "true") if "Cohort-f2026" in a[1] else (0, "false")
 
     _stub_refresh(
         monkeypatch, welcome_failures=refresh_one, sample_failures=refresh_one
     )
-    monkeypatch.setattr(seed, "repo_is_archived", archived)
+    monkeypatch.setattr(seed, "gh", fake_gh)
 
     assert seed.refresh("Course-Org") == 0
     assert refreshed == ["Cohort-s2027", "Cohort-s2027"]  # both jobs, live cohort only
     assert checked == [
-        ("Cohort-f2026", "classroom-config"),
-        ("Cohort-s2027", "classroom-config"),
+        "repos/Cohort-f2026/classroom-config",
+        "repos/Cohort-s2027/classroom-config",
     ]
     out = capsys.readouterr()
     assert "[skip] Cohort-f2026 (archived cohort - left frozen)" in out.out

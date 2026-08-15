@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from dsl_course import scaffold, seed
+from dsl_course import scaffold, seed, utils
 
 
 class FakeRepo:
@@ -37,8 +37,11 @@ class FakeRepo:
 @pytest.fixture
 def fake(monkeypatch):
     f = FakeRepo()
-    monkeypatch.setattr(scaffold, "get_file_content", f.get_file_content)
-    monkeypatch.setattr(scaffold, "put_file", f.put_file)
+    # Scaffold writes every file through utils.seed_if_absent (create-if-absent), which
+    # resolves get_file_content / put_file / log_skip in the utils namespace.
+    monkeypatch.setattr(utils, "get_file_content", f.get_file_content)
+    monkeypatch.setattr(utils, "put_file", f.put_file)
+    monkeypatch.setattr(utils, "log_skip", lambda msg: f.skips.append(msg))
     monkeypatch.setattr(scaffold, "log_skip", lambda msg: f.skips.append(msg))
     monkeypatch.setattr(scaffold, "create_repo", lambda *a, **k: True)
     monkeypatch.setattr(scaffold, "grant_course_team_access", lambda *a, **k: None)
