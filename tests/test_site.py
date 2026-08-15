@@ -578,21 +578,71 @@ def test_team_people_per_member_failure_raises_rather_than_dropping_one_card(
         site._team_people("Course", "instructors")
 
 
+def _bad_indent_error() -> yaml.YAMLError:
+    """The REAL exception a bad indent in people.yml produces. load_yaml_config re-raises
+    it untouched, and yaml.YAMLError is NOT a RuntimeError - a stub that raised
+    RuntimeError instead is exactly why the boundaries below went uncaught."""
+    try:
+        yaml.safe_load("instructors:\n  - name: Ada\n   github: ada\n")
+    except yaml.YAMLError as exc:
+        return exc
+    raise AssertionError("expected that YAML to be malformed")
+
+
 def test_yaml_file_raises_on_a_malformed_file_rather_than_wiping_what_it_feeds(
     monkeypatch,
 ):
     # A cohort's people.yml with one bad indent used to parse to `{}` - "nothing declared" -
     # and republish the site with every teaching-team card gone, green.
-    monkeypatch.setattr(
-        site, "load_yaml_config", lambda *a: (_ for _ in ()).throw(RuntimeError("bad"))
-    )
-    with pytest.raises(RuntimeError):
+    err = _bad_indent_error()
+    monkeypatch.setattr(site, "load_yaml_config", lambda *a: (_ for _ in ()).throw(err))
+    with pytest.raises(yaml.YAMLError):
         site._yaml_file("Cohort-f2026", "classroom-config", "people.yml")
 
 
 def test_yaml_file_reads_an_absent_file_as_nothing_declared(monkeypatch):
     monkeypatch.setattr(site, "load_yaml_config", lambda *a: None)
     assert site._yaml_file("Cohort-f2026", "classroom-config", "people.yml") == {}
+
+
+def test_main_reports_a_malformed_config_as_one_line_not_a_traceback(
+    monkeypatch, capsys
+):
+    # people.yml is web-editable, so faculty author bad indents directly. yaml.YAMLError
+    # is not a RuntimeError, so it used to walk straight through main()'s guard and out as
+    # a traceback in the Actions log.
+    err = _bad_indent_error()
+    monkeypatch.setattr(site, "sync_site", lambda *a: (_ for _ in ()).throw(err))
+    monkeypatch.setattr(
+        "sys.argv",
+        ["site", "sync", "--course-org", "Course", "--cohort-org", "Cohort-f2026"],
+    )
+    assert site.main() == 1
+    assert "Traceback" not in capsys.readouterr().err
+
+
+def test_all_cohorts_loop_survives_one_cohorts_raised_failure(monkeypatch, capsys):
+    # The lesson PR #151/#146 applied to the nightly refresh: the single try used to wrap
+    # the whole loop, so one cohort's raise skipped every LATER cohort's site on the 06:00
+    # cron. main() imports discover_cohorts from .seed at call time - patch it at source.
+    from dsl_course import seed
+
+    monkeypatch.setattr(seed, "discover_cohorts", lambda org: ["Cohort-A", "Cohort-B"])
+    seen: list[str] = []
+
+    def fake_sync(course, cohort):
+        seen.append(cohort)
+        if cohort == "Cohort-A":
+            raise _bad_indent_error()
+        return 0
+
+    monkeypatch.setattr(site, "sync_site", fake_sync)
+    monkeypatch.setattr(
+        "sys.argv", ["site", "sync", "--course-org", "Course", "--all-cohorts"]
+    )
+    assert site.main() == 1
+    assert seen == ["Cohort-A", "Cohort-B"]
+    assert "Cohort-A" in capsys.readouterr().err
 
 
 # --------------------------------------------- front-matter escaping (fix 7)

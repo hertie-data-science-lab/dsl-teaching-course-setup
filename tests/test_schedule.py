@@ -756,6 +756,26 @@ def test_an_unknown_timezone_is_reported_rather_than_silently_swapped():
     assert sched.events[0].when == date(2026, 11, 3)  # the event itself survives
 
 
+@pytest.mark.parametrize("key", ["semester_start", "semester_end"])
+def test_an_unparseable_term_date_is_reported_not_silently_synthesised(key):
+    # `01/09/2026` coerces to None exactly like an absent key, and the site then
+    # synthesises term dates - shifting every weekly session row, green.
+    sched = parse({key: "01/09/2026"})
+    assert getattr(sched, key) is None
+    assert len(sched.dropped) == 1
+    # top-level: the location renders bare, not as a stray-dotted `.semester_start`
+    assert sched.dropped[0].startswith(f"{key}: unusable value")
+    assert "shifting every session row" in sched.dropped[0]
+
+
+@pytest.mark.parametrize("key", ["semester_start", "semester_end"])
+def test_an_absent_term_date_is_not_flagged(key):
+    # Absent is a legitimate "not declared" - only a value faculty wrote and we cannot
+    # read is a fault.
+    assert parse({}).dropped == []
+    assert parse({key: date(2026, 9, 1)}).dropped == []
+
+
 def test_a_clean_schedule_drops_nothing():
     assert parse({}).dropped == []
     assert (
@@ -1146,6 +1166,24 @@ def test_record_handout_says_so_loudly_when_the_file_shape_defeats_the_edit(
     err = capsys.readouterr().err
     assert "could NOT record the assignment-1 handout" in err
     assert "2026-09-22T14:05" in err  # the stamp to add by hand
+    assert "on record nowhere" in err
+
+
+def test_record_handout_says_so_loudly_when_the_write_itself_fails(monkeypatch, capsys):
+    # Same fault as above, one step later: the edit was fine and the PUT failed. It used
+    # to fall off the end of the `if` with nothing logged - green, and the handout on
+    # record nowhere.
+    from dsl_course import schedule as S
+
+    good = "assignments:\n  assignment-1:\n    due_datetime: 2026-10-13\n"
+    monkeypatch.setattr(S, "get_file_content", lambda org, repo, path: good)
+    monkeypatch.setattr("dsl_course.utils.put_file", lambda *a, **k: False)
+
+    S.record_handout("Cohort-f2026", "assignment-1", "2026-09-22T14:05")
+
+    err = capsys.readouterr().err
+    assert "could NOT record the assignment-1 handout" in err
+    assert "2026-09-22T14:05" in err
     assert "on record nowhere" in err
 
 

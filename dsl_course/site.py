@@ -344,7 +344,7 @@ def _repo_tree(org: str, repo: str) -> tuple[str, tuple[str, ...]]:
     memoised for the run. A cohort site asks for the files of EVERY released session, and
     they nearly all live in the same repo, so without the memo the identical tree got
     fetched once per session. Paths come back sorted, so callers filtering them keep a
-    stable diff. `()` when the tree can't be read (the caller then simply finds no files).
+    stable diff.
 
     Unbounded cache: this is a one-shot CLI process, and the trees it reads are the
     handful of repos one cohort released into.
@@ -1173,8 +1173,10 @@ def main() -> int:
     if args.cmd != "public-sync" and not (args.all_cohorts or args.cohort_org):
         log_err("pass --cohort-org or --all-cohorts.")
         return 1
-    # A read helper that couldn't reach the API raises; in an Actions log a one-line
-    # error beats a traceback, and the run still goes red.
+    # A read helper that couldn't reach the API raises RuntimeError; a config file with
+    # one bad indent raises yaml.YAMLError out of load_yaml_config (people.yml is
+    # web-editable, so faculty author that fault directly). In an Actions log a one-line
+    # error beats a traceback either way, and the run still goes red.
     try:
         if args.cmd == "public-sync":
             if not args.source_repo:
@@ -1190,10 +1192,20 @@ def main() -> int:
 
             rc = 0
             for cohort in discover_cohorts(args.course_org):
-                rc |= sync_site(args.course_org, cohort)
+                # One cohort's raised failure (an unreachable API, a people.yml that
+                # doesn't parse) must not skip every LATER cohort's site on the 06:00
+                # cron - log it, mark the batch failed, and carry on. The same per-cohort
+                # isolation PR #151/#146 applied to the nightly refresh and the scheduler.
+                try:
+                    rc |= sync_site(args.course_org, cohort)
+                except Exception as exc:
+                    log_err(
+                        f"site sync for {cohort} failed ({type(exc).__name__}): {exc}"
+                    )
+                    rc |= 1  # accumulate, don't clobber prior cohorts' status bits
             return rc
         return sync_site(args.course_org, args.cohort_org)
-    except RuntimeError as exc:
+    except (RuntimeError, yaml.YAMLError) as exc:
         log_err(str(exc))
         return 1
 

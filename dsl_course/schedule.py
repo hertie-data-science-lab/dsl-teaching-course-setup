@@ -359,7 +359,8 @@ def _flag_bad_value(
     `handout_datetime: 2026-13-01` reads as a scheduled handout and provisions nothing;
     `grading_datetime: nxt week` silently grades at the due date. Both leave a green run
     and a plan that is not the one faculty wrote, so both belong in `dropped`."""
-    drops.append(f"{where}.{key}: unusable value {value!r} - ignored, so {cost}")
+    loc = f"{where}.{key}" if where else str(key)
+    drops.append(f"{loc}: unusable value {value!r} - ignored, so {cost}")
 
 
 def _flagged_datetime(
@@ -379,6 +380,19 @@ def _flagged_datetime(
     cannot read is a fault worth surfacing."""
     raw = entry.get(key)
     when = _coerce_datetime(raw, tz, end_of_day=end_of_day)
+    if when is None and raw is not None:
+        _flag_bad_value(drops, where, key, raw, cost)
+    return when
+
+
+def _flagged_date(
+    entry: dict, key: str, drops: list[str], where: str, cost: str
+) -> date | None:
+    """`entry[key]` as a whole-day date, flagging a value that is there but does not
+    parse. The date-only twin of `_flagged_datetime`, with the same absent-vs-unreadable
+    rule: no key means "not declared", which every caller handles."""
+    raw = entry.get(key)
+    when = _coerce_date(raw)
     if when is None and raw is not None:
         _flag_bad_value(drops, where, key, raw, cost)
     return when
@@ -668,11 +682,15 @@ def parse(meta: dict) -> Schedule:
             f"timezone: `{tz_name}` is not a known zone - falling back to {DEFAULT_TZ}, "
             f"so every naive time below is read in {DEFAULT_TZ}"
         )
+    term_cost = "the site synthesises term dates, shifting every session row"
     return Schedule(
         timezone=str(tz_name or DEFAULT_TZ),
         releases=_parse_releases(meta.get("releases"), tz, drops),
-        semester_start=_coerce_date(meta.get("semester_start")),
-        semester_end=_coerce_date(meta.get("semester_end")),
+        # `01/09/2026` coerces to None exactly like an absent key, and the site then
+        # SYNTHESISES term dates from what it does know - so a bad separator quietly
+        # shifts every weekly session row. Flag it.
+        semester_start=_flagged_date(meta, "semester_start", drops, "", term_cost),
+        semester_end=_flagged_date(meta, "semester_end", drops, "", term_cost),
         assignments=_parse_assignments(meta.get("assignments"), tz, drops),
         events=_parse_events(meta.get("events"), tz, drops),
         dropped=drops,
@@ -972,6 +990,16 @@ def record_handout(cohort_org: str, slug: str, stamp: str | None = None) -> None
         f"schedule: record {slug} handout ({stamp})",
     ):
         log(f"  recorded handout in {CONFIG_REPO}/{SCHEDULE_PATH}: {slug} @ {stamp}")
+    else:
+        # Same fault as the DECLINED branch above, one step later: the handout HAPPENED
+        # and the write of its record is what failed. Best-effort stays (the repos are
+        # out; nothing here raises), but it may not be silent.
+        log_err(
+            f"could NOT record the {slug} handout in {cohort_org}/{CONFIG_REPO}/"
+            f"{SCHEDULE_PATH}: the write failed. The handout went out at {stamp} but is "
+            f"on record nowhere - add `handout_datetime: {stamp}` to "
+            f"`assignments.{slug}` by hand."
+        )
 
 
 def main() -> int:
