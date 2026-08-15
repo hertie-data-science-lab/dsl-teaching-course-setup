@@ -145,6 +145,22 @@ def test_sync_never_adds_a_handle_that_is_not_on_the_roster(stub_team, monkeypat
     assert stub_team["added"] == ["ben-baker"]
 
 
+def test_sync_refuses_to_reconcile_when_the_roster_is_unreadable(
+    stub_team, monkeypatch
+):
+    # teams.csv present but students.csv unreadable (None): the allowlist would be empty and
+    # a pruning reconcile would evict every project team. Refuse and red, don't mass-evict.
+    monkeypatch.setattr(
+        sync_teams.teams,
+        "load",
+        lambda org: {"assignment-4-project": {"wizards": ["ben-baker"]}},
+    )
+    monkeypatch.setattr(roster, "load", lambda org: None)  # roster unreadable
+    errors = sync_teams.sync("org", prune=True)
+    assert errors == 1
+    assert stub_team["added"] == [] and stub_team["removed"] == []  # nothing touched
+
+
 def test_sync_matches_roster_handles_case_insensitively(stub_team, monkeypatch):
     # A teams.csv handle differing only in case from the roster entry is the same
     # GitHub account, so it must be added (in the roster's canonical casing), not
