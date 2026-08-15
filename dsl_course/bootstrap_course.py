@@ -44,6 +44,7 @@ from .utils import (
 from .welcome import (
     CLASSROOM_SCAFFOLDS,
     refresh_classroom_samples,
+    refresh_classroom_system_files,
     refresh_welcome_workflows,
     template,
 )
@@ -284,20 +285,6 @@ def add_course_admins(org: str, handles: str) -> None:
             log_ok(f"  {login}: {out.strip() or 'added'}")
         else:
             log_err(f"  ! could not add {login}: {out[:120]}")
-
-
-def _validate_schedule_workflow() -> str:
-    """The classroom-config schedule validator, with the central repo pinned into it.
-
-    Placeholders rather than `str.format`, because the file is full of `${{ }}` GitHub
-    expressions that `format` would try to interpret."""
-    from .central import CENTRAL, CENTRAL_REF
-
-    return (
-        template("classroom-config/validate-schedule.yml")
-        .replace("__CENTRAL_REF__", CENTRAL_REF)
-        .replace("__CENTRAL__", CENTRAL)
-    )
 
 
 # course_admins are declared ONCE on the persistent COURSE org - the single source of truth
@@ -569,19 +556,10 @@ def setup_cohort_extras(org: str) -> int:
             "init: grades/ (add one <assignment>.csv per assignment to return marks)",
         ):
             failures += 1
-        # SYSTEM-owned documentation, refreshed on every run so it never goes stale: the
-        # schema contract README, and a `.sample` twin for every file in the worked example
-        # cohort. Samples keep the `.sample` suffix so the engine (sync_membership,
-        # sync_teams, grade sync) never ingests them - only the real names; activation =
-        # copying rows into the real file.
-        if not put_file(
-            org,
-            "classroom-config",
-            "README.md",
-            template("classroom-config/README.md").encode(),
-            "docs: classroom-config schema + contract",
-        ):
-            failures += 1
+        # SYSTEM-owned documentation, refreshed on every run so it never goes stale: a
+        # `.sample` twin for every file in the worked example cohort. Samples keep the
+        # `.sample` suffix so the engine (sync_membership, sync_teams, grade sync) never
+        # ingests them - only the real names; activation = copying rows into the real file.
         sample_failures = refresh_classroom_samples(org)
         if sample_failures:
             failures += sample_failures
@@ -589,33 +567,11 @@ def setup_cohort_extras(org: str) -> int:
                 f"the classroom-config samples in {org} are not fully seeded - re-run "
                 f"Bootstrap cohort (or wait for the nightly Refresh)"
             )
-        # SYSTEM-owned dispatchers: refreshed on every run so fixes reach running cohorts. A
-        # failed dispatcher write means membership/site sync never triggers, so count it.
-        if not put_file(
-            org,
-            "classroom-config",
-            ".github/workflows/dispatch-sync.yml",
-            template("classroom-config/dispatch-sync.yml").encode(),
-            "ci: seed dispatch-sync workflow",
-        ):
-            failures += 1
-        if not put_file(
-            org,
-            "classroom-config",
-            ".github/workflows/dispatch-sync-site.yml",
-            template("classroom-config/dispatch-sync-site.yml").encode(),
-            "ci: seed dispatch-sync-site workflow",
-        ):
-            failures += 1
-        if not put_file(
-            org,
-            "classroom-config",
-            ".github/workflows/validate-schedule.yml",
-            _validate_schedule_workflow().encode(),
-            "ci: seed validate-schedule workflow",
-        ):
-            failures += 1
-        log_ok("classroom-config ready (config preserved, dispatchers refreshed)")
+        # SYSTEM-owned contract + dispatchers: refreshed on every run so fixes reach
+        # running cohorts - and, since they live in welcome.py, on every nightly
+        # seed.refresh too, so a cohort no longer waits for someone to press this button.
+        # A failed dispatcher write means membership/site sync never triggers, so count it.
+        failures += refresh_classroom_system_files(org)
 
     # Faculty access on the two repos just seeded - unconditional (not inside the
     # create_repo blocks above), so a re-run repairs an org that predates this.

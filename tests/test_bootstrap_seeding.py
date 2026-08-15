@@ -382,8 +382,10 @@ def test_cohort_extras_reds_when_the_org_tighten_fails(fake, monkeypatch):
 def test_cohort_extras_reds_when_a_dispatcher_write_fails(fake, monkeypatch):
     # A failed SYSTEM-owned write (the classroom-config README contract, or a dispatch-sync
     # workflow) means membership/site sync never triggers, yet the create_repo blocks stay
-    # green - so the previously-discarded put_file return is now counted.
-    monkeypatch.setattr(bc, "put_file", lambda *a, **k: False)
+    # green - so the previously-discarded put_file return is now counted. The SYSTEM-owned
+    # writes go through dsl_course.welcome (shared with the nightly refresh), so that is
+    # the put_file to break.
+    monkeypatch.setattr(welcome, "put_file", lambda *a, **k: False)
     assert bc.setup_cohort_extras("Cohort-f2026") >= 1
 
 
@@ -492,10 +494,11 @@ def _stub_refresh(
     monkeypatch,
     welcome_failures=lambda org: 0,
     sample_failures=lambda org: 0,
+    system_failures=lambda org: 0,
     seed_failures=0,
     heartbeat_failures=0,
 ) -> None:
-    """Neutralise every network call seed.refresh makes; the three write paths report a
+    """Neutralise every network call seed.refresh makes; the write paths report a
     failure count, which is what refresh's exit code is built from."""
     monkeypatch.setattr(
         seed, "discover_cohorts", lambda org: ["Cohort-f2026", "Cohort-s2027"]
@@ -508,6 +511,7 @@ def _stub_refresh(
     monkeypatch.setattr(seed, "update_profile_readme", lambda org: None)
     monkeypatch.setattr(seed, "refresh_welcome_workflows", welcome_failures)
     monkeypatch.setattr(seed, "refresh_classroom_samples", sample_failures)
+    monkeypatch.setattr(seed, "refresh_classroom_system_files", system_failures)
     # The per-cohort loop probes the cohort ORG once (`orgs/<cohort>`): a 404 marker = the
     # org is deleted (prune + skip). A live org then checks repo_is_archived (archived = skip
     # frozen). (0, "") from the org probe + repo_is_archived False = present and live, proceed.
@@ -517,14 +521,15 @@ def _stub_refresh(
 
 @pytest.mark.parametrize(
     "per_cohort_job",
-    ["welcome_failures", "sample_failures"],
-    ids=["welcome-workflows", "config-samples"],
+    ["welcome_failures", "sample_failures", "system_failures"],
+    ids=["welcome-workflows", "config-samples", "classroom-system-files"],
 )
 def test_refresh_reaches_every_registered_cohort(monkeypatch, per_cohort_job):
-    # Both per-cohort jobs are seeded once, at Bootstrap cohort, and then left behind by an
+    # Every per-cohort job is seeded at Bootstrap cohort, and then left behind by an
     # engine (and a set of schemas) that keep moving on central main. The nightly Refresh
     # is what closes that gap, so each has to reach EVERY registered cohort, not just the
-    # course org.
+    # course org. The classroom-config dispatchers/README used to refresh ONLY inside
+    # Bootstrap cohort, so three live cohorts drifted a semester behind the templates.
     refreshed: list[str] = []
     _stub_refresh(
         monkeypatch, **{per_cohort_job: lambda org: refreshed.append(org) or 0}
@@ -546,7 +551,10 @@ def test_refresh_leaves_an_archived_cohort_frozen(monkeypatch, capsys):
         return 9 if org == "Cohort-f2026" else 0  # what the 403s would have counted as
 
     _stub_refresh(
-        monkeypatch, welcome_failures=refresh_one, sample_failures=refresh_one
+        monkeypatch,
+        welcome_failures=refresh_one,
+        sample_failures=refresh_one,
+        system_failures=refresh_one,
     )
     # Both orgs live (org probe healthy); Cohort-f2026 is a finished, archived semester.
     monkeypatch.setattr(seed, "gh", lambda *a, **k: (0, ""))
@@ -555,7 +563,8 @@ def test_refresh_leaves_an_archived_cohort_frozen(monkeypatch, capsys):
     )
 
     assert seed.refresh("Course-Org") == 0
-    assert refreshed == ["Cohort-s2027", "Cohort-s2027"]  # both jobs, live cohort only
+    # every job, live cohort only
+    assert refreshed == ["Cohort-s2027"] * 3
     out = capsys.readouterr()
     assert "[skip] Cohort-f2026 (archived cohort - left frozen)" in out.out
     assert "refresh incomplete" not in out.err
@@ -570,6 +579,7 @@ def test_refresh_prunes_a_deleted_cohort_org(monkeypatch, capsys):
         monkeypatch,
         welcome_failures=lambda org: refreshed.append(org) or 0,
         sample_failures=lambda org: refreshed.append(org) or 0,
+        system_failures=lambda org: refreshed.append(org) or 0,
     )
 
     def fake_gh(*a, **k):
@@ -581,7 +591,7 @@ def test_refresh_prunes_a_deleted_cohort_org(monkeypatch, capsys):
     monkeypatch.setattr(seed, "gh", fake_gh)
 
     assert seed.refresh("Course-Org") == 0
-    assert refreshed == ["Cohort-s2027", "Cohort-s2027"]  # deleted cohort skipped whole
+    assert refreshed == ["Cohort-s2027"] * 3  # deleted cohort skipped whole
     out = capsys.readouterr()
     assert "[skip] Cohort-f2026" in out.out and "prune" in out.out
     assert "refresh incomplete" not in out.err
@@ -595,11 +605,12 @@ def test_refresh_does_not_prune_on_a_transient_read_failure(monkeypatch):
         monkeypatch,
         welcome_failures=lambda org: refreshed.append(org) or 0,
         sample_failures=lambda org: refreshed.append(org) or 0,
+        system_failures=lambda org: refreshed.append(org) or 0,
     )
     monkeypatch.setattr(seed, "gh", lambda *a, **k: (1, "gh: HTTP 502"))
 
     assert seed.refresh("Course-Org") == 0
-    assert refreshed == ["Cohort-f2026", "Cohort-f2026", "Cohort-s2027", "Cohort-s2027"]
+    assert refreshed == ["Cohort-f2026"] * 3 + ["Cohort-s2027"] * 3
 
 
 # ------------------------------------------------- the 60-day auto-disable heartbeat
@@ -847,8 +858,18 @@ def test_cohort_bootstrap_reds_when_student_repos_half_seeded(monkeypatch, capsy
 
 @pytest.mark.parametrize(
     ("failing_job", "count"),
-    [("seed_failures", 2), ("welcome_failures", 1), ("sample_failures", 1)],
-    ids=["org-workflows", "welcome-workflows", "config-samples"],
+    [
+        ("seed_failures", 2),
+        ("welcome_failures", 1),
+        ("sample_failures", 1),
+        ("system_failures", 1),
+    ],
+    ids=[
+        "org-workflows",
+        "welcome-workflows",
+        "config-samples",
+        "classroom-system-files",
+    ],
 )
 def test_refresh_goes_red_when_it_could_not_converge(
     monkeypatch, capsys, failing_job, count
@@ -887,8 +908,13 @@ def test_refresh_cli_logs_an_unreachable_api_instead_of_a_traceback(
             len(welcome.CLASSROOM_SAMPLES),
             "classroom-config sample(s) not written",
         ),
+        (
+            "refresh_classroom_system_files",
+            len(welcome.CLASSROOM_SYSTEM_FILES),
+            "classroom-config system file(s) not written",
+        ),
     ],
-    ids=["welcome-workflows", "config-samples"],
+    ids=["welcome-workflows", "config-samples", "classroom-system-files"],
 )
 def test_a_per_cohort_refresh_counts_failed_writes_and_claims_nothing(
     monkeypatch, capsys, job, expected, message
@@ -903,6 +929,39 @@ def test_a_per_cohort_refresh_counts_failed_writes_and_claims_nothing(
     out = capsys.readouterr()
     assert "up to date" not in out.out
     assert f"{expected} {message}" in out.err
+
+
+def test_the_nightly_classroom_refresh_touches_only_system_owned_files(monkeypatch):
+    # THE no-clobber invariant. refresh_classroom_system_files runs nightly against LIVE
+    # cohorts, so every path it writes is a path overwritten from a template every night.
+    # The cohort's own config - students.csv (enrol codes + onboarded handles), teams.csv,
+    # schedule.yml, people.yml, grades/ - is seeded create-if-missing at bootstrap and must
+    # stay that way; adding one of them to the refresh set would destroy a live roster
+    # (which is exactly what happened once, in hertie-dsl-demo-f2026).
+    #
+    # Hard-coded on purpose: deriving the expectation from welcome.CLASSROOM_SYSTEM_FILES
+    # would make the test agree with any change to it.
+    written: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        welcome,
+        "put_file",
+        lambda org, repo, path, content, message: written.append((repo, path)) or True,
+    )
+
+    assert welcome.refresh_classroom_system_files("Cohort-f2026") == 0
+    assert {path for _, path in written} == {
+        "README.md",
+        ".github/workflows/dispatch-sync.yml",
+        ".github/workflows/dispatch-sync-site.yml",
+        ".github/workflows/validate-schedule.yml",
+    }, (
+        "the nightly refresh may only re-push SYSTEM-owned classroom-config files; a "
+        "USER-owned file here (students.csv, teams.csv, schedule.yml, people.yml, "
+        "grades/) would be overwritten from the template every night"
+    )
+    assert {repo for repo, _ in written} == {roster.CONFIG_REPO}
+    # No path is written twice, so the count callers add up is one per file.
+    assert len(written) == len(set(written))
 
 
 def test_org_settings_ok_line_only_prints_when_2fa_was_set(monkeypatch, capsys):
