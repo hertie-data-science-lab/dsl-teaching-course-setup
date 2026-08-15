@@ -106,10 +106,22 @@ def sync(cohort_org: str, prune: bool = False, dry_run: bool = False) -> int:
     if not wanted:
         log_ok("no project teams defined yet - nothing to sync.")
         return 0
+    students = roster.load(cohort_org)
+    if students is None:
+        # The roster is UNREADABLE (absent, or a transient read failure) - distinct from a
+        # present-but-empty one. Building the allowlist from None gives an empty set, so a
+        # pruning reconcile would then EVICT every member from every project team. Refuse to
+        # touch anything, mirroring sync_roster's abort on the same signal, rather than
+        # mass-evicting and reporting red. (roster.load has already logged the cause.)
+        log_err(
+            f"roster unreadable in {cohort_org} - refusing to reconcile project teams "
+            f"(an empty allowlist would evict every team member)"
+        )
+        return 1
     log_step(f"Materialising {len(wanted)} project team(s) in {cohort_org}")
     # Fold-keyed so a teams.csv handle that differs only in case from its roster entry
     # (same GitHub account) matches; the roster's canonical casing is what gets added.
-    allowed_by_fold = {h.casefold(): h for h in known_handles(roster.load(cohort_org))}
+    allowed_by_fold = {h.casefold(): h for h in known_handles(students)}
     errors = 0
     for slug in sorted(wanted):
         accepted, rejected = vet_handles(sorted(wanted[slug]), allowed_by_fold)
