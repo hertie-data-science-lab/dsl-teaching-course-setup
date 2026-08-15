@@ -251,7 +251,9 @@ def test_every_shipped_sample_parses_with_the_real_parser():
     # very code that will read their copy - never by a second, driftable checker.
     students = roster.parse(welcome.example_cohort_file("students.csv"))
     assert len(students) >= 3
-    assert roster.auditors(students), "the roster sample must exercise `role: auditor`"
+    assert any(s.is_auditor for s in students), (
+        "the roster sample must exercise `role: auditor`"
+    )
 
     per_assignment = teams.parse(welcome.example_cohort_file("teams.csv"))
     assert sorted(per_assignment["assignment-4-project"]) == [

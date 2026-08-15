@@ -61,7 +61,7 @@ grading.yml (on the template's solution branch):
 
 Usage:
     python3 -m dsl_course.collect \\
-        --master-org COURSE --template assignment-1-f2026 \\
+        --master-org COURSE --course-source-repo assignment-1-f2026 \\
         --cohort-org COHORT --deadline 2026-10-15 [--group] [--dry-run]
 """
 

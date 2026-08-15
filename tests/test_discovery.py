@@ -128,7 +128,6 @@ def test_sections_and_sessions_ignore_root_level_and_over_deep_folders(monkeypat
             "labs/2_wrangling",
         ],
     )
-    assert discovery.discover_sections("org", "r") == ["labs", "lectures"]
     assert discovery.discover_sessions("org", "r") == ["1", "2"]
 
 

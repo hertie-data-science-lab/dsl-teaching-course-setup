@@ -13,7 +13,7 @@ Idempotent: existing repos are left alone.
     cohort/<slug>-<handle>   (private; student = collaborator)
     where <slug> is the template name minus a trailing -fYYYY / -sYYYY.
 
-With --group it instead makes ONE repo per team, `cohort/<slug>-<team>`, and grants the
+With --type group it instead makes ONE repo per team, `cohort/<slug>-<team>`, and grants the
 GitHub Team materialised from classroom-config/teams.csv (see dsl_course.sync_teams) - so
 membership changes propagate to access. Grades are never written here; they go to each
 student's private gradebook repo (see dsl_course.grades), so a possibly-public team repo
@@ -21,7 +21,7 @@ never carries marks.
 
 Usage:
     python3 -m dsl_course.assign \\
-        --master-org TEST-HERTIE-COURSE --template assignment-1-f2026 \\
+        --master-org TEST-HERTIE-COURSE --course-source-repo assignment-1-f2026 \\
         --cohort-org TEST-HERTIE-COHORT-f2026
 """
 

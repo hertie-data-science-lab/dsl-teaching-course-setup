@@ -100,11 +100,6 @@ def enrolled(students: list[Student]) -> list[Student]:
     return [s for s in students if s.is_enrolled]
 
 
-def auditors(students: list[Student]) -> list[Student]:
-    """The read-only rows (released materials only)."""
-    return [s for s in students if s.is_auditor]
-
-
 def dump(students: list[Student]) -> str:
     """Serialise rows back to students.csv text (header + one row per student)."""
     out = io.StringIO()
