@@ -196,6 +196,56 @@ def test_forms_have_no_confirmation_checkbox_and_fixed_titles():
         assert all(b.get("type") != "checkboxes" for b in doc["body"]), rel
 
 
+@pytest.mark.parametrize("rel", sorted(CSV_WORKFLOWS))
+def test_onboarding_concurrency_is_scoped_per_issue(rel):
+    # A repo-wide group with cancel-in-progress: false looks like serialisation but isn't:
+    # GitHub keeps exactly ONE pending run per group, so on a first-day burst of Join
+    # issues the third arrival CANCELS the second - and a cancelled run posts no comment
+    # and adds no label, so those students are dropped in silence. Scoping the group to the
+    # issue lets the burst run in parallel; the CSV's `sha` + the retry below is what makes
+    # the concurrent writes safe (a stale sha is a 409, never a lost update).
+    doc = yaml.safe_load((WELCOME / rel).read_text())
+    assert "github.event.issue.number" in doc["concurrency"]["group"]
+    assert doc["concurrency"]["cancel-in-progress"] is False
+
+
+@pytest.mark.parametrize("rel", sorted(CSV_WORKFLOWS))
+def test_onboarding_workflows_are_bounded_pinned_and_minimally_scoped(rel):
+    doc = yaml.safe_load((WELCOME / rel).read_text())
+    (job,) = doc["jobs"].values()
+    assert isinstance(job.get("timeout-minutes"), int)
+    (step,) = job["steps"]
+    # A student-triggered job holding DSL_BOT_TOKEN: the action it runs is pinned to a
+    # commit, not to a movable tag.
+    assert re.fullmatch(r"[0-9a-f]{40}", step["uses"].partition("@")[2]), step["uses"]
+    # The ambient token comments on, labels and closes the issue in THIS repo. The CSV it
+    # writes lives in classroom-config, which only DSL_BOT_TOKEN reaches - so `contents:`
+    # here would be scope with no purpose.
+    assert doc["permissions"] == {"issues": "write"}
+
+
+def test_onboard_retries_the_roster_write_on_a_conflict():
+    # Many Join issues are in flight at once now that they run in parallel, and each is a
+    # read-modify-write of the same file. A stale sha is a 409, so the write RE-READS and
+    # re-applies rather than giving up (or, worse, writing a stale table back).
+    code = code_of(script_of("onboard.yml", "onboard"))
+    assert "e.status !== 409" in code
+    assert code.count("await readRoster()") >= 2, "a retry must re-read, not re-send"
+    # Only this student's row is touched, keyed on their unique code, so a retry can never
+    # undo the row a competing run committed in between.
+    assert "rows.find(r => r[iCode]" in code
+
+
+def test_team_formation_retakes_the_cap_decision_on_every_attempt():
+    code = code_of(script_of("team-formation.yml", "form-team"))
+    assert "e.status !== 409" in code
+    loop = code[code.index("for (let attempt") :]
+    # The read, the duplicate-membership check and the size cap all live INSIDE the retry
+    # loop: two students committing at the same moment must not both slip past a full team.
+    for fragment in ("await readTeams()", "size >= cap", "createOrUpdateFileContents"):
+        assert fragment in loop, fragment
+
+
 def test_team_cap_is_read_from_schedule_yml_per_assignment():
     # The cap is instructor-set config (assignments.<slug>.max_team_size in the cohort's
     # schedule.yml), not a constant buried in the workflow.

@@ -5,22 +5,51 @@ on:
     - cron: "0 6 * * 1"  # Mondays at 06:00 UTC
   workflow_dispatch: {}
 
+# The PR steps need contents + pull-requests write; nothing else does. Declared at the job
+# below, so the workflow default is nothing at all.
+permissions: {}
+
 jobs:
   refresh:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:
           python-version: "3.12"
           cache: pip
 
       - name: Install Python dependencies
         run: pip install -r requirements.txt
+
+      # The branch is prepared BEFORE the inventory is generated, so the file is written on
+      # top of whatever the branch already holds rather than on top of main.
+      - name: Prepare the inventory branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: chore/refresh-inventory
+        run: |
+          set -eo pipefail
+          git config user.name "DSL Bot"
+          git config user.email "dsl-bot@hertie-school.org"
+          # Fetch the shared branch if it exists, so the push below has a lease to check
+          # against - and so a reuse starts from its real tip.
+          git fetch origin "+refs/heads/$BRANCH:refs/remotes/origin/$BRANCH" 2>/dev/null || true
+          # Build ON the branch only while a PR is open on it: that PR may carry a reviewer's
+          # commit, and rebuilding from main would discard it with no trace (the old
+          # `checkout -B` + `push -f` did exactly that). With no open PR the branch is spent -
+          # it is kept after the squash-merge - so start again from main rather than
+          # re-proposing an already-merged commit.
+          if gh pr view "$BRANCH" --json state --jq '.state' 2>/dev/null | grep -q OPEN; then
+            git checkout -B "$BRANCH" "origin/$BRANCH"
+          else
+            git checkout -B "$BRANCH"
+          fi
 
       # Reading ACROSS orgs is the bot's job - it is a member of every course org, and
       # GITHUB_TOKEN sees only this repo.
@@ -37,6 +66,7 @@ jobs:
       - name: Open PR if the inventory changed
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: chore/refresh-inventory
         run: |
           set -eo pipefail
           if git diff --quiet bootstrapped-orgs-inventory.md; then
@@ -44,14 +74,25 @@ jobs:
             exit 0
           fi
 
-          # Reuse ONE branch so refreshes never accumulate.
-          BRANCH="chore/refresh-inventory"
-          git config user.name "DSL Bot"
-          git config user.email "dsl-bot@hertie-school.org"
-          git checkout -B "$BRANCH"
+          # This page is fully generated and merged unattended, so a refresh that DROPS more
+          # rows than it adds must not land on its own: that is the signature of a partial
+          # discovery pass (a rate-limited search, a token that lost an org) rather than of
+          # orgs genuinely going away. Stop red and let a human look.
+          added=$(git diff --numstat -- bootstrapped-orgs-inventory.md | cut -f1)
+          removed=$(git diff --numstat -- bootstrapped-orgs-inventory.md | cut -f2)
+          if [ "${removed:-0}" -gt "${added:-0}" ]; then
+            echo "::error::inventory refresh would remove $removed line(s) and add only $added - refusing to auto-merge a net deletion. Check DSL_BOT_TOKEN's org access and re-run."
+            git --no-pager diff -- bootstrapped-orgs-inventory.md
+            exit 1
+          fi
+
           git add bootstrapped-orgs-inventory.md
           git commit -m "chore: refresh course-orgs inventory"
-          git push -f origin "$BRANCH"
+          # --force-with-lease, never a bare -f: the lease is the tip fetched above (empty
+          # when the branch does not exist yet, which asserts exactly that), so a commit
+          # pushed to the branch since then aborts the run instead of being overwritten.
+          lease=$(git rev-parse --verify --quiet "refs/remotes/origin/$BRANCH" || true)
+          git push --force-with-lease="$BRANCH:$lease" origin "HEAD:$BRANCH"
 
           if ! gh pr view "$BRANCH" --json state --jq '.state' 2>/dev/null | grep -q OPEN; then
             gh pr create \

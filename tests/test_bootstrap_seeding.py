@@ -21,6 +21,8 @@ example-course/cohort-org/ rather than authored twice.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import pytest
 import yaml
 
@@ -491,6 +493,7 @@ def _stub_refresh(
     welcome_failures=lambda org: 0,
     sample_failures=lambda org: 0,
     seed_failures=0,
+    heartbeat_failures=0,
 ) -> None:
     """Neutralise every network call seed.refresh makes; the three write paths report a
     failure count, which is what refresh's exit code is built from."""
@@ -501,6 +504,7 @@ def _stub_refresh(
     monkeypatch.setattr(seed, "discover_assignments", lambda org: [])
     monkeypatch.setattr(seed, "_propagate_repo_secret", lambda org, repos: 0)
     monkeypatch.setattr(seed, "seed_github_workflows", lambda org: seed_failures)
+    monkeypatch.setattr(seed, "_write_heartbeat", lambda org: heartbeat_failures)
     monkeypatch.setattr(seed, "update_profile_readme", lambda org: None)
     monkeypatch.setattr(seed, "refresh_welcome_workflows", welcome_failures)
     monkeypatch.setattr(seed, "refresh_classroom_samples", sample_failures)
@@ -596,6 +600,40 @@ def test_refresh_does_not_prune_on_a_transient_read_failure(monkeypatch):
 
     assert seed.refresh("Course-Org") == 0
     assert refreshed == ["Cohort-f2026", "Cohort-f2026", "Cohort-s2027", "Cohort-s2027"]
+
+
+# ------------------------------------------------- the 60-day auto-disable heartbeat
+# GitHub disables a repo's schedules after 60 days without repository activity. A refresh
+# with nothing to change writes nothing (put_file skips identical blobs), so a quiet org's
+# crons - Refresh actions among them - are all switched off and cannot restart themselves.
+
+
+def test_the_heartbeat_stamps_todays_date_into_the_dotgithub_repo(monkeypatch):
+    written: list[tuple] = []
+    monkeypatch.setattr(seed, "put_file", lambda *a: written.append(a) or True)
+
+    assert seed._write_heartbeat("Course-Org") == 0
+    ((org, repo, path, content, message),) = written
+    assert (org, repo, path) == ("Course-Org", ".github", seed.HEARTBEAT_PATH)
+    today = datetime.now(timezone.utc).date().isoformat()
+    # The DATE alone: a second run the same day writes an identical blob, which put_file
+    # skips - so at most one commit a day, never per-run churn.
+    assert content.decode() == f"{today}\n"
+    assert today in message
+
+
+def test_a_failed_heartbeat_reds_the_refresh(monkeypatch, capsys):
+    # A heartbeat that isn't landing is an org drifting towards having every cron disabled,
+    # which is precisely the silent failure this exists to prevent - so it counts into
+    # refresh's exit code rather than passing green.
+    monkeypatch.setattr(seed, "put_file", lambda *a: False)
+    assert seed._write_heartbeat("Course-Org") == 1
+    assert "scheduled workflows are disabled after 60 quiet days" in (
+        capsys.readouterr().err
+    )
+
+    _stub_refresh(monkeypatch, heartbeat_failures=1)
+    assert seed.refresh("Course-Org") == 1
 
 
 # ----------------------------------------------- _propagate_repo_secret (Free-plan gap)

@@ -27,9 +27,48 @@ import re
 
 from .central import CENTRAL, CENTRAL_REF
 
+# Third-party actions pinned to full commit SHAs. Every job below runs with an org-owner
+# PAT in its env, so a mutable tag (`@v4`) is a standing invitation: whoever can move the
+# tag runs code in that environment. The trailing comment is the human-readable version -
+# bump both together.
+_CHECKOUT = "actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0"
+_SETUP_PYTHON = (
+    "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0"
+)
+
+# Workflow-level permissions for every rendered workflow. Each one authenticates with
+# secrets.DSL_BOT_TOKEN and never needs the ambient GITHUB_TOKEN - not even to check out,
+# because the central repo is public. So the ambient token is dropped to zero scopes.
+# Emitted together with the `jobs:` key it precedes, so no renderer can grow a jobs block
+# without one.
+_PERMISSIONS_JOBS = """permissions: {}
+
+jobs:
+"""
+
+# `seed refresh` converges a whole org - dozens of Contents-API writes across every content
+# repo, .github, and every registered cohort. Two runs at once race each other into sha
+# conflicts and leave orgs half-converged, and four separate workflows end in a refresh, so
+# they all share ONE group and queue. Never cancel-in-progress: the abandoned run is the
+# half-applied one.
+_SEED_REFRESH_CONCURRENCY = """concurrency:
+  group: seed-refresh
+  cancel-in-progress: false
+"""
+
+# The scheduler runs hourly and can outlive its slot (it clones and grades submissions
+# across every cohort), so it can overlap itself. Its actions are fire-once, guarded by
+# markers written as they complete - so two concurrent passes can double-release or
+# double-grade whatever the first has not yet marked. Queue instead.
+_SCHEDULED_RELEASE_CONCURRENCY = """concurrency:
+  group: scheduled-release
+  cancel-in-progress: false
+"""
+
 _CHECK_TEAM = """  check-team:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Verify the user may run actions for THIS repo
         env:
@@ -52,12 +91,13 @@ _CHECK_TEAM = """  check-team:
 # gate as _RUN_PREAMBLE by every button. Ends after `pip install`, so a renderer appends
 # its own `      - name: ...` step directly.
 _UNGATED_PREAMBLE = f"""    runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: {_CHECKOUT}
         with:
           repository: {CENTRAL}
           ref: {CENTRAL_REF}
-      - uses: actions/setup-python@v5
+      - uses: {_SETUP_PYTHON}
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt
@@ -79,6 +119,55 @@ _MAIL_ENV = """\
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           SMTP_FROM: ${{ secrets.SMTP_FROM }}"""
+
+
+# Unattended-run visibility, appended to the job of every workflow that has a cron.
+# GitHub emails a scheduled-run failure notice to whoever last committed the cron file -
+# which is always the bot - so nobody is told. A failing cron is then invisible until
+# someone notices that the thing it maintains stopped happening, which for a nightly
+# convergence job can be weeks. These two steps keep exactly ONE issue in the repo the
+# workflow runs in tracking the current state: opened (or commented on, if already open) by
+# a failure, closed by the next green run. Deduped by title search, gh CLI only, using the
+# DSL_BOT_TOKEN the job already carries (workflow-level `permissions: {}` means the ambient
+# token could not do it).
+#
+# A workflow_dispatch failure is skipped: someone is watching that run, and a deliberate
+# manual test going red should not file a ticket. A manual SUCCESS still closes the issue,
+# because re-running by hand is exactly how a human confirms the fix.
+_CRON_NOTICE = """      - name: Report an unattended failure as an issue
+        if: failure() && github.event_name != 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="__TITLE__"
+          body=$(printf 'The unattended run failed: %s\\n\\nNothing retries it before the next scheduled run. This issue closes itself once a run succeeds.\\n' "$RUN_URL")
+          existing=$(gh issue list --repo "$REPO" --state open --search "$title in:title" --json number --jq '.[0].number')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$REPO" --body "$body"
+          else
+            gh issue create --repo "$REPO" --title "$title" --body "$body"
+          fi
+      - name: Close the failure issue once a run succeeds
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="__TITLE__"
+          for n in $(gh issue list --repo "$REPO" --state open --search "$title in:title" --json number --jq '.[].number'); do
+            gh issue close "$n" --repo "$REPO" --comment "Recovered: $RUN_URL"
+          done
+"""
+
+
+def _cron_notice(title: str) -> str:
+    """The open-on-failure / close-on-success steps for a cron workflow, titled per
+    workflow so each one keeps its own issue (a shared title would let one recovery close
+    another's open failure)."""
+    return _CRON_NOTICE.replace("__TITLE__", title)
 
 
 def _choice(options: list[str]) -> str:
@@ -164,8 +253,7 @@ on:
 {_choice_input("cohort_org", "3. target cohort org", cohort_orgs)}
 {_COHORT_DEST_INPUTS}
 
-jobs:
-{_CHECK_TEAM}
+{_PERMISSIONS_JOBS}{_CHECK_TEAM}
   release:
 {_RUN_PREAMBLE}      - name: Release
         env:
@@ -273,8 +361,7 @@ on:
         type: boolean
         default: false
 
-jobs:
-{_CHECK_TEAM}
+{_PERMISSIONS_JOBS}{_CHECK_TEAM}
   provision:
 {_RUN_PREAMBLE}      - name: Provision
         env:
@@ -328,8 +415,7 @@ on:
         type: boolean
         default: false
 
-jobs:
-{_CHECK_TEAM}
+{_PERMISSIONS_JOBS}{_CHECK_TEAM}
   grade:
 {_RUN_PREAMBLE}      - name: Grade
         env:
@@ -391,8 +477,7 @@ on:
     inputs:
 {_cohort_dropdown(cohort_orgs, optional=True)}
 
-jobs:
-{_CHECK_TEAM}
+{_PERMISSIONS_JOBS}{_CHECK_TEAM}
   sync-dispatch:
 {_RUN_PREAMBLE}      - name: Sync membership
         env:
@@ -419,7 +504,7 @@ jobs:
             repository_dispatch) [ -n "$DISPATCH_COHORT" ] && args+=(--cohort-org "$DISPATCH_COHORT") ;;
           esac
           python3 -m dsl_course.sync_membership "${{args[@]}}"
-"""
+{_cron_notice("Sync membership is failing")}"""
 
 
 def _cohort_dropdown(cohort_orgs: list[str], optional: bool = False) -> str:
@@ -448,8 +533,7 @@ on:
         type: boolean
         default: false
 
-jobs:
-{_CHECK_TEAM}
+{_PERMISSIONS_JOBS}{_CHECK_TEAM}
   sync-gradebooks:
 {_RUN_PREAMBLE}      - name: Sync gradebooks
         env:
@@ -476,8 +560,7 @@ on:
     inputs:
 {_cohort_dropdown(cohort_orgs)}
 
-jobs:
-{_CHECK_TEAM}
+{_PERMISSIONS_JOBS}{_CHECK_TEAM}
   render-grades:
 {_RUN_PREAMBLE}      - name: Render grades
         env:
@@ -510,8 +593,7 @@ on:
         type: boolean
         default: false
 
-jobs:
-{_CHECK_TEAM}
+{_PERMISSIONS_JOBS}{_CHECK_TEAM}
   distribute-grades:
 {_RUN_PREAMBLE}      - name: Distribute grades
         env:
@@ -546,8 +628,7 @@ on:
         type: boolean
         default: true
 
-jobs:
-{_CHECK_TEAM}
+{_PERMISSIONS_JOBS}{_CHECK_TEAM}
   send-codes:
 {_RUN_PREAMBLE}      - name: Send enrolment codes
         env:
@@ -577,8 +658,8 @@ on:
         description: "Empty cohort org you've already created (bot must be an owner)"
         required: true
 
-jobs:
-{_CHECK_TEAM}
+{_SEED_REFRESH_CONCURRENCY}
+{_PERMISSIONS_JOBS}{_CHECK_TEAM}
   bootstrap-cohort:
 {_RUN_PREAMBLE}      - name: Bootstrap + register + refresh
         env:
@@ -618,8 +699,8 @@ on:
         type: boolean
         default: true
 
-jobs:
-  scheduled-release:
+{_SCHEDULED_RELEASE_CONCURRENCY}
+{_PERMISSIONS_JOBS}  scheduled-release:
 {_UNGATED_PREAMBLE}      - name: Run scheduler
         env:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
@@ -630,7 +711,7 @@ jobs:
           args=(--course-org "$COURSE" --all-cohorts)
           [ "$DRY_RUN" = "true" ] && args+=(--dry-run)
           python3 -m dsl_course.scheduler "${{args[@]}}"
-"""
+{_cron_notice("Scheduled release is failing")}"""
 
 
 def render_status(cohort_orgs: list[str]) -> str:
@@ -647,8 +728,7 @@ on:
     inputs:
 {_cohort_dropdown(cohort_orgs)}
 
-jobs:
-{_CHECK_TEAM}
+{_PERMISSIONS_JOBS}{_CHECK_TEAM}
   status:
 {_RUN_PREAMBLE}      - name: Check cohort setup
         env:
@@ -679,15 +759,16 @@ on:
     - cron: "27 5 * * *"
   workflow_dispatch: {{}}
 
-jobs:
-  refresh:
+{_SEED_REFRESH_CONCURRENCY}
+{_PERMISSIONS_JOBS}  refresh:
 {_UNGATED_PREAMBLE}      - name: Refresh
         env:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
           DSL_BOT_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
+          COURSE: ${{{{ github.repository_owner }}}}
         run: |
-          python3 -m dsl_course.seed refresh --course-org "${{{{ github.repository_owner }}}}"
-"""
+          python3 -m dsl_course.seed refresh --course-org "$COURSE"
+{_cron_notice("Refresh actions is failing")}"""
 
 
 def render_new_materials() -> str:
@@ -701,8 +782,8 @@ on:
         description: "Year tag, e.g. f2026 or s2026 - creates course-materials-<tag>"
         required: true
 
-jobs:
-{_CHECK_TEAM}
+{_SEED_REFRESH_CONCURRENCY}
+{_PERMISSIONS_JOBS}{_CHECK_TEAM}
   scaffold:
 {_RUN_PREAMBLE}      - name: Scaffold materials
         env:
@@ -751,8 +832,8 @@ on:
           - individual
           - group
 
-jobs:
-{_CHECK_TEAM}
+{_SEED_REFRESH_CONCURRENCY}
+{_PERMISSIONS_JOBS}{_CHECK_TEAM}
   scaffold:
 {_RUN_PREAMBLE}      - name: Scaffold assignment
         env:
@@ -803,15 +884,16 @@ on:
     inputs:
 {_choice_input("cohort_org", "Cohort whose site to regenerate from the org structure", cohort_orgs)}
 
-jobs:
-{_CHECK_TEAM}
+{_PERMISSIONS_JOBS}{_CHECK_TEAM}
   sync:
 {_RUN_PREAMBLE}      - name: Sync site
         env:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
+          COURSE: ${{{{ github.repository_owner }}}}
+          COHORT_ORG: ${{{{ inputs.cohort_org }}}}
         run: |
           gh auth setup-git
-          python3 -m dsl_course.site sync --course-org "${{{{ github.repository_owner }}}}" --cohort-org "${{{{ inputs.cohort_org }}}}"
+          python3 -m dsl_course.site sync --course-org "$COURSE" --cohort-org "$COHORT_ORG"
 
   sync-auto:
     if: github.event_name != 'workflow_dispatch'
@@ -834,7 +916,7 @@ jobs:
               fi ;;
           esac
           python3 -m dsl_course.site sync "${{args[@]}}"
-"""
+{_cron_notice("Sync site is failing")}"""
 
 
 def render_publish_site(source_repos: list[str]) -> str:
@@ -877,8 +959,7 @@ on:
         type: boolean
         default: true
 
-jobs:
-{_CHECK_TEAM}
+{_PERMISSIONS_JOBS}{_CHECK_TEAM}
   publish:
 {_RUN_PREAMBLE}      - name: Publish course website
         env:
@@ -905,4 +986,4 @@ jobs:
         run: |
           gh auth setup-git
           python3 -m dsl_course.site public-sync --course-org "$COURSE_ORG"
-"""
+{_cron_notice("Publish course website is failing")}"""

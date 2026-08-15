@@ -24,9 +24,15 @@ on:
       - schedule.yml
       - people.yml
 
+# Everything here authenticates with DSL_BOT_TOKEN (reading this org's dsl-course.yml, and
+# dispatching to the course org - neither of which the ambient token can do), so the
+# ambient GITHUB_TOKEN is dropped to zero scopes.
+permissions: {}
+
 jobs:
   dispatch:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Trigger Sync site in the course org
         env:

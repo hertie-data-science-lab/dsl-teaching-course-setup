@@ -611,7 +611,10 @@ def test_main_reports_a_malformed_config_as_one_line_not_a_traceback(
     # people.yml is web-editable, so faculty author bad indents directly. yaml.YAMLError
     # is not a RuntimeError, so it used to walk straight through main()'s guard and out as
     # a traceback in the Actions log.
+    from dsl_course import seed
+
     err = _bad_indent_error()
+    monkeypatch.setattr(seed, "discover_cohorts", lambda org: ["Cohort-f2026"])
     monkeypatch.setattr(site, "sync_site", lambda *a: (_ for _ in ()).throw(err))
     monkeypatch.setattr(
         "sys.argv",
@@ -619,6 +622,41 @@ def test_main_reports_a_malformed_config_as_one_line_not_a_traceback(
     )
     assert site.main() == 1
     assert "Traceback" not in capsys.readouterr().err
+
+
+def test_main_refuses_a_cohort_this_course_org_never_registered(monkeypatch, capsys):
+    # --cohort-org reaches main straight from a repository_dispatch's client_payload,
+    # written by whoever holds a cohort's DSL_BOT_TOKEN - a lower trust tier than the
+    # course org. Naming SOMEONE ELSE'S cohort would rebuild that cohort's site from this
+    # dispatch, so the registry gets the last word.
+    from dsl_course import seed
+
+    monkeypatch.setattr(seed, "discover_cohorts", lambda org: ["Cohort-f2026"])
+    synced: list = []
+    monkeypatch.setattr(site, "sync_site", lambda *a: synced.append(a) or 0)
+    monkeypatch.setattr(
+        "sys.argv",
+        ["site", "sync", "--course-org", "Course", "--cohort-org", "Other-f2026"],
+    )
+    assert site.main() == 1
+    assert synced == []
+    assert "not registered under Course" in capsys.readouterr().err
+
+
+def test_main_matches_a_registered_cohort_case_insensitively(monkeypatch):
+    # GitHub org names are case-insensitive; a case difference must not read as a
+    # cross-cohort dispatch.
+    from dsl_course import seed
+
+    monkeypatch.setattr(seed, "discover_cohorts", lambda org: ["Cohort-F2026"])
+    synced: list = []
+    monkeypatch.setattr(site, "sync_site", lambda *a: synced.append(a) or 0)
+    monkeypatch.setattr(
+        "sys.argv",
+        ["site", "sync", "--course-org", "Course", "--cohort-org", "cohort-f2026"],
+    )
+    assert site.main() == 0
+    assert synced == [("Course", "cohort-f2026")]
 
 
 def test_all_cohorts_loop_survives_one_cohorts_raised_failure(monkeypatch, capsys):

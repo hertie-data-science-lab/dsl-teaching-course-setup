@@ -34,6 +34,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from datetime import datetime, timezone
 
 from .discovery import (
     COHORTS_PATH,
@@ -111,6 +112,40 @@ WORKFLOWS = (
 # takes any folder or file, which is all Release code ever did) - removed from content repos
 # seeded before that change, so no repo keeps a button whose CLI no longer exists.
 RETIRED_WORKFLOWS = (".github/workflows/release-code.yml",)
+
+# The heartbeat file, in the course org's `.github` repo - the repo every seeded cron runs
+# from. See _write_heartbeat.
+HEARTBEAT_PATH = ".github/.last-refresh"
+
+
+def _write_heartbeat(course_org: str) -> int:
+    """Stamp today's date into the `.github` repo, so its schedules stay alive.
+
+    GitHub disables a repo's scheduled workflows after 60 days with no repository activity,
+    and a refresh is deliberately silent when nothing changed (put_file compares blob shas
+    and skips identical files). So a course org that is simply quiet for two months has
+    every cron switched off at once - including Refresh actions, the one that would have
+    self-healed it. Nothing then recovers without a human clicking a button they have no
+    reason to know about.
+
+    The content is the DATE alone: a second run on the same day writes an identical blob,
+    which put_file skips, so this is at most one commit a day and never fills the repo with
+    churn. Returns 1 on a failed write, so a heartbeat that isn't landing counts into
+    refresh's failures rather than letting the org drift quietly towards the 60-day cliff."""
+    today = datetime.now(timezone.utc).date().isoformat()
+    if put_file(
+        course_org,
+        ".github",
+        HEARTBEAT_PATH,
+        f"{today}\n".encode(),
+        f"chore: refresh heartbeat {today}",
+    ):
+        return 0
+    log_err(
+        f"could not write {HEARTBEAT_PATH} in {course_org}/.github - without it this org's "
+        "scheduled workflows are disabled after 60 quiet days"
+    )
+    return 1
 
 
 def _push_workflows(
@@ -269,8 +304,9 @@ def refresh(course_org: str) -> int:
     AND the central org-level workflows in .github; repopulate dropdowns; rebuild the
     org profile README; re-push every registered cohort's welcome workflows and
     classroom-config `*.sample` worked examples (skipping cohorts whose repos are
-    archived); and (Free-plan workaround) propagate the token as a repo secret so private
-    content repos can authenticate.
+    archived); (Free-plan workaround) propagate the token as a repo secret so private
+    content repos can authenticate; and stamp the heartbeat that keeps this org's crons
+    from being auto-disabled (_write_heartbeat).
 
     Non-zero if any file could not be written: this runs nightly on a cron, so a run that
     silently failed to converge an org would go unnoticed until someone clicked a button
@@ -288,6 +324,7 @@ def refresh(course_org: str) -> int:
         failures += _push_workflows(course_org, repo, cohorts, assignments)
     failures += _propagate_repo_secret(course_org, targets)
     failures += seed_github_workflows(course_org)
+    failures += _write_heartbeat(course_org)
     update_profile_readme(course_org)
     # A cohort's onboarding workflows and config samples are seeded once, at Bootstrap
     # cohort, and would otherwise stay frozen for the whole semester while the engine they
