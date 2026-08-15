@@ -160,16 +160,36 @@ jobs:
             // re-read the roster, re-find this student's row by their (unique) code, re-apply
             // the two cells, and write again. Only this row is ever touched, so a retry can
             // never undo the row a competing run just committed.
-            const already = row[iHandle] === handle;
-            if (!already) {
-              const ATTEMPTS = 5, columns = header.join(',');
+            //
+            // `matched` is this student's row IN THE CURRENT SNAPSHOT: each re-read replaces
+            // it, so nothing below reads a cell off the table we already discarded.
+            const boundElsewhere = (r) =>
+              r[iHandle] && r[iHandle].toLowerCase() !== handle.toLowerCase();
+            // A 409 is a stale sha (someone committed between our read and our write). A 403
+            // naming GitHub's SECONDARY rate limit / abuse detection is GitHub asking us to
+            // back off - a first-day burst hits it - and is equally worth another attempt.
+            // Anything else is a real error and stops now.
+            const retryable = (e) => e.status === 409 ||
+              (e.status === 403 && /secondary rate limit|abuse detection/i.test(String(e.message || '')));
+            let matched = row;
+            if (matched[iHandle] !== handle) {
+              // Jittered backoff: a burst that retries in lockstep just collides again on the
+              // same schedule, so each waiter spreads itself across ~400ms of its own.
+              const ATTEMPTS = 8, columns = header.join(',');
               for (let attempt = 1; ; attempt++) {
-                const target = rows.find(r => r[iCode].trim().toLowerCase() === code.toLowerCase());
-                if (!target) return fail(
+                matched = rows.find(r => r[iCode].trim().toLowerCase() === code.toLowerCase());
+                if (!matched) return fail(
                   `Thanks @${handle} - your roster row disappeared while I was writing to it. ` +
                   `Please re-open this issue, or contact the teaching team.`,
                   'needs-review');
-                target[iHandle] = handle; target[iId] = String(userId);
+                // Re-check the single-use binding on the FRESH row, not only before the loop:
+                // two issues quoting the same code race here, and the loser must not overwrite
+                // the winner's handle when it re-applies its edit.
+                if (boundElsewhere(matched)) return fail(
+                  `That enrolment code is already linked to a different GitHub account. ` +
+                  `Contact the teaching team to resolve this.`,
+                  'needs-review');
+                matched[iHandle] = handle; matched[iId] = String(userId);
                 const body = serialiseCsv([header, ...rows]);
                 try {
                   await github.rest.repos.createOrUpdateFileContents({
@@ -179,13 +199,22 @@ jobs:
                   });
                   break;
                 } catch (e) {
-                  if (e.status !== 409 || attempt === ATTEMPTS) throw e;
-                  await new Promise(r => setTimeout(r, 500 * attempt));
+                  // Giving up is a RESULT, not a crash: an uncaught throw leaves a red run with
+                  // no comment and no label, so the student is dropped in silence and nobody
+                  // triages it. Every terminal path goes through fail() instead.
+                  if (!retryable(e) || attempt === ATTEMPTS) return fail(
+                    `Thanks @${handle} - I couldn't write you to the roster after ${attempt} ` +
+                    `attempt(s) (\`${e.status}\`). A maintainer will action this.`,
+                    'needs-review');
+                  await new Promise(r => setTimeout(r, 500 * attempt + Math.random() * 400));
                   ({ sha, header, rows } = await readRoster());
                   // The column indices above were resolved against the header we first read.
                   // If someone changed the columns mid-write, they no longer address what
-                  // they name - fail rather than write into the wrong cells.
-                  if (header.join(',') !== columns) throw e;
+                  // they name - stop rather than write into the wrong cells.
+                  if (header.join(',') !== columns) return fail(
+                    `Thanks @${handle} - the roster's columns changed while I was writing to it, ` +
+                    `so I stopped rather than risk writing into the wrong cells. A maintainer will action this.`,
+                    'needs-review');
                 }
               }
             }
@@ -223,7 +252,9 @@ jobs:
             // Route by role: auditors are read-only (released materials, no assignments), so
             // they go to the `auditors` team; everyone else to `students`. Both teams carry
             // read on released repos - only `students` gets assignment repos + a gradebook.
-            const isAuditor = iRole >= 0 && (row[iRole] || '').trim().toLowerCase() === 'auditor';
+            // Read off `matched` - the row of the LAST snapshot read - not the first read's
+            // copy, which a retry has already thrown away.
+            const isAuditor = iRole >= 0 && (matched[iRole] || '').trim().toLowerCase() === 'auditor';
             const team = isAuditor ? 'auditors' : 'students';
 
             // Grant access: org membership (invites if needed) + the role team.

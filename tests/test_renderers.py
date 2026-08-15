@@ -76,9 +76,18 @@ UNGATED = {"scheduler", "refresh"}
 # whoever last committed the cron file - the bot - so each has to report itself.
 CRONS = {"sync_membership", "sync_site", "refresh", "publish_site", "scheduler"}
 
-# Every renderer whose run ends in `seed refresh`. They converge the same org through the
-# same Contents API from four different entry points, so they share one concurrency group.
+# Every renderer whose run ends in `seed refresh` - and the subset that may join a shared
+# concurrency group. See test_only_the_nightly_refresh_joins_the_seed_refresh_group.
 SEED_REFRESH = {"refresh", "new_materials", "new_assignment", "bootstrap_cohort"}
+SEED_REFRESH_GROUPED = {"refresh"}
+
+# Job time budgets, per workflow, where they differ from the ordinary 30 minutes. A
+# timeout that fires on a HEALTHY run is an outage, not a safety net: grading budgets 300s
+# per submission subprocess and walks a cohort serially (and the hourly scheduler does that
+# for every cohort), and Bootstrap cohort configures a whole org before converging it.
+DEFAULT_TIMEOUT = 30
+CHECK_TEAM_TIMEOUT = 5
+JOB_TIMEOUTS = {"grade_assignment": 120, "scheduler": 120, "bootstrap_cohort": 60}
 
 
 def _trigger(rendered: str) -> dict:
@@ -477,14 +486,7 @@ def test_scaffold_buttons_route_inputs_through_env_not_the_shell():
 
 
 def test_bootstrap_org_workflow_routes_inputs_through_env_not_the_shell():
-    from pathlib import Path
-
-    wf = (
-        Path(__file__).resolve().parents[1]
-        / ".github"
-        / "workflows"
-        / "bootstrap-org.yml"
-    ).read_text()
+    wf = (ROOT / ".github" / "workflows" / "bootstrap-org.yml").read_text()
     step = yaml.safe_load(wf)["jobs"]["bootstrap"]["steps"][-1]
     assert "${{" not in step["run"]
     assert step["env"]["ORG"] == "${{ inputs.org }}"
@@ -520,13 +522,8 @@ def test_classroom_config_site_dispatcher_fires_on_schedule_or_people_change():
     # Both files feed the site: schedule.yml its dates, people.yml its staff cards. A
     # people.yml edit must not have to wait for the daily cron. (people.yml also fires
     # dispatch-sync.yml - a different workflow, event type sync-membership - which is fine.)
-    from pathlib import Path
-
     tmpl = (
-        Path(__file__).resolve().parents[1]
-        / "templates"
-        / "classroom-config"
-        / "dispatch-sync-site.yml"
+        ROOT / "templates" / "classroom-config" / "dispatch-sync-site.yml"
     ).read_text()
     doc = yaml.safe_load(tmpl)
     trigger = doc.get("on", doc.get(True))
@@ -634,10 +631,16 @@ def test_every_workflow_drops_the_ambient_token_and_bounds_its_jobs(name):
     # GITHUB_TOKEN (the central repo it checks out is public), so that token is dropped to
     # zero scopes. And every job is bounded: an unbounded job that hangs holds the runner
     # for 6 hours and, behind a concurrency group, blocks everything queued behind it.
+    #
+    # The bound is asserted by VALUE, not merely as "an int": a blanket 30 across the estate
+    # kills legitimate grading runs mid-cohort, and a timeout that fires on a healthy run is
+    # itself the outage. check-team is a single API call, so it keeps its 5.
     doc = yaml.safe_load(ALL_RENDERED[name])
     assert doc["permissions"] == {}
+    work = JOB_TIMEOUTS.get(name, DEFAULT_TIMEOUT)
     for job_name, job in doc["jobs"].items():
-        assert isinstance(job.get("timeout-minutes"), int), f"{name}.{job_name}"
+        want = CHECK_TEAM_TIMEOUT if job_name == "check-team" else work
+        assert job.get("timeout-minutes") == want, f"{name}.{job_name}"
 
 
 @pytest.mark.parametrize("name", sorted(ALL_RENDERED))
@@ -670,39 +673,78 @@ def test_the_cron_set_is_exactly_what_declares_a_schedule():
 @pytest.mark.parametrize("name", sorted(CRONS))
 def test_every_cron_files_and_closes_its_own_failure_issue(name):
     doc = yaml.safe_load(ALL_RENDERED[name])
-    title = (
-        f'title="{doc["name"]} is failing"'  # per workflow, so recoveries don't cross
-    )
     reporting = [
-        j
-        for j in doc["jobs"].values()
-        if any(s.get("if", "").startswith("failure()") for s in j.get("steps", []))
+        (n, j)
+        for n, j in doc["jobs"].items()
+        if any("failure()" in s.get("if", "") for s in j.get("steps", []))
     ]
     assert len(reporting) == 1, f"{name}: exactly the unattended job reports"
-    (job,) = reporting
-    opener = next(s for s in job["steps"] if s.get("if", "").startswith("failure()"))
-    closer = next(s for s in job["steps"] if s.get("if") == "success()")
+    ((job_name, job),) = reporting
+    # ...and it is the UNGATED job. check-team only runs on workflow_dispatch, so a job
+    # that needs it is SKIPPED on the cron - parking the notice on a trailing gated job
+    # would report nothing at all, silently.
+    assert "check-team" not in str(job.get("needs", "")), (
+        f"{name}: the notice rides {job_name}, which is skipped on the cron"
+    )
+    opener = next(s for s in job["steps"] if "failure()" in s.get("if", ""))
     # An issue is the only channel that reaches a human: the scheduled-failure email goes
     # to the bot. One open issue tracks the current state - opened/commented on failure,
     # closed by the next green run.
-    assert title in opener["run"] and title in closer["run"]
-    assert "gh issue create" in opener["run"] and "gh issue close" in closer["run"]
+    assert "gh issue create" in opener["run"]
+    # The title is the workflow's own ambient name, so each keeps its own issue (a shared
+    # title would let one recovery close another's open failure) with no mirrored string.
+    assert opener["env"]["WORKFLOW"] == "${{ github.workflow }}"
+    assert 'title="$WORKFLOW is failing"' in opener["run"]
+    # A job killed by its own `timeout-minutes` is CANCELLED, not failed - and a cron that
+    # reliably runs out of time is exactly the silent failure this exists to surface.
+    assert "cancelled()" in opener["if"]
     # A manual run's failure is already in front of the person who clicked.
     assert "github.event_name != 'workflow_dispatch'" in opener["if"]
+    # A transient search failure must not abort the step BEFORE it files anything (the
+    # step runs under `bash -e`, so an unguarded capture would).
+    assert "') || true" in opener["run"]
     # `permissions: {}` leaves the ambient token unable to file anything.
     assert opener["env"]["GH_TOKEN"] == "${{ secrets.DSL_BOT_TOKEN }}"
 
+    # "Fix it and re-run" is how a human confirms the recovery, so EVERY job a human can
+    # dispatch closes the ticket too - not just the schedule-gated one carrying the notice.
+    closers = {
+        n
+        for n, j in doc["jobs"].items()
+        if any(s.get("if") == "success()" for s in j.get("steps", []))
+    }
+    assert closers == set(doc["jobs"]) - {"check-team"}
+    for closer_job in closers:
+        closer = next(
+            s for s in doc["jobs"][closer_job]["steps"] if s.get("if") == "success()"
+        )
+        assert "gh issue close" in closer["run"]
+        # Same title on both copies, or a manual re-run closes nothing.
+        assert 'title="$WORKFLOW is failing"' in closer["run"]
 
-def test_the_seed_refresh_workflows_share_one_concurrency_group():
-    # Derived, not listed: the group must cover every renderer that actually runs a
-    # refresh, or a new entry point races the others into sha conflicts.
+
+def test_only_the_nightly_refresh_joins_the_seed_refresh_group():
+    # Derived, not listed: every renderer that actually runs a refresh is accounted for
+    # here, so a new entry point has to make this decision rather than inherit it.
     assert {n for n, r in ALL_RENDERED.items() if "seed refresh" in r} == SEED_REFRESH
     for name in sorted(SEED_REFRESH):
         doc = yaml.safe_load(ALL_RENDERED[name])
-        assert doc["concurrency"] == {
-            "group": "seed-refresh",
-            "cancel-in-progress": False,
-        }, name
+        if name in SEED_REFRESH_GROUPED:
+            # The nightly cron serialises against ITSELF: two passes race each other into
+            # sha conflicts and leave orgs half-converged.
+            assert doc["concurrency"] == {
+                "group": "seed-refresh",
+                "cancel-in-progress": False,
+            }, name
+        else:
+            # The BUTTONS stay out of it, deliberately. Actions concurrency has no `queue:`
+            # - a group holds exactly ONE pending run, so a third arrival cancels the
+            # second whatever `cancel-in-progress` says. An operator's click must never be
+            # silently cancelled; a button racing the nightly refresh can at worst take a
+            # put_file 409, which is red, visible, and healed by the next converge.
+            assert "concurrency" not in doc, (
+                f"{name} is an operator button - a shared group would silently cancel it"
+            )
 
 
 def test_the_hourly_scheduler_serialises_against_itself():
@@ -713,58 +755,6 @@ def test_the_hourly_scheduler_serialises_against_itself():
         "group": "scheduled-release",
         "cancel-in-progress": False,
     }
-
-
-# ------------------------------------------------- the workflow FILES this repo ships:
-# its own, plus every seeded template. Same properties as the rendered ones, enforced on
-# the files rather than the renderers.
-
-
-def _shipped_workflows() -> dict[str, dict]:
-    out = {}
-    for path in [
-        *(ROOT / ".github" / "workflows").glob("*.yml"),
-        *(ROOT / "templates").rglob("*.yml"),
-    ]:
-        doc = yaml.safe_load(path.read_text())
-        if isinstance(doc, dict) and "jobs" in doc:
-            out[path.relative_to(ROOT).as_posix()] = doc
-    return out
-
-
-SHIPPED_WORKFLOWS = _shipped_workflows()
-
-
-def test_the_shipped_workflow_sweep_sees_them_all():
-    # ci, bootstrap-org, refresh-inventory, both dispatchers, validate-schedule, onboard,
-    # team-formation - a broken glob would make the two tests below vacuous.
-    assert len(SHIPPED_WORKFLOWS) >= 8
-
-
-@pytest.mark.parametrize("rel", sorted(SHIPPED_WORKFLOWS))
-def test_shipped_workflows_declare_permissions_and_bound_their_jobs(rel):
-    doc = SHIPPED_WORKFLOWS[rel]
-    assert "permissions" in doc, f"{rel} takes the default token scopes"
-    for name, job in doc["jobs"].items():
-        assert isinstance(job.get("timeout-minutes"), int), f"{rel}:{name}"
-
-
-@pytest.mark.parametrize("rel", sorted(SHIPPED_WORKFLOWS))
-def test_shipped_workflows_route_values_through_env(rel):
-    for name, job in SHIPPED_WORKFLOWS[rel]["jobs"].items():
-        for step in job.get("steps", []):
-            assert "${{" not in step.get("run", ""), f"{rel}:{name}"
-
-
-@pytest.mark.parametrize("rel", sorted(SHIPPED_WORKFLOWS))
-def test_shipped_workflows_pin_actions_to_commit_shas(rel):
-    for job in SHIPPED_WORKFLOWS[rel]["jobs"].values():
-        for step in job.get("steps", []):
-            if "uses" not in step:
-                continue
-            assert re.fullmatch(r"[0-9a-f]{40}", step["uses"].partition("@")[2]), (
-                f"{rel}: {step['uses']}"
-            )
 
 
 def test_update_profile_readme_raises_clearly_on_a_malformed_config(

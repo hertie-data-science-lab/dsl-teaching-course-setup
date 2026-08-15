@@ -3,7 +3,12 @@ name: Refresh Course Orgs Inventory
 on:
   schedule:
     - cron: "0 6 * * 1"  # Mondays at 06:00 UTC
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      allow_net_deletion:
+        description: "Let the refresh land even though it removes more rows than it adds (an org really was deleted)"
+        type: boolean
+        default: false
 
 # The PR steps need contents + pull-requests write; nothing else does. Declared at the job
 # below, so the workflow default is nothing at all.
@@ -16,6 +21,10 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+    # Declared once, at the job: two steps prepare and push the SAME branch, and a drift
+    # between two copies would prepare one branch and push another.
+    env:
+      BRANCH: chore/refresh-inventory
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -32,7 +41,6 @@ jobs:
       - name: Prepare the inventory branch
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BRANCH: chore/refresh-inventory
         run: |
           set -eo pipefail
           git config user.name "DSL Bot"
@@ -66,7 +74,7 @@ jobs:
       - name: Open PR if the inventory changed
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BRANCH: chore/refresh-inventory
+          ALLOW_NET_DELETION: ${{ inputs.allow_net_deletion }}
         run: |
           set -eo pipefail
           if git diff --quiet bootstrapped-orgs-inventory.md; then
@@ -77,11 +85,12 @@ jobs:
           # This page is fully generated and merged unattended, so a refresh that DROPS more
           # rows than it adds must not land on its own: that is the signature of a partial
           # discovery pass (a rate-limited search, a token that lost an org) rather than of
-          # orgs genuinely going away. Stop red and let a human look.
+          # orgs genuinely going away. Stop red and let a human look - then let them say so,
+          # via the allow_net_deletion dispatch input, rather than editing the page by hand.
           added=$(git diff --numstat -- bootstrapped-orgs-inventory.md | cut -f1)
           removed=$(git diff --numstat -- bootstrapped-orgs-inventory.md | cut -f2)
-          if [ "${removed:-0}" -gt "${added:-0}" ]; then
-            echo "::error::inventory refresh would remove $removed line(s) and add only $added - refusing to auto-merge a net deletion. Check DSL_BOT_TOKEN's org access and re-run."
+          if [ "${removed:-0}" -gt "${added:-0}" ] && [ "$ALLOW_NET_DELETION" != "true" ]; then
+            echo "::error::inventory refresh would remove $removed line(s) and add only $added. Either an org really was deleted - re-run this workflow manually with allow_net_deletion=true to let it land - or DSL_BOT_TOKEN lost access to an org it used to see (check its org memberships/grants), in which case the missing rows are still real and must NOT be merged away."
             git --no-pager diff -- bootstrapped-orgs-inventory.md
             exit 1
           fi

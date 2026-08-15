@@ -205,7 +205,14 @@ jobs:
             // re-taken on each attempt, not just the append: the duplicate-membership and
             // team-size checks are read off the file we are actually writing on top of, so a
             // team can't go over its cap by two students committing at the same moment.
-            const ATTEMPTS = 5;
+            //
+            // 409 = stale sha. 422 = the create-on-first-use race (our request carried no sha
+            // because the file did not exist when we read it, but it does now). A 403 naming
+            // GitHub's SECONDARY rate limit / abuse detection is GitHub asking us to back off -
+            // a deadline-eve burst hits it - and is equally worth another attempt.
+            const retryable = (e) => e.status === 409 || e.status === 422 ||
+              (e.status === 403 && /secondary rate limit|abuse detection/i.test(String(e.message || '')));
+            const ATTEMPTS = 8;
             for (let attempt = 1; ; attempt++) {
               const { sha, header, rows } = await readTeams();
               const iAssign = header.indexOf('assignment');
@@ -252,10 +259,16 @@ jobs:
                 });
                 break;
               } catch (e) {
-                // 422 is what a create-on-first-use race returns: our request carried no sha
-                // because the file did not exist when we read it, but it does now.
-                if ((e.status !== 409 && e.status !== 422) || attempt === ATTEMPTS) throw e;
-                await new Promise(r => setTimeout(r, 500 * attempt));
+                // Giving up is a RESULT, not a crash: an uncaught throw leaves a red run with
+                // no comment and no label, so the student is dropped in silence and nobody
+                // triages it. Every terminal path goes through fail() instead.
+                if (!retryable(e) || attempt === ATTEMPTS) return fail(
+                  `Thanks @${handle} - I couldn't record your team after ${attempt} attempt(s) ` +
+                  `(\`${e.status}\`). A maintainer will action this.`,
+                  'needs-review');
+                // Jittered backoff: a burst that retries in lockstep just collides again on
+                // the same schedule, so each waiter spreads itself across ~400ms of its own.
+                await new Promise(r => setTimeout(r, 500 * attempt + Math.random() * 400));
               }
             }
 

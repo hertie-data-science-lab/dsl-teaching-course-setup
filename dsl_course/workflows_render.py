@@ -47,10 +47,17 @@ jobs:
 """
 
 # `seed refresh` converges a whole org - dozens of Contents-API writes across every content
-# repo, .github, and every registered cohort. Two runs at once race each other into sha
-# conflicts and leave orgs half-converged, and four separate workflows end in a refresh, so
-# they all share ONE group and queue. Never cancel-in-progress: the abandoned run is the
-# half-applied one.
+# repo, .github, and every registered cohort - so two runs at once race each other into sha
+# conflicts. The nightly refresh is therefore serialised AGAINST ITSELF, and nothing else
+# joins the group.
+#
+# Deliberately NOT shared with the buttons that end in a refresh (New materials, New
+# assignment, Bootstrap cohort). Actions concurrency has no `queue:`: a group holds exactly
+# ONE pending run, so a third arrival CANCELS the second - `cancel-in-progress: false`
+# notwithstanding. Putting an operator's click in a group with a nightly cron therefore
+# means a click that silently does nothing, which is the worse failure: the operator is
+# told the run started and never learns it was dropped. A button racing the nightly refresh
+# can at worst take a put_file 409 - visible, red, and healed by the next converge.
 _SEED_REFRESH_CONCURRENCY = """concurrency:
   group: seed-refresh
   cancel-in-progress: false
@@ -85,13 +92,29 @@ _CHECK_TEAM = """  check-team:
           exit 1
 """
 
+# Job time budgets. Every job is bounded (an unbounded one that hangs holds a runner for
+# GitHub's 6-hour default), but the bound has to fit the work: a timeout that fires on a
+# healthy run is an outage, not a safety net.
+#
+# 30 is the ordinary budget - a handful of API calls, or one repo cloned.
+# 60 covers Bootstrap cohort: it creates and configures a whole org, then converges it.
+# 120 covers the two jobs that grade: collect budgets 300s PER submission subprocess and
+#     walks a cohort serially, and the hourly scheduler does that for every cohort (its own
+#     concurrency comment says a pass can outlive its slot).
+_TIMEOUT_DEFAULT = 30
+_TIMEOUT_BOOTSTRAP = 60
+_TIMEOUT_GRADING = 120
+
+
 # The head of any job that runs toolkit code: a runner, the central repo checked out at
 # CENTRAL_REF, Python, and the deps. Used bare by the UNGATED jobs (cron /
 # repository_dispatch / push paths have no actor to gate on), and behind the check-team
-# gate as _RUN_PREAMBLE by every button. Ends after `pip install`, so a renderer appends
-# its own `      - name: ...` step directly.
-_UNGATED_PREAMBLE = f"""    runs-on: ubuntu-latest
-    timeout-minutes: 30
+# gate via _run_preamble by every button. Ends after `pip install`, so a renderer appends
+# its own `      - name: ...` step directly. The timeout is the ONE thing that varies, so
+# it is a parameter rather than a second copy of the preamble.
+def _ungated_preamble(minutes: int = _TIMEOUT_DEFAULT) -> str:
+    return f"""    runs-on: ubuntu-latest
+    timeout-minutes: {minutes}
     steps:
       - uses: {_CHECKOUT}
         with:
@@ -103,8 +126,9 @@ _UNGATED_PREAMBLE = f"""    runs-on: ubuntu-latest
       - run: pip install -r requirements.txt
 """
 
-_RUN_PREAMBLE = f"""    needs: check-team
-{_UNGATED_PREAMBLE}"""
+
+def _run_preamble(minutes: int = _TIMEOUT_DEFAULT) -> str:
+    return f"    needs: check-team\n{_ungated_preamble(minutes)}"
 
 
 # SMTP secrets, wired into the env of the buttons that send email (enrolment codes, grade
@@ -133,41 +157,53 @@ _MAIL_ENV = """\
 #
 # A workflow_dispatch failure is skipped: someone is watching that run, and a deliberate
 # manual test going red should not file a ticket. A manual SUCCESS still closes the issue,
-# because re-running by hand is exactly how a human confirms the fix.
-_CRON_NOTICE = """      - name: Report an unattended failure as an issue
-        if: failure() && github.event_name != 'workflow_dispatch'
-        env:
-          GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
-          REPO: ${{ github.repository }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          title="__TITLE__"
-          body=$(printf 'The unattended run failed: %s\\n\\nNothing retries it before the next scheduled run. This issue closes itself once a run succeeds.\\n' "$RUN_URL")
-          existing=$(gh issue list --repo "$REPO" --state open --search "$title in:title" --json number --jq '.[0].number')
-          if [ -n "$existing" ]; then
-            gh issue comment "$existing" --repo "$REPO" --body "$body"
-          else
-            gh issue create --repo "$REPO" --title "$title" --body "$body"
-          fi
-      - name: Close the failure issue once a run succeeds
+# because re-running by hand is exactly how a human confirms the fix - which is why
+# _CRON_CLOSE is also appended on its own to the manually-runnable job of the workflows
+# whose notice lives in a schedule-gated one.
+#
+# The issue title is the workflow's OWN name, taken from the ambient `github.workflow`, so
+# each workflow keeps its own issue (a shared title would let one recovery close another's
+# open failure) with no per-renderer string to keep in step with the `name:` above it.
+_CRON_CLOSE = """      - name: Close the failure issue once a run succeeds
         if: success()
         env:
           GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
+          WORKFLOW: ${{ github.workflow }}
           REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          title="__TITLE__"
+          title="$WORKFLOW is failing"
           for n in $(gh issue list --repo "$REPO" --state open --search "$title in:title" --json number --jq '.[].number'); do
             gh issue close "$n" --repo "$REPO" --comment "Recovered: $RUN_URL"
           done
 """
 
-
-def _cron_notice(title: str) -> str:
-    """The open-on-failure / close-on-success steps for a cron workflow, titled per
-    workflow so each one keeps its own issue (a shared title would let one recovery close
-    another's open failure)."""
-    return _CRON_NOTICE.replace("__TITLE__", title)
+# `cancelled()`, not just `failure()`: a job killed by its own `timeout-minutes` is
+# CANCELLED, and a cron that reliably runs out of time is exactly the silent failure this
+# exists to surface.
+_CRON_NOTICE = (
+    """      - name: Report an unattended failure as an issue
+        if: (failure() || cancelled()) && github.event_name != 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
+          WORKFLOW: ${{ github.workflow }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="$WORKFLOW is failing"
+          body=$(printf 'The unattended run failed or was cancelled (a timeout counts): %s\\n\\nNothing retries it before the next scheduled run. This issue closes itself once a run succeeds.\\n' "$RUN_URL")
+          # The step runs under `bash -e`, so an unguarded capture would abort the step on a
+          # transient search failure - before the `gh issue create` that is the whole point.
+          # No dedupe hit just means we file a fresh issue.
+          existing=$(gh issue list --repo "$REPO" --state open --search "$title in:title" --json number --jq '.[0].number') || true
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$REPO" --body "$body"
+          else
+            gh issue create --repo "$REPO" --title "$title" --body "$body"
+          fi
+"""
+    + _CRON_CLOSE
+)
 
 
 def _choice(options: list[str]) -> str:
@@ -255,7 +291,7 @@ on:
 
 {_PERMISSIONS_JOBS}{_CHECK_TEAM}
   release:
-{_RUN_PREAMBLE}      - name: Release
+{_run_preamble()}      - name: Release
         env:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
           SRC_ORG: ${{{{ github.repository_owner }}}}
@@ -363,7 +399,7 @@ on:
 
 {_PERMISSIONS_JOBS}{_CHECK_TEAM}
   provision:
-{_RUN_PREAMBLE}      - name: Provision
+{_run_preamble()}      - name: Provision
         env:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
           MASTER_ORG: ${{{{ github.repository_owner }}}}
@@ -417,7 +453,7 @@ on:
 
 {_PERMISSIONS_JOBS}{_CHECK_TEAM}
   grade:
-{_RUN_PREAMBLE}      - name: Grade
+{_run_preamble(_TIMEOUT_GRADING)}      - name: Grade
         env:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
           MASTER_ORG: ${{{{ github.repository_owner }}}}
@@ -479,7 +515,7 @@ on:
 
 {_PERMISSIONS_JOBS}{_CHECK_TEAM}
   sync-dispatch:
-{_RUN_PREAMBLE}      - name: Sync membership
+{_run_preamble()}      - name: Sync membership
         env:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
           COURSE: ${{{{ github.repository_owner }}}}
@@ -488,10 +524,10 @@ on:
           args=(--course-org "$COURSE")
           [ "$COHORT_ORG" != "{_FACULTY_ONLY}" ] && args+=(--cohort-org "$COHORT_ORG")
           python3 -m dsl_course.sync_membership "${{args[@]}}"
-
+{_CRON_CLOSE}
   sync-auto:
     if: github.event_name != 'workflow_dispatch'
-{_UNGATED_PREAMBLE}      - name: Sync membership
+{_ungated_preamble()}      - name: Sync membership
         env:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
           COURSE: ${{{{ github.repository_owner }}}}
@@ -504,7 +540,7 @@ on:
             repository_dispatch) [ -n "$DISPATCH_COHORT" ] && args+=(--cohort-org "$DISPATCH_COHORT") ;;
           esac
           python3 -m dsl_course.sync_membership "${{args[@]}}"
-{_cron_notice("Sync membership is failing")}"""
+{_CRON_NOTICE}"""
 
 
 def _cohort_dropdown(cohort_orgs: list[str], optional: bool = False) -> str:
@@ -535,7 +571,7 @@ on:
 
 {_PERMISSIONS_JOBS}{_CHECK_TEAM}
   sync-gradebooks:
-{_RUN_PREAMBLE}      - name: Sync gradebooks
+{_run_preamble()}      - name: Sync gradebooks
         env:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
           COHORT_ORG: ${{{{ inputs.cohort_org }}}}
@@ -562,7 +598,7 @@ on:
 
 {_PERMISSIONS_JOBS}{_CHECK_TEAM}
   render-grades:
-{_RUN_PREAMBLE}      - name: Render grades
+{_run_preamble()}      - name: Render grades
         env:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
           COHORT_ORG: ${{{{ inputs.cohort_org }}}}
@@ -595,7 +631,7 @@ on:
 
 {_PERMISSIONS_JOBS}{_CHECK_TEAM}
   distribute-grades:
-{_RUN_PREAMBLE}      - name: Distribute grades
+{_run_preamble()}      - name: Distribute grades
         env:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
           COHORT_ORG: ${{{{ inputs.cohort_org }}}}
@@ -630,7 +666,7 @@ on:
 
 {_PERMISSIONS_JOBS}{_CHECK_TEAM}
   send-codes:
-{_RUN_PREAMBLE}      - name: Send enrolment codes
+{_run_preamble()}      - name: Send enrolment codes
         env:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
           COHORT_ORG: ${{{{ inputs.cohort_org }}}}
@@ -658,10 +694,9 @@ on:
         description: "Empty cohort org you've already created (bot must be an owner)"
         required: true
 
-{_SEED_REFRESH_CONCURRENCY}
 {_PERMISSIONS_JOBS}{_CHECK_TEAM}
   bootstrap-cohort:
-{_RUN_PREAMBLE}      - name: Bootstrap + register + refresh
+{_run_preamble(_TIMEOUT_BOOTSTRAP)}      - name: Bootstrap + register + refresh
         env:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
           DSL_BOT_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
@@ -701,7 +736,7 @@ on:
 
 {_SCHEDULED_RELEASE_CONCURRENCY}
 {_PERMISSIONS_JOBS}  scheduled-release:
-{_UNGATED_PREAMBLE}      - name: Run scheduler
+{_ungated_preamble(_TIMEOUT_GRADING)}      - name: Run scheduler
         env:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
           COURSE: ${{{{ github.repository_owner }}}}
@@ -711,7 +746,7 @@ on:
           args=(--course-org "$COURSE" --all-cohorts)
           [ "$DRY_RUN" = "true" ] && args+=(--dry-run)
           python3 -m dsl_course.scheduler "${{args[@]}}"
-{_cron_notice("Scheduled release is failing")}"""
+{_CRON_NOTICE}"""
 
 
 def render_status(cohort_orgs: list[str]) -> str:
@@ -730,7 +765,7 @@ on:
 
 {_PERMISSIONS_JOBS}{_CHECK_TEAM}
   status:
-{_RUN_PREAMBLE}      - name: Check cohort setup
+{_run_preamble()}      - name: Check cohort setup
         env:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
           COURSE: ${{{{ github.repository_owner }}}}
@@ -761,14 +796,14 @@ on:
 
 {_SEED_REFRESH_CONCURRENCY}
 {_PERMISSIONS_JOBS}  refresh:
-{_UNGATED_PREAMBLE}      - name: Refresh
+{_ungated_preamble()}      - name: Refresh
         env:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
           DSL_BOT_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
           COURSE: ${{{{ github.repository_owner }}}}
         run: |
           python3 -m dsl_course.seed refresh --course-org "$COURSE"
-{_cron_notice("Refresh actions is failing")}"""
+{_CRON_NOTICE}"""
 
 
 def render_new_materials() -> str:
@@ -782,10 +817,9 @@ on:
         description: "Year tag, e.g. f2026 or s2026 - creates course-materials-<tag>"
         required: true
 
-{_SEED_REFRESH_CONCURRENCY}
 {_PERMISSIONS_JOBS}{_CHECK_TEAM}
   scaffold:
-{_RUN_PREAMBLE}      - name: Scaffold materials
+{_run_preamble()}      - name: Scaffold materials
         env:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
           DSL_BOT_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
@@ -832,10 +866,9 @@ on:
           - individual
           - group
 
-{_SEED_REFRESH_CONCURRENCY}
 {_PERMISSIONS_JOBS}{_CHECK_TEAM}
   scaffold:
-{_RUN_PREAMBLE}      - name: Scaffold assignment
+{_run_preamble()}      - name: Scaffold assignment
         env:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
           DSL_BOT_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
@@ -886,7 +919,7 @@ on:
 
 {_PERMISSIONS_JOBS}{_CHECK_TEAM}
   sync:
-{_RUN_PREAMBLE}      - name: Sync site
+{_run_preamble()}      - name: Sync site
         env:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
           COURSE: ${{{{ github.repository_owner }}}}
@@ -894,10 +927,10 @@ on:
         run: |
           gh auth setup-git
           python3 -m dsl_course.site sync --course-org "$COURSE" --cohort-org "$COHORT_ORG"
-
+{_CRON_CLOSE}
   sync-auto:
     if: github.event_name != 'workflow_dispatch'
-{_UNGATED_PREAMBLE}      - name: Sync site
+{_ungated_preamble()}      - name: Sync site
         env:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
           COURSE: ${{{{ github.repository_owner }}}}
@@ -916,7 +949,7 @@ on:
               fi ;;
           esac
           python3 -m dsl_course.site sync "${{args[@]}}"
-{_cron_notice("Sync site is failing")}"""
+{_CRON_NOTICE}"""
 
 
 def render_publish_site(source_repos: list[str]) -> str:
@@ -961,7 +994,7 @@ on:
 
 {_PERMISSIONS_JOBS}{_CHECK_TEAM}
   publish:
-{_RUN_PREAMBLE}      - name: Publish course website
+{_run_preamble()}      - name: Publish course website
         env:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
           COURSE_ORG: ${{{{ github.repository_owner }}}}
@@ -973,17 +1006,17 @@ on:
           args=(--course-org "$COURSE_ORG" --source-repo "$SOURCE_REPO" --readings-mode "$READINGS_MODE")
           [ "$INC_LEC" = "false" ] && args+=(--no-include-lectures)
           python3 -m dsl_course.site public-sync "${{args[@]}}"
-
+{_CRON_CLOSE}
   resync:
     # The daily catch-up: no inputs, so public-sync re-runs the settings the last manual
     # publish persisted in the site repo. No site / no persisted settings -> quiet no-op.
     # Cron has no actor, so this path skips the check-team gate (as Sync site does).
     if: github.event_name == 'schedule'
-{_UNGATED_PREAMBLE}      - name: Re-sync course website
+{_ungated_preamble()}      - name: Re-sync course website
         env:
           GH_TOKEN: ${{{{ secrets.DSL_BOT_TOKEN }}}}
           COURSE_ORG: ${{{{ github.repository_owner }}}}
         run: |
           gh auth setup-git
           python3 -m dsl_course.site public-sync --course-org "$COURSE_ORG"
-{_cron_notice("Publish course website is failing")}"""
+{_CRON_NOTICE}"""
