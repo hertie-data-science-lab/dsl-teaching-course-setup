@@ -780,10 +780,12 @@ def _notify_overwritten_edits(
     the notice able to fail the sync would turn a helper against silent data loss into a
     new source of red crons - inverting the incident it exists to prevent."""
     rows = []
+    unmentionable = False
     for sha, (name, paths) in overwritten.items():
         # An @-mention when the git email is linked to an account, else the git author
         # name - which is all GitHub knows about that author either.
         login = _commit_login(org, site, sha)
+        unmentionable = unmentionable or login is None
         who = f"@{login}" if login else f"`{name}`"
         for path in paths:
             rows.append(
@@ -806,6 +808,15 @@ def _notify_overwritten_edits(
         "a few `_config.yml` keys, and names the source in a header where the file format "
         "allows one. Everything else in this repo is yours and is never rewritten.\n"
     )
+    # An issue only emails people it mentions. When an author's git email is linked to no
+    # account there is nobody to ping - which was the incident - so fall back to the org's
+    # instructors team, who can pass it on. Only then: a group ping when the direct one
+    # already worked is noise for everyone who did not touch the file.
+    if unmentionable:
+        body += (
+            f"\ncc @{org}/instructors - a commit author's email is not linked to a "
+            "GitHub account, so they could not be mentioned directly.\n"
+        )
     repo = f"{org}/{site}"
     code, out = gh(
         "issue",

@@ -191,7 +191,10 @@ _CRON_NOTICE = (
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           title="$WORKFLOW is failing"
-          body=$(printf 'The unattended run failed or was cancelled (a timeout counts): %s\\n\\nNothing retries it before the next scheduled run. This issue closes itself once a run succeeds.\\n' "$RUN_URL")
+          # A filed issue emails only the repo's watchers, which in practice is nobody.
+          # The mention makes a red cron land in the admins' inbox; course-admin, not
+          # instructors, because broken infrastructure is not the teaching staff's problem.
+          body=$(printf 'The unattended run failed or was cancelled (a timeout counts): %s\\n\\nNothing retries it before the next scheduled run. This issue closes itself once a run succeeds.\\n\\ncc @%s/course-admin\\n' "$RUN_URL" "${REPO%%/*}")
           # The step runs under `bash -e`, so an unguarded capture would abort the step on a
           # transient search failure - before the `gh issue create` that is the whole point.
           # No dedupe hit just means we file a fresh issue.

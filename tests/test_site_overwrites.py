@@ -179,6 +179,16 @@ def test_an_unresolvable_login_falls_back_to_the_git_author_name(human_edit):
     body = fakes.created_body()
     assert "`Jan Instructor`" in body
     assert "@" not in body.split("Nothing is lost")[0]
+    # Nobody to ping means nobody is emailed, so the org's instructors are cc'd instead.
+    assert f"cc @{ORG}/instructors" in body
+
+
+def test_a_mentioned_author_is_not_backed_by_a_team_ping(human_edit):
+    # The direct ping already emails Jan; adding the team would spam every instructor who
+    # never touched the file.
+    fakes, run = human_edit
+    assert run() == 0
+    assert f"{ORG}/instructors" not in fakes.created_body()
 
 
 def test_an_up_to_date_run_inspects_nothing(monkeypatch):
