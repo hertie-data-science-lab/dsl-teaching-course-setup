@@ -101,8 +101,9 @@ assignments:
   there is **no deadline input** on the Grade assignment button. Set it to grade later than
   the date students were told, without changing that date.
 - **Autograding fires there, once.** At that moment the hourly cron freezes the snapshot and
-  runs the autograder automatically. It never re-runs; delete
-  `classroom-config/autograde/<slug>/` to re-grade.
+  runs the autograder automatically. It never re-runs; the marker is the `_graded.json` /
+  `_skipped.json` record in `classroom-config/autograde/<slug>/` - delete it (or the whole
+  folder) to re-grade.
 - **The commit that is considered submitted for grading** is frozen right after the grading deadline passes, into
   `classroom-config/snapshots/<slug>.csv`. It is **write-once** - later pushes can't move the
   pin. To deliberately re-freeze (e.g. repos provisioned late), delete the CSV and the next

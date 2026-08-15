@@ -379,8 +379,9 @@ simply absent from the dump. Workflow: [Schedule releases](07-schedule-releases.
 
 **What happens at the grading deadline.** The hourly cron freezes each submission repo's
 commit into `classroom-config/snapshots/<slug>.csv` (write-once - delete it to re-freeze),
-then autogrades **once** against the `<slug>-<tag>` template (`classroom-config/autograde/<slug>/`
-is the fired marker - delete it to re-grade). Machine grade columns are write-once too. All of
+then autogrades **once** against the `<slug>-<tag>` template (the `_graded.json` / `_skipped.json`
+record in `classroom-config/autograde/<slug>/` is the fired marker - delete it, or the whole
+folder, to re-grade). Machine grade columns are write-once too. All of
 this happens whether or not the cohort uses `releases`.
 
 ## Token
