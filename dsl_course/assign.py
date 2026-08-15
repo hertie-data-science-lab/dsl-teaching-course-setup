@@ -36,6 +36,8 @@ import tempfile
 import time
 from pathlib import Path
 
+import yaml
+
 from . import roster, sync_teams, teams
 from .utils import (
     GIT_ENV,
@@ -441,14 +443,15 @@ def provision_all(
     schedule.record_handout(cohort_org, found[0] if found else slug)
     from . import site
 
-    # site.sync_site now RAISES on a genuine tree/team read failure (post-PR2). The repos are
-    # already handed out by this point, so one site-sync failure must not abort the run with a
+    # site.sync_site now RAISES on a genuine tree/team read failure (post-PR2), and a config
+    # file that doesn't parse raises yaml.YAMLError - which is NOT a RuntimeError. The repos
+    # are already handed out by this point, so neither failure may abort the run with a
     # traceback and misreport the whole handout as failed: log it, count it (so the run goes
     # red and the next Sync site / tick refreshes the site), and return normally.
     site_failed = False
     try:
         site.sync_site(master_org, cohort_org)
-    except RuntimeError as exc:
+    except (RuntimeError, yaml.YAMLError) as exc:
         log_err(
             f"site sync failed after provisioning {slug} - the repos are handed out; the "
             f"site refreshes on the next Sync site or scheduler tick: {exc}"

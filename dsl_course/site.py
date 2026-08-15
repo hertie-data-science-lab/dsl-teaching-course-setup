@@ -41,7 +41,6 @@ from datetime import date, datetime, timedelta
 from functools import cache
 from pathlib import Path
 from urllib.parse import quote
-from zoneinfo import ZoneInfo
 
 import yaml
 
@@ -57,11 +56,13 @@ from .utils import (
     gh,
     git,
     is_missing_resource,
+    load_yaml_config,
     log,
     log_err,
     log_ok,
     log_step,
     repo_exists,
+    repo_tree,
     session_number,
 )
 
@@ -143,11 +144,15 @@ def _site_repo(org: str) -> str:
 
 
 def _yaml_file(org: str, repo: str, path: str) -> dict:
-    """A YAML config file from a repo as a mapping - `{}` when absent, empty or not a
-    mapping (every caller here treats a malformed file as 'nothing declared')."""
-    raw = get_file_content(org, repo, path) or ""
-    data = yaml.safe_load(raw) if raw else {}
-    return data if isinstance(data, dict) else {}
+    """A YAML config file from a repo as a mapping - `{}` when it is genuinely absent or
+    empty (nothing declared: the site renders its defaults, which is correct).
+
+    A file that exists but does NOT parse - or parses to a list/scalar - raises out of
+    here (via load_yaml_config), to the per-cohort isolation the callers already have. It
+    used to be coerced to `{}`, so one bad indent in a cohort's people.yml republished the
+    site with the whole teaching team's cards wiped, green - exactly the failure
+    `_team_people` next door is hardened against."""
+    return load_yaml_config(org, repo, path) or {}
 
 
 def _team_people(course_org: str, team: str) -> list[tuple[str, str, str]]:
@@ -156,7 +161,9 @@ def _team_people(course_org: str, team: str) -> list[tuple[str, str, str]]:
     A missing team (404) is an empty list - the site falls back gracefully. Any OTHER
     failure RAISES rather than returning `[]`: a swallowed failure wrote `instructors: []`
     and republished the site with the whole teaching team wiped. Fail-loud, like
-    get_team_members."""
+    get_team_members - and the same rule per MEMBER: a deleted account (404) is one card
+    the site can't show, but a transient failure on one lookup must not quietly drop that
+    instructor's card from the republished site."""
     code, out = gh(
         "api",
         "--paginate",
@@ -180,9 +187,21 @@ def _team_people(course_org: str, team: str) -> list[tuple[str, str, str]]:
             "--jq",
             "[(.name // .login), .avatar_url, .html_url] | @tsv",
         )
-        if c == 0 and u.strip():
-            parts = (u.rstrip("\n").split("\t") + ["", "", ""])[:3]
-            people.append(tuple(parts))
+        if c != 0:
+            # A 404 is a genuinely gone account: one card fewer, said out loud rather than
+            # silently. Anything else is a read failure, and dropping the card on it would
+            # republish the site one instructor short with no sign anything went wrong.
+            if is_missing_resource(u):
+                log(f"  (no GitHub profile for {login} - no card on the site)")
+                continue
+            raise RuntimeError(
+                f"could not read the GitHub profile of {login}: {u[:200]}"
+            )
+        if not u.strip():
+            log(f"  (empty GitHub profile for {login} - no card on the site)")
+            continue
+        parts = (u.rstrip("\n").split("\t") + ["", "", ""])[:3]
+        people.append(tuple(parts))
     return people
 
 
@@ -325,30 +344,18 @@ def _repo_tree(org: str, repo: str) -> tuple[str, tuple[str, ...]]:
     memoised for the run. A cohort site asks for the files of EVERY released session, and
     they nearly all live in the same repo, so without the memo the identical tree got
     fetched once per session. Paths come back sorted, so callers filtering them keep a
-    stable diff. `()` when the tree can't be read (the caller then simply finds no files).
+    stable diff.
 
     Unbounded cache: this is a one-shot CLI process, and the trees it reads are the
     handful of repos one cohort released into.
 
-    A genuinely absent/empty tree (a 404, or an empty repo with no commits) is `()`: the
-    caller simply finds no files. Any OTHER failure - a rate limit, a network drop -
-    RAISES, rather than reporting an empty tree: a swallowed failure returned `()`, so
-    `_session_files` found nothing, and the site was republished with every material link
-    stripped. Same fail-loud discipline as get_file_content."""
+    The fetch itself is utils.repo_tree (shared with discovery's directory-side twin, so
+    the absent-vs-failed discrimination is written once): a genuinely absent/empty tree is
+    `()` and the caller simply finds no files, while any other failure RAISES rather than
+    reporting an empty tree - swallowed, it republished the site with every material link
+    stripped."""
     branch = get_default_branch(org, repo)
-    code, out = gh(
-        "api",
-        f"repos/{org}/{repo}/git/trees/{branch}?recursive=1",
-        "--jq",
-        '.tree[] | select(.type=="blob") | .path',
-    )
-    if code != 0:
-        # An empty repo (409, no commits) is genuinely no files too - a tree-specific
-        # signal on top of the shared 404-absence test.
-        if is_missing_resource(out) or "HTTP 409" in out:
-            return branch, ()  # no such tree / empty repo - genuinely no files
-        raise RuntimeError(f"could not read the file tree of {org}/{repo}: {out[:200]}")
-    return branch, tuple(sorted(out.splitlines()))
+    return branch, repo_tree(org, repo, branch, "blob")
 
 
 def _session_files(
@@ -403,20 +410,15 @@ def _singular(label: str) -> str:
     return label[:-1] if len(label) > 1 and label.endswith("s") else label
 
 
-def _iso_when(
-    when: date | datetime, fallback_time: str = "09:00:00", tz: ZoneInfo | None = None
-) -> str:
+def _iso_when(when: date | datetime, fallback_time: str = "09:00:00") -> str:
     """`when` as the offset-free local ISO stamp a front-matter `date:` wants.
 
-    A datetime (a real time from schedule.yml) is shown in the cohort timezone when `tz`
-    is given: an entry written with an explicit offset (`...T10:00+00:00`) fires at the
-    cohort's wall-clock time, so the site must DISPLAY that wall-clock time, not the
-    written offset's - stripping the offset without converting printed 10:00 for a class
-    that actually happens at 12:00. A bare date (a synthesised fallback, or a whole-day
-    schedule entry) has no clock and gets `fallback_time`."""
+    A datetime from schedule.yml is ALREADY in the cohort timezone - the parser converts
+    an entry written with an explicit offset (`...T10:00+00:00`) into the cohort's own
+    clock - so printing it needs no conversion here, only the offset dropped. A bare date
+    (a synthesised fallback, or a whole-day schedule entry) has no clock and gets
+    `fallback_time`."""
     if isinstance(when, datetime):
-        if tz is not None and when.tzinfo is not None:
-            when = when.astimezone(tz)
         return when.strftime("%Y-%m-%dT%H:%M:%S")
     return f"{when.isoformat()}T{fallback_time}"
 
@@ -441,7 +443,6 @@ def _lecture_entry(
     when: date | datetime,
     sources: list[tuple[str, str, str]],
     kind: str = "lecture",
-    tz: ZoneInfo | None = None,
 ) -> str:
     """One row of a teaching week: the lecture (`kind='lecture'`) or the lab
     (`kind='lab'`), which the theme renders as separate schedule lines out of the same
@@ -462,7 +463,7 @@ def _lecture_entry(
     return (
         f"---\n"
         f"type: {kind}\n"
-        f"date: {_iso_when(when, tz=tz)}\n"
+        f"date: {_iso_when(when)}\n"
         f'title: "{title}"\n'
         f'tldr: "Released materials for {title.lower()} (enrolled students only)."\n'
         f"{links_block}\n"
@@ -487,13 +488,11 @@ def _assignment_entry(
     released-row where it belongs - at hand-out, not at the deadline - while an
     unscheduled assignment keeps both rows on the due date (the only date known).
 
-    `sched` supplies the cohort timezone (so a written offset displays as the wall-clock
-    time it fires at) and the cohort-side repo name: resolved exactly as assign.py /
-    collect.py do (`cohort_dest_repo` or the schedule slug when the schedule keys this
-    repo, else the course repo minus its -fYYYY/-sYYYY tag), so the page names the repo
-    students actually get. Deriving it from the course repo alone named the wrong repo -
-    and titled the page wrong - whenever an entry set `cohort_dest_repo`."""
-    tz = schedule._tz(sched.timezone) if sched is not None else None
+    `sched` supplies the cohort-side repo name: resolved exactly as assign.py / collect.py
+    do (`cohort_dest_repo` or the schedule slug when the schedule keys this repo, else the
+    course repo minus its -fYYYY/-sYYYY tag), so the page names the repo students actually
+    get. Deriving it from the course repo alone named the wrong repo - and titled the page
+    wrong - whenever an entry set `cohort_dest_repo`."""
     found = schedule.entry_for_repo(sched, repo) if sched is not None else None
     slug = schedule.cohort_name(*found) if found else assignment_slug(repo)
     readme = get_file_content(course_org, repo, "README.md") or ""
@@ -507,8 +506,8 @@ def _assignment_entry(
         ln for ln in readme.splitlines() if not ln.startswith("# ")
     ).strip()
     # An unscheduled assignment's synthesised fallback date is due end-of-day.
-    due = _iso_when(when, "23:59:00", tz)
-    released = _iso_when(handout, tz=tz) if handout is not None else due
+    due = _iso_when(when, "23:59:00")
+    released = _iso_when(handout) if handout is not None else due
     return (
         f"---\n"
         f"type: assignment\n"
@@ -530,13 +529,12 @@ def _exam_entry(
     when: date | datetime,
     tbc: bool = False,
     dateless: bool = False,
-    tz: ZoneInfo | None = None,
 ) -> str:
     """A red exam row (the template's schedule_row_exam.html styles `type: exam`).
 
     `when` is a datetime when schedule.yml gave the exam a real start time, or a bare date
     (whole-day entry, or the synthesised mid/end-of-semester fallback) - which keeps the
-    09:00 placeholder. Shown in the cohort timezone (`tz`), like `_assignment_entry`.
+    09:00 placeholder.
 
     TBC: an undated exam (`date: tbc`) still needs a sortable date for the theme, so the
     caller passes end-of-term as `when` with `dateless=True` - the theme then prints
@@ -547,7 +545,7 @@ def _exam_entry(
     return (
         f"---\n"
         f"type: exam\n"
-        f"date: {_iso_when(when, tz=tz)}\n"
+        f"date: {_iso_when(when)}\n"
         f"{flags}"
         f'description: "{_q(title)}"\n'
         f"---\n"
@@ -616,7 +614,6 @@ def _special_event_entry(
     when: date | datetime,
     tbc: bool = False,
     dateless: bool = False,
-    tz: ZoneInfo | None = None,
 ) -> str:
     """A generic schedule row (the theme's schedule_row_special_event.html) for a
     display-only entry: a clinic, a guest lecture, a review session. Nothing is released;
@@ -633,16 +630,14 @@ def _special_event_entry(
         f"---\n"
         f"type: special_event\n"
         f'name: "{_q(title)}"\n'
-        f"date: {_iso_when(when, tz=tz)}\n"
+        f"date: {_iso_when(when)}\n"
         f"{flags}"
         f'description: ""\n'
         f"---\n"
     )
 
 
-def _event_entry(
-    event: schedule.Event, fallback: date, tz: ZoneInfo | None = None
-) -> str:
+def _event_entry(event: schedule.Event, fallback: date) -> str:
     """One `events:` row, rendered as the type it declared - an exam or a special event.
     An event with no title of its own falls back to its prettified label, and an undated
     one (`event_datetime: tbc`) sorts at `fallback` (end of term) as a dateless row."""
@@ -652,7 +647,6 @@ def _event_entry(
         event.when if event.when is not None else fallback,
         event.tbc,
         event.when is None,
-        tz,
     )
 
 
@@ -809,9 +803,8 @@ def sync_site(course_org: str, cohort_org: str) -> int:
         # from its own classroom-config/people.yml below, NOT the course org (whose
         # dsl-course.yml carries only the multi-year instructor cards).
         sched = schedule.load(cohort_org)
-        # The cohort timezone the site displays times in: an entry written with an explicit
-        # offset fires at this wall-clock time, so it must be shown at it (see _iso_when).
-        tz = schedule._tz(sched.timezone)
+        # Every datetime on `sched` is already the cohort's wall clock (the parser converts
+        # a written offset into the cohort timezone), so the renderers below just print it.
         start = sched.semester_start or _semester_start(cohort_org)
         # Real per-row release datetimes from schedule.yml's releases; a row not in the
         # plan falls back to a synthesised weekly date below.
@@ -838,7 +831,7 @@ def sync_site(course_org: str, cohort_org: str) -> int:
         # declared (exam or special event); an undated (TBC) one sorts at end-of-term.
         end = sched.semester_end or start + timedelta(weeks=15)
         event_entries = {
-            f"{i + 1:02d}-{_slug(e.label)}.md": _event_entry(e, end, tz)
+            f"{i + 1:02d}-{_slug(e.label)}.md": _event_entry(e, end)
             for i, e in enumerate(sched.events)
         }
         # Every course has exams, so a schedule that names none still gets stub mid/end
@@ -879,7 +872,6 @@ def sync_site(course_org: str, cohort_org: str) -> int:
                         session_when.get((s, kind), start + timedelta(days=int(s) * 7)),
                         sources_by_row[(s, kind)],
                         kind,
-                        tz,
                     )
                     for s, kind in rows
                 },
@@ -1181,8 +1173,10 @@ def main() -> int:
     if args.cmd != "public-sync" and not (args.all_cohorts or args.cohort_org):
         log_err("pass --cohort-org or --all-cohorts.")
         return 1
-    # A read helper that couldn't reach the API raises; in an Actions log a one-line
-    # error beats a traceback, and the run still goes red.
+    # A read helper that couldn't reach the API raises RuntimeError; a config file with
+    # one bad indent raises yaml.YAMLError out of load_yaml_config (people.yml is
+    # web-editable, so faculty author that fault directly). In an Actions log a one-line
+    # error beats a traceback either way, and the run still goes red.
     try:
         if args.cmd == "public-sync":
             if not args.source_repo:
@@ -1198,10 +1192,20 @@ def main() -> int:
 
             rc = 0
             for cohort in discover_cohorts(args.course_org):
-                rc |= sync_site(args.course_org, cohort)
+                # One cohort's raised failure (an unreachable API, a people.yml that
+                # doesn't parse) must not skip every LATER cohort's site on the 06:00
+                # cron - log it, mark the batch failed, and carry on. The same per-cohort
+                # isolation PR #151/#146 applied to the nightly refresh and the scheduler.
+                try:
+                    rc |= sync_site(args.course_org, cohort)
+                except Exception as exc:
+                    log_err(
+                        f"site sync for {cohort} failed ({type(exc).__name__}): {exc}"
+                    )
+                    rc |= 1  # accumulate, don't clobber prior cohorts' status bits
             return rc
         return sync_site(args.course_org, args.cohort_org)
-    except RuntimeError as exc:
+    except (RuntimeError, yaml.YAMLError) as exc:
         log_err(str(exc))
         return 1
 

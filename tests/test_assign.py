@@ -7,6 +7,7 @@ without touching gh/git.
 from __future__ import annotations
 
 import pytest
+import yaml
 
 from dsl_course import assign
 from dsl_course.schedule import Schedule
@@ -282,8 +283,17 @@ def test_ensure_cohort_template_fails_loudly_when_is_template_patch_fails(monkey
 # ----------------------------------- handout recorded under the schedule key + site guard
 
 
+@pytest.mark.parametrize(
+    "exc",
+    [
+        RuntimeError("tree read failed"),
+        # A config file with one bad indent raises yaml.YAMLError, which is NOT a
+        # RuntimeError - it used to walk through the guard and misreport the handout.
+        yaml.parser.ParserError(None, None, "bad indent", None),
+    ],
+)
 def test_provision_all_records_handout_under_schedule_key_and_survives_site_failure(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, exc
 ):
     # record_handout keys on the schedule KEY; with a cohort_dest_repo set, the cohort-side
     # name differs, and passing the name appended a bogus block. And site.sync_site now RAISES
@@ -314,7 +324,7 @@ def test_provision_all_records_handout_under_schedule_key_and_survives_site_fail
     from dsl_course import site
 
     def boom_site(*a, **k):
-        raise RuntimeError("tree read failed")
+        raise exc
 
     monkeypatch.setattr(site, "sync_site", boom_site)
     path = _roster_file(tmp_path, "1,ada@uni.edu,Ada,ada-l,42,A,dsl-abc,enrolled")

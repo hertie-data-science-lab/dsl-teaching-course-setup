@@ -153,6 +153,49 @@ def test_api_and_filesystem_transports_share_one_session_folder_rule(tmp_path):
     assert utils.discover_sections(tmp_path) == api_sections == ["labs", "lectures"]
 
 
+def test_repo_tree_dirs_reads_an_absent_or_empty_repo_as_no_directories(monkeypatch):
+    # A 404 (no such repo/tree) and a 409 (a repo with no commits yet) both genuinely mean
+    # "no session folders" - a brand-new cohort repo is not a failure.
+    monkeypatch.setattr(discovery, "get_default_branch", lambda org, repo: "main")
+    for out in ("gh: Not Found (HTTP 404)", "gh: Conflict (HTTP 409)"):
+        monkeypatch.setattr(utils, "gh", lambda *a, out=out, **k: (1, out))
+        assert discovery._repo_tree_dirs("Cohort-f2026", "materials") == ()
+
+
+def test_repo_tree_dirs_raises_rather_than_reporting_a_repo_with_no_sessions(
+    monkeypatch,
+):
+    # The site-wipe class: these rows ARE the cohort site's schedule, and the sync clears
+    # and rewrites the collections from them - so a rate-limited tree fetch swallowed as
+    # `[]` republished the site with every session row deleted, silently and green.
+    monkeypatch.setattr(discovery, "get_default_branch", lambda org, repo: "main")
+    monkeypatch.setattr(utils, "gh", lambda *a, **k: (1, "gh: HTTP 502 Bad Gateway"))
+    with pytest.raises(RuntimeError, match="could not read the file tree"):
+        discovery.discover_release_sources("Cohort-f2026", ["materials"])
+
+
+def test_both_transports_share_one_tree_fetch(monkeypatch):
+    # discovery filters the directories, site filters the blobs, but the fetch - and its
+    # absent-vs-failed discrimination - is one helper, so the two can't drift apart again.
+    from dsl_course import site
+
+    calls = []
+
+    def fake_gh(*args, **kwargs):
+        calls.append(args)
+        return (0, "lectures\nlectures/01_intro\n")
+
+    monkeypatch.setattr(discovery, "get_default_branch", lambda org, repo: "main")
+    monkeypatch.setattr(site, "get_default_branch", lambda org, repo: "main")
+    monkeypatch.setattr(utils, "gh", fake_gh)
+    discovery._repo_tree_dirs("Cohort-f2026", "materials")
+    site._repo_tree("Cohort-f2026", "materials")
+    assert [a[-1] for a in calls] == [
+        '.tree[] | select(.type=="tree") | .path',
+        '.tree[] | select(.type=="blob") | .path',
+    ]
+
+
 def _registry(text: str | None):
     return lambda *a, **k: text
 

@@ -210,12 +210,12 @@ An entry that is valid YAML but not a valid *schedule* entry is **dropped**: it 
 | no valid `due_datetime` on an `assignments:` entry | no deadline, no submission snapshot, no autograding |
 | a `deploy` item missing `course_source_repo` or `course_source_path` | that one copy never ships |
 
-Tolerated rather than dropped: a malformed `deploy_datetime` (the copy ships at the `event_datetime`), a malformed `grading_datetime` (falls back to `due_datetime`), and an unknown `timezone:` (falls back to `Europe/Berlin`, and is reported alongside the drops).
+Kept rather than dropped - the entry still runs on its documented fallback, and the fallback is reported alongside the drops (so `--validate` catches it): a malformed `handout_datetime` (**nothing is ever handed out**), `grading_datetime` (falls back to `due_datetime`), `deploy_datetime` (the copy ships at the `event_datetime`) or `max_team_size` (no cap); an unknown `type:` on an assignment (treated as individual) or an event (shown as a plain special event); a typo'd or unknown key at any level; and an unknown `timezone:` (falls back to `Europe/Berlin`).
 
 ## Timezones and bare dates
 
 - Everything naive is read in the cohort's `timezone:` (default `Europe/Berlin`).
-- An explicit offset (`2026-09-15T14:00+02:00`) is honoured as written.
+- An explicit offset (`2026-09-15T14:00+00:00`) names that exact instant; it fires then, and the site shows it on the cohort's own clock (`16:00` for a `Europe/Berlin` cohort in September).
 - A **bare date** with no time means **00:00** on a release's `event_datetime`/`deploy_datetime` (the day opens), **23:59:59** on an assignment `due_datetime` (the day closes), and a whole day on an `events:` entry's `event_datetime` (the site shows a 09:00 placeholder).
 
 ## Deadline snapshots and autograding

@@ -48,14 +48,17 @@ def test_coerce_datetime_bare_date_start_or_end_of_day():
     assert (end.hour, end.minute, end.second) == (23, 59, 59)
 
 
-def test_coerce_datetime_naive_gets_default_tz_explicit_offset_kept():
+def test_coerce_datetime_naive_gets_the_cohort_tz_and_an_offset_is_converted_to_it():
     naive = _coerce_datetime("2026-09-15T14:00", BERLIN)
     assert naive.tzinfo is not None
     assert naive.utcoffset() == BERLIN.utcoffset(naive.replace(tzinfo=None))
+    # An explicit offset names an INSTANT; it is honoured as that instant, but stored in
+    # the cohort's own clock - 14:00 UTC is 16:00 in Berlin in September. Every consumer
+    # then reads a cohort wall-clock time without re-deriving the zone (the site used to
+    # convert at print time, and anything that forgot printed the wrong hour).
     aware = _coerce_datetime("2026-09-15T14:00+00:00", BERLIN)
-    assert (
-        aware.utcoffset().total_seconds() == 0
-    )  # explicit offset honoured, not overridden
+    assert aware == datetime(2026, 9, 15, 14, 0, tzinfo=ZoneInfo("UTC"))  # same instant
+    assert aware.tzinfo is BERLIN and (aware.hour, aware.minute) == (16, 0)
 
 
 def test_parse_full_schedule():
@@ -225,14 +228,16 @@ def test_event_yaml_native_date_and_datetime_objects():
     assert sched.events[1].when == datetime(2026, 12, 15, 14, 0, tzinfo=BERLIN)
 
 
-def test_event_explicit_offset_is_honoured_not_overridden():
+def test_event_explicit_offset_keeps_its_instant_and_is_stored_in_the_cohort_tz():
     sched = parse(
         {
             "timezone": "Europe/Berlin",
             "events": {"remote": {"event_datetime": "2026-12-15T14:00+00:00"}},
         }
     )
-    assert sched.events[0].when.utcoffset().total_seconds() == 0
+    when = sched.events[0].when
+    assert when == datetime(2026, 12, 15, 14, 0, tzinfo=ZoneInfo("UTC"))  # same instant
+    assert when.hour == 15 and when.tzinfo == BERLIN  # ...on the cohort's clock (CET)
 
 
 def test_event_timezone_comes_from_the_cohort_setting():
@@ -403,7 +408,7 @@ def test_max_team_size_parses_and_defaults_to_none():
     entries = parse(meta).assignments
     assert entries["assignment-4-project"].max_team_size == 3
     assert entries["assignment-1"].max_team_size is None
-    assert entries["bad"].max_team_size is None  # malformed -> silently dropped
+    assert entries["bad"].max_team_size is None  # malformed -> unset, and flagged
 
 
 def test_assignment_handout_parses():
@@ -751,6 +756,26 @@ def test_an_unknown_timezone_is_reported_rather_than_silently_swapped():
     assert sched.events[0].when == date(2026, 11, 3)  # the event itself survives
 
 
+@pytest.mark.parametrize("key", ["semester_start", "semester_end"])
+def test_an_unparseable_term_date_is_reported_not_silently_synthesised(key):
+    # `01/09/2026` coerces to None exactly like an absent key, and the site then
+    # synthesises term dates - shifting every weekly session row, green.
+    sched = parse({key: "01/09/2026"})
+    assert getattr(sched, key) is None
+    assert len(sched.dropped) == 1
+    # top-level: the location renders bare, not as a stray-dotted `.semester_start`
+    assert sched.dropped[0].startswith(f"{key}: unusable value")
+    assert "shifting every session row" in sched.dropped[0]
+
+
+@pytest.mark.parametrize("key", ["semester_start", "semester_end"])
+def test_an_absent_term_date_is_not_flagged(key):
+    # Absent is a legitimate "not declared" - only a value faculty wrote and we cannot
+    # read is a fault.
+    assert parse({}).dropped == []
+    assert parse({key: date(2026, 9, 1)}).dropped == []
+
+
 def test_a_clean_schedule_drops_nothing():
     assert parse({}).dropped == []
     assert (
@@ -928,6 +953,134 @@ def test_a_typod_field_within_an_entry_is_reported_but_the_entry_survives():
     assert "assignments.a1.grading_dateime" in where
 
 
+# ------------------------------------------- values that are PRESENT but unusable
+# The other half of "valid YAML, wrong plan": the key is spelt right and the entry parses,
+# but its value doesn't - so the parser falls back, silently, to something faculty did not
+# write. The entry is KEPT (as with a stray key); only the fallback is surfaced.
+
+
+def test_an_unparseable_handout_datetime_is_flagged_with_what_it_costs():
+    # The worst of them: the entry looks scheduled, and nothing is ever provisioned.
+    sched = parse(
+        {
+            "assignments": {
+                "a1": {
+                    "course_source_repo": "a-f2026",
+                    "due_datetime": "2026-10-13",
+                    "handout_datetime": "2026-13-01T09:00",  # month 13
+                }
+            }
+        }
+    )
+    entry = sched.assignments["a1"]  # the entry survives - only the handout is lost
+    assert entry.handout_datetime is None and entry.due_datetime is not None
+    (line,) = sched.dropped
+    assert line.startswith("assignments.a1.handout_datetime:")
+    assert "2026-13-01T09:00" in line
+    assert "NEVER fires" in line and "no student or team repos" in line
+
+
+def test_an_unparseable_grading_datetime_is_flagged_not_silently_the_due_date():
+    sched = parse(
+        {
+            "assignments": {
+                "a1": {
+                    "course_source_repo": "a-f2026",
+                    "due_datetime": "2026-10-13",
+                    "grading_datetime": "next tuesday",
+                }
+            }
+        }
+    )
+    # the documented fallback still applies - grading pins to the due date
+    assert (
+        schedule.grading_datetime_at(sched, "a1")
+        == sched.assignments["a1"].due_datetime
+    )
+    (line,) = sched.dropped
+    assert line.startswith("assignments.a1.grading_datetime:")
+    assert "falls back to the due date" in line
+
+
+def test_a_non_integer_max_team_size_is_flagged():
+    sched = parse(
+        {
+            "assignments": {
+                "project": {
+                    "course_source_repo": "a-f2026",
+                    "due_datetime": "2026-11-15",
+                    "type": "group",
+                    "max_team_size": "lots",
+                }
+            }
+        }
+    )
+    assert sched.assignments["project"].max_team_size is None
+    (line,) = sched.dropped
+    assert line.startswith("assignments.project.max_team_size:")
+    assert "'lots'" in line and "Join team" in line
+
+
+def test_an_unparseable_deploy_datetime_is_flagged():
+    sched = parse(
+        {
+            "releases": {
+                "s": {
+                    "event_datetime": "2026-09-15T10:00",
+                    "deploy": [
+                        {
+                            "course_source_repo": "cm-f2026",
+                            "course_source_path": "lectures/02_intro",
+                            "deploy_datetime": "sept 15th",
+                        }
+                    ],
+                }
+            }
+        }
+    )
+    assert sched.releases[0].deploy[0].deploy_datetime is None  # ships at the event
+    (line,) = sched.dropped
+    assert line.startswith("releases.s.deploy[0].deploy_datetime:")
+    assert "event_datetime" in line
+
+
+def test_an_unknown_event_type_is_flagged_like_an_unknown_assignment_type():
+    sched = parse(
+        {"events": {"mid-term": {"type": "exma", "event_datetime": "2026-11-03"}}}
+    )
+    assert sched.events[0].type == "special_event"  # the row still shows
+    (line,) = sched.dropped
+    assert line.startswith("events.mid-term.type:")
+    assert "'exma'" in line and "not an exam" in line
+
+
+def test_an_absent_optional_value_is_never_flagged():
+    # Omitting handout/grading/deploy/type/max_team_size is the documented way to take
+    # their defaults - only a value that IS there and cannot be read is a fault.
+    assert (
+        parse(
+            {
+                "releases": {
+                    "s": {
+                        "event_datetime": "2026-09-01",
+                        "deploy": [
+                            {"course_source_repo": "cm", "course_source_path": "l/01"}
+                        ],
+                    }
+                },
+                "assignments": {
+                    "a1": {
+                        "course_source_repo": "a-f2026",
+                        "due_datetime": "2026-10-13",
+                    }
+                },
+                "events": {"e": {"event_datetime": "2026-11-03"}},
+            }
+        ).dropped
+        == []
+    )
+
+
 def test_schedule_and_utils_share_one_date_coercion():
     # The two implementations must not drift: schedule re-exports the canonical one.
     from dsl_course import utils
@@ -961,22 +1114,77 @@ def test_insert_handout_finds_a_deeper_indented_entry_and_keeps_its_due_datetime
 
 
 def test_insert_handout_leaves_an_unrecognisable_flow_block_untouched():
-    from dsl_course.schedule import _insert_handout
+    from dsl_course.schedule import DECLINED, _insert_handout
 
     # A flow-style `assignments: {...}` can't take a line insertion - leave it untouched
-    # rather than fabricate a duplicate key.
+    # rather than fabricate a duplicate key. DECLINED, not None: nothing was recorded.
     flow = "assignments: {assignment-1: {due_datetime: 2026-10-13}}\n"
-    assert _insert_handout(flow, "assignment-1", "2026-09-22T14:05") is None
+    assert _insert_handout(flow, "assignment-1", "2026-09-22T14:05") is DECLINED
 
 
 def test_insert_handout_leaves_an_inline_flow_value_entry_untouched():
-    from dsl_course.schedule import _insert_handout
+    from dsl_course.schedule import DECLINED, _insert_handout
 
     # `assignments:` is a block header but the slug itself is authored as an inline flow
     # value: there's no block body to append into, so leaving it alone is correct - the
     # old scan missed the slug and fabricated a duplicate key that swallowed the real one.
     base = "assignments:\n  assignment-1: {due_datetime: 2026-10-13}\n"
-    assert _insert_handout(base, "assignment-1", "2026-09-22T14:05") is None
+    assert _insert_handout(base, "assignment-1", "2026-09-22T14:05") is DECLINED
+
+
+def test_insert_handout_distinguishes_declining_from_the_write_once_no_op():
+    from dsl_course.schedule import _insert_handout
+
+    # Both used to be None, so "already on record" and "the record is LOST" looked
+    # identical to record_handout - which then said nothing in either case. The lost case
+    # is DECLINED (pinned in the two tests above); the no-op stays None.
+    recorded = (
+        "assignments:\n"
+        "  assignment-1:\n"
+        "    handout_datetime: 2026-09-22T14:05\n"
+        "    due_datetime: 2026-10-13\n"
+    )
+    assert _insert_handout(recorded, "assignment-1", "2026-10-01T09:00") is None
+
+
+def test_record_handout_says_so_loudly_when_the_file_shape_defeats_the_edit(
+    monkeypatch, capsys
+):
+    # Best-effort stays best-effort (no raise, no exit code), but a handout that went out
+    # and was recorded NOWHERE must never leave a silent, green run.
+    from dsl_course import schedule as S
+
+    flow = "assignments: {assignment-1: {due_datetime: 2026-10-13}}\n"
+    monkeypatch.setattr(S, "get_file_content", lambda org, repo, path: flow)
+    monkeypatch.setattr(
+        "dsl_course.utils.put_file",
+        lambda *a, **k: pytest.fail("must not write into a shape it cannot parse"),
+    )
+
+    S.record_handout("Cohort-f2026", "assignment-1", "2026-09-22T14:05")
+
+    err = capsys.readouterr().err
+    assert "could NOT record the assignment-1 handout" in err
+    assert "2026-09-22T14:05" in err  # the stamp to add by hand
+    assert "on record nowhere" in err
+
+
+def test_record_handout_says_so_loudly_when_the_write_itself_fails(monkeypatch, capsys):
+    # Same fault as above, one step later: the edit was fine and the PUT failed. It used
+    # to fall off the end of the `if` with nothing logged - green, and the handout on
+    # record nowhere.
+    from dsl_course import schedule as S
+
+    good = "assignments:\n  assignment-1:\n    due_datetime: 2026-10-13\n"
+    monkeypatch.setattr(S, "get_file_content", lambda org, repo, path: good)
+    monkeypatch.setattr("dsl_course.utils.put_file", lambda *a, **k: False)
+
+    S.record_handout("Cohort-f2026", "assignment-1", "2026-09-22T14:05")
+
+    err = capsys.readouterr().err
+    assert "could NOT record the assignment-1 handout" in err
+    assert "2026-09-22T14:05" in err
+    assert "on record nowhere" in err
 
 
 def test_validate_cli_reports_an_unreadable_cohort_schedule(monkeypatch, capsys):

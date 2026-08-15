@@ -28,6 +28,7 @@ from .utils import (
     log_err,
     log_ok,
     put_file,
+    repo_tree,
     session_dirs,
 )
 
@@ -159,18 +160,17 @@ def discover_cohort_repos(cohort_orgs: list[str]) -> list[str]:
     return sorted(repos)
 
 
-def _repo_tree_dirs(org: str, repo: str) -> list[str]:
+def _repo_tree_dirs(org: str, repo: str) -> tuple[str, ...]:
     """Every directory path in a repo's default-branch tree - one recursive fetch,
     shared by every discovery helper that needs a repo's directory structure (rather
-    than listing each top-level directory individually - N+1 API calls)."""
-    branch = get_default_branch(org, repo) or "main"
-    code, out = gh(
-        "api",
-        f"repos/{org}/{repo}/git/trees/{branch}?recursive=1",
-        "--jq",
-        '.tree[] | select(.type=="tree") | .path',
-    )
-    return out.splitlines() if code == 0 else []
+    than listing each top-level directory individually - N+1 API calls).
+
+    The fetch itself (and its absent-vs-failed discrimination) is utils.repo_tree, shared
+    with the site builder's blob-side twin: an absent/empty tree is genuinely no
+    directories, any other failure RAISES. It must never come back as "no sessions" - the
+    site clears and rewrites its collections from these rows, so one rate-limited fetch
+    would republish the cohort site with every session row deleted."""
+    return repo_tree(org, repo, get_default_branch(org, repo), "tree")
 
 
 def _section_session_pairs(org: str, repo: str) -> list[tuple[str, int]]:
