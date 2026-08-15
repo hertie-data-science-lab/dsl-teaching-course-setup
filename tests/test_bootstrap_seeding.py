@@ -25,7 +25,16 @@ import pytest
 import yaml
 
 from dsl_course import bootstrap_course as bc
-from dsl_course import grades, roster, schedule, seed, sync_faculty, teams, welcome
+from dsl_course import (
+    grades,
+    roster,
+    schedule,
+    seed,
+    sync_faculty,
+    teams,
+    utils,
+    welcome,
+)
 
 # Derived from the seeding tables, so a sixth config file cannot silently miss the set
 # these tests police - which is the whole point of the tables existing.
@@ -74,14 +83,18 @@ class FakeOrg:
 @pytest.fixture
 def fake(monkeypatch):
     f = FakeOrg()
-    monkeypatch.setattr(bc, "get_file_content", f.get_file_content)
+    # USER-owned files go through utils.seed_if_absent (create-if-absent), which resolves
+    # get_file_content / put_file / log_skip in the utils namespace; SYSTEM-owned files are
+    # written by bc.put_file directly. Fake both layers to the same recorder.
+    monkeypatch.setattr(utils, "get_file_content", f.get_file_content)
+    monkeypatch.setattr(utils, "put_file", f.put_file)
+    monkeypatch.setattr(utils, "log_skip", lambda msg: f.skips.append(msg))
     monkeypatch.setattr(bc, "put_file", f.put_file)
     # The welcome repo's SYSTEM-owned files are written by dsl_course.welcome (so that
     # seed.refresh can re-push them without importing bootstrap_course), so its own
     # put_file/delete_file have to be faked too.
     monkeypatch.setattr(welcome, "put_file", f.put_file)
     monkeypatch.setattr(welcome, "delete_file", f.delete_file)
-    monkeypatch.setattr(bc, "log_skip", lambda msg: f.skips.append(msg))
     # everything else setup_cohort_extras does is repo-level and safe to re-run; it is
     # stubbed out so these tests stay pure (no gh calls).
     monkeypatch.setattr(bc, "create_repo", lambda *a, **k: True)
@@ -175,14 +188,25 @@ def test_rerun_logs_one_skip_per_preserved_file(fake):
     ]
 
 
-def test_seed_user_file_skips_an_empty_existing_file(fake):
-    # get_file_content returns "" for an existing empty file (grades/.gitkeep) - falsy but
-    # present, so it must still count as existing.
+def test_seed_if_absent_skips_an_empty_existing_file(fake):
+    # New contract: a skip means the file IS present as intended, so seed_if_absent returns
+    # True (a success, not a failure) and attempts no write. get_file_content returns "" for
+    # an existing empty file (grades/.gitkeep) - falsy but present, so it still counts.
     fake.files[("classroom-config", "grades/.gitkeep")] = ""
-    assert not bc._seed_user_file(
+    assert utils.seed_if_absent(
         "Cohort-f2026", "classroom-config", "grades/.gitkeep", b"x", "msg"
     )
     assert fake.writes == []
+    assert "classroom-config/grades/.gitkeep" in fake.skips
+
+
+def test_seed_if_absent_returns_false_only_when_the_write_fails(monkeypatch):
+    # The write-failed case must be distinguishable from a skip: an ABSENT file whose
+    # put_file fails returns False, so `if not seed_if_absent(...): failures += 1` counts
+    # exactly the real failures (never a skip of a live file).
+    monkeypatch.setattr(utils, "get_file_content", lambda *a, **k: None)
+    monkeypatch.setattr(utils, "put_file", lambda *a, **k: False)
+    assert not utils.seed_if_absent("Org", "repo", "path", b"x", "msg")
 
 
 def test_seeded_scaffolds_render_this_cohorts_tag(fake):
@@ -331,20 +355,54 @@ def test_rerun_retires_the_pre_rename_issue_forms(fake):
     assert ("welcome", ".github/ISSUE_TEMPLATE/join.yml") not in fake.files
 
 
+# --------------------------- setup_cohort_extras closes the partial-provisioning holes
+
+
+def test_cohort_extras_reds_when_a_repo_cannot_be_created(fake, monkeypatch):
+    # A failed create_repo (post-PR1, a genuine failure - not the idempotent 422) leaves the
+    # cohort with no student-facing repo; its False must be counted and the seeding skipped,
+    # not silently dropped by a bare `if create_repo(...)` that reports a green cohort.
+    monkeypatch.setattr(bc, "create_repo", lambda *a, **k: False)
+    assert bc.setup_cohort_extras("Cohort-f2026") == 2  # welcome + classroom-config
+    # both seeding blocks skipped - nothing was written into either repo
+    assert fake.writes == []
+
+
+def test_cohort_extras_reds_when_the_org_tighten_fails(fake, monkeypatch):
+    # The org-tighten PATCH leaving the cohort open (members keep default repo access) is a
+    # real misconfiguration - a non-zero there must red the bootstrap, not just log and pass.
+    monkeypatch.setattr(bc, "gh", lambda *a, **k: (1, "gh: HTTP 403"))
+    assert bc.setup_cohort_extras("Cohort-f2026") == 1
+
+
+def test_cohort_extras_reds_when_a_dispatcher_write_fails(fake, monkeypatch):
+    # A failed SYSTEM-owned write (the classroom-config README contract, or a dispatch-sync
+    # workflow) means membership/site sync never triggers, yet the create_repo blocks stay
+    # green - so the previously-discarded put_file return is now counted.
+    monkeypatch.setattr(bc, "put_file", lambda *a, **k: False)
+    assert bc.setup_cohort_extras("Cohort-f2026") >= 1
+
+
+def test_cohort_extras_reds_when_a_user_file_seed_fails(fake, monkeypatch):
+    # A USER-owned scaffold that is absent and whose write FAILS must red the bootstrap -
+    # seed_if_absent's False (a real write failure, not a skip of a live file) is now folded
+    # into the count.
+    monkeypatch.setattr(utils, "put_file", lambda *a, **k: False)
+    assert bc.setup_cohort_extras("Cohort-f2026") >= 1
+
+
 # ------------------------------------------ the one initial site sync a bootstrap does
 
 
 def _stub_bootstrap(monkeypatch) -> None:
     """Neutralise everything a cohort bootstrap does EXCEPT the site sync - the org-level
     gh/git layer, the repo seeding (covered above) and the summary output."""
-    for name in (
-        "set_org_settings",
-        "create_default_teams",
-        "setup_cohort_extras",
-        "grant_button_access",
-        "seed_workflows",
-    ):
+    for name in ("set_org_settings", "create_default_teams", "grant_button_access"):
         monkeypatch.setattr(bc, name, lambda *a, **k: None)
+    # setup_cohort_extras / seed_workflows report a failure count that _run threads into
+    # its exit code - a clean stub reports zero failures.
+    for name in ("setup_cohort_extras", "seed_workflows"):
+        monkeypatch.setattr(bc, name, lambda *a, **k: 0)
     monkeypatch.setattr(bc, "preflight", lambda org: True)
     monkeypatch.setattr(bc, "create_profile_repo", lambda *a, **k: None)
     monkeypatch.setattr(bc, "add_course_admins", lambda org, handles: None)
@@ -439,11 +497,15 @@ def _stub_refresh(
     )
     monkeypatch.setattr(seed, "discover_content_repos", lambda org: [])
     monkeypatch.setattr(seed, "discover_assignments", lambda org: [])
-    monkeypatch.setattr(seed, "_propagate_repo_secret", lambda org, repos: None)
+    monkeypatch.setattr(seed, "_propagate_repo_secret", lambda org, repos: 0)
     monkeypatch.setattr(seed, "seed_github_workflows", lambda org: seed_failures)
     monkeypatch.setattr(seed, "update_profile_readme", lambda org: None)
     monkeypatch.setattr(seed, "refresh_welcome_workflows", welcome_failures)
     monkeypatch.setattr(seed, "refresh_classroom_samples", sample_failures)
+    # The per-cohort loop probes the cohort ORG once (`orgs/<cohort>`): a 404 marker = the
+    # org is deleted (prune + skip). A live org then checks repo_is_archived (archived = skip
+    # frozen). (0, "") from the org probe + repo_is_archived False = present and live, proceed.
+    monkeypatch.setattr(seed, "gh", lambda *a, **k: (0, ""))
     monkeypatch.setattr(seed, "repo_is_archived", lambda org, repo: False)
 
 
@@ -472,30 +534,164 @@ def test_refresh_leaves_an_archived_cohort_frozen(monkeypatch, capsys):
     # nightly cron therefore went red every night in any org with a past cohort. Skipping
     # the archived cohort whole is the fix; the live cohort beside it still converges.
     refreshed: list[str] = []
-    checked: list[tuple[str, str]] = []
 
     def refresh_one(org: str) -> int:
         refreshed.append(org)
         return 9 if org == "Cohort-f2026" else 0  # what the 403s would have counted as
 
-    def archived(org: str, repo: str) -> bool:
-        checked.append((org, repo))
-        return org == "Cohort-f2026"
-
     _stub_refresh(
         monkeypatch, welcome_failures=refresh_one, sample_failures=refresh_one
     )
-    monkeypatch.setattr(seed, "repo_is_archived", archived)
+    # Both orgs live (org probe healthy); Cohort-f2026 is a finished, archived semester.
+    monkeypatch.setattr(seed, "gh", lambda *a, **k: (0, ""))
+    monkeypatch.setattr(
+        seed, "repo_is_archived", lambda org, repo: org == "Cohort-f2026"
+    )
 
     assert seed.refresh("Course-Org") == 0
     assert refreshed == ["Cohort-s2027", "Cohort-s2027"]  # both jobs, live cohort only
-    assert checked == [
-        ("Cohort-f2026", "classroom-config"),
-        ("Cohort-s2027", "classroom-config"),
-    ]
     out = capsys.readouterr()
     assert "[skip] Cohort-f2026 (archived cohort - left frozen)" in out.out
     assert "refresh incomplete" not in out.err
+
+
+def test_refresh_prunes_a_deleted_cohort_org(monkeypatch, capsys):
+    # A cohort org DELETED after it was registered 404s on every write - which reds the
+    # nightly cron forever (distinct from an archived cohort, which still exists). Skip a
+    # genuinely-gone cohort with a prune hint; the live cohort beside it still converges.
+    refreshed: list[str] = []
+    _stub_refresh(
+        monkeypatch,
+        welcome_failures=lambda org: refreshed.append(org) or 0,
+        sample_failures=lambda org: refreshed.append(org) or 0,
+    )
+
+    def fake_gh(*a, **k):
+        # the per-cohort ORG probe (orgs/<cohort>): Cohort-f2026's org was deleted -> 404
+        if "Cohort-f2026" in a[1]:
+            return (1, "gh: Not Found (HTTP 404)")
+        return (0, "")
+
+    monkeypatch.setattr(seed, "gh", fake_gh)
+
+    assert seed.refresh("Course-Org") == 0
+    assert refreshed == ["Cohort-s2027", "Cohort-s2027"]  # deleted cohort skipped whole
+    out = capsys.readouterr()
+    assert "[skip] Cohort-f2026" in out.out and "prune" in out.out
+    assert "refresh incomplete" not in out.err
+
+
+def test_refresh_does_not_prune_on_a_transient_read_failure(monkeypatch):
+    # A non-404 read error is NOT proof the cohort is gone - it must still be refreshed
+    # (and fail loud there), never silently skipped on a rate-limit or 502.
+    refreshed: list[str] = []
+    _stub_refresh(
+        monkeypatch,
+        welcome_failures=lambda org: refreshed.append(org) or 0,
+        sample_failures=lambda org: refreshed.append(org) or 0,
+    )
+    monkeypatch.setattr(seed, "gh", lambda *a, **k: (1, "gh: HTTP 502"))
+
+    assert seed.refresh("Course-Org") == 0
+    assert refreshed == ["Cohort-f2026", "Cohort-f2026", "Cohort-s2027", "Cohort-s2027"]
+
+
+# ----------------------------------------------- _propagate_repo_secret (Free-plan gap)
+
+
+def test_propagate_repo_secret_refuses_a_personal_gh_token(monkeypatch, capsys):
+    # A maintainer running `seed refresh` by hand usually has their PERSONAL GH_TOKEN
+    # exported; publishing it as the shared repo secret would leak their PAT into every
+    # content repo. With only GH_TOKEN set we refuse and warn - nothing is published.
+    monkeypatch.delenv("DSL_BOT_TOKEN", raising=False)
+    monkeypatch.setenv("GH_TOKEN", "ghp_personal")
+    called: list = []
+    monkeypatch.setattr(seed, "gh", lambda *a, **k: called.append((a, k)) or (0, ""))
+
+    assert seed._propagate_repo_secret("Course-Org", ["cm-f2026"]) == 0
+    assert called == []
+    assert "refusing to publish a personal token" in capsys.readouterr().err
+
+
+def test_propagate_repo_secret_uses_stdin_and_counts_failures(monkeypatch, capsys):
+    # The token goes over stdin (--body-file -), never an argv --body (which `ps` exposes),
+    # and a repo the secret could not be set on counts into the refresh exit code.
+    monkeypatch.setenv("DSL_BOT_TOKEN", "s3cret")
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    calls: list = []
+
+    def fake_gh(*a, **k):
+        calls.append((a, k))
+        return (1, "gh: HTTP 403") if a[4].endswith("/two") else (0, "")
+
+    monkeypatch.setattr(seed, "gh", fake_gh)
+
+    assert seed._propagate_repo_secret("Course-Org", ["one", "two"]) == 1
+    for a, k in calls:
+        assert "--body-file" in a and "--body" not in a
+        assert k.get("stdin") == "s3cret"
+    assert "could not set DSL_BOT_TOKEN on Course-Org/two" in capsys.readouterr().err
+
+
+# ------------------------------------- bootstrap threads sub-step failures into its exit
+
+
+def test_course_bootstrap_reds_when_workflow_seeding_fails(monkeypatch, capsys):
+    # All 17 org workflows failing to write (e.g. the token lost `workflow` scope) used to
+    # exit 0 - a half-configured org that reports success. seed_workflows' failure count is
+    # now threaded into the bootstrap exit code.
+    _stub_bootstrap(monkeypatch)
+    monkeypatch.setattr(bc, "seed_workflows", lambda org: 17)
+    monkeypatch.setattr("sys.argv", ["bootstrap_course", "--org", "Course-Org"])
+
+    assert bc.main() == 1
+    assert "bootstrap incomplete" in capsys.readouterr().err
+
+
+def _cohort_argv() -> list[str]:
+    return [
+        "bootstrap_course",
+        "--org",
+        "Cohort-f2026",
+        "--cohort",
+        "--course",
+        "Course-Org",
+    ]
+
+
+def test_cohort_bootstrap_reds_when_registration_fails(monkeypatch, capsys):
+    # register_cohort returns False on a failed registry write: a cohort invisible to
+    # discover_cohorts is invisible to every nightly sync, so it must red the bootstrap.
+    _stub_bootstrap(monkeypatch)
+    monkeypatch.setattr(bc.seed, "register_cohort", lambda course, cohort: False)
+    monkeypatch.setattr(bc.site, "sync_site", lambda c, o: 0)
+    monkeypatch.setattr("sys.argv", _cohort_argv())
+
+    assert bc.main() == 1
+    err = capsys.readouterr().err
+    assert "could not register Cohort-f2026" in err
+    assert "bootstrap incomplete" in err
+
+
+def test_cohort_bootstrap_reds_when_faculty_sync_reports_errors(monkeypatch, capsys):
+    _stub_bootstrap(monkeypatch)
+    monkeypatch.setattr(bc.sync_faculty, "sync", lambda course, cohorts=None: 2)
+    monkeypatch.setattr(bc.site, "sync_site", lambda c, o: 0)
+    monkeypatch.setattr("sys.argv", _cohort_argv())
+
+    assert bc.main() == 1
+    assert "bootstrap incomplete" in capsys.readouterr().err
+
+
+def test_cohort_bootstrap_reds_when_student_repos_half_seeded(monkeypatch, capsys):
+    # setup_cohort_extras returns the count of welcome/config-sample writes that failed.
+    _stub_bootstrap(monkeypatch)
+    monkeypatch.setattr(bc, "setup_cohort_extras", lambda org: 4)
+    monkeypatch.setattr(bc.site, "sync_site", lambda c, o: 0)
+    monkeypatch.setattr("sys.argv", _cohort_argv())
+
+    assert bc.main() == 1
+    assert "bootstrap incomplete" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(

@@ -39,6 +39,7 @@ from .utils import (
     log_step,
     put_file,
     repo_exists,
+    seed_if_absent,
     set_repo_topics,
 )
 
@@ -208,19 +209,42 @@ def scaffold_materials(org: str, tag: str) -> int:
         "of the list by leaving them as non-text files) or `actual-readings` (every reading "
         "file is hosted and downloadable - you carry the copyright responsibility).\n"
     )
-    files = {
+    failures = 0
+    # MAINTAINING.md is SYSTEM-owned generated docs, built from the actions table above (like
+    # classroom-config's README contract): it must refresh on a re-run when the toolkit
+    # changes it, so it's written unconditionally with put_file - never frozen create-only. A
+    # failed write reds the scaffold rather than shipping a stale/absent maintainer guide.
+    if not put_file(
+        org, repo, "MAINTAINING.md", maintaining.encode(), "docs: maintaining guide"
+    ):
+        failures += 1
+    # USER-owned skeletons: create-only, so a re-run against a repo faculty have since
+    # authored must not revert their README/SYLLABUS to the stub or resurrect a deleted
+    # starter directory. A failed seed (an absent file whose write failed) reds the scaffold.
+    user_files = {
         "README.md": readme.encode(),
-        "MAINTAINING.md": maintaining.encode(),
         "lectures/01_session-1/.gitkeep": b"",
         "readings/01_session-1/.gitkeep": b"",
         "labs/01_session-1/.gitkeep": b"",
         "SYLLABUS.md": f"# {tag} syllabus\n\nReplace with the real syllabus.\n".encode(),
     }
-    for path, content in files.items():
-        put_file(org, repo, path, content, "init: materials skeleton")
+    for path, content in user_files.items():
+        if not seed_if_absent(org, repo, path, content, "init: materials skeleton"):
+            failures += 1
     # Equip the run-from-repo Release buttons (same as Refresh does for content repos).
+    # _push_workflows returns the count of writes that failed - a materials repo with no
+    # Release buttons must not report success.
     cohorts = seed.discover_cohorts(org)
-    seed._push_workflows(org, repo, cohorts, seed.discover_assignments(org))
+    workflow_failures = seed._push_workflows(
+        org, repo, cohorts, seed.discover_assignments(org)
+    )
+    if workflow_failures:
+        log_err(
+            f"materials repo incomplete: {workflow_failures} Release button(s) not seeded"
+        )
+    failures += workflow_failures
+    if failures:
+        return 1
     log_ok(f"materials repo ready: {org}/{repo}")
     return 0
 
@@ -251,22 +275,28 @@ def scaffold_assignment(
         else "that push is your submission"
     )
     # main: starter only (what students receive on generate). No tests, no autograder -
-    # grading runs faculty-side from the solution branch (see Grade assignment).
-    put_file(
+    # grading runs faculty-side from the solution branch (see Grade assignment). Create-only:
+    # a re-run against a repo whose starter faculty have since authored must not revert it.
+    # Count a failed create-only seed (not a skip of a live file) so a half-written starter
+    # reds the scaffold, matching scaffold_materials rather than reporting a green "ready".
+    seed_failures = 0
+    if not seed_if_absent(
         org,
         repo,
         "README.md",
         f"# Assignment {number}\n\nComplete the TODOs in `{starter_name}` and push to "
         f"`main` ({submission}).\n".encode(),
         "init: assignment starter",
-    )
+    ):
+        seed_failures += 1
     starter_code = "def solve():\n    raise NotImplementedError  # TODO"
     starter = (
         _notebook([f"# Assignment {number}"], starter_code)
         if fmt == "notebook"
         else f'"""Assignment {number}."""\n\n\n{starter_code}\n'
     )
-    put_file(org, repo, starter_name, starter.encode(), "init: starter")
+    if not seed_if_absent(org, repo, starter_name, starter.encode(), "init: starter"):
+        seed_failures += 1
     set_repo_topics(org, repo, [f"assignment-{number}", "assignment"])
 
     # solution branch: the model solution, grading.yml, and the HIDDEN tests - all kept OFF
@@ -276,7 +306,11 @@ def scaffold_assignment(
         if gh("repo", "clone", f"{org}/{repo}", str(wd), "--", "-q")[0] != 0:
             log_err("  ! could not clone to add the solution branch")
             return 1
-        git("-C", str(wd), *_GIT_ENV, "checkout", "-q", "-b", "solution")
+        if git("-C", str(wd), *_GIT_ENV, "checkout", "-q", "-b", "solution")[0] != 0:
+            # A real failure here (e.g. a solution branch already exists from a prior run)
+            # must not be swallowed and then misreported as a push failure below.
+            log_err("  ! could not create the solution branch (does it already exist?)")
+            return 1
         sol = wd / "solution"
         sol.mkdir()
         solution_code = "def solve():\n    return 42  # TODO"
@@ -321,6 +355,12 @@ def scaffold_assignment(
         ):
             log_err("  ! could not push the solution branch")
             return 1
+    if seed_failures:
+        log_err(
+            f"  ! {seed_failures} starter file(s) could not be written - the assignment "
+            f"template is incomplete"
+        )
+        return 1
     log_ok(f"assignment template ready: {org}/{repo} (main + solution)")
     return 0
 

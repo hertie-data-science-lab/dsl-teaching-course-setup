@@ -274,7 +274,16 @@ def _run_releases(
     if changed or did_assign:
         from . import site
 
-        site.sync_site(course_org, cohort_org)
+        # site.sync_site RAISES on a genuine tree/team read failure (post-PR2). This
+        # cohort's site-sync failure must be logged and counted, not an unhandled traceback
+        # that aborts the run - and, under --all-cohorts, every cohort scheduled after it.
+        try:
+            if site.sync_site(course_org, cohort_org) != 0:
+                log_err("site sync incomplete after scheduled release")
+                errors += 1
+        except Exception as exc:
+            log_err(f"site sync failed after scheduled release: {exc}")
+            errors += 1
     return errors
 
 
@@ -394,7 +403,15 @@ def main() -> int:
             return 0
         rc = 0
         for cohort in cohorts:
-            rc |= run(args.course_org, cohort, now, dry_run=args.dry_run)
+            # One cohort's raised failure (a read helper that couldn't reach the API, a
+            # site sync that blew up) must not abort the remaining cohorts' scheduled
+            # releases - log it, mark the batch failed, and carry on. The same per-cohort
+            # isolation PR #151/#146 applied to the nightly refresh.
+            try:
+                rc |= run(args.course_org, cohort, now, dry_run=args.dry_run)
+            except Exception as exc:
+                log_err(f"scheduler run for {cohort} failed: {exc}")
+                rc |= 1  # accumulate, don't clobber prior cohorts' status bits
         return rc
 
     if not args.cohort_org:
