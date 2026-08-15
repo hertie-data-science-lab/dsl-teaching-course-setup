@@ -48,21 +48,47 @@ from .utils import (
 _GIT_ENV = GIT_ENV
 
 
-def _resolve_within(base: Path, rel: str) -> Path | None:
-    """Resolve `rel` under the clone `base`, or None if it is unsafe to copy.
+# Never copied, at any depth: a `.git` landing in the dest overwrites its git metadata and
+# redirects the release's own push into the SOURCE repo.
+NEVER_COPIED = frozenset({".git"})
 
-    Rejected: a path that strips to empty or `.` (the repo ROOT - copying it would drag the
-    clone's own `.git` over the dest and redirect the subsequent push into the wrong repo),
-    and any `..` path that resolves outside the clone. Both are impossible copies, caught
-    before any file is touched."""
+# Additionally skipped when the WHOLE repo is released (`course_source_path: /`), and only
+# at the repo root. These are the faculty side of a materials repo by contract: `.github`
+# holds the Release buttons and their bot-token wiring, and scaffold writes MAINTAINING.md
+# into every materials repo describing it as "never released ... not deployed to the cohort
+# org" (see scaffold.py). Named here so that promise and this mechanism are one fact rather
+# than two that drift. Naming either path explicitly still releases it - this is what "give
+# me everything" means, not a ban.
+ROOT_RELEASE_EXCLUDED = frozenset({".github", "MAINTAINING.md"})
+
+
+def _resolve_within(base: Path, rel: str) -> Path | None:
+    """Resolve `rel` under the clone `base`, or None if it escapes it.
+
+    `""`, `/` and `.` all name the root of `base` - for a source path that is the "release
+    everything" spelling. A `..` path resolving outside the clone is refused: no reading of
+    it is a release, and it is caught before any file is touched."""
     cleaned = rel.strip("/")
-    if not cleaned or cleaned == ".":
-        return None
     base_r = base.resolve()
-    target = (base / cleaned).resolve()
-    if target == base_r or not target.is_relative_to(base_r):
-        return None
-    return target
+    target = (base / cleaned).resolve() if cleaned else base_r
+    return target if target.is_relative_to(base_r) else None
+
+
+def _copy_ignore(whole_repo_root: Path | None):
+    """A copytree `ignore` filter: NEVER_COPIED at every depth, plus ROOT_RELEASE_EXCLUDED
+    at `whole_repo_root` when a whole repo is being released (None for a subpath copy).
+
+    Root-anchored deliberately, rather than `shutil.ignore_patterns`, which matches by
+    basename at every level of the walk - that would also drop a `labs/.github/`, which is
+    the faculty member's own content and nothing to do with the release plumbing."""
+
+    def ignore(dirpath: str, names: list[str]) -> set[str]:
+        skip = {n for n in names if n in NEVER_COPIED}
+        if whole_repo_root is not None and Path(dirpath) == whole_repo_root:
+            skip |= {n for n in names if n in ROOT_RELEASE_EXCLUDED}
+        return skip
+
+    return ignore
 
 
 def deploy_many(
@@ -132,17 +158,15 @@ def deploy_many(
                 or d.cohort_dest_repo not in dest_dirs
             ):
                 continue  # its source/dest failed to clone (already counted)
-            src_path = d.course_source_path.strip("/")
-            dest_rel = (d.cohort_dest_path or d.course_source_path).strip(
-                "/"
-            ) or src_path
-            srcp = _resolve_within(src_dirs[d.course_source_repo], d.course_source_path)
+            # A root cohort_dest_path means the dest repo's root, exactly as a root
+            # course_source_path means the source repo's - no mirror-the-source fallback.
+            dest_rel = (d.cohort_dest_path or d.course_source_path).strip("/")
+            src_root = src_dirs[d.course_source_repo].resolve()
+            srcp = _resolve_within(src_root, d.course_source_path)
             if srcp is None:
                 log_err(
                     f"unsafe course_source_path `{d.course_source_path}` for "
-                    f"{source_org}/{d.course_source_repo}: it names the repo root or escapes "
-                    f"the clone - name a subfolder (e.g. lectures/02_intro) to release. "
-                    f"skipped."
+                    f"{source_org}/{d.course_source_repo} - it escapes the clone. skipped."
                 )
                 errors += 1
                 continue
@@ -156,29 +180,32 @@ def deploy_many(
                 continue
             if not srcp.exists():
                 log_err(
-                    f"`{src_path}` not found in {source_org}/{d.course_source_repo} - skipped."
+                    f"`{d.course_source_path}` not found in "
+                    f"{source_org}/{d.course_source_repo} - skipped."
                 )
                 errors += 1
                 continue
             if srcp.is_dir():
-                # Never copy a `.git` directory: it would overwrite the dest's own git
-                # metadata and misdirect the push.
                 shutil.copytree(
                     srcp,
                     destp,
                     dirs_exist_ok=True,
-                    ignore=shutil.ignore_patterns(".git"),
+                    ignore=_copy_ignore(srcp if srcp == src_root else None),
                 )
             else:
                 destp.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(srcp, destp)
-            log_ok(f"+ {d.cohort_dest_repo}/{dest_rel}")
+            log_ok(f"+ {d.cohort_dest_repo}/{dest_rel or '(repo root)'}")
             touched.add(d.cohort_dest_repo)
 
         # 4. one commit + push per touched dest (skip if it has no net change)
         for repo in sorted(touched):
             dd = dest_dirs[repo]
-            git("-C", str(dd), *_GIT_ENV, "add", "-A")
+            # -f: what was copied IS the release. A whole-repo release brings the source's
+            # own `.gitignore` along, and without -f `git add` would then silently drop any
+            # file the source force-added past it (lecture PDFs under a `*.pdf` rule are the
+            # usual case) - reporting the release as shipped while those files never left.
+            git("-C", str(dd), *_GIT_ENV, "add", "-A", "-f")
             # Distinguish "nothing staged" (genuinely nothing new to release - the
             # idempotent no-op) from a real commit failure (disk, lock, hook): git commit
             # exits non-zero for BOTH, so a failed commit would otherwise be reported as
@@ -307,18 +334,23 @@ def main() -> int:
         # (The full clone-relative escape-check stays at copy time in deploy_many.)
         unsafe = False
         for src, dest in pairs:
-            cleaned = src.strip("/")
-            if cleaned in ("", ".") or ".." in cleaned.split("/"):
+            # The root is a legal path now (it means "everything"), so only an escaping
+            # path is still unsafe - that half of the check survives unchanged.
+            if ".." in src.strip("/").split("/"):
                 log(
-                    f"  UNSAFE  {args.course_source_repo}/{src}: names the repo root or "
-                    f"escapes the clone - release a named subfolder instead"
+                    f"  UNSAFE  {args.course_source_repo}/{src}: escapes the clone - "
+                    f"release a path inside the repo"
                 )
                 unsafe = True
-            else:
-                log(
-                    f"  DRY-RUN  {args.course_source_repo}/{src} -> "
-                    f"{dest_repo}/{dest or src}"
-                )
+                continue
+            # Mirror deploy_many's own destination rule exactly (a root path means the dest
+            # repo's ROOT, with no mirror-the-source fallback) - a dry-run that models the
+            # release differently from the release is worse than no dry-run.
+            landing = (dest or src).strip("/")
+            log(
+                f"  DRY-RUN  {args.course_source_repo}/{src} -> "
+                f"{dest_repo}/{landing or '(repo root)'}"
+            )
         return 1 if unsafe else 0
 
     log_step(

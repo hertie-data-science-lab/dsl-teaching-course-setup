@@ -221,31 +221,48 @@ def test_dry_run_prints_the_resolved_pairs_without_deploying(monkeypatch, capsys
     assert "course-materials-f2026/labs/02 -> materials/week02/lab" in out
 
 
-def test_dry_run_flags_an_unsafe_root_path(monkeypatch, capsys):
-    # The cheapest guard, needing no clone: a source path that strips to the repo root (a
-    # whole-repo release would drag the source's own .git/.github into the cohort tree) is
-    # caught in the dry-run and reds the run, before anything is cloned or copied.
+def _dry_run_argv(source_path):
+    return [
+        "deploy",
+        "--source-org",
+        "Course",
+        "--course-source-repo",
+        "course-materials-f2026",
+        "--cohort-org",
+        "Cohort-f2026",
+        "--course-source-path",
+        source_path,
+        "--dry-run",
+    ]
+
+
+def test_dry_run_shows_a_whole_repo_release_landing_at_the_dest_root(
+    monkeypatch, capsys
+):
+    # The case a dry-run most needs to get right is the one that ships the most. It must
+    # model deploy_many's destination rule, not a near-miss of it: a root path means the
+    # dest repo's root, so printing `materials//` would misdescribe the release.
     monkeypatch.setattr(
         deploy, "deploy_many", lambda *a, **k: pytest.fail("must not deploy")
     )
+    monkeypatch.setattr("sys.argv", _dry_run_argv("/"))
+    assert deploy.main() == 0
+    out = capsys.readouterr().out
+    assert "course-materials-f2026// -> materials/(repo root)" in out
+    assert "materials//" not in out
+
+
+def test_dry_run_still_flags_a_path_escaping_the_clone(monkeypatch, capsys):
+    # The root half of this guard retired when the root became a legal release, but the
+    # escape half did not: it is still the cheapest catch, needing no clone, and it must
+    # red the run rather than print a plausible-looking destination.
     monkeypatch.setattr(
-        "sys.argv",
-        [
-            "deploy",
-            "--source-org",
-            "Course",
-            "--course-source-repo",
-            "course-materials-f2026",
-            "--cohort-org",
-            "Cohort-f2026",
-            "--course-source-path",
-            "lectures/02,/",  # one safe path, one that names the repo root
-            "--dry-run",
-        ],
+        deploy, "deploy_many", lambda *a, **k: pytest.fail("must not deploy")
     )
+    monkeypatch.setattr("sys.argv", _dry_run_argv("lectures/02,../../etc/passwd"))
     assert deploy.main() == 1
     out = capsys.readouterr().out
-    assert "UNSAFE" in out and "names the repo root" in out
+    assert "UNSAFE" in out and "escapes the clone" in out
     # the safe pair is still shown, so the operator sees the whole batch
     assert "course-materials-f2026/lectures/02 -> materials/lectures/02" in out
 
@@ -255,3 +272,55 @@ def test_released_repos_are_read_by_both_cohort_role_teams():
     # is one helper covering both teams, so no release site can grant only `students`.
     assert utils.READ_TEAMS == ("students", "auditors")
     assert deploy.grant_read_teams is utils.grant_read_teams
+
+
+# --- releasing the whole repo -------------------------------------------------------
+# `/` is the "release everything" spelling. The end-to-end proof that it flows through
+# clone -> copytree -> `git add` lives in test_scheduler.py; what is pinned here is the two
+# decisions it rests on - which spellings mean the root, and what never travels with a copy.
+
+# The one definition of "this means the repo root". Blank is included because that is what
+# an empty `cohort_dest_path` reduces to internally; neither front door accepts it as a
+# SOURCE (parse_path_pairs and schedule.py both reject an empty course_source_path).
+ROOT_SPELLINGS = ["/", ".", "", "./", "//"]
+
+
+@pytest.mark.parametrize("spelling", ROOT_SPELLINGS)
+def test_every_spelling_of_the_repo_root_resolves_to_the_clone_root(tmp_path, spelling):
+    assert deploy._resolve_within(tmp_path, spelling) == tmp_path.resolve()
+
+
+@pytest.mark.parametrize("escape", ["../outside", "labs/../../outside", "/../outside"])
+def test_a_path_escaping_the_clone_is_still_refused(tmp_path, escape):
+    # Allowing the root must not have widened the door to paths outside it.
+    assert deploy._resolve_within(tmp_path, escape) is None
+
+
+def test_a_normal_subpath_still_resolves_under_the_clone(tmp_path):
+    (tmp_path / "labs").mkdir()
+    assert deploy._resolve_within(tmp_path, "labs/") == (tmp_path / "labs").resolve()
+
+
+def test_a_whole_repo_release_skips_the_faculty_side_of_the_repo(tmp_path):
+    # MAINTAINING.md is written into every materials repo by scaffold as "never released";
+    # `.github` is the Release buttons and their bot-token wiring. Both are faculty-side, so
+    # neither may ride along with "give me everything".
+    ignore = deploy._copy_ignore(tmp_path)
+    names = [".git", ".github", "MAINTAINING.md", "labs", "SYLLABUS.md"]
+    assert ignore(str(tmp_path), names) == {".git", ".github", "MAINTAINING.md"}
+
+
+def test_the_faculty_side_is_skipped_only_at_the_repo_root(tmp_path):
+    # The exclusion is root-ANCHORED, not a basename glob: a faculty member's own
+    # `labs/.github/` or `labs/MAINTAINING.md` is content, not release plumbing, and must
+    # travel. `.git` is the exception - it is never copyable, at any depth.
+    ignore = deploy._copy_ignore(tmp_path)
+    names = [".git", ".github", "MAINTAINING.md", "01.md"]
+    assert ignore(str(tmp_path / "labs"), names) == {".git"}
+
+
+def test_naming_the_faculty_side_explicitly_still_releases_it(tmp_path):
+    # The skip is what "everything" means, not a ban: releasing `.github` as a named
+    # course_source_path is a subpath copy, which excludes nothing but `.git`.
+    ignore = deploy._copy_ignore(None)
+    assert ignore(str(tmp_path), [".git", ".github", "MAINTAINING.md"]) == {".git"}

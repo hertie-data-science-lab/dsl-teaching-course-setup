@@ -48,12 +48,14 @@ Nested under `deploy:` we havee the following:
 | Field | Required | Default | Meaning |
 |---|---|---|---|
 | `course_source_repo` | **yes** | - | the repo in the COURSE org to copy from |
-| `course_source_path` | **yes** | - | the folder or file to copy, relative to `course_source_repo` |
+| `course_source_path` | **yes** | - | the folder or file to copy, relative to `course_source_repo` - or `/` for the whole repo |
 | `cohort_dest_repo` | no | `materials` | the cohort repo to copy into - created on first release |
 | `cohort_dest_path` | no | mirrors `course_source_path` | where it lands, relative to `cohort_dest_repo` |
 | `deploy_datetime` | no | the entry's `event_datetime` | ship this one copy earlier (or later) than the class it belongs to |
 
 NB: `cohort_dest_repo` is yours to choose - one shared `materials` repo, or one repo for lectures, another for labs etc; any non-existent repo and/or directory structure specified between `cohort_dest_repo` and `cohort_dest_path` is created on release if non-exist.
+
+NB: `course_source_path: /` (or `.`) releases the **whole repo**. Two root entries are left behind: `.github` (the faculty Release buttons) and `MAINTAINING.md` (your operating notes, which the scaffold marks as never released). Nested copies - a `labs/.github/` of your own - travel normally. The button uses the identical spelling, so this reads straight across from `docs/08`.
 
 At a minimum only `course_source_repo` + `course_source_path` are required, everything else defaults:
 
