@@ -8,8 +8,6 @@ batching itself is exercised in test_scheduler.py, which drives the same
 
 from __future__ import annotations
 
-import shutil
-
 import pytest
 
 from dsl_course import deploy, utils
@@ -260,14 +258,18 @@ def test_released_repos_are_read_by_both_cohort_role_teams():
 
 
 # --- releasing the whole repo -------------------------------------------------------
-# "/" (or "." or blank) is the spelling for "release everything". It resolves to the clone
-# root, which is only safe because the copy skips the plumbing - so the two halves are
-# pinned together here: the path resolves, AND `.git`/`.github` never travel with it.
+# `/` is the "release everything" spelling. The end-to-end proof that it flows through
+# clone -> copytree -> `git add` lives in test_scheduler.py; what is pinned here is the two
+# decisions it rests on - which spellings mean the root, and what never travels with a copy.
+
+# The one definition of "this means the repo root". Blank is included because that is what
+# an empty `cohort_dest_path` reduces to internally; neither front door accepts it as a
+# SOURCE (parse_path_pairs and schedule.py both reject an empty course_source_path).
+ROOT_SPELLINGS = ["/", ".", "", "./", "//"]
 
 
-@pytest.mark.parametrize("spelling", ["/", ".", "", "./", "//"])
+@pytest.mark.parametrize("spelling", ROOT_SPELLINGS)
 def test_every_spelling_of_the_repo_root_resolves_to_the_clone_root(tmp_path, spelling):
-    # Faculty type whichever of these feels natural; all of them mean "everything".
     assert deploy._resolve_within(tmp_path, spelling) == tmp_path.resolve()
 
 
@@ -282,46 +284,26 @@ def test_a_normal_subpath_still_resolves_under_the_clone(tmp_path):
     assert deploy._resolve_within(tmp_path, "labs/") == (tmp_path / "labs").resolve()
 
 
-def test_releasing_the_whole_repo_leaves_git_and_the_faculty_buttons_behind(tmp_path):
-    # The bug this guards: copying the clone root drags its `.git` over the destination,
-    # which repoints the dest's `origin` at the COURSE repo - so the release's own push
-    # lands in the source. `.github` is excluded too: at the root it would carry the
-    # faculty Release buttons, and their bot-token wiring, into a student-facing repo.
-    src, dst = tmp_path / "src", tmp_path / "dst"
-    (src / ".git").mkdir(parents=True)
-    (src / ".git" / "config").write_text("SOURCE-REMOTE")
-    (src / ".github" / "workflows").mkdir(parents=True)
-    (src / ".github" / "workflows" / "release-materials.yml").write_text("BUTTON")
-    (src / "labs").mkdir()
-    (src / "labs" / "01.md").write_text("lab one")
-    (src / "SYLLABUS.md").write_text("syllabus")
-    (dst / ".git").mkdir(parents=True)
-    (dst / ".git" / "config").write_text("DEST-REMOTE")
-
-    shutil.copytree(src, dst, dirs_exist_ok=True, ignore=deploy._copy_ignore(src, src))
-
-    assert (
-        dst / ".git" / "config"
-    ).read_text() == "DEST-REMOTE"  # push still goes home
-    assert not (dst / ".github").exists()
-    assert (dst / "labs" / "01.md").read_text() == "lab one"
-    assert (dst / "SYLLABUS.md").read_text() == "syllabus"
+def test_a_whole_repo_release_skips_the_faculty_side_of_the_repo(tmp_path):
+    # MAINTAINING.md is written into every materials repo by scaffold as "never released";
+    # `.github` is the Release buttons and their bot-token wiring. Both are faculty-side, so
+    # neither may ride along with "give me everything".
+    ignore = deploy._copy_ignore(tmp_path)
+    names = [".git", ".github", "MAINTAINING.md", "labs", "SYLLABUS.md"]
+    assert ignore(str(tmp_path), names) == {".git", ".github", "MAINTAINING.md"}
 
 
-def test_naming_dot_github_explicitly_still_releases_it(tmp_path):
-    # The `.github` skip is a whole-repo courtesy, not a ban: a faculty member who types
-    # the path means it. `.git` is skipped either way - it is never releasable.
-    src, dst = tmp_path / "src", tmp_path / "dst"
-    (src / ".github" / "workflows").mkdir(parents=True)
-    (src / ".github" / "workflows" / "ci.yml").write_text("CI")
-    (src / ".github" / ".git").mkdir()
-    (src / ".github" / ".git" / "config").write_text("NOPE")
-    dst.mkdir()
+def test_the_faculty_side_is_skipped_only_at_the_repo_root(tmp_path):
+    # The exclusion is root-ANCHORED, not a basename glob: a faculty member's own
+    # `labs/.github/` or `labs/MAINTAINING.md` is content, not release plumbing, and must
+    # travel. `.git` is the exception - it is never copyable, at any depth.
+    ignore = deploy._copy_ignore(tmp_path)
+    names = [".git", ".github", "MAINTAINING.md", "01.md"]
+    assert ignore(str(tmp_path / "labs"), names) == {".git"}
 
-    sub = src / ".github"
-    shutil.copytree(
-        sub, dst / ".github", dirs_exist_ok=True, ignore=deploy._copy_ignore(sub, src)
-    )
 
-    assert (dst / ".github" / "workflows" / "ci.yml").read_text() == "CI"
-    assert not (dst / ".github" / ".git").exists()
+def test_naming_the_faculty_side_explicitly_still_releases_it(tmp_path):
+    # The skip is what "everything" means, not a ban: releasing `.github` as a named
+    # course_source_path is a subpath copy, which excludes nothing but `.git`.
+    ignore = deploy._copy_ignore(None)
+    assert ignore(str(tmp_path), [".git", ".github", "MAINTAINING.md"]) == {".git"}

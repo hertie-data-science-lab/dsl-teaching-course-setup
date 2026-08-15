@@ -12,7 +12,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-import pytest
 import yaml
 
 from dsl_course import collect, deploy, scheduler, seed
@@ -352,44 +351,48 @@ def _clone_with_tree(tree: dict[str, str]):
     return fake_gh
 
 
-@pytest.mark.parametrize("root", [".", "/", "", "./"])
-def test_deploy_many_releases_the_whole_repo_from_a_root_source_path(monkeypatch, root):
-    # "Release everything" has to be sayable, and `/` and `.` are what faculty reach for.
-    # The root resolves and copies - minus the plumbing: `.git` would overwrite the dest's
-    # own git metadata and redirect the push into the COURSE repo, and `.github` would
-    # carry the faculty Release buttons into a student-facing repo.
-    monkeypatch.setattr(
-        deploy,
-        "gh",
+def _git_spying_staged(sink: list[str]):
+    """A `_git_with_staged_changes` that first records every file present in the dest clone
+    at `git add` time - the only moment the copied tree can be inspected, before
+    deploy_many's TemporaryDirectory is cleaned up."""
+
+    def spy_git(*args):
+        if "add" in args:
+            dd = Path(args[args.index("-C") + 1])
+            sink.extend(str(p.relative_to(dd)) for p in dd.rglob("*") if p.is_file())
+        return _git_with_staged_changes(*args)
+
+    return spy_git
+
+
+def test_deploy_many_releases_the_whole_repo_from_a_root_source_path(monkeypatch):
+    # The end-to-end proof of "release everything": a root course_source_path survives
+    # clone -> copytree -> git add carrying the content and none of the faculty side.
+    # (Which spellings mean the root is _resolve_within's job - unit-tested in test_deploy.)
+    staged: list[str] = []
+    _no_io(
+        monkeypatch,
         _clone_with_tree(
             {
                 "labs/01.md": "lab one",
+                "labs/.github/keep.yml": "faculty's own, not plumbing",
                 "SYLLABUS.md": "syllabus",
+                "MAINTAINING.md": "faculty notes - never released",
                 ".git/config": "SOURCE-REMOTE",
                 ".github/workflows/release-materials.yml": "BUTTON",
             }
         ),
     )
-    staged: list[str] = []
-
-    def spy_git(*args):
-        if "add" in args:
-            dd = Path(args[args.index("-C") + 1])
-            staged.extend(str(p.relative_to(dd)) for p in dd.rglob("*") if p.is_file())
-        return _git_with_staged_changes(*args)
-
-    monkeypatch.setattr(deploy, "git", spy_git)
-    monkeypatch.setattr(deploy, "create_repo", lambda *a, **k: True)
-    monkeypatch.setattr(deploy, "grant_read_teams", lambda *a, **k: None)
+    monkeypatch.setattr(deploy, "git", _git_spying_staged(staged))
 
     errors, changed = deploy.deploy_many(
         "Course-Org",
         "Cohort-Org",
-        [Deploy("cm", root, "materials", None)],
+        [Deploy("cm", "/", "materials", None)],
         sync=False,
     )
-    assert (errors, changed) == (0, True), root
-    assert sorted(staged) == ["SYLLABUS.md", "labs/01.md"], root
+    assert (errors, changed) == (0, True)
+    assert sorted(staged) == ["SYLLABUS.md", "labs/.github/keep.yml", "labs/01.md"]
 
 
 def test_deploy_many_rejects_a_dotdot_escaping_source_path(monkeypatch):
@@ -415,16 +418,7 @@ def test_deploy_many_never_copies_a_dot_git_directory(monkeypatch):
         ),
     )
     copied_rel: list[str] = []
-
-    def spy_git(*args):
-        if "add" in args:
-            dd = Path(args[args.index("-C") + 1])
-            copied_rel.extend(
-                str(p.relative_to(dd)) for p in dd.rglob("*") if p.is_file()
-            )
-        return _git_with_staged_changes(*args)
-
-    monkeypatch.setattr(deploy, "git", spy_git)
+    monkeypatch.setattr(deploy, "git", _git_spying_staged(copied_rel))
     monkeypatch.setattr(deploy, "create_repo", lambda *a, **k: True)
     monkeypatch.setattr(deploy, "grant_read_teams", lambda *a, **k: None)
 
