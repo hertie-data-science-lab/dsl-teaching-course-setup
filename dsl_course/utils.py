@@ -188,7 +188,7 @@ def get_default_branch(org: str, name: str) -> str:
 def create_team(
     org: str, name: str, description: str = "", privacy: str = "closed"
 ) -> bool:
-    """Create a team. Idempotent - treats 422 'already exists' as success.
+    """Create a team. Idempotent - treats a duplicate-name 422 as success.
     Returns True if a team with this name now exists.
     """
     code, out = gh(
@@ -206,12 +206,17 @@ def create_team(
     if code == 0:
         log_ok(f"team created: {name}")
         return True
-    # Only a genuine "already exists" 422 is success. A bare `"422" in out` also swallowed
+    # Only a genuine duplicate-name 422 is success. A bare `"422" in out` also swallowed
     # an invalid-name or policy/plan 422 as success, so a caller would then write into a
-    # team that was never created. Key on the message text (GitHub renders it as either
-    # "already exists" or the JSON `already_exists` error code).
+    # team that was never created. Key on the message text, and on all three spellings
+    # GitHub uses: "already exists", the JSON `already_exists` error code, and - what the
+    # teams endpoint actually returns - "Name must be unique for this org". Missing that
+    # last one hard-failed every membership sync after a team's first creation.
     lower = out.lower()
-    if "already exists" in lower or "already_exists" in lower:
+    if any(
+        phrase in lower
+        for phrase in ("already exists", "already_exists", "must be unique")
+    ):
         log_skip(f"team {name}")
         return True
     log_err(f"failed to create team {name}: {out[:200]}")
