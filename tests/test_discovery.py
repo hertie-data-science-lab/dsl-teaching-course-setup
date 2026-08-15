@@ -120,7 +120,10 @@ def test_sections_and_sessions_ignore_root_level_and_over_deep_folders(monkeypat
         discovery,
         "_repo_tree_dirs",
         lambda org, repo: [
-            "01_loose",  # root-level session folder: no section
+            # Root-level session folder: excluded (no parent section). 07, not 01, so it
+            # can't hide behind lectures/01_intro's session number - if the root-level
+            # exclusion ever regressed, a spurious "7" would appear in the assert below.
+            "07_loose",
             "lectures",
             "lectures/01_intro",
             "lectures/01_intro/data",  # too deep
@@ -128,7 +131,6 @@ def test_sections_and_sessions_ignore_root_level_and_over_deep_folders(monkeypat
             "labs/2_wrangling",
         ],
     )
-    assert discovery.discover_sections("org", "r") == ["labs", "lectures"]
     assert discovery.discover_sessions("org", "r") == ["1", "2"]
 
 

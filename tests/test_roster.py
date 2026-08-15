@@ -84,7 +84,7 @@ def test_enrolled_and_auditors_partition_the_roster():
         "3,bob@uni.edu,Bob,,,B,dsl-def,\n"
     )
     assert [s.name for s in roster.enrolled(students)] == ["Ada", "Bob"]
-    assert [s.name for s in roster.auditors(students)] == ["Eve"]
+    assert [s.name for s in students if s.is_auditor] == ["Eve"]
 
 
 def test_example_dataset_roster_declares_roles_and_ships_an_auditor():
@@ -96,7 +96,7 @@ def test_example_dataset_roster_declares_roles_and_ships_an_auditor():
         / "students.csv"
     )
     students = roster.load_path(str(path))
-    assert [s.name for s in roster.auditors(students)] == ["Eve Evans"]
+    assert [s.name for s in students if s.is_auditor] == ["Eve Evans"]
     # enough enrolled students to fill the dataset's three project teams
     assert len(roster.enrolled(students)) >= 10
     # ...and the raw file still leaves one `role` cell blank, so the dataset demonstrates

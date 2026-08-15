@@ -183,15 +183,6 @@ def _section_session_pairs(org: str, repo: str) -> list[tuple[str, int]]:
     ]
 
 
-def discover_sections(org: str, repo: str) -> list[str]:
-    """Top-level directories in a content repo containing at least one
-    ordinal-prefixed subdirectory - the releasable sections. No declared config; the
-    repo's own structure is the only source of truth. The API-side half of the one
-    session-folder rule (utils.discover_sections is the local-checkout half, used by
-    the public-site builder); kept in step by tests/test_discovery.py."""
-    return sorted({section for section, _ in _section_session_pairs(org, repo)})
-
-
 def discover_sessions(org: str, repo: str) -> list[str]:
     """Session numbers present in a content repo, across every discovered section.
     Used by the public-site builder to walk a source repo session by session."""
