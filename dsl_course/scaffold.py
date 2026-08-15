@@ -310,7 +310,9 @@ def scaffold_assignment(
         # tests; overwriting it would destroy faculty work. Probe the REMOTE, because in
         # this fresh clone no local `solution` exists yet - `checkout -b` would happily
         # succeed and the run would only fail much later, at the push, with a misleading
-        # error. ls-remote exits 0 when the branch exists, 2 when it does not.
+        # error. ls-remote exits 0 when the branch exists, 2 when it does not. Probe the
+        # FULL ref: a bare `solution` pattern tail-matches, so an unrelated
+        # `feature/solution` branch would exit 0 and wrongly refuse the scaffold.
         if (
             git(
                 "-C",
@@ -319,7 +321,7 @@ def scaffold_assignment(
                 "--exit-code",
                 "--heads",
                 "origin",
-                "solution",
+                "refs/heads/solution",
             )[0]
             == 0
         ):

@@ -227,9 +227,12 @@ def _propagate_repo_secret(course_org: str, repos: list[str]) -> int:
 
     Only DSL_BOT_TOKEN is published. A maintainer running `seed refresh` by hand usually
     has their PERSONAL GH_TOKEN exported; publishing that as the shared repo secret would
-    leak their PAT into every content repo, so if only GH_TOKEN is set we refuse and warn
-    rather than propagate it. The value goes over stdin - `gh secret set` reads it from
-    there whenever `--body` is omitted - never argv, so it is not visible in `ps`."""
+    leak their PAT into every content repo, so if only GH_TOKEN is set we refuse. The
+    refusal counts every repo as unpropagated rather than passing green: until the nightly
+    refresh self-heals an org, its content repos still run the pre-fix new-assignment.yml
+    (no DSL_BOT_TOKEN in env), so a green refusal is a live button path left with no auth.
+    The value goes over stdin - `gh secret set` reads it from there whenever `--body` is
+    omitted - never argv, so it is not visible in `ps`."""
     token = os.environ.get("DSL_BOT_TOKEN")
     if not token:
         if os.environ.get("GH_TOKEN"):
@@ -237,7 +240,12 @@ def _propagate_repo_secret(course_org: str, repos: list[str]) -> int:
                 "DSL_BOT_TOKEN not set (only GH_TOKEN is) - refusing to publish a personal "
                 "token as the DSL_BOT_TOKEN repo secret; set DSL_BOT_TOKEN to propagate it."
             )
-        return 0
+        else:
+            log_err(
+                "DSL_BOT_TOKEN not set - cannot propagate the repo secret to "
+                f"{len(repos)} content repo(s)."
+            )
+        return len(repos)
     failures = 0
     for repo in repos:
         code, out = gh(

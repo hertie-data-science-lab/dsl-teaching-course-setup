@@ -213,3 +213,22 @@ def test_assignment_refuses_to_rebuild_an_existing_solution_branch(
     assert scaffold.scaffold_assignment("Org", "1", "f2026") == 1
     assert "already exists" in capsys.readouterr().err
     assert pushed == []
+
+
+def test_an_unrelated_feature_solution_branch_does_not_block_the_scaffold(
+    fake, monkeypatch
+):
+    # ls-remote patterns TAIL-match: a bare `solution` pattern matches
+    # refs/heads/feature/solution too, so a faculty working branch used to make the
+    # scaffold refuse an assignment that has no model solution at all. Probe the FULL ref.
+    heads = ["refs/heads/main", "refs/heads/feature/solution"]
+
+    def git_fake(*args):
+        if "ls-remote" in args:
+            pattern = args[-1]  # git's own tail-matching, reproduced
+            hits = [h for h in heads if h == pattern or h.endswith(f"/{pattern}")]
+            return (0, "\n".join(hits)) if hits else (2, "")
+        return (0, "")
+
+    _clone_ok(monkeypatch, git_fake)
+    assert scaffold.scaffold_assignment("Org", "1", "f2026") == 0

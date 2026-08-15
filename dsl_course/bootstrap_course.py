@@ -151,6 +151,10 @@ def set_org_secret(org: str, secret_name: str, secret_value: str) -> bool:
     # delivered to a PRIVATE repo (only public ones receive it). classroom-config is
     # private, so its dispatch workflows would read an empty `secrets.DSL_BOT_TOKEN`.
     # Mirror the value as a repo-level secret on each private infra repo so it lands.
+    # A failed mirror is a failed write, not a cosmetic one: the org-secret call alone
+    # succeeding still leaves classroom-config's dispatch workflows reading an empty
+    # DSL_BOT_TOKEN, which is exactly the Free-plan gap this mirror exists to close.
+    mirror_failures = 0
     for r in infra:
         if not repo_is_private(org, r):
             continue
@@ -161,7 +165,8 @@ def set_org_secret(org: str, secret_name: str, secret_value: str) -> bool:
             log_ok(f"repo secret set (private infra): {org}/{r}")
         else:
             log_err(f"failed to set repo secret on {org}/{r}: {rout[:200]}")
-    return True
+            mirror_failures += 1
+    return mirror_failures == 0
 
 
 # Faculty role teams - created in EVERY org (course + cohort): instructors run the buttons
@@ -717,7 +722,7 @@ def main() -> int:
     parser.add_argument(
         "--propagate-secret",
         action="store_true",
-        help="Set DSL_BOT_TOKEN on this org to the DSL_BOT_TOKEN/GH_TOKEN env value "
+        help="Set DSL_BOT_TOKEN on this org to the DSL_BOT_TOKEN env value "
         "(lets the central bootstrap auto-provision the token - no manual per-org step).",
     )
     parser.add_argument(
@@ -863,7 +868,13 @@ def _run(args: argparse.Namespace) -> int:
         try:
             with open(args.set_secret) as f:
                 token = f.read().strip()
-            if not set_org_secret(args.org, "DSL_BOT_TOKEN", token):
+            # An empty/whitespace file used to write an EMPTY org secret and report
+            # success - every seeded workflow then fails with "set the GH_TOKEN
+            # environment variable" weeks later, with a green bootstrap behind it.
+            if not token:
+                log_err(f"secret file is empty: {args.set_secret}")
+                failures += 1
+            elif not set_org_secret(args.org, "DSL_BOT_TOKEN", token):
                 failures += 1
         except (OSError, FileNotFoundError) as e:
             log_err(f"could not read secret file: {e}")
