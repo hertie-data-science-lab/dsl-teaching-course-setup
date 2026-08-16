@@ -49,7 +49,8 @@ Full flow: [Grade and return assignments](../10-grade-and-return-assignments.md)
 
 The five scheduled actions (Scheduled release, Sync membership, Sync site, Refresh actions,
 Publish course website) run with nobody watching, so a failure **opens an issue in your
-`.github` repo** titled *"&lt;action&gt; is failing"*, with a link to the run. It comments on
+`.github` repo** titled *"&lt;action&gt; is failing"*, with a link to the run and a cc to your
+org's `course-admin` team, so it reaches an inbox. It comments on
 that same issue while the failure persists, and closes it as soon as a run succeeds - so an
 open one always means "still broken". Don't close it by hand; fix the cause and re-run the
 action.

@@ -695,6 +695,14 @@ def test_every_cron_files_and_closes_its_own_failure_issue(name):
     # title would let one recovery close another's open failure) with no mirrored string.
     assert opener["env"]["WORKFLOW"] == "${{ github.workflow }}"
     assert 'title="$WORKFLOW is failing"' in opener["run"]
+    # An issue emails only the repo's watchers, so the body mentions the org's admins -
+    # derived from the owner half of $REPO, and course-admin rather than instructors
+    # because broken infrastructure is not the teaching staff's problem.
+    assert "cc @%s/course-admin" in opener["run"]
+    assert '"${REPO%%/*}"' in opener["run"]
+    assert opener["env"]["REPO"] == "${{ github.repository }}"
+    # One $body serves both branches, so create and comment carry the same mention.
+    assert opener["run"].count('--body "$body"') == 2
     # A job killed by its own `timeout-minutes` is CANCELLED, not failed - and a cron that
     # reliably runs out of time is exactly the silent failure this exists to surface.
     assert "cancelled()" in opener["if"]
