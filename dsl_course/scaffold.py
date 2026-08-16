@@ -232,15 +232,15 @@ def scaffold_materials(org: str, tag: str) -> int:
         if not seed_if_absent(org, repo, path, content, "init: materials skeleton"):
             failures += 1
     # Equip the run-from-repo Release buttons (same as Refresh does for content repos).
-    # _push_workflows returns the count of writes that failed - a materials repo with no
-    # Release buttons must not report success.
+    # _push_workflows lands both in one commit and returns 1 if it didn't land - a
+    # materials repo with no Release buttons must not report success.
     cohorts = seed.discover_cohorts(org)
     workflow_failures = seed._push_workflows(
         org, repo, cohorts, seed.discover_assignments(org)
     )
     if workflow_failures:
         log_err(
-            f"materials repo incomplete: {workflow_failures} Release button(s) not seeded"
+            f"materials repo incomplete: Release buttons not seeded in {org}/{repo}"
         )
     failures += workflow_failures
     if failures:

@@ -58,6 +58,7 @@ from .utils import (
     log_ok,
     log_step,
     put_file,
+    put_files,
     repo_is_archived,
 )
 from .welcome import (
@@ -159,39 +160,31 @@ def _push_workflows(
     cohort_orgs: list[str],
     assignments: list[str],
 ) -> int:
-    """Place the run-from-repo buttons in one content repo. Returns the number of writes
-    that failed, so refresh can report a run that didn't converge."""
-    results = [
-        put_file(
-            org,
-            repo,
-            WORKFLOWS[0],
-            render_release(cohort_orgs, repo).encode(),
-            "ci: release-materials wrapper",
-        ),
-        put_file(
-            org,
-            repo,
-            WORKFLOWS[1],
-            render_provision(cohort_orgs, assignments).encode(),
-            "ci: release-assignment wrapper",
-        ),
-    ]
-    results += [
-        delete_file(
-            org,
-            repo,
-            retired,
-            f"ci: retire {retired.split('/')[-1]} (folded into release-materials.yml)",
-        )
-        for retired in RETIRED_WORKFLOWS
-    ]
-    failures = results.count(False)
-    if failures:
-        log_err(f"{failures} workflow file(s) not written to {org}/{repo}")
-    else:
-        log_ok(f"workflows -> {org}/{repo}")
-    return failures
+    """Place the run-from-repo buttons in one content repo, as ONE commit.
+
+    Both buttons are re-rendered from the same inputs and change together (a new cohort
+    org, a new assignment template, an edit to the template here), so writing them file by
+    file put a pair of near-identical `ci: ... wrapper` commits into a repo faculty
+    actually read, for what is one logical change. put_files makes it one commit - and
+    folds the retired-workflow removal into it, so retiring a button costs no commit of its
+    own either.
+
+    Returns 1 if that commit didn't land, so refresh can report a run that didn't
+    converge. It is all-or-nothing: put_files moves the branch once, at the end."""
+    if not put_files(
+        org,
+        repo,
+        {
+            WORKFLOWS[0]: render_release(cohort_orgs, repo).encode(),
+            WORKFLOWS[1]: render_provision(cohort_orgs, assignments).encode(),
+        },
+        "ci: refresh release buttons",
+        delete=RETIRED_WORKFLOWS,
+    ):
+        log_err(f"release buttons not written to {org}/{repo}")
+        return 1
+    log_ok(f"workflows -> {org}/{repo}")
+    return 0
 
 
 def seed_github_workflows(course_org: str) -> int:

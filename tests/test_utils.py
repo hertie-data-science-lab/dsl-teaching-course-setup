@@ -4,6 +4,8 @@ config, so these pure functions are the whole contract."""
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from dsl_course import utils
@@ -102,6 +104,121 @@ def test_put_file_writes_with_the_fetched_sha_when_the_content_differs(monkeypat
     assert utils.put_file("org", "repo", "x.yml", b"new\n", "ci: seed x") is True
     assert len(calls) == 2
     assert f"sha={_blob_sha(b'something else')}" in calls[1]
+
+
+def test_put_files_commits_nothing_when_every_file_already_matches(monkeypatch):
+    # The whole point of batching: the nightly refresh re-pushes both Release buttons at
+    # every org, and an unchanged night must still cost zero commits. Same guarantee
+    # put_file gives per file, and it must survive the move to the git data API - which
+    # would otherwise happily commit an empty tree every single night.
+    files = {"a.yml": b"one\n", "b.yml": b"two\n"}
+    shas = {path: _blob_sha(content) for path, content in files.items()}
+    calls = []
+
+    def fake_gh(*args, **kwargs):
+        calls.append(args)
+        return 0, shas[args[1].rsplit("/", 1)[-1]]
+
+    monkeypatch.setattr(utils, "gh", fake_gh)
+    assert utils.put_files("org", "repo", files, "ci: refresh") is True
+    assert len(calls) == 2  # the two SHA reads, and nothing else
+
+
+def test_put_files_lands_every_change_in_one_commit(monkeypatch):
+    # One tree, one commit, one ref move - two changed files and a retired one must not
+    # become three commits.
+    files = {"a.yml": b"one\n", "b.yml": b"two\n"}
+    calls = []
+
+    def fake_gh(*args, **kwargs):
+        calls.append((args, kwargs.get("stdin")))
+        url = args[1]
+        if url.startswith("repos/org/repo/contents/"):
+            return 0, "stale-sha"  # every path exists, none matches
+        if url == "repos/org/repo":
+            return 0, "main\n"
+        if url == "repos/org/repo/commits/main":
+            return 0, "head-sha\tbase-tree-sha\n"
+        return 0, "new-sha\n"
+
+    monkeypatch.setattr(utils, "gh", fake_gh)
+    assert (
+        utils.put_files("org", "repo", files, "ci: refresh", delete=["old.yml"]) is True
+    )
+    posted = [json.loads(stdin) for args, stdin in calls if stdin]
+    tree = posted[0]["tree"]
+    assert posted[0]["base_tree"] == "base-tree-sha"
+    assert {entry["path"] for entry in tree} == {"a.yml", "b.yml", "old.yml"}
+    # A null sha is the trees API's spelling of "remove this path".
+    assert [e["path"] for e in tree if e.get("sha") is None and "content" not in e] == [
+        "old.yml"
+    ]
+    assert posted[1] == {
+        "message": "ci: refresh",
+        "tree": "new-sha",
+        "parents": ["head-sha"],
+    }
+    # Exactly one ref move, so exactly one commit lands.
+    assert sum(1 for args, _ in calls if "PATCH" in args) == 1
+
+
+def test_put_files_refuses_to_commit_when_a_path_cannot_be_read(monkeypatch):
+    # An unreadable path is NOT an absent one. Treating a 403/rate-limit as "not there"
+    # would write the file back over whatever is actually live, or report a retired file
+    # as removed while it survives - so the whole commit is abandoned instead.
+    monkeypatch.setattr(
+        utils, "gh", lambda *a, **k: (1, "gh: Bad credentials (HTTP 401)")
+    )
+    assert utils.put_files("org", "repo", {"a.yml": b"one\n"}, "ci: refresh") is False
+
+
+def test_put_files_still_commits_when_only_the_deletion_is_outstanding(monkeypatch):
+    # Retiring a workflow whose content files are already current must still produce the
+    # one commit that removes it - the "nothing changed" shortcut looks at deletions too.
+    content = b"one\n"
+    calls = []
+
+    def fake_gh(*args, **kwargs):
+        calls.append((args, kwargs.get("stdin")))
+        url = args[1]
+        if url == "repos/org/repo/contents/a.yml":
+            return 0, _blob_sha(content)
+        if url == "repos/org/repo/contents/old.yml":
+            return 0, "still-here-sha"
+        if url == "repos/org/repo":
+            return 0, "main\n"
+        if url == "repos/org/repo/commits/main":
+            return 0, "head-sha\tbase-tree-sha\n"
+        return 0, "new-sha\n"
+
+    monkeypatch.setattr(utils, "gh", fake_gh)
+    assert (
+        utils.put_files(
+            "org", "repo", {"a.yml": content}, "ci: refresh", delete=["old.yml"]
+        )
+        is True
+    )
+    tree = next(json.loads(stdin) for args, stdin in calls if stdin)["tree"]
+    assert [entry["path"] for entry in tree] == ["old.yml"]
+
+
+def test_put_files_skips_a_deletion_of_a_file_that_is_already_gone(monkeypatch):
+    # delete= is called unconditionally every refresh, long after the retired file went.
+    # A 404 there means the job is done, not that a commit is owed.
+    content = b"one\n"
+
+    def fake_gh(*args, **kwargs):
+        if args[1] == "repos/org/repo/contents/a.yml":
+            return 0, _blob_sha(content)
+        return 1, "gh: Not Found (HTTP 404)"
+
+    monkeypatch.setattr(utils, "gh", fake_gh)
+    assert (
+        utils.put_files(
+            "org", "repo", {"a.yml": content}, "ci: refresh", delete=["old.yml"]
+        )
+        is True
+    )
 
 
 def test_repo_is_archived_reads_the_flag_and_assumes_live_when_it_cannot(monkeypatch):

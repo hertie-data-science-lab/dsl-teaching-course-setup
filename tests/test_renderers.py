@@ -419,19 +419,24 @@ def test_undated_dropdown_options_leave_the_default_to_github():
 def test_content_repos_get_both_buttons_and_lose_the_retired_one(monkeypatch):
     # Refresh actions re-renders every run-from-repo workflow (so a fix reaches live
     # courses) - and removes release-code.yml, whose CLI no longer exists now that
-    # Release materials takes any path.
-    pushed, deleted = {}, []
-    monkeypatch.setattr(
-        seed,
-        "put_file",
-        lambda org, repo, path, content, msg: pushed.setdefault(path, content.decode()),
+    # Release materials takes any path. All of it in ONE commit: the buttons always change
+    # together, and a burst of near-identical commits is noise in a repo faculty read.
+    commits = []
+
+    def fake_put_files(org, repo, files, message, *, delete=()):
+        commits.append((files, list(delete), message))
+        return True
+
+    monkeypatch.setattr(seed, "put_files", fake_put_files)
+    assert (
+        seed._push_workflows(
+            "Course", "course-materials-f2026", ["Cohort-f2026"], ["assignment-1-f2026"]
+        )
+        == 0
     )
-    monkeypatch.setattr(
-        seed, "delete_file", lambda org, repo, path, msg: deleted.append(path)
-    )
-    seed._push_workflows(
-        "Course", "course-materials-f2026", ["Cohort-f2026"], ["assignment-1-f2026"]
-    )
+    assert len(commits) == 1
+    files, deleted, _ = commits[0]
+    pushed = {path: content.decode() for path, content in files.items()}
     assert (
         set(pushed)
         == set(seed.WORKFLOWS)

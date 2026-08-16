@@ -608,6 +608,16 @@ def create_repo(
     return False
 
 
+def blob_sha(content: bytes) -> str:
+    """Git's blob hash of `content` - what the Contents API reports as a file's `.sha`.
+
+    Computing it locally is what lets every writer here decide, with no extra API call,
+    whether a write would change anything."""
+    return hashlib.sha1(
+        b"blob " + str(len(content)).encode() + b"\0" + content
+    ).hexdigest()
+
+
 def put_file(org: str, repo: str, path: str, content: bytes, message: str) -> bool:
     """Create or update a file via the Contents API.
 
@@ -616,6 +626,8 @@ def put_file(org: str, repo: str, path: str, content: bytes, message: str) -> bo
     us - with no extra API call - whether the write would change anything: an identical
     file is left alone. Callers may therefore run on a schedule without filling repos with
     no-op commits.
+
+    One file, one commit. Use put_files when several files belong in the SAME commit.
     """
     b64 = base64.b64encode(content).decode()
     args = [
@@ -636,10 +648,7 @@ def put_file(org: str, repo: str, path: str, content: bytes, message: str) -> bo
         ".sha",
     )
     if code == 0 and sha:
-        blob_sha = hashlib.sha1(
-            b"blob " + str(len(content)).encode() + b"\0" + content
-        ).hexdigest()
-        if sha == blob_sha:
+        if sha == blob_sha(content):
             return True
         args += ["--field", f"sha={sha}"]
     code, out = gh(*args)
@@ -647,6 +656,140 @@ def put_file(org: str, repo: str, path: str, content: bytes, message: str) -> bo
         return True
     log_err(f"failed to put {path}: {out[:200]}")
     return False
+
+
+def _current_sha(org: str, repo: str, path: str) -> tuple[bool, str | None]:
+    """`(readable, sha)` for one path - sha None when the file is genuinely absent.
+
+    `readable` False means we could NOT establish what is there (no permission, rate
+    limit, network). Callers must treat that as a failure rather than as absence, on the
+    same rule as delete_file and get_file_content: a transient read error read as "not
+    there" turns into a write that clobbers, or a delete reported as already done."""
+    code, out = gh("api", f"repos/{org}/{repo}/contents/{path}", "--jq", ".sha")
+    if code == 0:
+        return True, out.strip() or None
+    if is_missing_resource(out):
+        return True, None
+    log_err(f"could not read {org}/{repo}/{path}: {out[:200]}")
+    return False, None
+
+
+def put_files(
+    org: str,
+    repo: str,
+    files: dict[str, bytes],
+    message: str,
+    *,
+    delete: Iterable[str] = (),
+) -> bool:
+    """Write `files` and remove `delete` in a SINGLE commit, via the git data API.
+
+    put_file is one commit per file, which is right for a lone write but turns a set of
+    files that always change together - the generated workflow buttons - into a burst of
+    near-identical commits in a repo faculty read. This makes that one commit.
+
+    Same no-op guarantee as put_file, and it costs the same reads to get: one Contents
+    read per path, comparing the reported blob sha with the blob sha of the content we
+    would write. A path already identical is dropped, a `delete` path already absent is
+    dropped, and when nothing survives that filter there is NO commit at all - so the
+    nightly refresh stays silent. The extra calls (base ref, tree, commit, ref update)
+    are paid only on a run that genuinely changes something.
+
+    `files` values are text (workflow YAML); they go into the tree as strings, which is
+    what the trees API takes.
+
+    Returns False if any path could not be read, or if any leg of the commit failed - a
+    partial write is impossible here, since the ref only moves once the whole tree is
+    built."""
+    tree: list[dict[str, Any]] = []
+    for path, content in files.items():
+        readable, sha = _current_sha(org, repo, path)
+        if not readable:
+            return False
+        if sha != blob_sha(content):
+            tree.append(
+                {
+                    "path": path,
+                    "mode": "100644",
+                    "type": "blob",
+                    "content": content.decode(),
+                }
+            )
+    for path in delete:
+        readable, sha = _current_sha(org, repo, path)
+        if not readable:
+            return False
+        if sha is not None:
+            # A null sha is how the trees API spells "remove this path".
+            tree.append({"path": path, "mode": "100644", "type": "blob", "sha": None})
+    if not tree:
+        return True
+    return _commit_tree(org, repo, tree, message)
+
+
+def _commit_tree(org: str, repo: str, tree: list[dict[str, Any]], message: str) -> bool:
+    """Land `tree` (entries relative to the default branch's current tree) as one commit.
+
+    The ref update is deliberately NOT forced: if a concurrent run moved the branch since
+    we read its head, GitHub rejects the fast-forward and we report a failure the caller
+    counts, rather than silently discarding whatever landed in between."""
+    code, branch = gh("api", f"repos/{org}/{repo}", "--jq", ".default_branch")
+    if code != 0:
+        log_err(f"could not read {org}/{repo}'s default branch: {branch[:200]}")
+        return False
+    branch = branch.strip()
+    code, out = gh(
+        "api",
+        f"repos/{org}/{repo}/commits/{branch}",
+        "--jq",
+        "[.sha, .commit.tree.sha] | @tsv",
+    )
+    if code != 0 or len(out.split()) != 2:
+        log_err(f"could not read {org}/{repo}@{branch}: {out[:200]}")
+        return False
+    head, base_tree = out.split()
+    code, new_tree = gh(
+        "api",
+        "--method",
+        "POST",
+        f"repos/{org}/{repo}/git/trees",
+        "--input",
+        "-",
+        "--jq",
+        ".sha",
+        stdin=json.dumps({"base_tree": base_tree, "tree": tree}),
+    )
+    if code != 0:
+        log_err(f"could not build a tree for {org}/{repo}: {new_tree[:200]}")
+        return False
+    code, commit = gh(
+        "api",
+        "--method",
+        "POST",
+        f"repos/{org}/{repo}/git/commits",
+        "--input",
+        "-",
+        "--jq",
+        ".sha",
+        stdin=json.dumps(
+            {"message": message, "tree": new_tree.strip(), "parents": [head]}
+        ),
+    )
+    if code != 0:
+        log_err(f"could not commit to {org}/{repo}: {commit[:200]}")
+        return False
+    code, out = gh(
+        "api",
+        "--method",
+        "PATCH",
+        f"repos/{org}/{repo}/git/refs/heads/{branch}",
+        "--raw-field",
+        f"sha={commit.strip()}",
+    )
+    if code != 0:
+        log_err(f"could not move {org}/{repo}@{branch}: {out[:200]}")
+        return False
+    return True
 
 
 def seed_if_absent(
