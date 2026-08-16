@@ -38,6 +38,7 @@ from .utils import (
     put_file,
     repo_exists,
     repo_is_private,
+    seed_files_if_absent,
     seed_if_absent,
     set_repo_topics,
 )
@@ -539,21 +540,21 @@ def setup_cohort_extras(org: str) -> int:
         # Rendering is uniform - the CSV scaffolds carry no `{placeholders}`, so one
         # `.format` over the whole table keeps the YAML examples tag-aware (this cohort's
         # fYYYY/sYYYY, so they are copy-paste-correct) without a per-file special case.
-        for path, (rel, message) in CLASSROOM_SCAFFOLDS.items():
-            if not seed_if_absent(
-                org,
-                "classroom-config",
-                path,
-                template(rel).format(tag=tag, year=year, year_next=year + 1).encode(),
-                message,
-            ):
-                failures += 1
-        if not seed_if_absent(
+        # One commit for the set: seeding a cohort's config is a single act, and writing it
+        # file by file put a burst of near-identical `init:`/`docs: seed` commits at the top
+        # of a repo faculty then work in by hand. Create-only is unchanged and still per
+        # file - a re-run that finds five of six present writes only the sixth.
+        if not seed_files_if_absent(
             org,
             "classroom-config",
-            "grades/.gitkeep",
-            b"",
-            "init: grades/ (add one <assignment>.csv per assignment to return marks)",
+            {
+                path: template(rel)
+                .format(tag=tag, year=year, year_next=year + 1)
+                .encode()
+                for path, (rel, _) in CLASSROOM_SCAFFOLDS.items()
+            }
+            | {"grades/.gitkeep": b""},
+            "init: classroom-config scaffolds (roster, teams, schedule, people, grades)",
         ):
             failures += 1
         # SYSTEM-owned documentation, refreshed on every run so it never goes stale: a

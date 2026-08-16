@@ -94,11 +94,13 @@ class FakeOrg:
 @pytest.fixture
 def fake(monkeypatch):
     f = FakeOrg()
-    # USER-owned files go through utils.seed_if_absent (create-if-absent), which resolves
-    # get_file_content / put_file / log_skip in the utils namespace; SYSTEM-owned files are
-    # written by bc.put_file directly. Fake both layers to the same recorder.
+    # USER-owned files go through utils.seed_if_absent / seed_files_if_absent
+    # (create-if-absent), which resolve get_file_content / put_file / put_files / log_skip
+    # in the utils namespace; SYSTEM-owned files are written by bc.put_file directly. Fake
+    # every layer to the same recorder.
     monkeypatch.setattr(utils, "get_file_content", f.get_file_content)
     monkeypatch.setattr(utils, "put_file", f.put_file)
+    monkeypatch.setattr(utils, "put_files", f.put_files)
     monkeypatch.setattr(utils, "log_skip", lambda msg: f.skips.append(msg))
     monkeypatch.setattr(bc, "put_file", f.put_file)
     # The welcome repo's SYSTEM-owned files are written by dsl_course.welcome (so that
@@ -196,6 +198,52 @@ def test_rerun_logs_one_skip_per_preserved_file(fake):
         "classroom-config/students.csv",
         "classroom-config/schedule.yml",
     ]
+
+
+def test_the_scaffold_set_lands_as_one_commit_but_stays_create_only_per_file(
+    monkeypatch,
+):
+    # Seeding a cohort's config is one act, so the scaffolds share a commit rather than
+    # opening a repo faculty then work in by hand with a burst of `init:`/`docs: seed`
+    # lines. What must NOT change is the per-file create-only rule: a repair re-run against
+    # a live cohort has to write only what is genuinely missing, and leave the roster (enrol
+    # codes, onboarded handles) untouched.
+    live = {"students.csv": "email,github_handle\na@x.edu,ahandle\n"}
+    commits = []
+    monkeypatch.setattr(
+        utils, "get_file_content", lambda org, repo, path: live.get(path)
+    )
+    monkeypatch.setattr(utils, "log_skip", lambda msg: None)
+    monkeypatch.setattr(
+        utils,
+        "put_files",
+        lambda org, repo, files, message: commits.append(files) or True,
+    )
+
+    assert utils.seed_files_if_absent(
+        "Cohort-f2026",
+        "classroom-config",
+        {"students.csv": b"header only\n", "teams.csv": b"t\n", "people.yml": b"p\n"},
+        "init: scaffolds",
+    )
+    assert len(commits) == 1
+    assert set(commits[0]) == {"teams.csv", "people.yml"}, (
+        "a file already present must be left exactly as faculty left it"
+    )
+
+
+def test_seed_files_if_absent_commits_nothing_when_every_file_is_already_there(
+    monkeypatch,
+):
+    # The whole set present is the ordinary repair-re-run case, and it must cost no commit.
+    monkeypatch.setattr(utils, "get_file_content", lambda org, repo, path: "live\n")
+    monkeypatch.setattr(utils, "log_skip", lambda msg: None)
+    monkeypatch.setattr(
+        utils, "put_files", lambda *a, **k: pytest.fail("wrote a no-op commit")
+    )
+    assert utils.seed_files_if_absent(
+        "Cohort-f2026", "classroom-config", {"students.csv": b"x\n"}, "init: scaffolds"
+    )
 
 
 def test_seed_if_absent_skips_an_empty_existing_file(fake):

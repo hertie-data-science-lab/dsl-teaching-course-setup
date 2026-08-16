@@ -810,6 +810,29 @@ def seed_if_absent(
     return put_file(org, repo, path, content, message)
 
 
+def seed_files_if_absent(
+    org: str, repo: str, files: dict[str, bytes], message: str
+) -> bool:
+    """seed_if_absent for a SET of files: whatever is genuinely missing, in one commit.
+
+    Same create-only rule, file by file - every path already present is left exactly as
+    faculty left it and logged as a skip, so a repair re-run's output still shows what it
+    left alone. Only the absent ones are written, and they go together, because a scaffold
+    set is one act of seeding rather than six.
+
+    Returns True whenever every path is now present as intended (written just now, or
+    already there), and False only when a write was attempted and failed."""
+    missing = {}
+    for path, content in files.items():
+        if get_file_content(org, repo, path) is not None:
+            log_skip(f"{repo}/{path}")
+        else:
+            missing[path] = content
+    if not missing:
+        return True
+    return put_files(org, repo, missing, message)
+
+
 def is_missing_resource(out: str) -> bool:
     """Whether a failed `gh` output means the resource is genuinely ABSENT (a 404) rather
     than a real error to raise on. The one shared marker test: callers that distinguish
