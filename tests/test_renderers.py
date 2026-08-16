@@ -454,6 +454,39 @@ def test_content_repos_get_both_buttons_and_lose_the_retired_one(monkeypatch):
     assert inputs["course_source_repo"]["default"] == "course-materials-f2026"
 
 
+def test_the_org_level_buttons_land_as_one_commit(monkeypatch):
+    # Sixteen workflows rendered from one set of inputs by shared helpers: an edit to the
+    # run preamble or a dropdown helper re-renders every one of them, so file-by-file
+    # writes turned each such edit into a wall of sixteen near-identical commits in the
+    # repo whose history faculty actually browse. The retired buttons ride along in the
+    # same commit rather than earning three more.
+    monkeypatch.setattr(seed, "discover_cohorts", lambda org: ["Cohort-f2026"])
+    monkeypatch.setattr(
+        seed, "discover_content_repos", lambda org: ["course-materials"]
+    )
+    monkeypatch.setattr(
+        seed, "discover_assignments", lambda org: ["assignment-1-f2026"]
+    )
+    commits = []
+
+    def fake_put_files(org, repo, files, message, *, delete=()):
+        commits.append((repo, files, list(delete)))
+        return True
+
+    monkeypatch.setattr(seed, "put_files", fake_put_files)
+    assert seed.seed_github_workflows("Course") == 0
+    assert len(commits) == 1
+    repo, files, deleted = commits[0]
+    assert repo == ".github"
+    assert len(files) == 16
+    assert all(path.startswith(".github/workflows/") for path in files)
+    assert deleted == [
+        ".github/workflows/sync-enrolment.yml",
+        ".github/workflows/sync-teams.yml",
+        ".github/workflows/status.yml",
+    ]
+
+
 def test_seed_exports_exactly_what_its_callers_reach_for():
     # seed.__all__ IS the contract now: the names other modules use as `seed.<name>`
     # (site, scaffold, bootstrap_course, sync_faculty, sync_membership). Pinned here, so
@@ -621,12 +654,17 @@ def test_update_profile_readme_absent_config_falls_back_without_crashing(monkeyp
         ],
     )
     monkeypatch.setattr(P, "discover_cohorts", lambda org: [])
-    writes = []
-    monkeypatch.setattr(P, "put_file", lambda *a, **k: writes.append(a) or True)
+    commits = []
+    monkeypatch.setattr(
+        P, "put_files", lambda org, repo, files, msg, **k: commits.append(files) or True
+    )
     monkeypatch.setattr(P, "log_ok", lambda *a, **k: None)
 
     P.update_profile_readme("Cohort-f2026")  # must not raise
-    assert len(writes) == 2  # both READMEs written, using the org name as the fallback
+    # Both READMEs, using the org name as the fallback - and in ONE commit, since they are
+    # rendered from the same org snapshot and always move together.
+    assert len(commits) == 1
+    assert set(commits[0]) == {"profile/README.md", "README.md"}
 
 
 # --------------------------------------------- operational hardening, swept over every

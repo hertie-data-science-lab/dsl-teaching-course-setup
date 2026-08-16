@@ -78,6 +78,15 @@ class FakeOrg:
         self.deletes.append((repo, path))
         return True
 
+    def put_files(self, org, repo, files, message, *, delete=()):
+        """One commit, several files - recorded per file, so the assertions below stay
+        about WHICH paths a seed touches rather than how they were batched."""
+        for path, content in files.items():
+            self.put_file(org, repo, path, content, message)
+        for path in delete:
+            self.delete_file(org, repo, path, message)
+        return True
+
     def written(self, repo):
         return {path for r, path in self.writes if r == repo}
 
@@ -93,10 +102,9 @@ def fake(monkeypatch):
     monkeypatch.setattr(utils, "log_skip", lambda msg: f.skips.append(msg))
     monkeypatch.setattr(bc, "put_file", f.put_file)
     # The welcome repo's SYSTEM-owned files are written by dsl_course.welcome (so that
-    # seed.refresh can re-push them without importing bootstrap_course), so its own
-    # put_file/delete_file have to be faked too.
-    monkeypatch.setattr(welcome, "put_file", f.put_file)
-    monkeypatch.setattr(welcome, "delete_file", f.delete_file)
+    # seed.refresh can re-push them without importing bootstrap_course), in one commit per
+    # set - so its put_files has to be faked too.
+    monkeypatch.setattr(welcome, "put_files", f.put_files)
     # everything else setup_cohort_extras does is repo-level and safe to re-run; it is
     # stubbed out so these tests stay pure (no gh calls).
     monkeypatch.setattr(bc, "create_repo", lambda *a, **k: True)
@@ -384,10 +392,10 @@ def test_cohort_extras_reds_when_the_org_tighten_fails(fake, monkeypatch):
 def test_cohort_extras_reds_when_a_dispatcher_write_fails(fake, monkeypatch):
     # A failed SYSTEM-owned write (the classroom-config README contract, or a dispatch-sync
     # workflow) means membership/site sync never triggers, yet the create_repo blocks stay
-    # green - so the previously-discarded put_file return is now counted. The SYSTEM-owned
+    # green - so the previously-discarded write return is now counted. The SYSTEM-owned
     # writes go through dsl_course.welcome (shared with the nightly refresh), so that is
-    # the put_file to break.
-    monkeypatch.setattr(welcome, "put_file", lambda *a, **k: False)
+    # the put_files to break.
+    monkeypatch.setattr(welcome, "put_files", lambda *a, **k: False)
     assert bc.setup_cohort_extras("Cohort-f2026") >= 1
 
 
@@ -902,35 +910,31 @@ def test_refresh_cli_logs_an_unreachable_api_instead_of_a_traceback(
 
 
 @pytest.mark.parametrize(
-    ("job", "expected", "message"),
+    ("job", "message"),
     [
-        ("refresh_welcome_workflows", 4, "welcome-repo file(s) not written"),
-        (
-            "refresh_classroom_samples",
-            len(welcome.CLASSROOM_SAMPLES),
-            "classroom-config sample(s) not written",
-        ),
+        ("refresh_welcome_workflows", "welcome-repo files not written"),
+        ("refresh_classroom_samples", "classroom-config samples not written"),
         (
             "refresh_classroom_system_files",
-            len(welcome.CLASSROOM_SYSTEM_FILES),
-            "classroom-config system file(s) not written",
+            "classroom-config system files not written",
         ),
     ],
     ids=["welcome-workflows", "config-samples", "classroom-system-files"],
 )
-def test_a_per_cohort_refresh_counts_failed_writes_and_claims_nothing(
-    monkeypatch, capsys, job, expected, message
+def test_a_per_cohort_refresh_reds_on_a_failed_write_and_claims_nothing(
+    monkeypatch, capsys, job, message
 ):
     # "[ok] ... up to date" used to print unconditionally, so a cohort whose onboarding
-    # workflow never landed still read as fully seeded. Both per-cohort jobs owe the caller
-    # a count instead, since that count is what makes the nightly Refresh go red.
-    monkeypatch.setattr(welcome, "put_file", lambda *a, **k: False)
-    monkeypatch.setattr(welcome, "delete_file", lambda *a, **k: True)
+    # workflow never landed still read as fully seeded. Each per-cohort job owes the caller
+    # a non-zero instead, since that is what makes the nightly Refresh go red. Now that each
+    # job lands as ONE commit the answer is 1, not a per-file tally: nothing partial can
+    # land, so there is no count to take.
+    monkeypatch.setattr(welcome, "put_files", lambda *a, **k: False)
 
-    assert getattr(welcome, job)("Cohort-f2026") == expected
+    assert getattr(welcome, job)("Cohort-f2026") == 1
     out = capsys.readouterr()
     assert "up to date" not in out.out
-    assert f"{expected} {message}" in out.err
+    assert message in out.err
 
 
 def test_the_nightly_classroom_refresh_touches_only_system_owned_files(monkeypatch):
@@ -946,8 +950,10 @@ def test_the_nightly_classroom_refresh_touches_only_system_owned_files(monkeypat
     written: list[tuple[str, str]] = []
     monkeypatch.setattr(
         welcome,
-        "put_file",
-        lambda org, repo, path, content, message: written.append((repo, path)) or True,
+        "put_files",
+        lambda org, repo, files, message, **k: (
+            written.extend((repo, path) for path in files) or True
+        ),
     )
 
     assert welcome.refresh_classroom_system_files("Cohort-f2026") == 0

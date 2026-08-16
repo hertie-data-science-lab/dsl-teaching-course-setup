@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from .central import CENTRAL, CENTRAL_REF
 from .discovery import discover_cohorts, list_org_repos
-from .utils import load_yaml_config, log_ok, put_file
+from .utils import load_yaml_config, log_ok, put_files
 
 # Per-org identity/people/schedule config, lives at the root of each org's `.github` repo.
 COURSE_CONFIG = "dsl-course.yml"
@@ -280,18 +280,16 @@ def update_profile_readme(
     is_cohort = any(r["name"] == "welcome" for r in repos)
     cohorts = None if is_cohort else discover_cohorts(org)
     body = render_profile_readme(org, org_name, course_name, repos, is_cohort, cohorts)
-    put_file(
+    # Both are rendered from the same org snapshot and move together, so they belong in one
+    # commit - kept separate from the workflow refresh's commit, because `docs:` vs `ci:` is
+    # the one distinction in this history worth reading.
+    put_files(
         org,
         ".github",
-        "profile/README.md",
-        body.encode(),
-        "docs: refresh org profile README (repo index)",
-    )
-    put_file(
-        org,
-        ".github",
-        "README.md",
-        render_dotgithub_readme(org, course_name, is_cohort).encode(),
-        "docs: orientation README for the .github repo",
+        {
+            "profile/README.md": body.encode(),
+            "README.md": render_dotgithub_readme(org, course_name, is_cohort).encode(),
+        },
+        "docs: refresh org READMEs (profile + .github)",
     )
     log_ok("profile + .github READMEs refreshed")

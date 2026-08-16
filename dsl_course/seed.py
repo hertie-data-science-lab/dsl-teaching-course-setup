@@ -50,7 +50,6 @@ from .discovery import (
 from .profile_readme import update_profile_readme
 from .roster import CONFIG_REPO
 from .utils import (
-    delete_file,
     gh,
     is_missing_resource,
     log,
@@ -192,8 +191,14 @@ def seed_github_workflows(course_org: str) -> int:
     CENTRAL Release materials (course-source-repo dropdown), Release assignment, plus Sync
     enrolment / Bootstrap cohort / Refresh.
 
-    Returns the number of writes that failed - a button that didn't land is exactly the
-    thing a green run must not hide."""
+    All sixteen land as ONE commit (and the retired ones go in the same commit). They are
+    rendered from one set of inputs by shared helpers, so in practice they change together:
+    an edit to the run preamble or to a dropdown helper re-renders every one of them, and
+    file-by-file writes turned each such edit into a wall of sixteen near-identical
+    `ci: <file>.yml` commits in the repo whose history faculty actually browse.
+
+    Returns 1 if that commit didn't land - a button that didn't land is exactly the thing a
+    green run must not hide."""
     cohorts = discover_cohorts(course_org)
     source_repos = discover_content_repos(course_org)
     assignments = discover_assignments(course_org)
@@ -222,32 +227,25 @@ def seed_github_workflows(course_org: str) -> int:
         ".github/workflows/scheduled-release.yml": render_scheduler(),
     }
     log_step(f"Seeding org-level workflows into {course_org}/.github")
-    failures = 0
-    for path, content in files.items():
-        if put_file(
-            course_org, ".github", path, content.encode(), f"ci: {path.split('/')[-1]}"
-        ):
-            log_ok(f".github <- {path.split('/')[-1]}")
-        else:
-            failures += 1
-
-    # Retired buttons - remove any copies already seeded into orgs bootstrapped before
-    # the change, so faculty never see two buttons for one job. sync-enrolment/sync-teams
-    # were consolidated into sync-membership.yml; status.yml was renamed to
-    # check-cohort-setup.yml (same workflow, a name that says what it checks).
-    for retired in (
-        ".github/workflows/sync-enrolment.yml",
-        ".github/workflows/sync-teams.yml",
-        ".github/workflows/status.yml",
+    if not put_files(
+        course_org,
+        ".github",
+        {path: content.encode() for path, content in files.items()},
+        "ci: refresh org workflows",
+        # Retired buttons - remove any copies already seeded into orgs bootstrapped before
+        # the change, so faculty never see two buttons for one job. sync-enrolment/sync-teams
+        # were consolidated into sync-membership.yml; status.yml was renamed to
+        # check-cohort-setup.yml (same workflow, a name that says what it checks).
+        delete=(
+            ".github/workflows/sync-enrolment.yml",
+            ".github/workflows/sync-teams.yml",
+            ".github/workflows/status.yml",
+        ),
     ):
-        if not delete_file(
-            course_org,
-            ".github",
-            retired,
-            f"ci: retire {retired.split('/')[-1]} (superseded by sync-membership.yml)",
-        ):
-            failures += 1
-    return failures
+        log_err(f"org workflows not written to {course_org}/.github")
+        return 1
+    log_ok(f".github <- {len(files)} org-level workflow(s)")
+    return 0
 
 
 def _propagate_repo_secret(course_org: str, repos: list[str]) -> int:
