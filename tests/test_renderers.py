@@ -565,8 +565,8 @@ def test_seed_refresh_steps_carry_dsl_bot_token(name):
 def test_validate_schedule_workflow_is_seeded_with_the_central_repo_pinned():
     # Seeded into a cohort's classroom-config, so it must carry the central repo and ref
     # baked in - the cohort repo has no other way to reach the parser.
-    from dsl_course.bootstrap_course import _validate_schedule_workflow
     from dsl_course.central import CENTRAL, CENTRAL_REF
+    from dsl_course.welcome import _validate_schedule_workflow
 
     raw = _validate_schedule_workflow()
     assert "__CENTRAL__" not in raw and "__CENTRAL_REF__" not in raw

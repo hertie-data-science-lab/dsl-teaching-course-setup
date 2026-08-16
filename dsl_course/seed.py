@@ -22,11 +22,12 @@ CLI:
   refresh --course-org X   re-render the content actions into every course repo with
                            fresh cohort/course-source-repo/assignment dropdowns, rebuild
                            the org profile README, and re-push each registered cohort's
-                           welcome workflows + classroom-config `*.sample` worked
-                           examples. (Run by the Bootstrap-cohort workflow, and by
-                           Refresh actions - on demand and on its nightly cron, which is
-                           how an org converges on central without anyone pressing
-                           anything.)
+                           welcome workflows + classroom-config SYSTEM-owned files (the
+                           schema README, the dispatchers, the schedule validator) and
+                           `*.sample` worked examples. (Run by the Bootstrap-cohort
+                           workflow, and by Refresh actions - on demand and on its nightly
+                           cron, which is how an org converges on central without anyone
+                           pressing anything.)
 """
 
 from __future__ import annotations
@@ -59,7 +60,11 @@ from .utils import (
     put_file,
     repo_is_archived,
 )
-from .welcome import refresh_classroom_samples, refresh_welcome_workflows
+from .welcome import (
+    refresh_classroom_samples,
+    refresh_classroom_system_files,
+    refresh_welcome_workflows,
+)
 from .workflows_render import (
     render_bootstrap_cohort,
     render_central_release,
@@ -302,11 +307,13 @@ def _propagate_repo_secret(course_org: str, repos: list[str]) -> int:
 def refresh(course_org: str) -> int:
     """Refresh both layers: the run-from-repo content actions in every content repo,
     AND the central org-level workflows in .github; repopulate dropdowns; rebuild the
-    org profile README; re-push every registered cohort's welcome workflows and
-    classroom-config `*.sample` worked examples (skipping cohorts whose repos are
-    archived); (Free-plan workaround) propagate the token as a repo secret so private
-    content repos can authenticate; and stamp the heartbeat that keeps this org's crons
-    from being auto-disabled (_write_heartbeat).
+    org profile README; re-push every registered cohort's welcome workflows, its
+    classroom-config SYSTEM-owned files (README contract, dispatch-sync*.yml,
+    validate-schedule.yml) and its `*.sample` worked examples (skipping cohorts whose
+    repos are archived) - never its own config, which stays create-if-missing; (Free-plan
+    workaround) propagate the token as a repo secret so private content repos can
+    authenticate; and stamp the heartbeat that keeps this org's crons from being
+    auto-disabled (_write_heartbeat).
 
     Non-zero if any file could not be written: this runs nightly on a cron, so a run that
     silently failed to converge an org would go unnoticed until someone clicked a button
@@ -326,11 +333,12 @@ def refresh(course_org: str) -> int:
     failures += seed_github_workflows(course_org)
     failures += _write_heartbeat(course_org)
     update_profile_readme(course_org)
-    # A cohort's onboarding workflows and config samples are seeded once, at Bootstrap
-    # cohort, and would otherwise stay frozen for the whole semester while the engine they
-    # call - and the schemas the samples demonstrate - move on.
+    # A cohort's onboarding workflows, classroom-config dispatchers and config samples are
+    # seeded at Bootstrap cohort, and would otherwise stay frozen for the whole semester
+    # while the engine they call - and the schemas the samples demonstrate - move on.
     log_step(
-        f"Refreshing welcome workflows + config samples in {len(cohorts)} cohort org(s)"
+        f"Refreshing welcome workflows + classroom-config system files + samples "
+        f"in {len(cohorts)} cohort org(s)"
     )
     for cohort in cohorts:
         # A cohort ORG DELETED after it was registered 404s on every write, which would red
@@ -357,6 +365,10 @@ def refresh(course_org: str) -> int:
             log(f"  [skip] {cohort} (archived cohort - left frozen)")
             continue
         failures += refresh_welcome_workflows(cohort)
+        # SYSTEM-owned files only (see welcome.CLASSROOM_SYSTEM_FILES): the cohort's own
+        # students.csv/teams.csv/schedule.yml/people.yml are never touched here, or this
+        # nightly cron would overwrite a live roster every night.
+        failures += refresh_classroom_system_files(cohort)
         failures += refresh_classroom_samples(cohort)
     if failures:
         log_err(f"refresh incomplete: {failures} file(s) could not be written")

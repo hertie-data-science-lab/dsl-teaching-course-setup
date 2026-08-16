@@ -1,8 +1,14 @@
 """The SYSTEM-owned cohort-repo seeding, and the template reader it shares.
 
 Split out of bootstrap_course so `seed.refresh` can re-push a live cohort's onboarding
-workflows and config samples on its nightly run: bootstrap_course imports seed, so seed
-cannot import bootstrap_course back - this module is what both sides may import.
+workflows, config samples and classroom-config system files on its nightly run:
+bootstrap_course imports seed, so seed cannot import bootstrap_course back - this module
+is what both sides may import.
+
+Everything this module writes is SYSTEM-owned, and that is the whole rule for what may
+live here: a cohort's own config (students.csv, teams.csv, schedule.yml, people.yml,
+grades/) is seeded create-if-missing by bootstrap_course and must never be refreshed from
+a template, or a nightly run would clobber a live roster.
 """
 
 from __future__ import annotations
@@ -163,4 +169,76 @@ def refresh_classroom_samples(org: str) -> int:
         log_err(f"{failures} classroom-config sample(s) not written in {org}")
     else:
         log_ok("classroom-config samples up to date")
+    return failures
+
+
+def _validate_schedule_workflow() -> str:
+    """The classroom-config schedule validator, with the central repo pinned into it.
+
+    Placeholders rather than `str.format`, because the file is full of `${{ }}` GitHub
+    expressions that `format` would try to interpret."""
+    from .central import CENTRAL, CENTRAL_REF
+
+    return (
+        template("classroom-config/validate-schedule.yml")
+        .replace("__CENTRAL_REF__", CENTRAL_REF)
+        .replace("__CENTRAL__", CENTRAL)
+    )
+
+
+# The SYSTEM-owned half of a cohort's classroom-config: the schema contract faculty read,
+# and the three workflows that make the repo act on what they put in it. `(path, content
+# reader, commit message)` - the content is read lazily, at call time, so importing this
+# module never touches the filesystem.
+#
+# HARD INVARIANT: nothing the cohort edits may join this table. students.csv, teams.csv,
+# schedule.yml, people.yml and grades/ hold the cohort's LIVE state (enrol codes, onboarded
+# handles, returned marks); they are seeded create-if-missing by bootstrap_course and stay
+# that way. Adding one here would have the nightly refresh overwrite it every night.
+# tests/test_bootstrap_seeding.py pins this set exactly, so an addition fails loud.
+CLASSROOM_SYSTEM_FILES = (
+    (
+        "README.md",
+        lambda: template("classroom-config/README.md"),
+        "docs: classroom-config schema + contract",
+    ),
+    (
+        ".github/workflows/dispatch-sync.yml",
+        lambda: template("classroom-config/dispatch-sync.yml"),
+        "ci: seed dispatch-sync workflow",
+    ),
+    (
+        ".github/workflows/dispatch-sync-site.yml",
+        lambda: template("classroom-config/dispatch-sync-site.yml"),
+        "ci: seed dispatch-sync-site workflow",
+    ),
+    (
+        ".github/workflows/validate-schedule.yml",
+        _validate_schedule_workflow,
+        "ci: seed validate-schedule workflow",
+    ),
+)
+
+
+def refresh_classroom_system_files(org: str) -> int:
+    """Re-push a cohort's SYSTEM-owned classroom-config files (CLASSROOM_SYSTEM_FILES).
+
+    Called both at bootstrap and on the nightly refresh, so a fix to a dispatcher or to
+    the schema contract reaches running cohorts. It used to run only inside "Bootstrap
+    cohort", which meant a template fix landed on a live cohort only if someone thought to
+    press that button again - three live cohorts drifted a whole semester that way.
+    `put_file` compares blob shas, so a cohort already current is written nothing.
+
+    A failed write here is not cosmetic: without dispatch-sync*.yml a cohort's membership
+    and site syncs never fire. Returns the number of writes that failed, so callers
+    (setup_cohort_extras, seed.refresh) go red rather than report a converged cohort."""
+    results = [
+        put_file(org, CONFIG_REPO, path, content().encode(), message)
+        for path, content, message in CLASSROOM_SYSTEM_FILES
+    ]
+    failures = results.count(False)
+    if failures:
+        log_err(f"{failures} classroom-config system file(s) not written in {org}")
+    else:
+        log_ok("classroom-config ready (config preserved, dispatchers refreshed)")
     return failures
