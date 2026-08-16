@@ -278,11 +278,15 @@ def test_dotgithub_readme_orients_faculty():
     )
     assert "control panel" in course
     assert "My-Course-E1/.github/actions" in course
-    # A cohort org sends faculty to the parent course org for the buttons instead.
+    # A cohort org's own `.github` is not where any of the work happens, so its README is
+    # deliberately a stub that says so - naming the org, and nothing a reader would have to
+    # act on. It must NOT grow into a second control panel competing with the course org's.
     cohort = profile_readme.render_dotgithub_readme(
         "My-Course-f2026", "My Course", is_cohort=True
     )
-    assert "parent course org" in cohort
+    assert "My-Course-f2026" in cohort
+    assert "rarely need to touch" in cohort
+    assert "/.github/actions" not in cohort
 
 
 @pytest.mark.parametrize(

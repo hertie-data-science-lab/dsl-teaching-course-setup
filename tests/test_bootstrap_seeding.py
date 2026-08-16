@@ -212,13 +212,15 @@ def test_seed_if_absent_returns_false_only_when_the_write_fails(monkeypatch):
 
 
 def test_seeded_scaffolds_render_this_cohorts_tag(fake):
-    # The commented examples must be copy-paste-correct for THIS cohort: schedule.yml
-    # names `course-materials-<tag>` / `assignment-1-<tag>`, people.yml carries this
-    # year's dates, and no format placeholder survives into any seeded file.
+    # people.yml's commented example carries THIS cohort's dates, so the window a faculty
+    # member uncomments is already the right one. The schedule.yml scaffold deliberately
+    # ships key-only (no example values to render) - `schedule.yml.sample` is where a
+    # filled, tag-correct term lives instead.
+    #
+    # The invariant that matters for every scaffold: no format placeholder may survive
+    # into a seeded file. A `{tag}` reaching a cohort repo is a broken example, and it
+    # would only be noticed by the faculty member who copy-pasted it.
     bc.setup_cohort_extras("Deep-Learning-f2027")
-    sched = fake.files[("classroom-config", "schedule.yml")]
-    assert "course-materials-f2027" in sched and "assignment-1-f2027" in sched
-    assert "2027-09-15" in sched
     people = fake.files[("classroom-config", "people.yml")]
     assert '"2027-09-01"' in people and '"2028-01-31"' in people
     for (repo, path), content in fake.files.items():

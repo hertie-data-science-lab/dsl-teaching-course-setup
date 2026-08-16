@@ -49,8 +49,8 @@ WEBSITE_TEMPLATE = "course-website-template"
 _GIT_ENV = GIT_ENV
 
 _GRADING_YML = """\
-# How the Grade assignment button autogrades this assignment (faculty-side, after the
-# deadline). Delete this file (or set autograde: false) for a purely manually-graded one.
+# How the Grade assignment button autogrades this assignment (after the grading_deadline in schedule.yml).
+# Delete this file (or set autograde: false) for a purely manually-graded one.
 type: {kind}      # individual (one repo per student) or group (one repo per team)
 format: {fmt}      # py or notebook
 autograde: true       # false -> skip autograding (all-manual)
@@ -59,9 +59,9 @@ tests: tests          # path (on THIS solution branch) holding the hidden tests
 """
 
 _HIDDEN_TEST_PY = """\
-# HIDDEN tests - run faculty-side by the Grade assignment button, never shipped to
-# students. They import the student's submission (the repo root) and check it. Replace
-# this placeholder with the real grading tests.
+# HIDDEN tests - run faculty-side by the Grade assignment button, never shipped to students.
+# They import the student's submission (the repo root) and check it.
+# Replace this placeholder with the real grading tests.
 from starter import solve
 
 
@@ -70,9 +70,9 @@ def test_solve_runs():
 """
 
 _HIDDEN_TEST_NOTEBOOK = """\
-# HIDDEN tests - run faculty-side by the Grade assignment button, never shipped to
-# students. The submitted notebook is nbconvert'd to starter.py first; this imports it
-# and checks it. Replace this placeholder with the real grading tests.
+# HIDDEN tests - run faculty-side by the Grade assignment workflow, never shipped to students.
+# The submitted notebook is nbconvert'd to starter.py first; this imports it and checks it.
+# Replace this placeholder with the real grading tests.
 from starter import solve
 
 
