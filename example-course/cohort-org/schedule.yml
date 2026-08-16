@@ -1,21 +1,17 @@
-# Worked example - the hertie-dsl-demo-f2026 cohort's whole term in one file. What each
-# block DOES, and when the hourly cron reads it, is explained once in the scaffold this
-# sits next to (classroom-config/schedule.yml); full schema:
-# https://github.com/hertie-data-science-lab/dsl-teaching-toolkit/blob/main/docs/07-schedule-releases.md
+# Worked example for the hertie-dsl-demo-f2026 cohort's whole term in one file. 
+# full schema: https://github.com/hertie-data-science-lab/dsl-teaching-toolkit/blob/main/docs/07-schedule-releases.md
+
 timezone: Europe/Berlin
 semester_start: 2026-09-07
 semester_end: 2026-12-18
 
 releases:
-  # Every deploy below is the MINIMAL shape (the defaults fit); the lecture lines add one
-  # option, deploy_datetime, to ship an hour before class.
   course-intro:
     event_datetime: 2026-08-31T09:00   # week 0 - the course opens before teaching starts
     title: Course opens
     deploy:
-      # Root files are ordinary paths: name the actual file (there is no syllabus glob).
       - course_source_repo: course-materials-f2026
-        course_source_path: syllabus.md
+        course_source_path: syllabus.md     # a root file
   lecture-1:
     event_datetime: 2026-09-01T10:00
     deploy:
@@ -24,7 +20,6 @@ releases:
         deploy_datetime: 2026-09-01T09:00
       - course_source_repo: course-materials-f2026
         course_source_path: readings/01_week-1
-      # release the package base early so later partial releases still import:
       - course_source_repo: lecture-code-f2026
         course_source_path: mlpkg/core
   lab-1:
@@ -53,7 +48,6 @@ releases:
         deploy_datetime: 2026-09-15T09:00
       - course_source_repo: course-materials-f2026
         course_source_path: readings/03_week-3
-      # phased disclosure: reveal a topic-subpackage when you teach it
       - course_source_repo: lecture-code-f2026
         course_source_path: mlpkg/simulation
   lab-3:
@@ -90,41 +84,37 @@ releases:
       - course_source_repo: course-materials-f2026
         course_source_path: labs/05_week-5
 
-assignments:                    # each assignment's whole lifecycle in one block
+assignments:                    
   assignment-1:
-    course_source_repo: assignment-1-f2026  # REQUIRED - the course-org repo it hands out from
-    handout_datetime: 2026-09-15T14:00  # provision one repo per student from it
+    course_source_repo: assignment-1-f2026  # REQUIRED - provision one repo per student/group from it
+    handout_datetime: 2026-09-15T14:00  
     due_datetime: 2026-10-13            # what students see
-    grading_datetime: 2026-10-15        # optional grading pin - snapshot + autograde (default = due_datetime)
+    grading_datetime: 2026-10-15        # optional grading pin - snapshot + autograde (if undefined, default = due_datetime)
   assignment-2:
     course_source_repo: assignment-2-f2026
-    cohort_dest_repo: homework-2      # optional: the cohort-side name. Default if undefined: the slug (assignment-2).
+    cohort_dest_repo: homework-2      # optional: the cohort-side name. Default if undefined: the top-level slug (assignment-2).
     handout_datetime: 2026-09-29T14:00
     due_datetime: 2026-10-27T23:59
   assignment-4-project:
     course_source_repo: assignment-4-project-f2026
     handout_datetime: 2026-10-13T14:00
-    type: group                   # per-team handout + grading (also set in the
-                                  # template's grading.yml)
+    type: group                   # per-team handout + grading (also set in the template's grading.yml; if declared here this overwrites it)
     due_datetime: 2026-11-15T23:59
     max_team_size: 4              # the welcome "Join team" flow refuses a 5th member
 
 events:
   mid-term:
-    type: exam
+    type: exam                 # special types: exam -> dedicated colouring in the deployed schedule
     title: MidTerm Exam
-    event_datetime: 2026-11-03   # a bare date is a whole-day entry (the site shows 09:00)
-    tbc: true                    # provisional - the site shows "(TBC)"
+    event_datetime: tbc         # fully provisional - no date shown             
   final-exam:
     type: exam
     title: Final Exam
-    event_datetime: 2026-12-15T14:00   # a real start time, shown as given
+    event_datetime: 2026-12-15T14:00   
+    tbc: true                    # partially provisional - the site shows "(TBC)" next to the date
   project-clinic:                # no `type:` -> a special event row
     title: Project clinic
     event_datetime: 2026-11-10T10:00
-
-  # `event_datetime: tbc` -> the site shows an undated TBC row; nothing can fire until a
-  # real date replaces it. (`tbc: true` next to a real date marks it "(TBC)" instead.)
   guest-lecture:
     title: Guest lecture (industry speaker)
     event_datetime: tbc

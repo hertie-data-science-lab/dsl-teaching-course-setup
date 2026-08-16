@@ -1,65 +1,49 @@
-# This cohort's schedule + auto-release plan. Edit here (the GitHub web UI is fine - no
-# CLI). Everything is optional: anything you leave out is synthesised (semester start from
-# the fYYYY tag; website exams at weeks 8 & 15) or simply not scheduled. Times are
-# Europe/Berlin unless you set `timezone:`; the Scheduled release cron runs hourly, so
-# times are honoured to the hour.
+# This cohort's schedule + auto-release plan. Edit here. 
+#
+# Times are Europe/Berlin unless you set `timezone:`; the Scheduled release cron runs hourly, so times are honoured to the hour.
 #
 # Each block encodes BEHAVIOUR:
 #   releases:     entries that DEPLOY materials (course org -> this cohort org)
 #   assignments:  each assignment's handout / due / grading lifecycle
 #   events:       display-only calendar rows - nothing deploys
 #
-# Changing a date later? Just commit the edit to this file on main - the GitHub web UI
-# is the recommended way (or edit a local clone, commit, push). The hourly cron reads
+# Changing a date later? Just commit the edit to this file on main; the hourly cron reads
 # whatever is on main at each tick, so the change simply takes effect within the hour.
 # Only already-fired ONE-SHOT actions don't rewind: a release already shipped stays
 # shipped, and a snapshot/autograde that already ran needs its marker deleted to redo.
 #
 # What follows is a SKELETON: uncomment and fill what you want. For a full worked term -
-# a real release plan, a group project, exams - see `schedule.yml.sample` next to it.
+# a real release plan, a group project, exams - see `schedule.yml.sample`.
 
-# timezone: Europe/Berlin           # how the naive datetimes below are read
-# semester_start: {year}-09-07      # YYYY-MM-DD - also a row on the site's schedule
-# semester_end: {year}-12-18
+# timezone: Europe/Berlin           
+# semester_start: 
+# semester_end: 
 
-# releases:                         # the term CALENDAR and the auto-release plan, in one
-#   lecture-2:                      # block. The label is yours (lecture-2, lab-1, ...).
-#     event_datetime: {year}-09-15T10:00  # when it HAPPENS - what the site's schedule shows
-#     title: Week 2 lecture         # OPTIONAL row label (default: prettified label)
-#     tbc: true                     # OPTIONAL: provisional - fires, site marks it "(TBC)"
-#     deploy:                       # copy one or more paths: COURSE repo -> THIS cohort
-#       - course_source_repo: course-materials-{tag}  # REQUIRED - repo in the COURSE org
-#         course_source_path: lectures/02_intro       # REQUIRED - folder or file to copy
-#         cohort_dest_repo: materials                 # default: materials
-#         cohort_dest_path: lectures/02_intro         # default: same as course_source_path
-#         deploy_datetime: {year}-09-15T09:00         # default: the event_datetime
+# releases:                         
+#   lecture-1:                      
+#     event_datetime:               # what the site's schedule shows
+#     title:                        # OPTIONAL (default: prettified label)
+#     tbc: false                    # OPTIONAL: site marks it "(TBC)" next to the event_datetime (default: false)
+#     deploy:                       
+#       - course_source_repo:       # REQUIRED 
+#         course_source_path:       # REQUIRED - folder or file to copy
+#         cohort_dest_repo:         # default: materials
+#         cohort_dest_path:         # default: same as course_source_path
+#         deploy_datetime:          # default: the event_datetime
 #
-# Lecture vs lab is NOT a field you set: it comes from the section folder you deploy -
-# `lectures/...` renders a lecture row on the site, `labs/...` a lab row. Assignments need
-# NO entry here (their whole lifecycle is below); anything that deploys nothing goes under
-# `events:`.
-
-# assignments:                      # each assignment's WHOLE lifecycle, keyed by slug
+# assignments:                      
 #   assignment-1:
-#     course_source_repo: assignment-1-{tag}  # REQUIRED - the COURSE-org repo it hands out
-#                                   # from; it is never guessed
-#     cohort_dest_repo: homework-1  # OPTIONAL cohort-side name - student repos, teams.csv
-#                                   # key, snapshots, grades (default: the slug)
-#     handout_datetime: {year}-09-22T09:00  # when one repo per student (or per team) is
-#                                   # provisioned. Omit ONLY if you hand out via the manual
-#                                   # "Release assignment" button (which records it here)
-#     due_datetime: {year}-10-13T23:59      # a bare date -> END of that day (23:59:59)
-#     grading_datetime: {year}-10-15  # OPTIONAL: snapshot freezes + autograder fires, once
-#                                   # (default: due_datetime). Not shown to students
-#     type: group                   # OPTIONAL: group | individual (also settable in the
-#                                   # template's grading.yml; default: individual)
-#     max_team_size: 4              # OPTIONAL, group only: the welcome "Join team" flow
-#                                   # refuses a member beyond this (default: 5)
+#     course_source_repo:           # REQUIRED 
+#     cohort_dest_repo:             # OPTIONAL (default: the slug (here would be assignment-1))
+#     handout_datetime:             # Omit  if you hand out via the manual "Release assignment" button (which auto-records it here for you)
+#     due_datetime:                 # a bare date -> end of that day (23:59:59)
+#     grading_datetime:             # OPTIONAL: snapshot freezes + autograder fires (default: due_datetime). Not shown to students
+#     type: group                   # OPTIONAL: group | individual (also settable in the template's grading.yml; default: individual)
+#     max_team_size:                # OPTIONAL, group only: the welcome "Join team" flow  refuses a member beyond this (default: 5)
 
 # events:                           # DISPLAY-ONLY calendar rows - nothing deploys
 #   final-exam:
-#     type: exam                    # OPTIONAL: exam | special_event (default:
-#                                   # special_event). `exam` colours the row as an exam
-#     title: Final Exam             # OPTIONAL row label (default: prettified label)
-#     event_datetime: {year}-12-15T14:00  # bare date -> whole day (site shows 09:00);
+#     type:                         # OPTIONAL: exam | special_event (default:  special_event). `exam` colours the row as an exam
+#     title:                        # OPTIONAL row label (default: prettified label)
+#     event_datetime:               # bare date -> whole day;
 #                                   # `event_datetime: tbc` -> an undated TBC row

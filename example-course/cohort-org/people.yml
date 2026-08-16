@@ -1,20 +1,12 @@
-# This cohort's own instructors/TAs - the SSOT for their GitHub push access (this
-# cohort's own instructors team + a course-org instructors-f2026 team scoped to this
-# year's content repos, plus the central .github repo for the central dispatch
-# buttons).
+# This cohort's own instructors/TAs 
 #
-# This file ALSO supplies the COHORT website's staff cards (name/title/photo/url). The
-# course org's dsl-course.yml people: block supplies cards for the optional PUBLIC course
-# site instead. Field reference:
-# https://github.com/hertie-data-science-lab/dsl-teaching-toolkit/blob/main/docs/05-manage-teaching-team.md
+# - the SSOT for their GitHub access & permissions 
+# - supplies the deployed .github.io site's staff cards (name/title/photo/url). 
+# - see reference: https://github.com/hertie-data-science-lab/dsl-teaching-toolkit/blob/main/docs/05-manage-teaching-team.md
 #
-# `photo` takes EITHER an absolute URL on a host that ALLOWS HOTLINKING (GitHub
-# avatars always do), OR a site-relative path to an image committed into this
-# cohort's site repo under `_images/pp/`. Institutional profile sites often return
-# 403 to off-site requests, which renders as a broken image - host those locally.
-#
-# A card renders only for an entry that has a `name` AND is active today, so the
-# start/end window below governs the card as well as the access.
+# `photo` takes either (1) an absolute URL on a host that allows hotlinking (GitHub
+# avatars always do), or (2) a site-relative path to an image committed into this
+# cohort's site repo under `_images/pp/`. 
 
 people:
   instructors:
@@ -33,7 +25,7 @@ people:
       end: "2027-01-31"
     - github_handle: "demo-rmoreau-placeholder"
       name: "Renée Moreau"
-      title: "Research Engineer & Data Scientist"
+      title: "Research Engineer & Data Scientist, Data Science Lab"
       photo: "/_images/pp/renee-moreau.jpg"   # the other form: local file in the site repo
       url: "https://www.hertie-school.org/en/who-we-are/profile/person/moreau"
       start: "2026-08-01"
