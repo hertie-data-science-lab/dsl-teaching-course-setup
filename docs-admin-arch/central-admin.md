@@ -43,6 +43,10 @@ in the CENTRAL repo (UI)`"]
 **revoke the previous PAT last**, only after *every* org verifies green under the new one. Set a
 PAT expiry so rotation is forced.
 
+The [nightly self-refresh](architecture.md#convergence--the-daily-self-refresh) does **not**
+rotate anything: it runs *inside* each org under that org's own copy of the secret and simply
+republishes it. Rotation is still a per-org Bootstrap run from central.
+
 **Hard rules** (ordering is not optional):
 
 - **Owner before token.** Invite the bot as Owner and have it accept (3) before propagating (5).
@@ -81,10 +85,13 @@ Entra app registration is pending.
 
 ## What orgs exist
 
-**[`bootstrapped-orgs-inventory.md`](../bootstrapped-orgs-inventory.md)** is the live list. It is
-auto-generated **Mondays 06:00 UTC** (and on demand); when the list changed it opens a PR and
-merges it in the same run. Don't hand-edit it - a missing org means a failed or never-run
-bootstrap, not a forgotten edit.
+**[`bootstrapped-orgs-inventory.md`](../bootstrapped-orgs-inventory.md)** is the live list: two
+tables, course orgs (topic `dsl-course`) and cohort orgs (topic `dsl-cohort`) mapped to the
+course they point at, with any orphan sorted to the top. It is auto-generated **Mondays 06:00
+UTC** (and on demand); when the list changed it opens a PR and merges it in the same run. Don't
+hand-edit it - a missing org means a failed or never-run bootstrap, not a forgotten edit. The
+refresh aborts rather than committing a net deletion (a truncated search page must not read as
+"these orgs are gone").
 
 ## Related
 
