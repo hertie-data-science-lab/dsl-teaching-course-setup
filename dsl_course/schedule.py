@@ -854,6 +854,16 @@ class SourceFault:
     where: str  # the YAML path, e.g. "releases.lecture-2"
     what: str  # what is missing, e.g. "`cm/lectures/02_b` does not exist yet"
     fires: datetime | None
+    # The key to go and edit - `course_source_path` or `course_source_repo`. Naming the
+    # field is what turns "something is wrong with lecture-2" into an instruction.
+    field: str = "course_source_path"
+
+    @property
+    def key(self) -> str:
+        """A stable identity for this fault across runs, so a digest can tell a fault that
+        ESCALATED from one that is merely still there. Deliberately excludes `fires`: an
+        entry whose date faculty push back is the same fault, at a new distance."""
+        return f"{self.where}.{self.field}"
 
     def severity(self, now: datetime) -> str:
         """How loud this should be at `now` - see SOURCE_ERROR_WINDOW / SOURCE_WARN_WINDOW.
@@ -920,6 +930,7 @@ def source_faults(sched: Schedule, course_org: str) -> list[SourceFault]:
                     f"no repo `{course_org}/{repo}` (or it is empty) - nothing to "
                     f"release from",
                     fires,
+                    field="course_source_repo",
                 )
                 for _, where, fires in wanted[repo]
             )
@@ -935,6 +946,7 @@ def source_faults(sched: Schedule, course_org: str) -> list[SourceFault]:
                     where,
                     f"`{repo}/{clean}` does not exist yet - this copy ships nothing",
                     fires,
+                    field="course_source_path",
                 )
             )
     return out

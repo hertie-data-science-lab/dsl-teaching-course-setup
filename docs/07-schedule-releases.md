@@ -208,13 +208,23 @@ Three other ways to check, none of them required:
 
 A dropped entry is a fault in the *file*. The other way a term quietly fails is a perfectly valid entry pointing at a folder that isn't there - `lectures/04_lecture` when the repo has `lectures/04_week-4`. Nothing detects that until the deploy fires and ships nothing.
 
-So **Validate schedule** also checks every `course_source_repo` / `course_source_path` in the plan against the course org, and reports what is missing. Because a term written up front legitimately names folders nobody has authored yet, how loud that is depends on how close the deploy is:
+So the sources are checked against the course org in two places: **Validate schedule**, whenever you commit a change to `schedule.yml`, and the **hourly cron**, which is the one that catches a plan written in August and forgotten. Because a term written up front legitimately names folders nobody has authored yet, how loud that is depends on how close the deploy is:
 
 | Distance to the deploy | Severity | What you see |
 |---|---|---|
-| more than 7 days | advisory | a line in the run summary and a yellow annotation against `schedule.yml` in the commit. Run stays **green** |
-| 7 days or less | warning | the above, plus an issue - so it reaches your inbox rather than waiting to be found |
-| 48 hours or less, or already passed | **error** | **red X** and the issue escalated, exactly like a dropped entry |
+| more than 7 days | advisory | a line in the run summary and a yellow annotation against `schedule.yml` in the commit. Run stays **green**, nobody is emailed |
+| 7 days or less | warning | the above, plus a **digest issue** in `classroom-config` - so it reaches your inbox rather than waiting to be found. Run still green |
+| 48 hours or less, or already passed | **error** | **red X** on the run, and the digest issue comments to say it escalated |
+
+### The digest issue
+
+One issue per cohort, titled **"schedule.yml: planned releases cite sources not staged in the course org"**, kept current by the hourly cron:
+
+- its **body** is rewritten every run and always lists everything currently missing, grouped by severity, each line naming the exact field to edit (`releases.lecture_02` → `course_source_path`). Editing a body doesn't email anyone, so this is free to happen hourly.
+- it **comments** only when something crosses a rung - a fault appears at warning or above, or escalates. Comments *do* email, and they `cc @<cohort-org>/instructors`, so you hear the transitions and nothing else.
+- it **closes itself** when the last missing source is staged.
+
+Appears, escalates, clears - three notifications over the life of a problem, however many hourly ticks happen in between. A term written months ahead sits entirely at *advisory* and opens no issue at all.
 
 A source that cannot be *read* (a rate limit, a permissions blip) is never reported as missing - that would turn every entry in the plan into a phantom typo.
 
