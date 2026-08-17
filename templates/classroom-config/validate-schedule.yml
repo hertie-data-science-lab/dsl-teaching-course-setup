@@ -16,6 +16,14 @@ name: Validate schedule
 # out from the public central repo. A second implementation - a JSON schema, a hand-rolled
 # checker - could drift, and its failure mode is the worst one available: passing a file
 # the scheduler will silently drop entries from.
+#
+# The red X and the issue above are the DROPPED-ENTRY channel and nothing else. The run
+# also checks whether the plan's sources exist in the course org, but that answer changes
+# week to week (a lecture nobody has written yet is normal in August), so it is reported as
+# ::warning:: annotations on a green run and never touches the exit code. Escalating one of
+# those to a failure is the hourly scheduler's job, which files its own, separately-titled
+# digest issue - routing it through here would name the fault "entries the scheduler cannot
+# read" and close it on the next clean parse, staged or not.
 
 on:
   push:
@@ -81,8 +89,15 @@ jobs:
         run: |
           set +e
           check=""
-          [ -n "$COURSE_ORG" ] && check="--check-sources $COURSE_ORG"
-          python3 -m dsl_course.schedule --file ../cohort/schedule.yml --validate $check > report.txt 2>&1
+          if [ -n "$COURSE_ORG" ]; then
+            check="--check-sources $COURSE_ORG --annotate"
+          else
+            echo "::notice::could not resolve this cohort's course org - the source check did not run"
+          fi
+          # stdout is the report; the ::warning:: annotations go to stderr, so they reach
+          # the job log (where Actions renders them against schedule.yml in the commit's
+          # own diff) without landing in the summary as raw workflow-command text.
+          python3 -m dsl_course.schedule --file ../cohort/schedule.yml --validate $check > report.txt
           echo "rc=$?" >> "$GITHUB_OUTPUT"
           {
             echo "## schedule.yml"
@@ -102,19 +117,6 @@ jobs:
             echo "REPORT_EOF_ba31d7c94f68"
           } >> "$GITHUB_OUTPUT"
           exit 0
-
-      # A missing source is advisory, so the run stays green - and nobody opens a green
-      # run's summary. A ::warning:: annotation is the one channel that reaches a reader
-      # anyway: GitHub renders it against schedule.yml in the commit's own diff view and in
-      # the run's Annotations box, on a passing run. `!` is the report's source-line
-      # prefix; a dropped entry uses `-` and is raised as an ::error:: further down.
-      - name: Annotate sources that do not exist yet
-        if: always()
-        working-directory: central
-        run: |
-          sed -n 's/^    ! \(.*\)$/\1/p' report.txt | while IFS= read -r line; do
-            echo "::warning file=schedule.yml::$line"
-          done
 
       - name: Open an issue naming what was dropped
         if: steps.validate.outputs.rc != '0' && github.event_name == 'push'

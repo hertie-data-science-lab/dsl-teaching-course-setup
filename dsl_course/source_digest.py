@@ -26,12 +26,14 @@ from __future__ import annotations
 import json
 import re
 
+from .central import CENTRAL
 from .schedule import (
     CONFIG_REPO,
-    SEVERITIES,
     SOURCE_ERROR_WINDOW,
     SOURCE_WARN_WINDOW,
+    Severity,
     SourceFault,
+    worst_severity,
 )
 from .utils import gh, log_err, log_ok, log_step
 
@@ -42,17 +44,19 @@ TITLE = "schedule.yml: planned releases cite sources not staged in the course or
 # The rung at which a human is first told. Below it the fault is real and listed, but a
 # session nobody has written yet is the normal state of a term planned months ahead, so it
 # does not earn an email.
-NOTIFY_FROM = "warning"
+NOTIFY_FROM = Severity.WARNING
 
 _STATE_RE = re.compile(r"<!-- dsl-source-state: (\{.*?\}) -->", re.DOTALL)
 
 _RUNG_BLURB = {
-    "error": (
+    Severity.ERROR: (
         f"**Deploys within {int(SOURCE_ERROR_WINDOW.total_seconds() // 3600)}h "
         f"(or already passed) - these will ship nothing.**"
     ),
-    "warning": f"**Deploys within {SOURCE_WARN_WINDOW.days} days.**",
-    "advisory": "Further out - listed so the picture is complete, not to be acted on yet.",
+    Severity.WARNING: f"**Deploys within {SOURCE_WARN_WINDOW.days} days.**",
+    Severity.ADVISORY: (
+        "Further out - listed so the picture is complete, not to be acted on yet."
+    ),
 }
 
 
@@ -70,42 +74,57 @@ def read_state(body: str) -> dict[str, str]:
 
 
 def current_state(faults: list[SourceFault], now) -> dict[str, str]:
-    """Each fault's identity mapped to the severity it is at right now."""
-    return {f.key: f.severity(now) for f in faults}
+    """Each fault's identity mapped to the severity it is at right now. Stored as the
+    severity's NAME, because this round-trips through JSON in the issue body."""
+    return {f.key: str(f.severity(now)) for f in faults}
+
+
+def _rung(name: str) -> Severity:
+    """A severity name back into the ordered value. An unreadable one reads as the quietest
+    rung, so a hand-edited body can only ever under-report a transition, never invent one."""
+    try:
+        return Severity[name.upper()]
+    except KeyError:
+        return Severity.ADVISORY
 
 
 def transitions(
-    previous: dict[str, str], current: dict[str, str], threshold: str = NOTIFY_FROM
+    previous: dict[str, str], current: dict[str, str]
 ) -> tuple[list[str], list[str], list[str]]:
     """(appeared, escalated, cleared) between two states, filtered to what deserves an
     email.
 
-    `appeared` and `escalated` are held to `threshold` - a new advisory is not news. A
+    `appeared` and `escalated` are held to NOTIFY_FROM - a new advisory is not news. A
     `cleared` fault is always news whatever rung it left from, because "it is fixed" is
     the message that lets someone stop worrying about it."""
-    bar = SEVERITIES.index(threshold)
     appeared = [
         k
         for k, sev in current.items()
-        if k not in previous and SEVERITIES.index(sev) >= bar
+        if k not in previous and _rung(sev) >= NOTIFY_FROM
     ]
     escalated = [
         k
         for k, sev in current.items()
         if k in previous
-        and SEVERITIES.index(sev) > SEVERITIES.index(previous[k])
-        and SEVERITIES.index(sev) >= bar
+        and _rung(sev) > _rung(previous[k])
+        and _rung(sev) >= NOTIFY_FROM
     ]
     cleared = [k for k in previous if k not in current]
     return sorted(appeared), sorted(escalated), sorted(cleared)
 
 
-def render_body(faults: list[SourceFault], now, course_org: str, central: str) -> str:
+def render_body(
+    faults: list[SourceFault], now, course_org: str, state: dict[str, str] | None = None
+) -> str:
     """The whole issue body: the current list grouped by rung, plus the state marker.
 
     Every line names the FIELD to edit, not just the entry - "something is wrong with
-    lecture-2" is not an instruction, `releases.lecture_02 -> course_source_path` is."""
-    by_rung: dict[str, list[SourceFault]] = {}
+    lecture-2" is not an instruction, `releases.lecture_02 -> course_source_path` is.
+
+    `state` is the map the caller computed transitions against; passing it makes "the
+    marker matches what was compared" true by construction rather than by both sides
+    recomputing it from the same inputs and happening to agree."""
+    by_rung: dict[Severity, list[SourceFault]] = {}
     for f in faults:
         by_rung.setdefault(f.severity(now), []).append(f)
 
@@ -120,22 +139,28 @@ def render_body(faults: list[SourceFault], now, course_org: str, central: str) -
             "below. This issue rewrites itself every run and closes when the list empties."
         ),
     ]
-    for rung in reversed(SEVERITIES):  # loudest first
-        rows = by_rung.get(rung, [])
-        if not rows:
-            continue
-        out += ["", f"### {rung.upper()} ({len(rows)})", "", _RUNG_BLURB[rung], ""]
+    for rung in sorted(by_rung, reverse=True):  # loudest first
+        rows = by_rung[rung]
+        out += [
+            "",
+            f"### {str(rung).upper()} ({len(rows)})",
+            "",
+            _RUNG_BLURB[rung],
+            "",
+        ]
         for f in sorted(rows, key=lambda f: (f.fires is None, f.fires or now)):
-            due = f"{f.fires:%a %d %b %Y, %H:%M}" if f.fires else "no date (tbc)"
             out.append(
-                f"- **`{f.where}`** -> `{f.field}`  \n  {f.what}  \n  _due {due}_"
+                f"- **`{f.where}`** -> `{f.field}`  \n  {f.what}  \n  _due {f.due}_"
             )
+    marker = json.dumps(
+        current_state(faults, now) if state is None else state, sort_keys=True
+    )
     out += [
         "",
         "---",
-        f"Field reference: https://github.com/{central}/blob/main/docs/07-schedule-releases.md",
+        f"Field reference: https://github.com/{CENTRAL}/blob/main/docs/07-schedule-releases.md",
         "",
-        f"<!-- dsl-source-state: {json.dumps(current_state(faults, now), sort_keys=True)} -->",
+        f"<!-- dsl-source-state: {marker} -->",
     ]
     return "\n".join(out)
 
@@ -190,7 +215,6 @@ def sync(
     course_org: str,
     faults: list[SourceFault],
     now,
-    central: str,
     dry_run: bool = False,
 ) -> int:
     """Bring this cohort's digest issue in line with `faults`. Returns the error count.
@@ -203,9 +227,6 @@ def sync(
         log_err(str(exc))
         return 1
 
-    previous = read_state(existing[1]) if existing else {}
-    current = current_state(faults, now)
-    appeared, escalated, cleared = transitions(previous, current)
     repo = f"{cohort_org}/{CONFIG_REPO}"
 
     if not faults:
@@ -230,12 +251,13 @@ def sync(
 
     # Nothing has reached the notify rung and there is no issue to keep current, so this
     # stays silent: an advisory-only plan is a term written ahead of time, not a fault.
-    if not existing and max(map(SEVERITIES.index, current.values())) < SEVERITIES.index(
-        NOTIFY_FROM
-    ):
+    if not existing and worst_severity(faults, now) < NOTIFY_FROM:
         return 0
 
-    body = render_body(faults, now, course_org, central)
+    previous = read_state(existing[1]) if existing else {}
+    current = current_state(faults, now)
+    appeared, escalated, cleared = transitions(previous, current)
+    body = render_body(faults, now, course_org, current)
     note = _comment(appeared, escalated, cleared, current)
     if dry_run:
         log_step(

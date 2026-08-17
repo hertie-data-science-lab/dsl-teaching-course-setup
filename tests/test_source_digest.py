@@ -18,7 +18,6 @@ from dsl_course.schedule import SourceFault
 
 BERLIN = ZoneInfo("Europe/Berlin")
 NOW = datetime(2026, 8, 17, 12, 0, tzinfo=BERLIN)
-CENTRAL = "org/toolkit"
 
 
 def _f(where: str, offset: timedelta | None, field: str = "course_source_path"):
@@ -63,9 +62,7 @@ def gh(monkeypatch):
 def test_the_body_carries_its_own_previous_state():
     # No committed state file and no database - the issue IS the record, so the digest
     # can tell "still broken" from "just got worse" with nothing but what it last wrote.
-    body = sd.render_body(
-        [_f("releases.a", timedelta(hours=2))], NOW, "Course", CENTRAL
-    )
+    body = sd.render_body([_f("releases.a", timedelta(hours=2))], NOW, "Course")
     assert sd.read_state(body) == {"releases.a.course_source_path": "error"}
 
 
@@ -76,16 +73,14 @@ def test_a_body_this_module_did_not_write_reads_as_no_state():
 
 
 def test_the_state_marker_is_invisible_in_the_rendered_issue():
-    body = sd.render_body(
-        [_f("releases.a", timedelta(days=30))], NOW, "Course", CENTRAL
-    )
+    body = sd.render_body([_f("releases.a", timedelta(days=30))], NOW, "Course")
     assert body.count("<!-- dsl-source-state:") == 1
     assert body.strip().endswith("-->")  # last line, out of the reader's way
 
 
 def test_the_body_names_the_field_to_edit_not_just_the_entry():
     body = sd.render_body(
-        [_f("assignments.a1", None, field="course_source_repo")], NOW, "Course", CENTRAL
+        [_f("assignments.a1", None, field="course_source_repo")], NOW, "Course"
     )
     assert "**`assignments.a1`** -> `course_source_repo`" in body
     assert "no date (tbc)" in body
@@ -100,7 +95,6 @@ def test_rungs_are_rendered_loudest_first():
         ],
         NOW,
         "Course",
-        CENTRAL,
     )
     assert (
         body.index("### ERROR") < body.index("### WARNING") < body.index("### ADVISORY")
@@ -144,22 +138,14 @@ def test_an_advisory_only_plan_opens_no_issue_at_all(gh):
     # Jan writes his whole term in August: 21 sources that do not exist yet, all of them
     # normal. Opening a ticket for that is the cry-wolf failure in a different channel.
     fake = gh([])
-    assert (
-        sd.sync(
-            "Cohort", "Course", [_f("releases.a", timedelta(days=60))], NOW, CENTRAL
-        )
-        == 0
-    )
+    assert sd.sync("Cohort", "Course", [_f("releases.a", timedelta(days=60))], NOW) == 0
     assert fake.did("issue", "create") == []
     assert fake.did("issue", "comment") == []
 
 
 def test_the_first_warning_opens_the_issue(gh):
     fake = gh([])
-    assert (
-        sd.sync("Cohort", "Course", [_f("releases.a", timedelta(days=3))], NOW, CENTRAL)
-        == 0
-    )
+    assert sd.sync("Cohort", "Course", [_f("releases.a", timedelta(days=3))], NOW) == 0
     created = fake.did("issue", "create")
     assert len(created) == 1
     assert sd.TITLE in created[0]
@@ -170,25 +156,17 @@ def test_the_first_warning_opens_the_issue(gh):
 def test_a_quiet_tick_edits_the_body_and_says_nothing(gh):
     # The hourly cron re-runs with nothing changed. The body is refreshed (GitHub does not
     # email on a body edit) and NOT commented on - this is the noise control.
-    body = sd.render_body([_f("releases.a", timedelta(days=3))], NOW, "Course", CENTRAL)
+    body = sd.render_body([_f("releases.a", timedelta(days=3))], NOW, "Course")
     fake = gh([{"number": 7, "title": sd.TITLE, "body": body}])
-    assert (
-        sd.sync("Cohort", "Course", [_f("releases.a", timedelta(days=3))], NOW, CENTRAL)
-        == 0
-    )
+    assert sd.sync("Cohort", "Course", [_f("releases.a", timedelta(days=3))], NOW) == 0
     assert len(fake.did("issue", "edit")) == 1
     assert fake.did("issue", "comment") == []
 
 
 def test_an_escalation_comments_and_mentions_the_instructors(gh):
-    was = sd.render_body([_f("releases.a", timedelta(days=3))], NOW, "Course", CENTRAL)
+    was = sd.render_body([_f("releases.a", timedelta(days=3))], NOW, "Course")
     fake = gh([{"number": 7, "title": sd.TITLE, "body": was}])
-    assert (
-        sd.sync(
-            "Cohort", "Course", [_f("releases.a", timedelta(hours=3))], NOW, CENTRAL
-        )
-        == 0
-    )
+    assert sd.sync("Cohort", "Course", [_f("releases.a", timedelta(hours=3))], NOW) == 0
     comments = fake.did("issue", "comment")
     assert len(comments) == 1
     text = comments[0][comments[0].index("--body") + 1]
@@ -199,9 +177,9 @@ def test_an_escalation_comments_and_mentions_the_instructors(gh):
 
 
 def test_the_last_fault_clearing_closes_the_issue(gh):
-    was = sd.render_body([_f("releases.a", timedelta(hours=3))], NOW, "Course", CENTRAL)
+    was = sd.render_body([_f("releases.a", timedelta(hours=3))], NOW, "Course")
     fake = gh([{"number": 7, "title": sd.TITLE, "body": was}])
-    assert sd.sync("Cohort", "Course", [], NOW, CENTRAL) == 0
+    assert sd.sync("Cohort", "Course", [], NOW) == 0
     closed = fake.did("issue", "close")
     assert len(closed) == 1 and "7" in closed[0]
     assert fake.did("issue", "edit") == []
@@ -209,7 +187,7 @@ def test_the_last_fault_clearing_closes_the_issue(gh):
 
 def test_nothing_missing_and_no_issue_is_a_complete_no_op(gh):
     fake = gh([])
-    assert sd.sync("Cohort", "Course", [], NOW, CENTRAL) == 0
+    assert sd.sync("Cohort", "Course", [], NOW) == 0
     assert fake.did("issue", "create") == fake.did("issue", "close") == []
 
 
@@ -218,7 +196,7 @@ def test_an_issue_a_human_filed_is_never_adopted_and_rewritten(gh):
     # back in the results. Rewriting their issue out from under them would be worse than
     # opening a second one.
     fake = gh([{"number": 3, "title": "re: " + sd.TITLE, "body": "my notes"}])
-    sd.sync("Cohort", "Course", [_f("releases.a", timedelta(days=3))], NOW, CENTRAL)
+    sd.sync("Cohort", "Course", [_f("releases.a", timedelta(days=3))], NOW)
     assert fake.did("issue", "edit") == []
     assert len(fake.did("issue", "create")) == 1
 
@@ -231,7 +209,6 @@ def test_dry_run_touches_nothing(gh):
             "Course",
             [_f("releases.a", timedelta(hours=3))],
             NOW,
-            CENTRAL,
             dry_run=True,
         )
         == 0

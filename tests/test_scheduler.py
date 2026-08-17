@@ -1148,8 +1148,8 @@ def _preflight(monkeypatch, faults, now=WHEN, dry_run=False):
 def test_preflight_fails_the_run_only_for_a_source_about_to_ship_nothing(monkeypatch):
     # The whole ladder exists so this is the ONLY rung that goes red. A term written up
     # front is all advisories, and red-Xing that trains everyone to ignore the cron.
-    imminent = SourceFault("releases.a", "gone", WHEN + timedelta(hours=2))
-    distant = SourceFault("releases.b", "gone", WHEN + timedelta(days=40))
+    imminent = SourceFault("releases.a", "gone", WHEN + timedelta(hours=2), "f")
+    distant = SourceFault("releases.b", "gone", WHEN + timedelta(days=40), "f")
     assert _preflight(monkeypatch, [imminent])[0] == 1
     assert _preflight(monkeypatch, [distant])[0] == 0
     assert _preflight(monkeypatch, [])[0] == 0
@@ -1158,7 +1158,7 @@ def test_preflight_fails_the_run_only_for_a_source_about_to_ship_nothing(monkeyp
 def test_preflight_reports_every_fault_however_distant(monkeypatch):
     # Severity gates the RED X, not the digest: the issue body lists the lot, so the
     # advisories are there as context the moment one of them escalates.
-    distant = SourceFault("releases.b", "gone", WHEN + timedelta(days=40))
+    distant = SourceFault("releases.b", "gone", WHEN + timedelta(days=40), "f")
     _, seen = _preflight(monkeypatch, [distant])
     assert seen["args"][2] == [distant]
 
@@ -1196,6 +1196,6 @@ def test_a_source_check_that_cannot_run_is_not_read_as_everything_missing(monkey
 
 def test_preflight_passes_dry_run_through(monkeypatch):
     _, seen = _preflight(
-        monkeypatch, [SourceFault("releases.a", "gone", WHEN)], dry_run=True
+        monkeypatch, [SourceFault("releases.a", "gone", WHEN, "f")], dry_run=True
     )
     assert seen["kw"]["dry_run"] is True

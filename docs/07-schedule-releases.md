@@ -212,9 +212,11 @@ So the sources are checked against the course org in two places: **Validate sche
 
 | Distance to the deploy | Severity | What you see |
 |---|---|---|
-| more than 7 days | advisory | a line in the run summary and a yellow annotation against `schedule.yml` in the commit. Run stays **green**, nobody is emailed |
-| 7 days or less | warning | the above, plus a **digest issue** in `classroom-config` - so it reaches your inbox rather than waiting to be found. Run still green |
-| 48 hours or less, or already passed | **error** | **red X** on the run, and the digest issue comments to say it escalated |
+| more than 7 days | advisory | a line in the run summary and a yellow annotation against `schedule.yml` in the commit. Nobody is emailed |
+| 7 days or less | warning | the above, plus a **digest issue** in `classroom-config` - so it reaches your inbox rather than waiting to be found |
+| 48 hours or less, or already passed | **error** | the digest issue comments to say it escalated, and the **hourly cron goes red** |
+
+**Validate schedule never goes red for a missing source, at any rung.** Its red X means one thing - an entry you wrote is not in your plan - and it clears when the file next parses cleanly. A missing source is not a broken file and doesn't clear when the file is edited, so it gets its own channel: annotations on the commit, and the digest issue below.
 
 ### The digest issue
 
@@ -228,12 +230,12 @@ Appears, escalates, clears - three notifications over the life of a problem, how
 
 A source that cannot be *read* (a rate limit, a permissions blip) is never reported as missing - that would turn every entry in the plan into a phantom typo.
 
-By hand: add `--check-sources <course-org>` to either `--validate` form above.
+By hand: add `--check-sources <course-org>` to either `--validate` form above. Every line names the field to go and edit, not just the entry it sits in:
 
 ```
-  3 SOURCE(S) NOT IN hertie-dsl-demo-course-e1234 YET:
-    ! [advisory] releases.lecture_09 (due 2026-11-04 08:00): `course-materials-f2026/lectures/09_lecture` does not exist yet - this copy ships nothing
-    !! [error]   releases.lecture_02 (due 2026-08-19 08:00): `course-materials-f2026/lectures/02_lecture` does not exist yet - this copy ships nothing
+  2 SOURCE(S) NOT IN hertie-dsl-demo-course-e1234 YET:
+    [error] releases.lecture_02 -> course_source_path (due Wed 19 Aug 2026, 08:00): `course-materials-f2026/lectures/02_lecture` does not exist yet - this copy ships nothing
+    [advisory] releases.lecture_09 -> course_source_path (due Wed 04 Nov 2026, 08:00): `course-materials-f2026/lectures/09_lecture` does not exist yet - this copy ships nothing
 ```
 
 ## Dropped entries

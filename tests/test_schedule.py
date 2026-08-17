@@ -1210,11 +1210,12 @@ def test_validate_cli_reports_an_unreadable_cohort_schedule(monkeypatch, capsys)
 def _org(monkeypatch, trees: dict[str, list[str]]):
     """Fake a course org as {repo: [every path in it]}. A repo absent from `trees` does not
     exist; one mapped to [] exists but is empty."""
-    monkeypatch.setattr(schedule, "get_default_branch", lambda org, repo: "main")
+    monkeypatch.setattr(schedule, "repo_exists", lambda org, repo: repo in trees)
+    monkeypatch.setattr(schedule, "default_branch", lambda org, repo: "main")
     monkeypatch.setattr(
         schedule,
         "repo_tree",
-        lambda org, repo, branch, kind: tuple(trees.get(repo, [])),
+        lambda org, repo, branch, kind="": tuple(trees.get(repo, [])),
     )
 
 
@@ -1236,7 +1237,7 @@ def test_missing_sources_names_the_path_that_will_ship_nothing(monkeypatch):
     )
     out = [f.line() for f in schedule.source_faults(s, "Course-Org")]
     assert len(out) == 1
-    assert out[0].startswith("releases.lecture-2 (due 2026-09-08 10:00): ")
+    assert out[0].startswith("releases.lecture-2 -> course_source_path (due ")
     assert "`cm/lectures/02_b` does not exist yet" in out[0]
 
 
@@ -1274,9 +1275,10 @@ def test_a_whole_repo_release_only_needs_the_repo(monkeypatch):
 
 def test_an_unreadable_repo_is_never_reported_as_missing(monkeypatch):
     # A rate limit must not turn every source in the plan into a phantom typo.
-    monkeypatch.setattr(schedule, "get_default_branch", lambda org, repo: "main")
+    monkeypatch.setattr(schedule, "repo_exists", lambda org, repo: True)
+    monkeypatch.setattr(schedule, "default_branch", lambda org, repo: "main")
 
-    def boom(org, repo, branch, kind):
+    def boom(org, repo, branch, kind=""):
         raise RuntimeError("API rate limit exceeded")
 
     monkeypatch.setattr(schedule, "repo_tree", boom)
@@ -1286,17 +1288,19 @@ def test_an_unreadable_repo_is_never_reported_as_missing(monkeypatch):
 
 def test_one_tree_fetch_per_repo_however_many_deploys(monkeypatch):
     calls: list[str] = []
-    monkeypatch.setattr(schedule, "get_default_branch", lambda org, repo: "main")
+    monkeypatch.setattr(schedule, "repo_exists", lambda org, repo: True)
+    monkeypatch.setattr(schedule, "default_branch", lambda org, repo: "main")
 
-    def counting(org, repo, branch, kind):
+    def counting(org, repo, branch, kind=""):
         calls.append(repo)
         return ("lectures", "lectures/01_a")
 
     monkeypatch.setattr(schedule, "repo_tree", counting)
     s = Schedule(releases=[_release(f"lecture-{i}", "lectures/01_a") for i in range(6)])
-    [f.line() for f in schedule.source_faults(s, "Course-Org")]
-    assert set(calls) == {"cm"}
-    assert len(calls) == 2  # one for the trees, one for the blobs
+    schedule.source_faults(s, "Course-Org")
+    # ONE fetch for the whole repo: files and folders come back together, and six deploys
+    # pointing into it do not become six calls (nor two, one per tree kind).
+    assert calls == ["cm"]
 
 
 def test_the_severity_ladder_scales_with_distance_to_the_fire_time(monkeypatch):
@@ -1304,17 +1308,21 @@ def test_the_severity_ladder_scales_with_distance_to_the_fire_time(monkeypatch):
     # lecture. Distance is the whole signal - without it the check either cries wolf on
     # every term planned up front, or says nothing when it finally matters.
     now = datetime(2026, 9, 1, 12, 0, tzinfo=BERLIN)
-    at = lambda when: schedule.SourceFault("releases.x", "gone", when).severity(now)
-    assert at(now + timedelta(days=30)) == "advisory"
-    assert at(now + timedelta(days=8)) == "advisory"
-    assert at(now + timedelta(days=6)) == "warning"
-    assert at(now + timedelta(hours=49)) == "warning"
-    assert at(now + timedelta(hours=47)) == "error"
+    S = schedule.Severity
+
+    def at(when):
+        return schedule.SourceFault("releases.x", "gone", when, "f").severity(now)
+
+    assert at(now + timedelta(days=30)) is S.ADVISORY
+    assert at(now + timedelta(days=8)) is S.ADVISORY
+    assert at(now + timedelta(days=6)) is S.WARNING
+    assert at(now + timedelta(hours=49)) is S.WARNING
+    assert at(now + timedelta(hours=47)) is S.ERROR
     # Already passed: the copy did not ship. Going quiet after the fact is the one
     # behaviour that would make this check worthless.
-    assert at(now - timedelta(days=3)) == "error"
+    assert at(now - timedelta(days=3)) is S.ERROR
     # Nothing pins an undated entry to a moment, so it can never escalate.
-    assert at(None) == "advisory"
+    assert at(None) is S.ADVISORY
 
 
 def test_a_deploy_datetime_dates_the_fault_not_the_class(monkeypatch):
@@ -1366,11 +1374,11 @@ def test_a_distant_missing_source_reports_but_keeps_the_run_green(
     assert "1 SOURCE(S) NOT IN Course-Org YET:" in out
     # `!` (not `!!`, and not the `-` a drop uses): the workflow greps these prefixes to
     # pick ::warning:: over ::error::, so conflating them would mis-rank every fault.
-    assert "    ! [advisory] releases.lecture-1" in out
+    assert "    [advisory] releases.lecture-1 -> course_source_path" in out
     assert "OK: nothing dropped" in out
 
 
-def test_a_source_due_imminently_fails_the_run(monkeypatch, capsys, tmp_path):
+def _imminent(tmp_path):
     f = tmp_path / "schedule.yml"
     f.write_text(
         "releases:\n"
@@ -1380,25 +1388,91 @@ def test_a_source_due_imminently_fails_the_run(monkeypatch, capsys, tmp_path):
         "      - course_source_repo: cm\n"
         "        course_source_path: lectures/99_nope\n"
     )
+    return f
+
+
+def test_even_an_error_rung_source_leaves_the_parse_verdict_alone(
+    monkeypatch, capsys, tmp_path
+):
+    # --check-sources says it never changes the exit code, and it must not: `rc` is the
+    # DROPPED-ENTRY channel, which opens an issue titled "entries the scheduler cannot
+    # read" and closes it on the next clean parse. A missing source routed through that
+    # gets the wrong name and gets closed without ever being staged. Escalating the error
+    # rung is the hourly pre-flight's job (scheduler._preflight_sources), which owns a
+    # channel of its own.
     _org(monkeypatch, {"cm": ["lectures"]})
     monkeypatch.setattr(
         "sys.argv",
-        ["schedule", "--file", str(f), "--validate", "--check-sources", "Course-Org"],
+        [
+            "schedule",
+            "--file",
+            str(_imminent(tmp_path)),
+            "--validate",
+            "--check-sources",
+            "Course-Org",
+        ],
     )
-    assert schedule.main() == 1
+    assert schedule.main() == 0
     out = capsys.readouterr().out
-    assert "    !! [error] releases.lecture-1" in out
-    assert "INVALID: a source due imminently is not in the course org" in out
-    # It is NOT a dropped entry - the file parses perfectly. The two verdicts stay apart.
+    assert "[error] releases.lecture-1 -> course_source_path" in out
+    assert "OK: nothing dropped" in out
+    # The file parses perfectly. The two verdicts stay apart.
     assert "entry/ies dropped" not in out
+
+
+def test_annotations_are_emitted_by_the_process_that_knows_the_severity(
+    monkeypatch, capsys, tmp_path
+):
+    # They used to be re-derived downstream by grepping this report for a severity prefix,
+    # and the pattern silently matched only some of the rungs. Emitted here, to stderr, so
+    # the human report on stdout stays clean.
+    _org(monkeypatch, {"cm": ["lectures"]})
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "schedule",
+            "--file",
+            str(_imminent(tmp_path)),
+            "--validate",
+            "--check-sources",
+            "Course-Org",
+            "--annotate",
+        ],
+    )
+    assert schedule.main() == 0
+    captured = capsys.readouterr()
+    assert "::warning file=schedule.yml::releases.lecture-1 -> course_source_path" in (
+        captured.err
+    )
+    assert "::warning" not in captured.out
+
+
+def test_without_annotate_nothing_workflow_shaped_is_emitted(
+    monkeypatch, capsys, tmp_path
+):
+    _org(monkeypatch, {"cm": ["lectures"]})
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "schedule",
+            "--file",
+            str(_imminent(tmp_path)),
+            "--validate",
+            "--check-sources",
+            "Course-Org",
+        ],
+    )
+    schedule.main()
+    captured = capsys.readouterr()
+    assert "::warning" not in captured.err + captured.out
 
 
 def test_worst_severity_is_the_loudest_not_the_first(monkeypatch):
     now = datetime(2026, 9, 1, 12, 0, tzinfo=BERLIN)
     faults = [
-        schedule.SourceFault("a", "gone", now + timedelta(days=40)),
-        schedule.SourceFault("b", "gone", now + timedelta(hours=2)),
-        schedule.SourceFault("c", "gone", now + timedelta(days=5)),
+        schedule.SourceFault("a", "gone", now + timedelta(days=40), "f"),
+        schedule.SourceFault("b", "gone", now + timedelta(hours=2), "f"),
+        schedule.SourceFault("c", "gone", now + timedelta(days=5), "f"),
     ]
-    assert schedule.worst_severity(faults, now) == "error"
+    assert schedule.worst_severity(faults, now) is schedule.Severity.ERROR
     assert schedule.worst_severity([], now) is None

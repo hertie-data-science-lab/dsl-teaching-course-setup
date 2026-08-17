@@ -41,7 +41,6 @@ import sys
 from datetime import datetime, timezone
 
 from . import schedule, source_digest
-from .central import CENTRAL
 from .schedule import Deploy, Release
 from .utils import log, log_err, log_ok, log_step
 
@@ -350,12 +349,10 @@ def _preflight_sources(
             f"{course_org} (worst: {worst})"
         )
     try:
-        source_digest.sync(
-            cohort_org, course_org, faults, now, CENTRAL, dry_run=dry_run
-        )
+        source_digest.sync(cohort_org, course_org, faults, now, dry_run=dry_run)
     except Exception as exc:
         log_err(f"could not update {cohort_org}'s source digest: {exc}")
-    if worst == "error":
+    if worst == schedule.Severity.ERROR:
         log_err(
             f"{cohort_org}: a source due within "
             f"{int(schedule.SOURCE_ERROR_WINDOW.total_seconds() // 3600)}h is not staged "
