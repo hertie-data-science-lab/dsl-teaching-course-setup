@@ -32,6 +32,11 @@ def _sched(releases: list[Release]) -> Schedule:
     return Schedule(releases=releases)
 
 
+def _session_dates(sched: Schedule) -> dict[tuple[str, str], datetime]:
+    """The dating half of `_planned_sessions` - which row happens when."""
+    return {key: when for key, (when, _) in site._planned_sessions(sched).items()}
+
+
 def test_session_dates_maps_folder_ordinal_and_section_to_release_when():
     s = _sched(
         [
@@ -50,7 +55,7 @@ def test_session_dates_maps_folder_ordinal_and_section_to_release_when():
             ),
         ]
     )
-    sw = site._session_dates(s)
+    sw = _session_dates(s)
     assert sw[("2", "lecture")] == datetime(2026, 9, 15, 14, 0, tzinfo=BERLIN)
     assert sw[("2", "lab")] == datetime(2026, 9, 15, 14, 0, tzinfo=BERLIN)
     # keyed off the cohort_dest_path ordinal; a bare dest folder takes its section from
@@ -75,7 +80,7 @@ def test_session_dates_date_a_lab_row_from_its_own_release():
             ),
         ]
     )
-    sw = site._session_dates(s)
+    sw = _session_dates(s)
     assert sw[("3", "lecture")] == datetime(2026, 9, 15, 10, 0, tzinfo=BERLIN)
     assert sw[("3", "lab")] == datetime(2026, 9, 17, 14, 0, tzinfo=BERLIN)
 
@@ -96,7 +101,7 @@ def test_session_dates_earliest_release_wins_for_a_row():
         ]
     )
     # readings are lecture material, so both land on the same row - earliest wins
-    assert site._session_dates(s)[("2", "lecture")] == datetime(
+    assert _session_dates(s)[("2", "lecture")] == datetime(
         2026, 9, 10, 9, 0, tzinfo=BERLIN
     )
 
@@ -115,7 +120,7 @@ def test_session_dates_ignores_non_ordinal_deploys():
             ),
         ]
     )
-    assert site._session_dates(s) == {}  # not a numbered session folder
+    assert _session_dates(s) == {}  # not a numbered session folder
 
 
 def test_lecture_entry_shows_real_time_from_a_datetime():
@@ -158,7 +163,7 @@ def test_session_dates_use_the_event_datetime_not_the_deploy_datetime():
             )
         ]
     )
-    assert site._session_dates(s)[("2", "lecture")] == datetime(
+    assert _session_dates(s)[("2", "lecture")] == datetime(
         2026, 9, 15, 10, 0, tzinfo=BERLIN
     )
 
@@ -438,6 +443,128 @@ def test_a_week_with_only_one_kind_gets_only_that_row(monkeypatch, tmp_path):
         sources=[("materials", "lectures", "04_week-4", 4)],
     )
     assert sorted(lecture_only.collections["_lectures"]) == ["session-04.md"]
+
+
+def test_the_whole_planned_term_gets_rows_before_anything_is_released(
+    monkeypatch, tmp_path
+):
+    # The plan IS the schedule: a session faculty have written down shows on the site from
+    # that moment, not from the day its materials happen to ship.
+    plan = _plan(
+        monkeypatch,
+        tmp_path,
+        Schedule(
+            releases=[
+                Release(
+                    "lecture-2",
+                    datetime(2026, 9, 8, 10, 0, tzinfo=BERLIN),
+                    deploy=[Deploy("cm", "lectures/02_week-2", "materials", None)],
+                ),
+                Release(
+                    "lab-2",
+                    datetime(2026, 9, 10, 14, 0, tzinfo=BERLIN),
+                    deploy=[Deploy("cm", "labs/02_week-2", "materials", None)],
+                ),
+            ]
+        ),
+        sources=[],  # nothing released yet
+    )
+    lectures = plan.collections["_lectures"]
+    assert sorted(lectures) == ["lab-02.md", "session-02.md"]
+    # Dated from the plan, and openly marked as having nothing to open yet.
+    assert "date: 2026-09-10T14:00:00" in lectures["lab-02.md"]
+    assert "links: []" in lectures["lab-02.md"]
+    assert "lab 2 are not released yet" in lectures["lab-02.md"]
+    assert "session 2 are not released yet" in lectures["session-02.md"]
+
+
+def test_an_unreleased_row_names_where_its_materials_will_land(monkeypatch, tmp_path):
+    # Mirrors the assignment row's placeholder: say what is coming and where, rather than
+    # leaving an empty cell that reads as a mistake.
+    plan = _plan(
+        monkeypatch,
+        tmp_path,
+        Schedule(
+            releases=[
+                Release(
+                    "lecture-3",
+                    datetime(2026, 9, 15, 10, 0, tzinfo=BERLIN),
+                    deploy=[
+                        Deploy("cm", "lectures/03_week-3", "lecture-materials", None),
+                        Deploy("cm", "readings/03_week-3", "lecture-materials", None),
+                    ],
+                )
+            ]
+        ),
+    )
+    body = plan.collections["_lectures"]["session-03.md"]
+    assert "`lecture-materials/lectures/03_week-3`" in body
+    assert "`lecture-materials/readings/03_week-3`" in body
+    assert "`Cohort-f2026`" in body
+
+
+def test_a_released_row_replaces_its_placeholder_with_links(monkeypatch, tmp_path):
+    sched = Schedule(
+        releases=[
+            Release(
+                "lab-2",
+                datetime(2026, 9, 10, 14, 0, tzinfo=BERLIN),
+                deploy=[Deploy("cm", "labs/02_week-2", "materials", None)],
+            )
+        ]
+    )
+    plan = _plan(
+        monkeypatch,
+        tmp_path,
+        sched,
+        sources=[("materials", "labs", "02_week-2", 2)],
+        files=lambda org, repo, subpath, folder: [("lab.pdf", "https://x/lab.pdf")],
+    )
+    body = plan.collections["_lectures"]["lab-02.md"]
+    assert 'name: "lab - lab.pdf"' in body
+    assert "not released yet" not in body
+
+
+def test_a_row_released_off_plan_survives_the_planned_rows(monkeypatch, tmp_path):
+    # Discovery still leads: the manual Release button ships folders the plan never named,
+    # and those rows must not be dropped just because they are absent from schedule.yml.
+    plan = _plan(
+        monkeypatch,
+        tmp_path,
+        Schedule(
+            releases=[
+                Release(
+                    "lecture-2",
+                    datetime(2026, 9, 8, 10, 0, tzinfo=BERLIN),
+                    deploy=[Deploy("cm", "lectures/02_week-2", "materials", None)],
+                )
+            ],
+            semester_start=date(2026, 9, 1),
+        ),
+        sources=[("materials", "labs", "05_bonus", 5)],
+    )
+    assert sorted(plan.collections["_lectures"]) == ["lab-05.md", "session-02.md"]
+    assert "not released yet" in plan.collections["_lectures"]["session-02.md"]
+    assert "not released yet" not in plan.collections["_lectures"]["lab-05.md"]
+
+
+def test_an_undated_release_raises_no_placeholder_row(monkeypatch, tmp_path):
+    # `event_datetime: tbc` cannot place a session on a dated table, so it stays off the
+    # schedule until faculty give it a date - same rule _planned_sessions applies to dating.
+    plan = _plan(
+        monkeypatch,
+        tmp_path,
+        Schedule(
+            releases=[
+                Release(
+                    "lecture-9",
+                    None,
+                    deploy=[Deploy("cm", "lectures/09_week-9", "materials", None)],
+                )
+            ]
+        ),
+    )
+    assert plan.collections["_lectures"] == {}
 
 
 def test_the_lecture_row_never_carries_the_weeks_lab_links(monkeypatch, tmp_path):
