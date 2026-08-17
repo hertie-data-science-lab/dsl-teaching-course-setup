@@ -39,6 +39,7 @@ from .utils import (
     log_step,
     put_file,
     repo_exists,
+    seed_files_if_absent,
     seed_if_absent,
     set_repo_topics,
 )
@@ -228,21 +229,16 @@ def scaffold_materials(org: str, tag: str) -> int:
         "labs/01_session-1/.gitkeep": b"",
         "SYLLABUS.md": f"# {tag} syllabus\n\nReplace with the real syllabus.\n".encode(),
     }
-    for path, content in user_files.items():
-        if not seed_if_absent(org, repo, path, content, "init: materials skeleton"):
-            failures += 1
+    # One commit for the skeleton: all five carried the same subject anyway, so writing
+    # them one at a time opened a repo faculty then author by hand with five identical
+    # `init: materials skeleton` lines.
+    if not seed_files_if_absent(org, repo, user_files, "init: materials skeleton"):
+        failures += 1
     # Equip the run-from-repo Release buttons (same as Refresh does for content repos).
-    # _push_workflows returns the count of writes that failed - a materials repo with no
-    # Release buttons must not report success.
+    # _push_workflows lands both in one commit, logs its own failure, and returns 1 - a
+    # materials repo with no Release buttons must not report success.
     cohorts = seed.discover_cohorts(org)
-    workflow_failures = seed._push_workflows(
-        org, repo, cohorts, seed.discover_assignments(org)
-    )
-    if workflow_failures:
-        log_err(
-            f"materials repo incomplete: {workflow_failures} Release button(s) not seeded"
-        )
-    failures += workflow_failures
+    failures += seed._push_workflows(org, repo, cohorts, seed.discover_assignments(org))
     if failures:
         return 1
     log_ok(f"materials repo ready: {org}/{repo}")

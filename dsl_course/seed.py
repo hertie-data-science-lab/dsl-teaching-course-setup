@@ -50,7 +50,6 @@ from .discovery import (
 from .profile_readme import update_profile_readme
 from .roster import CONFIG_REPO
 from .utils import (
-    delete_file,
     gh,
     is_missing_resource,
     log,
@@ -58,6 +57,7 @@ from .utils import (
     log_ok,
     log_step,
     put_file,
+    put_files,
     repo_is_archived,
 )
 from .welcome import (
@@ -159,39 +159,31 @@ def _push_workflows(
     cohort_orgs: list[str],
     assignments: list[str],
 ) -> int:
-    """Place the run-from-repo buttons in one content repo. Returns the number of writes
-    that failed, so refresh can report a run that didn't converge."""
-    results = [
-        put_file(
-            org,
-            repo,
-            WORKFLOWS[0],
-            render_release(cohort_orgs, repo).encode(),
-            "ci: release-materials wrapper",
-        ),
-        put_file(
-            org,
-            repo,
-            WORKFLOWS[1],
-            render_provision(cohort_orgs, assignments).encode(),
-            "ci: release-assignment wrapper",
-        ),
-    ]
-    results += [
-        delete_file(
-            org,
-            repo,
-            retired,
-            f"ci: retire {retired.split('/')[-1]} (folded into release-materials.yml)",
-        )
-        for retired in RETIRED_WORKFLOWS
-    ]
-    failures = results.count(False)
-    if failures:
-        log_err(f"{failures} workflow file(s) not written to {org}/{repo}")
-    else:
-        log_ok(f"workflows -> {org}/{repo}")
-    return failures
+    """Place the run-from-repo buttons in one content repo, as ONE commit.
+
+    Both buttons are re-rendered from the same inputs and change together (a new cohort
+    org, a new assignment template, an edit to the template here), so writing them file by
+    file put a pair of near-identical `ci: ... wrapper` commits into a repo faculty
+    actually read, for what is one logical change. put_files makes it one commit - and
+    folds the retired-workflow removal into it, so retiring a button costs no commit of its
+    own either.
+
+    Returns 1 if that commit didn't land, so refresh can report a run that didn't
+    converge. It is all-or-nothing: put_files moves the branch once, at the end."""
+    if not put_files(
+        org,
+        repo,
+        {
+            WORKFLOWS[0]: render_release(cohort_orgs, repo).encode(),
+            WORKFLOWS[1]: render_provision(cohort_orgs, assignments).encode(),
+        },
+        "ci: refresh release buttons",
+        delete=RETIRED_WORKFLOWS,
+    ):
+        log_err(f"release buttons not written to {org}/{repo}")
+        return 1
+    log_ok(f"workflows -> {org}/{repo}")
+    return 0
 
 
 def seed_github_workflows(course_org: str) -> int:
@@ -199,8 +191,14 @@ def seed_github_workflows(course_org: str) -> int:
     CENTRAL Release materials (course-source-repo dropdown), Release assignment, plus Sync
     enrolment / Bootstrap cohort / Refresh.
 
-    Returns the number of writes that failed - a button that didn't land is exactly the
-    thing a green run must not hide."""
+    All sixteen land as ONE commit (and the retired ones go in the same commit). They are
+    rendered from one set of inputs by shared helpers, so in practice they change together:
+    an edit to the run preamble or to a dropdown helper re-renders every one of them, and
+    file-by-file writes turned each such edit into a wall of sixteen near-identical
+    `ci: <file>.yml` commits in the repo whose history faculty actually browse.
+
+    Returns 1 if that commit didn't land - a button that didn't land is exactly the thing a
+    green run must not hide."""
     cohorts = discover_cohorts(course_org)
     source_repos = discover_content_repos(course_org)
     assignments = discover_assignments(course_org)
@@ -229,32 +227,25 @@ def seed_github_workflows(course_org: str) -> int:
         ".github/workflows/scheduled-release.yml": render_scheduler(),
     }
     log_step(f"Seeding org-level workflows into {course_org}/.github")
-    failures = 0
-    for path, content in files.items():
-        if put_file(
-            course_org, ".github", path, content.encode(), f"ci: {path.split('/')[-1]}"
-        ):
-            log_ok(f".github <- {path.split('/')[-1]}")
-        else:
-            failures += 1
-
-    # Retired buttons - remove any copies already seeded into orgs bootstrapped before
-    # the change, so faculty never see two buttons for one job. sync-enrolment/sync-teams
-    # were consolidated into sync-membership.yml; status.yml was renamed to
-    # check-cohort-setup.yml (same workflow, a name that says what it checks).
-    for retired in (
-        ".github/workflows/sync-enrolment.yml",
-        ".github/workflows/sync-teams.yml",
-        ".github/workflows/status.yml",
+    if not put_files(
+        course_org,
+        ".github",
+        {path: content.encode() for path, content in files.items()},
+        "ci: refresh org workflows",
+        # Retired buttons - remove any copies already seeded into orgs bootstrapped before
+        # the change, so faculty never see two buttons for one job. sync-enrolment/sync-teams
+        # were consolidated into sync-membership.yml; status.yml was renamed to
+        # check-cohort-setup.yml (same workflow, a name that says what it checks).
+        delete=(
+            ".github/workflows/sync-enrolment.yml",
+            ".github/workflows/sync-teams.yml",
+            ".github/workflows/status.yml",
+        ),
     ):
-        if not delete_file(
-            course_org,
-            ".github",
-            retired,
-            f"ci: retire {retired.split('/')[-1]} (superseded by sync-membership.yml)",
-        ):
-            failures += 1
-    return failures
+        log_err(f"org workflows not written to {course_org}/.github")
+        return 1
+    log_ok(f".github <- {len(files)} org-level workflow(s)")
+    return 0
 
 
 def _propagate_repo_secret(course_org: str, repos: list[str]) -> int:

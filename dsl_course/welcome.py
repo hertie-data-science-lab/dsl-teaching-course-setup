@@ -17,7 +17,7 @@ from functools import cache
 from pathlib import Path
 
 from .roster import CONFIG_REPO
-from .utils import delete_file, log_err, log_ok, put_file
+from .utils import log_err, log_ok, put_files
 
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATES = ROOT / "templates"
@@ -30,22 +30,10 @@ EXAMPLE_COHORT = ROOT / "example-course" / "cohort-org"
 # The SCAFFOLD half - the file faculty fill in. `{tag}`/`{year}`/`{year_next}` are
 # rendered for this cohort, so every example in a scaffold is copy-paste-correct.
 CLASSROOM_SCAFFOLDS = {
-    "students.csv": (
-        "classroom-config/students.csv",
-        "init: starter roster (fill with registrar data - see students.csv.sample)",
-    ),
-    "teams.csv": (
-        "classroom-config/teams.csv",
-        "init: starter teams table (the welcome Join-team issue appends to it)",
-    ),
-    "schedule.yml": (
-        "classroom-config/schedule.yml",
-        "docs: seed schedule.yml (release plan + due dates + exams)",
-    ),
-    "people.yml": (
-        "classroom-config/people.yml",
-        "docs: seed people.yml (this cohort's instructors/TAs)",
-    ),
+    "students.csv": "classroom-config/students.csv",
+    "teams.csv": "classroom-config/teams.csv",
+    "schedule.yml": "classroom-config/schedule.yml",
+    "people.yml": "classroom-config/people.yml",
 }
 
 # The SAMPLE half - DERIVED, not enumerated: every regular file in the worked example
@@ -88,59 +76,46 @@ def example_cohort_file(rel: str) -> str:
 
 def refresh_welcome_workflows(org: str) -> int:
     """Re-push a cohort's welcome-repo machinery (onboarding workflows + the issue forms
-    they parse) from the current templates. Called both at bootstrap and on every refresh,
-    so a fix reaches running cohorts; put_file skips whatever is already identical.
+    they parse) from the current templates, as ONE commit. Called both at bootstrap and on
+    every refresh, so a fix reaches running cohorts; put_files skips whatever is already
+    identical and commits nothing at all when everything is.
 
-    Returns the number of writes that failed, so a caller (seed.refresh) can go red
-    rather than report an onboarding repo it never managed to converge."""
+    A workflow and the form it parses must move together (field ids are a contract between
+    them), so one commit is also the honest unit here: the intermediate state where one has
+    landed and the other hasn't is not one anybody should be able to check out.
+
+    Returns 1 if that commit didn't land, so a caller (seed.refresh) can go red rather than
+    report an onboarding repo it never managed to converge."""
     # Everything under .github/ here is SYSTEM-owned: the onboarding workflows and the
     # issue forms they parse (field ids must stay in lockstep with the workflow), so
     # these refresh on every run.
-    results = [
-        put_file(
-            org,
-            "welcome",
-            ".github/workflows/onboard.yml",
-            template("welcome/onboard.yml").encode(),
-            "ci: seed onboard workflow",
-        ),
-        put_file(
-            org,
-            "welcome",
-            ".github/ISSUE_TEMPLATE/01-join-course.yml",
-            template("welcome/ISSUE_TEMPLATE/01-join-course.yml").encode(),
-            "ci: seed Join course issue form",
-        ),
-        put_file(
-            org,
-            "welcome",
-            ".github/workflows/team-formation.yml",
-            template("welcome/team-formation.yml").encode(),
-            "ci: seed team-formation workflow",
-        ),
-        put_file(
-            org,
-            "welcome",
-            ".github/ISSUE_TEMPLATE/02-join-team.yml",
-            template("welcome/ISSUE_TEMPLATE/02-join-team.yml").encode(),
-            "ci: seed Join team issue form",
-        ),
-    ]
-    # The forms were renamed to control the issue-chooser ordering (01-/02- prefix);
-    # retire the old filenames on live cohorts or the chooser shows both generations.
-    results += [
-        delete_file(org, "welcome", stale, "ci: retire renamed issue form")
-        for stale in (
+    if not put_files(
+        org,
+        "welcome",
+        {
+            ".github/workflows/onboard.yml": template("welcome/onboard.yml").encode(),
+            ".github/ISSUE_TEMPLATE/01-join-course.yml": template(
+                "welcome/ISSUE_TEMPLATE/01-join-course.yml"
+            ).encode(),
+            ".github/workflows/team-formation.yml": template(
+                "welcome/team-formation.yml"
+            ).encode(),
+            ".github/ISSUE_TEMPLATE/02-join-team.yml": template(
+                "welcome/ISSUE_TEMPLATE/02-join-team.yml"
+            ).encode(),
+        },
+        "ci: refresh onboarding workflows + Join forms",
+        # The forms were renamed to control the issue-chooser ordering (01-/02- prefix);
+        # retire the old filenames on live cohorts or the chooser shows both generations.
+        delete=(
             ".github/ISSUE_TEMPLATE/join.yml",
             ".github/ISSUE_TEMPLATE/join-team.yml",
-        )
-    ]
-    failures = results.count(False)
-    if failures:
-        log_err(f"{failures} welcome-repo file(s) not written in {org}")
-    else:
-        log_ok("welcome repo workflows + Join forms up to date")
-    return failures
+        ),
+    ):
+        log_err(f"welcome-repo files not written in {org}")
+        return 1
+    log_ok("welcome repo workflows + Join forms up to date")
+    return 0
 
 
 def refresh_classroom_samples(org: str) -> int:
@@ -148,28 +123,28 @@ def refresh_classroom_samples(org: str) -> int:
 
     Samples are machine-owned reference material - the engine never ingests them (only the
     un-suffixed names), and activation is copying rows across - so unlike the scaffolds
-    they are written unconditionally rather than seed-if-absent. `put_file` compares blob
-    shas, so an already-current sample is a no-op. Called both at bootstrap and on the
-    nightly refresh, so a cohort seeded last semester picks up today's examples.
+    they are written unconditionally rather than seed-if-absent. `put_files` compares blob
+    shas, so an already-current cohort is written nothing. Called both at bootstrap and on
+    the nightly refresh, so a cohort seeded last semester picks up today's examples.
 
-    Returns the number of writes that failed, so seed.refresh can go red rather than
-    report an org it never converged."""
-    results = [
-        put_file(
-            org,
-            CONFIG_REPO,
-            path,
-            example_cohort_file(source).encode(),
-            f"docs: refresh {path} from the worked example course",
-        )
-        for path, source in CLASSROOM_SAMPLES.items()
-    ]
-    failures = results.count(False)
-    if failures:
-        log_err(f"{failures} classroom-config sample(s) not written in {org}")
-    else:
-        log_ok("classroom-config samples up to date")
-    return failures
+    All of them in ONE commit: they are regenerated from a single worked example, so an
+    update to that example moves the whole set at once.
+
+    Returns 1 if that commit didn't land, so seed.refresh can go red rather than report an
+    org it never converged."""
+    if not put_files(
+        org,
+        CONFIG_REPO,
+        {
+            path: example_cohort_file(source).encode()
+            for path, source in CLASSROOM_SAMPLES.items()
+        },
+        "docs: refresh classroom-config samples from the worked example course",
+    ):
+        log_err(f"classroom-config samples not written in {org}")
+        return 1
+    log_ok("classroom-config samples up to date")
+    return 0
 
 
 def _validate_schedule_workflow() -> str:
@@ -188,8 +163,8 @@ def _validate_schedule_workflow() -> str:
 
 # The SYSTEM-owned half of a cohort's classroom-config: the schema contract faculty read,
 # and the three workflows that make the repo act on what they put in it. `(path, content
-# reader, commit message)` - the content is read lazily, at call time, so importing this
-# module never touches the filesystem.
+# reader)` - the content is read lazily, at call time, so importing this module never
+# touches the filesystem.
 #
 # HARD INVARIANT: nothing the cohort edits may join this table. students.csv, teams.csv,
 # schedule.yml, people.yml and grades/ hold the cohort's LIVE state (enrol codes, onboarded
@@ -197,26 +172,16 @@ def _validate_schedule_workflow() -> str:
 # that way. Adding one here would have the nightly refresh overwrite it every night.
 # tests/test_bootstrap_seeding.py pins this set exactly, so an addition fails loud.
 CLASSROOM_SYSTEM_FILES = (
-    (
-        "README.md",
-        lambda: template("classroom-config/README.md"),
-        "docs: classroom-config schema + contract",
-    ),
+    ("README.md", lambda: template("classroom-config/README.md")),
     (
         ".github/workflows/dispatch-sync.yml",
         lambda: template("classroom-config/dispatch-sync.yml"),
-        "ci: seed dispatch-sync workflow",
     ),
     (
         ".github/workflows/dispatch-sync-site.yml",
         lambda: template("classroom-config/dispatch-sync-site.yml"),
-        "ci: seed dispatch-sync-site workflow",
     ),
-    (
-        ".github/workflows/validate-schedule.yml",
-        _validate_schedule_workflow,
-        "ci: seed validate-schedule workflow",
-    ),
+    (".github/workflows/validate-schedule.yml", _validate_schedule_workflow),
 )
 
 
@@ -227,18 +192,18 @@ def refresh_classroom_system_files(org: str) -> int:
     the schema contract reaches running cohorts. It used to run only inside "Bootstrap
     cohort", which meant a template fix landed on a live cohort only if someone thought to
     press that button again - three live cohorts drifted a whole semester that way.
-    `put_file` compares blob shas, so a cohort already current is written nothing.
+    `put_files` compares blob shas, so a cohort already current is written nothing.
 
     A failed write here is not cosmetic: without dispatch-sync*.yml a cohort's membership
-    and site syncs never fire. Returns the number of writes that failed, so callers
+    and site syncs never fire. Returns 1 if the commit didn't land, so callers
     (setup_cohort_extras, seed.refresh) go red rather than report a converged cohort."""
-    results = [
-        put_file(org, CONFIG_REPO, path, content().encode(), message)
-        for path, content, message in CLASSROOM_SYSTEM_FILES
-    ]
-    failures = results.count(False)
-    if failures:
-        log_err(f"{failures} classroom-config system file(s) not written in {org}")
-    else:
-        log_ok("classroom-config ready (config preserved, dispatchers refreshed)")
-    return failures
+    if not put_files(
+        org,
+        CONFIG_REPO,
+        {path: content().encode() for path, content in CLASSROOM_SYSTEM_FILES},
+        "ci: refresh classroom-config contract + dispatchers",
+    ):
+        log_err(f"classroom-config system files not written in {org}")
+        return 1
+    log_ok("classroom-config ready (config preserved, dispatchers refreshed)")
+    return 0
