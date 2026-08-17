@@ -45,10 +45,18 @@ entry (a typo'd key, a missing date) is dropped so the rest of the term still pa
 recorded in `Schedule.dropped` for `load` to log, `--validate` to fail on, and Check cohort setup
 to count.
 
+Validation is offline by design - it parses the file it is given and nothing else, so its
+verdict depends on nothing but that file. `--check-sources` bolts an online, ADVISORY
+half onto it: whether the repos and paths the plan names exist in the course org yet. That
+answer changes week to week (a lecture nobody has written yet is normal in August and a
+fault in November), so it is reported alongside the verdict and never folded into it.
+
 Usage:
     python3 -m dsl_course.schedule --cohort-org hertie-dsl-demo-f2026
     python3 -m dsl_course.schedule --cohort-org hertie-dsl-demo-f2026 --validate
     python3 -m dsl_course.schedule --file classroom-config/schedule.yml --validate
+    python3 -m dsl_course.schedule --file schedule.yml --validate \\
+        --check-sources hertie-dsl-demo-course-e1234
 """
 
 from __future__ import annotations
@@ -58,13 +66,19 @@ import json
 import re
 import sys
 from dataclasses import asdict, dataclass, field
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
 
-from .utils import coerce_date, get_file_content, log_err
+from .utils import (
+    coerce_date,
+    get_default_branch,
+    get_file_content,
+    log_err,
+    repo_tree,
+)
 
 CONFIG_REPO = "classroom-config"
 SCHEDULE_PATH = "schedule.yml"
@@ -805,6 +819,132 @@ def load_file(path: str) -> tuple[Schedule | None, str | None]:
     return parse(meta), None
 
 
+def _repo_paths(course_org: str, repo: str) -> tuple[set[str], bool] | None:
+    """Every path in a course-org repo (files and directories), and whether the repo is
+    non-empty. None means the lookup itself failed - which must NOT be read as "missing",
+    since a rate limit would then report every source in the plan as a typo."""
+    try:
+        branch = get_default_branch(course_org, repo)
+        paths = set(repo_tree(course_org, repo, branch, "tree")) | set(
+            repo_tree(course_org, repo, branch, "blob")
+        )
+    except RuntimeError:
+        return None
+    return paths, bool(paths)
+
+
+# How close a missing source has to be to its fire time before it stops being "not
+# written yet" and starts being a fault. A term planned up front names paths nobody has
+# authored, which is why distance is what separates the normal state from the broken one.
+SOURCE_ERROR_WINDOW = timedelta(hours=48)
+SOURCE_WARN_WINDOW = timedelta(days=7)
+
+# Ordered least to most urgent, so `max` over a run's faults gives the run's verdict.
+SEVERITIES = ("advisory", "warning", "error")
+
+
+@dataclass
+class SourceFault:
+    """One source in the plan that is not in the course org, and when it is needed.
+
+    `fires` is what makes it actionable: the same missing folder is a note in August and a
+    failure the day before the lecture. None = nothing pins it to a moment (an undated
+    `tbc` entry, or an assignment handed out by hand), so it can never escalate."""
+
+    where: str  # the YAML path, e.g. "releases.lecture-2"
+    what: str  # what is missing, e.g. "`cm/lectures/02_b` does not exist yet"
+    fires: datetime | None
+
+    def severity(self, now: datetime) -> str:
+        """How loud this should be at `now` - see SOURCE_ERROR_WINDOW / SOURCE_WARN_WINDOW.
+
+        A fault whose moment has already PASSED stays an error: the copy did not ship, and
+        going quiet once the lecture is over is the one thing that must not happen."""
+        if self.fires is None:
+            return "advisory"
+        left = self.fires - now
+        if left <= SOURCE_ERROR_WINDOW:
+            return "error"
+        if left <= SOURCE_WARN_WINDOW:
+            return "warning"
+        return "advisory"
+
+    def line(self) -> str:
+        when = f" (due {self.fires:%Y-%m-%d %H:%M})" if self.fires else ""
+        return f"{self.where}{when}: {self.what}"
+
+
+def source_faults(sched: Schedule, course_org: str) -> list[SourceFault]:
+    """Every source the plan names that is not in the course org RIGHT NOW.
+
+    A deploy whose `course_source_repo` or `course_source_path` is absent ships nothing
+    when its moment comes, and an assignment whose `course_source_repo` is absent hands
+    out to nobody - both fail at fire time, which for a November lecture means finding out
+    in November. Checking the plan against the org catches it while there is still time to
+    write the thing.
+
+    Severity is NOT decided here: each fault carries the moment it is needed and callers
+    ask it (`SourceFault.severity`), so the commit-time validator and the hourly pre-flight
+    apply one ladder rather than two opinions.
+
+    One tree fetch per distinct source repo, not per deploy. A repo whose tree cannot be
+    READ is skipped entirely rather than reported as missing (see `_repo_paths`)."""
+    # (path, where, fires) per source repo, so each repo is fetched once however many
+    # deploys point into it.
+    wanted: dict[str, list[tuple[str, str, datetime | None]]] = {}
+    for release in sched.releases:
+        for d in release.deploy:
+            wanted.setdefault(d.course_source_repo, []).append(
+                (
+                    d.course_source_path,
+                    f"releases.{release.label}",
+                    d.deploy_datetime or release.when,
+                )
+            )
+    for slug, a in sched.assignments.items():
+        # An assignment with no handout pin is handed out by hand, so nothing dates it.
+        wanted.setdefault(a.course_source_repo, []).append(
+            ("", f"assignments.{slug}", a.handout_datetime)
+        )
+
+    out: list[SourceFault] = []
+    for repo in sorted(wanted):
+        found = _repo_paths(course_org, repo)
+        if found is None:
+            continue  # could not read it - say nothing rather than cry wolf
+        paths, exists = found
+        if not exists:
+            out.extend(
+                SourceFault(
+                    where,
+                    f"no repo `{course_org}/{repo}` (or it is empty) - nothing to "
+                    f"release from",
+                    fires,
+                )
+                for _, where, fires in wanted[repo]
+            )
+            continue
+        for path, where, fires in wanted[repo]:
+            # "" is the assignment case: the repo IS the source, so its existence is all
+            # there is to check. `/` and `.` mean the whole repo, likewise.
+            clean = path.strip("/").strip()
+            if clean in ("", ".") or clean in paths:
+                continue
+            out.append(
+                SourceFault(
+                    where,
+                    f"`{repo}/{clean}` does not exist yet - this copy ships nothing",
+                    fires,
+                )
+            )
+    return out
+
+
+def worst_severity(faults: list[SourceFault], now: datetime) -> str | None:
+    """The loudest severity among `faults` at `now`, or None when there are none."""
+    return max((f.severity(now) for f in faults), key=SEVERITIES.index, default=None)
+
+
 def _validate_report(sched: Schedule, source: str) -> str:
     """What the parser UNDERSTOOD, followed by anything it threw away.
 
@@ -1015,6 +1155,13 @@ def main() -> int:
         help="exit non-zero if the file is unparseable or any entry was dropped, "
         "instead of dumping the schedule",
     )
+    parser.add_argument(
+        "--check-sources",
+        metavar="COURSE_ORG",
+        help="additionally report sources the plan names that do not exist in this "
+        "course org yet. Advisory: it never changes the exit code, because a session "
+        "nobody has written yet is the normal state of a term planned up front",
+    )
     args = parser.parse_args()
 
     if args.file:
@@ -1041,8 +1188,39 @@ def main() -> int:
     # Report what was UNDERSTOOD as well as what was dropped: validation cannot catch a
     # well-formed entry with the wrong date, but a count that is one short is visible.
     print(_validate_report(sched, source_name))
+    # The source check is a separate question from the parse. `--validate` on its own
+    # stays a pure offline read of the file it was given - deterministic, green or red for
+    # reasons entirely inside that file. This half asks the org whether the plan's sources
+    # exist, an answer that legitimately changes week to week, so it is reported apart and
+    # only escalates on its own ladder (SourceFault.severity).
+    overdue = False
+    if args.check_sources:
+        faults = source_faults(sched, args.check_sources)
+        now = datetime.now(_tz(sched.timezone))
+        print()
+        if faults:
+            print(f"  {len(faults)} SOURCE(S) NOT IN {args.check_sources} YET:")
+            for f in sorted(faults, key=lambda f: SEVERITIES.index(f.severity(now))):
+                sev = f.severity(now)
+                # The prefix is what the run's annotation step greps on: `!!` becomes an
+                # ::error:: and fails the run, `!` a ::warning:: on a green one. A dropped
+                # entry uses `-`, so the three never get conflated.
+                print(f"    {'!!' if sev == 'error' else '!'} [{sev}] {f.line()}")
+            overdue = worst_severity(faults, now) == "error"
+            print(
+                f"\n  A source you have not written yet looks exactly like this, so this "
+                f"is only\n  a fault once its moment is close: advisory until "
+                f"{SOURCE_WARN_WINDOW.days} days out, then a warning,\n  then an ERROR "
+                f"inside {int(SOURCE_ERROR_WINDOW.total_seconds() // 3600)}h - at which "
+                f"point it is about to ship nothing."
+            )
+        else:
+            print(f"  every source in the plan exists in {args.check_sources}")
     if sched.dropped:
         print(f"\nINVALID: {len(sched.dropped)} entry/ies dropped")
+        return 1
+    if overdue:
+        print("\nINVALID: a source due imminently is not in the course org")
         return 1
     print("\nOK: nothing dropped")
     return 0
