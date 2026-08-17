@@ -35,7 +35,7 @@ import shutil
 import sys
 import tempfile
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from functools import cache
@@ -463,7 +463,7 @@ def _lecture_entry(
     when: date | datetime,
     sources: list[tuple[str, str, str]],
     kind: str = "lecture",
-    planned_dests: list[str] | None = None,
+    planned_dests: Iterable[str] = (),
 ) -> str:
     """One row of a teaching week: the lecture (`kind='lecture'`) or the lab
     (`kind='lab'`), which the theme renders as separate schedule lines out of the same
@@ -476,44 +476,53 @@ def _lecture_entry(
     fallback (rendered at 09:00) when the session isn't in the release plan.
 
     EMPTY `sources` is the not-yet-released row: the session is in the plan but its
-    materials have not shipped, so the row carries no links and says so, naming the
-    `planned_dests` (`repo/path`) the copy is going to land in. The whole term is on the
-    schedule from the day it is written, exactly as an assignment's row appears from the
-    day its template repo exists rather than the day it hands out."""
+    materials have not shipped, so the row carries no links, flags itself `unreleased:
+    true` for the theme, and names the `planned_dests` (`repo/path`) the copy is going to
+    land in. The whole term is on the schedule from the day it is written, exactly as an
+    assignment's row appears from the day its template repo exists rather than the day it
+    hands out.
+
+    Only `tldr`, the links and the body differ between the two - the front matter is one
+    template, so a field added to the row (the way the event rows grew `tbc:`) cannot land
+    on one kind of row and miss the other."""
     title = f"{_ROW_NOUN[kind]} {session}"
-    if not sources:
-        # dict.fromkeys, not set(): plan order is the order faculty wrote, and two
-        # deploys of one entry can name the same destination.
-        where = ", ".join(f"`{d}`" for d in dict.fromkeys(planned_dests or []))
-        return (
-            f"---\n"
-            f"type: {kind}\n"
-            f"date: {_iso_when(when)}\n"
-            f'title: "{title}"\n'
-            f'tldr: "Not released yet - {title.lower()} materials appear here on '
-            f'release."\n'
-            f"links: []\n"
-            f"---\n"
+    if sources:
+        flags = ""
+        tldr = f"Released materials for {title.lower()} (enrolled students only)."
+        links = _links_block(
+            [
+                (subpath or repo, _session_files(cohort_org, repo, subpath, folder))
+                for repo, subpath, folder in sources
+            ]
+        )
+        body = (
+            f"Materials for {title.lower()}. Open the links above (you must be an "
+            f"enrolled member of `{cohort_org}`)."
+        )
+    else:
+        # A flag as well as the prose: the theme can badge or grey an unreleased row off
+        # this (as it already does for `tbc:`/`dateless:`), and until it does the sentence
+        # below carries the meaning on its own. Without it a placeholder is
+        # indistinguishable from a released folder that happens to hold no files.
+        flags = "unreleased: true\n"
+        tldr = f"Not released yet - {title.lower()} materials appear here on release."
+        links = _links_block([])
+        where = ", ".join(f"`{d}`" for d in planned_dests)
+        body = (
             f"Materials for {title.lower()} are not released yet"
             + (f" - they appear in {where}" if where else "")
-            + f" once the teaching team releases them to `{cohort_org}`.\n"
+            + f" once the teaching team releases them to `{cohort_org}`."
         )
-    links_block = _links_block(
-        [
-            (subpath or repo, _session_files(cohort_org, repo, subpath, folder))
-            for repo, subpath, folder in sources
-        ]
-    )
     return (
         f"---\n"
         f"type: {kind}\n"
         f"date: {_iso_when(when)}\n"
         f'title: "{title}"\n'
-        f'tldr: "Released materials for {title.lower()} (enrolled students only)."\n'
-        f"{links_block}\n"
+        f'tldr: "{tldr}"\n'
+        f"{flags}"
+        f"{links}\n"
         f"---\n"
-        f"Materials for {title.lower()}. Open the links above (you must be an "
-        f"enrolled member of `{cohort_org}`).\n"
+        f"{body}\n"
     )
 
 
@@ -611,13 +620,20 @@ def _assignment_dates(
     return entry.due_datetime, entry.handout_datetime
 
 
+def _deploy_dest(deploy: schedule.Deploy) -> str:
+    """Where a deploy lands inside its destination repo - `cohort_dest_path` when it is
+    set, else the source path mirrored. Stated once: the ordinal and the section of a row
+    are both read off this, and deriving them from two separate copies of the rule is how
+    they come to disagree."""
+    return (deploy.cohort_dest_path or deploy.course_source_path).strip("/")
+
+
 def _deploy_section(deploy: schedule.Deploy) -> str:
     """The section a deploy lands in - the top-level directory of its destination path,
     or the destination repo itself when the path is a bare session folder (a release into
     a repo that IS one section). The same `subpath or repo` shape discovery reports for
     an already-released folder, so both sides classify a row the same way."""
-    dest = (deploy.cohort_dest_path or deploy.course_source_path).strip("/")
-    head, sep, _ = dest.partition("/")
+    head, sep, _ = _deploy_dest(deploy).partition("/")
     return head if sep else deploy.cohort_dest_repo
 
 
@@ -633,23 +649,25 @@ def _planned_sessions(
     discovery found). Keying on the row, not the week, is what lets Wednesday's lab carry
     its own time rather than inheriting Monday's lecture. Deploys may ship on their own
     `deploy_datetime` clocks; the site announces the class, not the copy. Earliest wins
-    when several releases touch the same row, and every destination is collected in plan
-    order so a placeholder row can name where its materials are going to appear."""
-    out: dict[tuple[str, str], tuple[datetime, list[str]]] = {}
+    when several releases touch the same row, and the destinations are collected in plan
+    order (deduped - two deploys of one entry can name the same one) so a placeholder row
+    can name where its materials are going to appear."""
+    out: dict[tuple[str, str], tuple[datetime, dict[str, None]]] = {}
     for release in sched.releases:
         if release.when is None:
             continue  # event_datetime: tbc - undated, can't place a session
         for d in release.deploy:
-            dest = (d.cohort_dest_path or d.course_source_path).strip("/")
+            dest = _deploy_dest(d)
             n = session_number(dest.rsplit("/", 1)[-1])
             if n is None:
                 continue
             key = (str(n), _row_kind(_deploy_section(d)))
-            when, dests = out.get(key, (release.when, []))
-            out[key] = (
-                min(when, release.when),
-                [*dests, f"{d.cohort_dest_repo}/{dest}"],
-            )
+            # dict-as-ordered-set, not a list: dedupe where the destinations are
+            # collected, so the consumer is a plain join and the returned value means
+            # what the docstring says it does.
+            when, dests = out.get(key, (release.when, {}))
+            dests[f"{d.cohort_dest_repo}/{dest}"] = None
+            out[key] = (min(when, release.when), dests)
     return out
 
 
@@ -1028,15 +1046,27 @@ def sync_site(course_org: str, cohort_org: str) -> int:
         # release by release. Discovery still leads: a folder released outside the plan
         # (the manual button, an off-plan extra) keeps its row whether or not it is here.
         planned = _planned_sessions(sched)
-        session_when = {key: when for key, (when, _) in planned.items()}
         rows = sorted(
             set(sources_by_row) | set(planned), key=lambda k: (int(k[0]), k[1])
         )
-        unreleased = sum(1 for r in rows if r not in sources_by_row)
+        # Every key of sources_by_row is in rows by construction, so this is arithmetic
+        # rather than a scan.
         log_step(
             f"Syncing {cohort_org}/{_site_repo(cohort_org)}: {len(rows)} session row(s) "
-            f"({unreleased} not released yet), {len(assignments)} assignment(s)"
+            f"({len(rows) - len(sources_by_row)} not released yet), "
+            f"{len(assignments)} assignment(s)"
         )
+
+        def session_row(s: str, kind: str) -> str:
+            """One row, from the plan where it has one and a synthesised weekly date where
+            it does not. Unpacked once: reaching into `planned` twice needed a `(None, [])`
+            sentinel whose first half existed only to be indexable."""
+            when, dests = planned.get(
+                (s, kind), (start + timedelta(days=int(s) * 7), ())
+            )
+            return _lecture_entry(
+                cohort_org, s, when, sources_by_row.get((s, kind), []), kind, dests
+            )
 
         config = {}
         if meta.get("course_name"):
@@ -1096,15 +1126,7 @@ def sync_site(course_org: str, cohort_org: str) -> int:
             # assignment slug), else a synthesised fortnightly cadence.
             collections={
                 "_lectures": {
-                    _row_file(s, kind): _lecture_entry(
-                        cohort_org,
-                        s,
-                        session_when.get((s, kind), start + timedelta(days=int(s) * 7)),
-                        sources_by_row.get((s, kind), []),
-                        kind,
-                        planned_dests=planned.get((s, kind), (None, []))[1],
-                    )
-                    for s, kind in rows
+                    _row_file(s, kind): session_row(s, kind) for s, kind in rows
                 },
                 "_assignments": {
                     f"{i + 1:02d}-{a}.md": _assignment_entry(

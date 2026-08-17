@@ -32,7 +32,7 @@ def _sched(releases: list[Release]) -> Schedule:
     return Schedule(releases=releases)
 
 
-def _session_dates(sched: Schedule) -> dict[tuple[str, str], datetime]:
+def _row_dates(sched: Schedule) -> dict[tuple[str, str], datetime]:
     """The dating half of `_planned_sessions` - which row happens when."""
     return {key: when for key, (when, _) in site._planned_sessions(sched).items()}
 
@@ -55,7 +55,7 @@ def test_session_dates_maps_folder_ordinal_and_section_to_release_when():
             ),
         ]
     )
-    sw = _session_dates(s)
+    sw = _row_dates(s)
     assert sw[("2", "lecture")] == datetime(2026, 9, 15, 14, 0, tzinfo=BERLIN)
     assert sw[("2", "lab")] == datetime(2026, 9, 15, 14, 0, tzinfo=BERLIN)
     # keyed off the cohort_dest_path ordinal; a bare dest folder takes its section from
@@ -80,7 +80,7 @@ def test_session_dates_date_a_lab_row_from_its_own_release():
             ),
         ]
     )
-    sw = _session_dates(s)
+    sw = _row_dates(s)
     assert sw[("3", "lecture")] == datetime(2026, 9, 15, 10, 0, tzinfo=BERLIN)
     assert sw[("3", "lab")] == datetime(2026, 9, 17, 14, 0, tzinfo=BERLIN)
 
@@ -101,9 +101,7 @@ def test_session_dates_earliest_release_wins_for_a_row():
         ]
     )
     # readings are lecture material, so both land on the same row - earliest wins
-    assert _session_dates(s)[("2", "lecture")] == datetime(
-        2026, 9, 10, 9, 0, tzinfo=BERLIN
-    )
+    assert _row_dates(s)[("2", "lecture")] == datetime(2026, 9, 10, 9, 0, tzinfo=BERLIN)
 
 
 def test_session_dates_ignores_non_ordinal_deploys():
@@ -120,28 +118,50 @@ def test_session_dates_ignores_non_ordinal_deploys():
             ),
         ]
     )
-    assert _session_dates(s) == {}  # not a numbered session folder
+    assert _row_dates(s) == {}  # not a numbered session folder
 
 
-def test_lecture_entry_shows_real_time_from_a_datetime():
+# A RELEASED row - non-empty sources, so these pin the released branch rather than the
+# placeholder one (they read `[]` before the placeholder branch existed, which silently
+# moved their subject).
+RELEASED = [("materials", "lectures", "02_week-2")]
+
+
+def test_lecture_entry_shows_real_time_from_a_datetime(monkeypatch):
+    monkeypatch.setattr(site, "_session_files", lambda *a: [])
     md = site._lecture_entry(
-        "Cohort", "2", datetime(2026, 9, 15, 14, 30, tzinfo=BERLIN), []
+        "Cohort", "2", datetime(2026, 9, 15, 14, 30, tzinfo=BERLIN), RELEASED
     )
     assert "date: 2026-09-15T14:30:00" in md
+    assert "not released yet" not in md
 
 
-def test_lecture_entry_falls_back_to_0900_for_a_bare_date():
-    md = site._lecture_entry("Cohort", "2", date(2026, 9, 15), [])
+def test_lecture_entry_falls_back_to_0900_for_a_bare_date(monkeypatch):
+    monkeypatch.setattr(site, "_session_files", lambda *a: [])
+    md = site._lecture_entry("Cohort", "2", date(2026, 9, 15), RELEASED)
     assert "date: 2026-09-15T09:00:00" in md
 
 
-def test_lecture_entry_renders_a_lab_row_as_its_own_type():
-    md = site._lecture_entry("Cohort", "3", date(2026, 9, 17), [], "lab")
+def test_lecture_entry_renders_a_lab_row_as_its_own_type(monkeypatch):
+    monkeypatch.setattr(site, "_session_files", lambda *a: [])
+    md = site._lecture_entry("Cohort", "3", date(2026, 9, 17), RELEASED, "lab")
     assert "type: lab" in md
     assert 'title: "Lab 3"' in md
     assert "Session 3" not in md
-    lec = site._lecture_entry("Cohort", "3", date(2026, 9, 15), [])
+    lec = site._lecture_entry("Cohort", "3", date(2026, 9, 15), RELEASED)
     assert "type: lecture" in lec and 'title: "Session 3"' in lec
+
+
+def test_only_the_unreleased_row_carries_the_theme_flag(monkeypatch):
+    # The prose says it, but a flag is what lets the theme badge or grey the row - and
+    # what tells a placeholder apart from a released folder that holds no files.
+    monkeypatch.setattr(site, "_session_files", lambda *a: [])
+    assert "unreleased: true" not in site._lecture_entry(
+        "Cohort", "2", date(2026, 9, 15), RELEASED
+    )
+    assert "unreleased: true" in site._lecture_entry(
+        "Cohort", "2", date(2026, 9, 15), []
+    )
 
 
 def test_session_dates_use_the_event_datetime_not_the_deploy_datetime():
@@ -163,7 +183,7 @@ def test_session_dates_use_the_event_datetime_not_the_deploy_datetime():
             )
         ]
     )
-    assert _session_dates(s)[("2", "lecture")] == datetime(
+    assert _row_dates(s)[("2", "lecture")] == datetime(
         2026, 9, 15, 10, 0, tzinfo=BERLIN
     )
 
