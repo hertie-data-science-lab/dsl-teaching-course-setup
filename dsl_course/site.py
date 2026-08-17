@@ -35,7 +35,7 @@ import shutil
 import sys
 import tempfile
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from functools import cache
@@ -463,6 +463,7 @@ def _lecture_entry(
     when: date | datetime,
     sources: list[tuple[str, str, str]],
     kind: str = "lecture",
+    planned_dests: Iterable[str] = (),
 ) -> str:
     """One row of a teaching week: the lecture (`kind='lecture'`) or the lab
     (`kind='lab'`), which the theme renders as separate schedule lines out of the same
@@ -472,24 +473,56 @@ def _lecture_entry(
     seed.discover_release_sources) to hold this exact session - callers pass only the
     sources known to match, so every call here is a real hit, not a probe. `when` is the
     release datetime from schedule.yml (its real time is shown) or a synthesised date
-    fallback (rendered at 09:00) when the session isn't in the release plan."""
-    links_block = _links_block(
-        [
-            (subpath or repo, _session_files(cohort_org, repo, subpath, folder))
-            for repo, subpath, folder in sources
-        ]
-    )
+    fallback (rendered at 09:00) when the session isn't in the release plan.
+
+    EMPTY `sources` is the not-yet-released row: the session is in the plan but its
+    materials have not shipped, so the row carries no links, flags itself `unreleased:
+    true` for the theme, and names the `planned_dests` (`repo/path`) the copy is going to
+    land in. The whole term is on the schedule from the day it is written, exactly as an
+    assignment's row appears from the day its template repo exists rather than the day it
+    hands out.
+
+    Only `tldr`, the links and the body differ between the two - the front matter is one
+    template, so a field added to the row (the way the event rows grew `tbc:`) cannot land
+    on one kind of row and miss the other."""
     title = f"{_ROW_NOUN[kind]} {session}"
+    if sources:
+        flags = ""
+        tldr = f"Released materials for {title.lower()} (enrolled students only)."
+        links = _links_block(
+            [
+                (subpath or repo, _session_files(cohort_org, repo, subpath, folder))
+                for repo, subpath, folder in sources
+            ]
+        )
+        body = (
+            f"Materials for {title.lower()}. Open the links above (you must be an "
+            f"enrolled member of `{cohort_org}`)."
+        )
+    else:
+        # A flag as well as the prose: the theme can badge or grey an unreleased row off
+        # this (as it already does for `tbc:`/`dateless:`), and until it does the sentence
+        # below carries the meaning on its own. Without it a placeholder is
+        # indistinguishable from a released folder that happens to hold no files.
+        flags = "unreleased: true\n"
+        tldr = f"Not released yet - {title.lower()} materials appear here on release."
+        links = _links_block([])
+        where = ", ".join(f"`{d}`" for d in planned_dests)
+        body = (
+            f"Materials for {title.lower()} are not released yet"
+            + (f" - they appear in {where}" if where else "")
+            + f" once the teaching team releases them to `{cohort_org}`."
+        )
     return (
         f"---\n"
         f"type: {kind}\n"
         f"date: {_iso_when(when)}\n"
         f'title: "{title}"\n'
-        f'tldr: "Released materials for {title.lower()} (enrolled students only)."\n'
-        f"{links_block}\n"
+        f'tldr: "{tldr}"\n'
+        f"{flags}"
+        f"{links}\n"
         f"---\n"
-        f"Materials for {title.lower()}. Open the links above (you must be an "
-        f"enrolled member of `{cohort_org}`).\n"
+        f"{body}\n"
     )
 
 
@@ -587,40 +620,54 @@ def _assignment_dates(
     return entry.due_datetime, entry.handout_datetime
 
 
+def _deploy_dest(deploy: schedule.Deploy) -> str:
+    """Where a deploy lands inside its destination repo - `cohort_dest_path` when it is
+    set, else the source path mirrored. Stated once: the ordinal and the section of a row
+    are both read off this, and deriving them from two separate copies of the rule is how
+    they come to disagree."""
+    return (deploy.cohort_dest_path or deploy.course_source_path).strip("/")
+
+
 def _deploy_section(deploy: schedule.Deploy) -> str:
     """The section a deploy lands in - the top-level directory of its destination path,
     or the destination repo itself when the path is a bare session folder (a release into
     a repo that IS one section). The same `subpath or repo` shape discovery reports for
     an already-released folder, so both sides classify a row the same way."""
-    dest = (deploy.cohort_dest_path or deploy.course_source_path).strip("/")
-    head, sep, _ = dest.partition("/")
+    head, sep, _ = _deploy_dest(deploy).partition("/")
     return head if sep else deploy.cohort_dest_repo
 
 
-def _session_dates(sched: schedule.Schedule) -> dict[tuple[str, str], datetime]:
-    """Map a session row - (ordinal, 'lecture'|'lab') - to when that session HAPPENS: the
-    entry's `event_datetime` from schedule.yml's `releases`, keyed by the ordinal and
-    section of each deploy's destination folder (so the site can date a released row from
-    the plan that released it). Keying on the row, not the week, is what lets Wednesday's
-    lab carry its own time rather than inheriting Monday's lecture. Deploys may ship on
-    their own `deploy_datetime` clocks; the site announces the class, not the copy.
-    Earliest wins when several releases touch the same row."""
-    out: dict[tuple[str, str], datetime] = {}
+def _planned_sessions(
+    sched: schedule.Schedule,
+) -> dict[tuple[str, str], tuple[datetime, list[str]]]:
+    """Every session row the PLAN declares - (ordinal, 'lecture'|'lab') -> (when that
+    session happens, the cohort-side destinations its deploys will land in).
+
+    Keyed by the ordinal and section of each deploy's destination folder, so the site can
+    both date a released row from the plan that released it AND raise a row for a session
+    whose materials have not shipped yet (`sync_site` unions these keys with what
+    discovery found). Keying on the row, not the week, is what lets Wednesday's lab carry
+    its own time rather than inheriting Monday's lecture. Deploys may ship on their own
+    `deploy_datetime` clocks; the site announces the class, not the copy. Earliest wins
+    when several releases touch the same row, and the destinations are collected in plan
+    order (deduped - two deploys of one entry can name the same one) so a placeholder row
+    can name where its materials are going to appear."""
+    out: dict[tuple[str, str], tuple[datetime, dict[str, None]]] = {}
     for release in sched.releases:
         if release.when is None:
             continue  # event_datetime: tbc - undated, can't place a session
         for d in release.deploy:
-            folder = (
-                (d.cohort_dest_path or d.course_source_path)
-                .rstrip("/")
-                .rsplit("/", 1)[-1]
-            )
-            n = session_number(folder)
+            dest = _deploy_dest(d)
+            n = session_number(dest.rsplit("/", 1)[-1])
             if n is None:
                 continue
             key = (str(n), _row_kind(_deploy_section(d)))
-            if key not in out or release.when < out[key]:
-                out[key] = release.when
+            # dict-as-ordered-set, not a list: dedupe where the destinations are
+            # collected, so the consumer is a plain join and the returned value means
+            # what the docstring says it does.
+            when, dests = out.get(key, (release.when, {}))
+            dests[f"{d.cohort_dest_repo}/{dest}"] = None
+            out[key] = (min(when, release.when), dests)
     return out
 
 
@@ -960,9 +1007,10 @@ def _sync_site_repo(
 
 
 def sync_site(course_org: str, cohort_org: str) -> int:
-    """Regenerate the cohort's student-facing site from the live org state: released
-    lecture and lab rows (linked into the private content repos), this year's assignments,
-    and the display-only rows of the schedule (exams, special events, term dates)."""
+    """Regenerate the cohort's student-facing site from the live org state: the term's
+    lecture and lab rows (released ones linked into the private content repos, planned
+    ones marked not-yet-released), this year's assignments, and the display-only rows of
+    the schedule (exams, special events, term dates)."""
 
     def build(_wd: Path) -> _SitePlan:
         content_repos = seed.discover_cohort_repos([cohort_org])
@@ -974,17 +1022,12 @@ def sync_site(course_org: str, cohort_org: str) -> int:
         for repo, subpath, folder, n in release_sources:
             key = (str(n), _row_kind(subpath or repo))
             sources_by_row.setdefault(key, []).append((repo, subpath, folder))
-        rows = sorted(sources_by_row, key=lambda k: (int(k[0]), k[1]))
         assignments = seed.discover_assignments(course_org)
         # A persistent course org holds per-year templates (assignment-*-fYYYY); a cohort
         # site should list only its own year's, matched on the cohort's fYYYY/sYYYY tag.
         tag = _cohort_tag(cohort_org)
         if tag:
             assignments = [a for a in assignments if a.lower().endswith(tag)]
-        log_step(
-            f"Syncing {cohort_org}/{_site_repo(cohort_org)}: {len(rows)} released "
-            f"session row(s), {len(assignments)} assignment(s)"
-        )
 
         # Course identity comes from the course org metadata, semester from the cohort tag.
         meta = _yaml_file(course_org, ".github", "dsl-course.yml")
@@ -996,9 +1039,34 @@ def sync_site(course_org: str, cohort_org: str) -> int:
         # Every datetime on `sched` is already the cohort's wall clock (the parser converts
         # a written offset into the cohort timezone), so the renderers below just print it.
         start = sched.semester_start or _semester_start(cohort_org)
-        # Real per-row release datetimes from schedule.yml's releases; a row not in the
-        # plan falls back to a synthesised weekly date below.
-        session_when = _session_dates(sched)
+        # Every session row the plan declares, dated and with its destinations. A row that
+        # discovery already found takes its date from here (else a synthesised weekly date
+        # below); a planned row discovery has NOT found yet becomes a not-yet-released row,
+        # so the whole term is on the schedule the day it is written rather than filling in
+        # release by release. Discovery still leads: a folder released outside the plan
+        # (the manual button, an off-plan extra) keeps its row whether or not it is here.
+        planned = _planned_sessions(sched)
+        rows = sorted(
+            set(sources_by_row) | set(planned), key=lambda k: (int(k[0]), k[1])
+        )
+        # Every key of sources_by_row is in rows by construction, so this is arithmetic
+        # rather than a scan.
+        log_step(
+            f"Syncing {cohort_org}/{_site_repo(cohort_org)}: {len(rows)} session row(s) "
+            f"({len(rows) - len(sources_by_row)} not released yet), "
+            f"{len(assignments)} assignment(s)"
+        )
+
+        def session_row(s: str, kind: str) -> str:
+            """One row, from the plan where it has one and a synthesised weekly date where
+            it does not. Unpacked once: reaching into `planned` twice needed a `(None, [])`
+            sentinel whose first half existed only to be indexable."""
+            when, dests = planned.get(
+                (s, kind), (start + timedelta(days=int(s) * 7), ())
+            )
+            return _lecture_entry(
+                cohort_org, s, when, sources_by_row.get((s, kind), []), kind, dests
+            )
 
         config = {}
         if meta.get("course_name"):
@@ -1058,14 +1126,7 @@ def sync_site(course_org: str, cohort_org: str) -> int:
             # assignment slug), else a synthesised fortnightly cadence.
             collections={
                 "_lectures": {
-                    _row_file(s, kind): _lecture_entry(
-                        cohort_org,
-                        s,
-                        session_when.get((s, kind), start + timedelta(days=int(s) * 7)),
-                        sources_by_row[(s, kind)],
-                        kind,
-                    )
-                    for s, kind in rows
+                    _row_file(s, kind): session_row(s, kind) for s, kind in rows
                 },
                 "_assignments": {
                     f"{i + 1:02d}-{a}.md": _assignment_entry(
