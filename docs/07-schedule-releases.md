@@ -186,6 +186,8 @@ The one caveat: already-fired **one-shot** actions don't rewind - a release alre
 
 **It checks itself.** Every commit touching `schedule.yml` runs **Validate schedule** in `classroom-config`. A commit that parses clean gets a green tick; one the scheduler cannot fully read gets a **red X**, and an issue naming the bad entry is opened and assigned to you, closing itself when a later commit parses clean.
 
+> The run happens *after* the push, not before it: GitHub Actions cannot gate a commit, and branch protection needs a paid plan on a private repo. So the red X and the issue are how a fault reaches you, rather than the commit being refused.
+
 The run summary shows what the parser *understood*, not just what it rejected - counts one short of what you wrote is how you catch a mistake that is valid YAML:
 
 ```
@@ -199,6 +201,28 @@ Three other ways to check, none of them required:
 1. **Read the counts.** **Check cohort setup** reports the release plan and term dates, and flags `N entry/ies DROPPED`.
 2. **Validate by hand.** `python3 -m dsl_course.schedule --cohort-org hertie-dsl-demo-f2026 --validate`, or `--file schedule.yml --validate` against a local copy. Without `--validate` it prints the schedule *as parsed*, as JSON.
 3. **Dry-run the cron.** Run **Scheduled release** by hand; `dry_run` defaults to **`true`**, so it lists what *would* open and releases nothing.
+
+## Sources that do not exist yet
+
+A dropped entry is a fault in the *file*. The other way a term quietly fails is a perfectly valid entry pointing at a folder that isn't there - `lectures/04_lecture` when the repo has `lectures/04_week-4`. Nothing detects that until the deploy fires and ships nothing.
+
+So **Validate schedule** also checks every `course_source_repo` / `course_source_path` in the plan against the course org, and reports what is missing. Because a term written up front legitimately names folders nobody has authored yet, how loud that is depends on how close the deploy is:
+
+| Distance to the deploy | Severity | What you see |
+|---|---|---|
+| more than 7 days | advisory | a line in the run summary and a yellow annotation against `schedule.yml` in the commit. Run stays **green** |
+| 7 days or less | warning | the above, plus an issue - so it reaches your inbox rather than waiting to be found |
+| 48 hours or less, or already passed | **error** | **red X** and the issue escalated, exactly like a dropped entry |
+
+A source that cannot be *read* (a rate limit, a permissions blip) is never reported as missing - that would turn every entry in the plan into a phantom typo.
+
+By hand: add `--check-sources <course-org>` to either `--validate` form above.
+
+```
+  3 SOURCE(S) NOT IN hertie-dsl-demo-course-e1234 YET:
+    ! [advisory] releases.lecture_09 (due 2026-11-04 08:00): `course-materials-f2026/lectures/09_lecture` does not exist yet - this copy ships nothing
+    !! [error]   releases.lecture_02 (due 2026-08-19 08:00): `course-materials-f2026/lectures/02_lecture` does not exist yet - this copy ships nothing
+```
 
 ## Dropped entries
 

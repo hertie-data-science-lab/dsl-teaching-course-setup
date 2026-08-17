@@ -55,12 +55,34 @@ jobs:
           python-version: "3.12"
       - run: pip install -r central/requirements.txt
 
+      # The course org this cohort belongs to, read from its own dsl-course.yml (the same
+      # single source of truth dispatch-sync.yml reads - no org name baked in at bootstrap
+      # time). Only the source check needs it, and that check is advisory, so a failure to
+      # resolve it leaves this empty and the check is skipped rather than breaking the run.
+      - name: Resolve the course org
+        id: course
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
+          COHORT_ORG: ${{ github.repository_owner }}
+        run: |
+          course_org=$(gh api "repos/$COHORT_ORG/.github/contents/dsl-course.yml" \
+            --jq '.content | @base64d' | grep '^course:' | cut -d: -f2- | xargs) || true
+          echo "org=$course_org" >> "$GITHUB_OUTPUT"
+
       - name: Validate schedule.yml
         id: validate
         working-directory: central
+        env:
+          # Reading the COURSE org's (private) material repos is beyond the ambient token,
+          # which is scoped to this repo. Absent, --check-sources is simply not passed.
+          GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
+          COURSE_ORG: ${{ steps.course.outputs.org }}
         run: |
           set +e
-          python3 -m dsl_course.schedule --file ../cohort/schedule.yml --validate > report.txt 2>&1
+          check=""
+          [ -n "$COURSE_ORG" ] && check="--check-sources $COURSE_ORG"
+          python3 -m dsl_course.schedule --file ../cohort/schedule.yml --validate $check > report.txt 2>&1
           echo "rc=$?" >> "$GITHUB_OUTPUT"
           {
             echo "## schedule.yml"
@@ -80,6 +102,19 @@ jobs:
             echo "REPORT_EOF_ba31d7c94f68"
           } >> "$GITHUB_OUTPUT"
           exit 0
+
+      # A missing source is advisory, so the run stays green - and nobody opens a green
+      # run's summary. A ::warning:: annotation is the one channel that reaches a reader
+      # anyway: GitHub renders it against schedule.yml in the commit's own diff view and in
+      # the run's Annotations box, on a passing run. `!` is the report's source-line
+      # prefix; a dropped entry uses `-` and is raised as an ::error:: further down.
+      - name: Annotate sources that do not exist yet
+        if: always()
+        working-directory: central
+        run: |
+          sed -n 's/^    ! \(.*\)$/\1/p' report.txt | while IFS= read -r line; do
+            echo "::warning file=schedule.yml::$line"
+          done
 
       - name: Open an issue naming what was dropped
         if: steps.validate.outputs.rc != '0' && github.event_name == 'push'
