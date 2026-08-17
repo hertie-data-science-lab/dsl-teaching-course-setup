@@ -78,10 +78,14 @@ class FakeOrg:
         self.deletes.append((repo, path))
         return True
 
-    def put_files(self, org, repo, files, message, *, delete=()):
+    def put_files(self, org, repo, files, message, *, delete=(), create_only=False):
         """One commit, several files - recorded per file, so the assertions below stay
-        about WHICH paths a seed touches rather than how they were batched."""
+        about WHICH paths a seed touches rather than how they were batched. create_only is
+        honoured here because that is now put_files' job, not the caller's."""
         for path, content in files.items():
+            if create_only and (repo, path) in self.files:
+                self.skips.append(f"{repo}/{path}")
+                continue
             self.put_file(org, repo, path, content, message)
         for path in delete:
             self.delete_file(org, repo, path, message)
@@ -208,16 +212,15 @@ def test_the_scaffold_set_lands_as_one_commit_but_stays_create_only_per_file(
     # lines. What must NOT change is the per-file create-only rule: a repair re-run against
     # a live cohort has to write only what is genuinely missing, and leave the roster (enrol
     # codes, onboarded handles) untouched.
-    live = {"students.csv": "email,github_handle\na@x.edu,ahandle\n"}
-    commits = []
-    monkeypatch.setattr(
-        utils, "get_file_content", lambda org, repo, path: live.get(path)
-    )
+    live = {"students.csv": "live-roster-sha"}
     monkeypatch.setattr(utils, "log_skip", lambda msg: None)
+    monkeypatch.setattr(utils, "default_branch", lambda org, repo: "main")
+    monkeypatch.setattr(utils, "repo_blob_shas", lambda org, repo, branch: live)
+    committed = []
     monkeypatch.setattr(
         utils,
-        "put_files",
-        lambda org, repo, files, message: commits.append(files) or True,
+        "_commit_tree",
+        lambda org, repo, branch, tree, message: committed.append(tree) or True,
     )
 
     assert utils.seed_files_if_absent(
@@ -226,8 +229,8 @@ def test_the_scaffold_set_lands_as_one_commit_but_stays_create_only_per_file(
         {"students.csv": b"header only\n", "teams.csv": b"t\n", "people.yml": b"p\n"},
         "init: scaffolds",
     )
-    assert len(commits) == 1
-    assert set(commits[0]) == {"teams.csv", "people.yml"}, (
+    assert len(committed) == 1
+    assert {entry["path"] for entry in committed[0]} == {"teams.csv", "people.yml"}, (
         "a file already present must be left exactly as faculty left it"
     )
 
@@ -236,10 +239,13 @@ def test_seed_files_if_absent_commits_nothing_when_every_file_is_already_there(
     monkeypatch,
 ):
     # The whole set present is the ordinary repair-re-run case, and it must cost no commit.
-    monkeypatch.setattr(utils, "get_file_content", lambda org, repo, path: "live\n")
     monkeypatch.setattr(utils, "log_skip", lambda msg: None)
+    monkeypatch.setattr(utils, "default_branch", lambda org, repo: "main")
     monkeypatch.setattr(
-        utils, "put_files", lambda *a, **k: pytest.fail("wrote a no-op commit")
+        utils, "repo_blob_shas", lambda org, repo, branch: {"students.csv": "sha"}
+    )
+    monkeypatch.setattr(
+        utils, "_commit_tree", lambda *a, **k: pytest.fail("wrote a no-op commit")
     )
     assert utils.seed_files_if_absent(
         "Cohort-f2026", "classroom-config", {"students.csv": b"x\n"}, "init: scaffolds"

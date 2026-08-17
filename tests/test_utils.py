@@ -46,28 +46,6 @@ def test_discover_sections_missing_root_returns_empty(tmp_path):
     assert utils.discover_sections(tmp_path / "nope") == []
 
 
-def test_delete_file_treats_only_a_404_as_already_deleted(monkeypatch):
-    # A missing file is a no-op success, but any OTHER failure to read its SHA (no
-    # permission, rate limit, network) must not be reported as a successful delete -
-    # otherwise a retired generated file silently survives in the org.
-    monkeypatch.setattr(utils, "gh", lambda *a, **k: (1, "gh: Not Found (HTTP 404)"))
-    assert utils.delete_file("org", "repo", "x.yml", "retire x") is True
-    monkeypatch.setattr(utils, "gh", lambda *a, **k: (1, "gh: HTTP 403 - forbidden"))
-    assert utils.delete_file("org", "repo", "x.yml", "retire x") is False
-
-
-def test_delete_file_deletes_with_the_fetched_sha(monkeypatch):
-    calls = []
-
-    def fake_gh(*args, **kwargs):
-        calls.append(args)
-        return (0, "deadbeef") if len(calls) == 1 else (0, "")
-
-    monkeypatch.setattr(utils, "gh", fake_gh)
-    assert utils.delete_file("org", "repo", "x.yml", "retire x") is True
-    assert "sha=deadbeef" in calls[1]
-
-
 def _blob_sha(content: bytes) -> str:
     """What GitHub reports as a file's `.sha` - git's blob hash of its bytes."""
     import hashlib
@@ -107,21 +85,27 @@ def test_put_file_writes_with_the_fetched_sha_when_the_content_differs(monkeypat
 
 
 def test_put_files_commits_nothing_when_every_file_already_matches(monkeypatch):
-    # The whole point of batching: the nightly refresh re-pushes both Release buttons at
-    # every org, and an unchanged night must still cost zero commits. Same guarantee
-    # put_file gives per file, and it must survive the move to the git data API - which
-    # would otherwise happily commit an empty tree every single night.
+    # The whole point of batching: the nightly refresh re-pushes every generated file at
+    # every org, and an unchanged night must still cost zero commits - and now, one read.
+    # The guarantee has to survive the move to the git data API, which would otherwise
+    # happily commit an empty tree every single night.
     files = {"a.yml": b"one\n", "b.yml": b"two\n"}
-    shas = {path: _blob_sha(content) for path, content in files.items()}
     calls = []
 
     def fake_gh(*args, **kwargs):
         calls.append(args)
-        return 0, shas[args[1].rsplit("/", 1)[-1]]
+        if args[1] == "repos/org/repo":
+            return 0, "main\n"
+        return 0, "\n".join(
+            f"{path}\t{_blob_sha(content)}" for path, content in files.items()
+        )
 
     monkeypatch.setattr(utils, "gh", fake_gh)
     assert utils.put_files("org", "repo", files, "ci: refresh") is True
-    assert len(calls) == 2  # the two SHA reads, and nothing else
+    # The branch read and ONE recursive tree read - not one read per path, which is what
+    # made the old shape cost 19 calls a night per course org to discover nothing.
+    assert len(calls) == 2
+    assert "recursive=1" in calls[1][1]
 
 
 def test_put_files_lands_every_change_in_one_commit(monkeypatch):
@@ -133,10 +117,10 @@ def test_put_files_lands_every_change_in_one_commit(monkeypatch):
     def fake_gh(*args, **kwargs):
         calls.append((args, kwargs.get("stdin")))
         url = args[1]
-        if url.startswith("repos/org/repo/contents/"):
-            return 0, "stale-sha"  # every path exists, none matches
         if url == "repos/org/repo":
             return 0, "main\n"
+        if "git/trees/main" in url:  # every path exists, none matches
+            return 0, "a.yml\tstale\nb.yml\tstale\nold.yml\tstale"
         if url == "repos/org/repo/commits/main":
             return 0, "head-sha\tbase-tree-sha\n"
         return 0, "new-sha\n"
@@ -162,14 +146,42 @@ def test_put_files_lands_every_change_in_one_commit(monkeypatch):
     assert sum(1 for args, _ in calls if "PATCH" in args) == 1
 
 
-def test_put_files_refuses_to_commit_when_a_path_cannot_be_read(monkeypatch):
-    # An unreadable path is NOT an absent one. Treating a 403/rate-limit as "not there"
-    # would write the file back over whatever is actually live, or report a retired file
-    # as removed while it survives - so the whole commit is abandoned instead.
+def test_put_files_refuses_to_commit_when_the_tree_cannot_be_read(monkeypatch):
+    # An unreadable tree is NOT an empty one. Treating a 403/rate-limit as "nothing is
+    # there" would rewrite every file over whatever is actually live, and report retired
+    # files as removed while they survive - so the whole commit is abandoned instead.
     monkeypatch.setattr(
         utils, "gh", lambda *a, **k: (1, "gh: Bad credentials (HTTP 401)")
     )
     assert utils.put_files("org", "repo", {"a.yml": b"one\n"}, "ci: refresh") is False
+
+
+def test_put_files_seeds_a_repo_that_has_no_commits_yet(monkeypatch):
+    # create_repo does not auto-init, so the FIRST seed after it lands in a repo with no
+    # commit, no tree and no ref. The Contents API used to hide that by creating the
+    # initial commit itself; the git data API has to be told, or every fresh cohort's
+    # bootstrap fails at its first write.
+    calls = []
+
+    def fake_gh(*args, **kwargs):
+        calls.append((args, kwargs.get("stdin")))
+        url = args[1]
+        if url == "repos/org/repo":
+            return 0, "main\n"
+        if "git/trees/main" in url or url == "repos/org/repo/commits/main":
+            return 1, "gh: Git Repository is empty. (HTTP 409)"
+        return 0, "new-sha\n"
+
+    monkeypatch.setattr(utils, "gh", fake_gh)
+    assert utils.put_files("org", "repo", {"a.yml": b"one\n"}, "init: seed") is True
+    posted = [json.loads(stdin) for args, stdin in calls if stdin]
+    assert "base_tree" not in posted[0], "an empty repo has no base tree to build on"
+    assert posted[1]["parents"] == [], "the first commit has no parent"
+    # The ref is CREATED, not moved - there is no refs/heads/main to PATCH yet.
+    assert any(
+        "POST" in args and any(a.endswith("/git/refs") for a in args)
+        for args, _ in calls
+    )
 
 
 def test_put_files_still_commits_when_only_the_deletion_is_outstanding(monkeypatch):
@@ -181,12 +193,10 @@ def test_put_files_still_commits_when_only_the_deletion_is_outstanding(monkeypat
     def fake_gh(*args, **kwargs):
         calls.append((args, kwargs.get("stdin")))
         url = args[1]
-        if url == "repos/org/repo/contents/a.yml":
-            return 0, _blob_sha(content)
-        if url == "repos/org/repo/contents/old.yml":
-            return 0, "still-here-sha"
         if url == "repos/org/repo":
             return 0, "main\n"
+        if "git/trees/main" in url:
+            return 0, f"a.yml\t{_blob_sha(content)}\nold.yml\tstill-here"
         if url == "repos/org/repo/commits/main":
             return 0, "head-sha\tbase-tree-sha\n"
         return 0, "new-sha\n"
@@ -203,14 +213,16 @@ def test_put_files_still_commits_when_only_the_deletion_is_outstanding(monkeypat
 
 
 def test_put_files_skips_a_deletion_of_a_file_that_is_already_gone(monkeypatch):
-    # delete= is called unconditionally every refresh, long after the retired file went.
-    # A 404 there means the job is done, not that a commit is owed.
+    # delete= is passed unconditionally on every refresh, long after the retired file went.
+    # Absent from the tree means the job is done, not that a commit is owed.
     content = b"one\n"
 
     def fake_gh(*args, **kwargs):
-        if args[1] == "repos/org/repo/contents/a.yml":
-            return 0, _blob_sha(content)
-        return 1, "gh: Not Found (HTTP 404)"
+        if args[1] == "repos/org/repo":
+            return 0, "main\n"
+        if "git/trees/main" in args[1]:
+            return 0, f"a.yml\t{_blob_sha(content)}"
+        raise AssertionError("nothing to do - no commit legs should run")
 
     monkeypatch.setattr(utils, "gh", fake_gh)
     assert (

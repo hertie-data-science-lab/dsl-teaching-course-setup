@@ -551,7 +551,7 @@ def setup_cohort_extras(org: str) -> int:
                 path: template(rel)
                 .format(tag=tag, year=year, year_next=year + 1)
                 .encode()
-                for path, (rel, _) in CLASSROOM_SCAFFOLDS.items()
+                for path, rel in CLASSROOM_SCAFFOLDS.items()
             }
             | {"grades/.gitkeep": b""},
             "init: classroom-config scaffolds (roster, teams, schedule, people, grades)",

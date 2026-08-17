@@ -30,22 +30,10 @@ EXAMPLE_COHORT = ROOT / "example-course" / "cohort-org"
 # The SCAFFOLD half - the file faculty fill in. `{tag}`/`{year}`/`{year_next}` are
 # rendered for this cohort, so every example in a scaffold is copy-paste-correct.
 CLASSROOM_SCAFFOLDS = {
-    "students.csv": (
-        "classroom-config/students.csv",
-        "init: starter roster (fill with registrar data - see students.csv.sample)",
-    ),
-    "teams.csv": (
-        "classroom-config/teams.csv",
-        "init: starter teams table (the welcome Join-team issue appends to it)",
-    ),
-    "schedule.yml": (
-        "classroom-config/schedule.yml",
-        "docs: seed schedule.yml (release plan + due dates + exams)",
-    ),
-    "people.yml": (
-        "classroom-config/people.yml",
-        "docs: seed people.yml (this cohort's instructors/TAs)",
-    ),
+    "students.csv": "classroom-config/students.csv",
+    "teams.csv": "classroom-config/teams.csv",
+    "schedule.yml": "classroom-config/schedule.yml",
+    "people.yml": "classroom-config/people.yml",
 }
 
 # The SAMPLE half - DERIVED, not enumerated: every regular file in the worked example

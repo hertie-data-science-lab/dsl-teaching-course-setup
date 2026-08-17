@@ -30,6 +30,17 @@ class FakeRepo:
         self.writes.append((repo, path))
         return True
 
+    def put_files(self, org, repo, files, message, *, delete=(), create_only=False):
+        """One commit, several files - recorded per file, so the assertions stay about
+        WHICH paths a scaffold touches rather than how they were batched. create_only is
+        honoured here because that is now put_files' job, not the caller's."""
+        for path, content in files.items():
+            if create_only and (repo, path) in self.files:
+                self.skips.append(f"{repo}/{path}")
+                continue
+            self.put_file(org, repo, path, content, message)
+        return True
+
     def written(self, repo):
         return {path for r, path in self.writes if r == repo}
 
@@ -37,11 +48,13 @@ class FakeRepo:
 @pytest.fixture
 def fake(monkeypatch):
     f = FakeRepo()
-    # USER-owned scaffolds go through utils.seed_if_absent (create-if-absent), which resolves
-    # get_file_content / put_file / log_skip in the utils namespace; SYSTEM-owned MAINTAINING.md
-    # is written by scaffold.put_file directly. Fake both layers to the same recorder.
+    # USER-owned scaffolds go through utils.seed_if_absent / seed_files_if_absent
+    # (create-if-absent), which resolve get_file_content / put_file / put_files / log_skip in
+    # the utils namespace; SYSTEM-owned MAINTAINING.md is written by scaffold.put_file
+    # directly. Fake every layer to the same recorder.
     monkeypatch.setattr(utils, "get_file_content", f.get_file_content)
     monkeypatch.setattr(utils, "put_file", f.put_file)
+    monkeypatch.setattr(utils, "put_files", f.put_files)
     monkeypatch.setattr(scaffold, "put_file", f.put_file)
     monkeypatch.setattr(utils, "log_skip", lambda msg: f.skips.append(msg))
     monkeypatch.setattr(scaffold, "log_skip", lambda msg: f.skips.append(msg))
@@ -121,10 +134,10 @@ def test_materials_repo_reports_non_zero_when_release_buttons_do_not_seed(
 
 
 def test_materials_repo_reds_when_a_user_file_seed_fails(fake, monkeypatch):
-    # A USER-owned skeleton file that is absent and whose write FAILS must red the scaffold:
-    # seed_if_absent now returns False only on a real write failure, and that count folds
-    # into the exit code (a mere skip of a present file is a success, not a failure).
-    monkeypatch.setattr(utils, "put_file", lambda *a, **k: False)  # USER seeds fail
+    # A USER-owned skeleton whose write FAILS must red the scaffold: the seed returns False
+    # only on a real write failure, and that folds into the exit code (a mere skip of a
+    # present file is a success, not a failure).
+    monkeypatch.setattr(utils, "put_files", lambda *a, **k: False)  # USER seeds fail
     monkeypatch.setattr(scaffold, "put_file", lambda *a, **k: True)  # MAINTAINING ok
     assert scaffold.scaffold_materials("Org", "f2026") == 1
 
