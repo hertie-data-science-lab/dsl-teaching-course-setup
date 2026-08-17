@@ -6,7 +6,6 @@ A course lives once in a persistent **course** org and is delivered each year in
 
 ## Start here
 
-
 | You are | Go to |
 |---------|-------|
 | Setting up a brand-new course | [workflow runbooks](docs/README.md) - [01](docs/01-new-course-org.md)-[03](docs/03-add-assignment-to-course.md) |
