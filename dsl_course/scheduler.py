@@ -40,7 +40,7 @@ import argparse
 import sys
 from datetime import datetime, timezone
 
-from . import schedule
+from . import schedule, source_digest
 from .schedule import Deploy, Release
 from .utils import log, log_err, log_ok, log_step
 
@@ -322,6 +322,46 @@ def _handout_releases(
     return out
 
 
+def _preflight_sources(
+    course_org: str,
+    cohort_org: str,
+    sched: schedule.Schedule,
+    now: datetime,
+    dry_run: bool,
+) -> int:
+    """Check the plan's sources against the course org and keep the cohort's digest issue
+    in step. Returns the error count.
+
+    Exactly one thing here fails the run: a source at the ERROR rung, which is a deploy
+    about to ship nothing. Everything else - a check that could not run, a digest that
+    could not be written - is logged and swallowed. The distinction is the point: a
+    RELEASE problem is worth a red X on the cron, a NOTIFICATION problem is not worth
+    stopping a release for."""
+    try:
+        faults = schedule.source_faults(sched, course_org)
+    except Exception as exc:
+        log_err(f"could not check {cohort_org}'s sources ({type(exc).__name__}): {exc}")
+        return 0
+    worst = schedule.worst_severity(faults, now)
+    if faults:
+        log_step(
+            f"{len(faults)} source(s) in {cohort_org}'s plan not staged in "
+            f"{course_org} (worst: {worst})"
+        )
+    try:
+        source_digest.sync(cohort_org, course_org, faults, now, dry_run=dry_run)
+    except Exception as exc:
+        log_err(f"could not update {cohort_org}'s source digest: {exc}")
+    if worst == schedule.Severity.ERROR:
+        log_err(
+            f"{cohort_org}: a source due within "
+            f"{int(schedule.SOURCE_ERROR_WINDOW.total_seconds() // 3600)}h is not staged "
+            f"in {course_org} - that deploy will ship nothing"
+        )
+        return 1
+    return 0
+
+
 def run(course_org: str, cohort_org: str, now: datetime, dry_run: bool = False) -> int:
     sched = schedule.load(cohort_org)
     # Re-sorted, not just concatenated: the synthesised handouts carry their own datetimes
@@ -341,6 +381,13 @@ def run(course_org: str, cohort_org: str, now: datetime, dry_run: bool = False) 
     # the release plan - a cohort can pin due dates without scheduling a single release.
     errors = _snapshot_passed_deadlines(course_org, cohort_org, sched, now, dry_run)
     errors += _autograde_passed_deadlines(course_org, cohort_org, sched, now, dry_run)
+    # Look AHEAD as well as at what is due: a deploy whose source was never staged fails
+    # at its moment, which is far too late to write the thing. This is the only unattended
+    # surface that notices - the commit-time validator only ever runs when someone edits
+    # schedule.yml, and a plan written in August and forgotten is exactly the case that
+    # needs catching. Never fatal to the run: an undelivered warning must not stop a
+    # release (see source_digest.sync).
+    errors += _preflight_sources(course_org, cohort_org, sched, now, dry_run)
 
     if dry_run:
         for release in due:

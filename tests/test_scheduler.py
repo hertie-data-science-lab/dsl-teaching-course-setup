@@ -8,17 +8,33 @@ hourly and has NO check-team gate - scheduled runs have no actor).
 from __future__ import annotations
 
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import pytest
 import yaml
 
 from dsl_course import collect, deploy, scheduler, seed
-from dsl_course.schedule import AssignmentEntry, Deploy, Release, Schedule
+from dsl_course.schedule import (
+    AssignmentEntry,
+    Deploy,
+    Release,
+    Schedule,
+    SourceFault,
+)
 
 BERLIN = ZoneInfo("Europe/Berlin")
 WHEN = datetime(2026, 9, 15, 14, 0, tzinfo=BERLIN)
+
+
+@pytest.fixture(autouse=True)
+def _no_source_preflight(monkeypatch):
+    """`run` also pre-flights the plan's sources against the course org, which is real gh
+    I/O. These tests are about the release/snapshot/autograde phases, so it is stubbed to
+    "everything is staged" by default; the pre-flight has its own tests below."""
+    monkeypatch.setattr(scheduler.schedule, "source_faults", lambda sched, org: [])
+    monkeypatch.setattr(scheduler.source_digest, "sync", lambda *a, **k: 0)
 
 
 def _r(label: str, when: datetime, **kw) -> Release:
@@ -1109,3 +1125,77 @@ def test_all_cohorts_loop_survives_one_cohorts_raised_failure(monkeypatch, capsy
     assert scheduler.main() == 1
     assert seen == ["Cohort-A", "Cohort-B"]
     assert "Cohort-A" in capsys.readouterr().err
+
+
+# ----------------------------------------------------- source pre-flight (unattended)
+
+
+def _preflight(monkeypatch, faults, now=WHEN, dry_run=False):
+    """Drive _preflight_sources with a fixed fault list, capturing the digest call."""
+    seen: dict = {}
+    monkeypatch.setattr(scheduler.schedule, "source_faults", lambda sched, org: faults)
+    monkeypatch.setattr(
+        scheduler.source_digest,
+        "sync",
+        lambda *a, **k: seen.update(args=a, kw=k) or 0,
+    )
+    rc = scheduler._preflight_sources(
+        "Course-Org", "Cohort-Org", Schedule(), now, dry_run
+    )
+    return rc, seen
+
+
+def test_preflight_fails_the_run_only_for_a_source_about_to_ship_nothing(monkeypatch):
+    # The whole ladder exists so this is the ONLY rung that goes red. A term written up
+    # front is all advisories, and red-Xing that trains everyone to ignore the cron.
+    imminent = SourceFault("releases.a", "gone", WHEN + timedelta(hours=2), "f")
+    distant = SourceFault("releases.b", "gone", WHEN + timedelta(days=40), "f")
+    assert _preflight(monkeypatch, [imminent])[0] == 1
+    assert _preflight(monkeypatch, [distant])[0] == 0
+    assert _preflight(monkeypatch, [])[0] == 0
+
+
+def test_preflight_reports_every_fault_however_distant(monkeypatch):
+    # Severity gates the RED X, not the digest: the issue body lists the lot, so the
+    # advisories are there as context the moment one of them escalates.
+    distant = SourceFault("releases.b", "gone", WHEN + timedelta(days=40), "f")
+    _, seen = _preflight(monkeypatch, [distant])
+    assert seen["args"][2] == [distant]
+
+
+def test_a_digest_that_cannot_be_written_never_stops_a_release(monkeypatch):
+    # This runs inside the hourly release cron. A notification problem is not worth
+    # failing a release run over - the release itself is the job.
+    monkeypatch.setattr(scheduler.schedule, "source_faults", lambda sched, org: [])
+
+    def boom(*a, **k):
+        raise RuntimeError("GitHub is having a day")
+
+    monkeypatch.setattr(scheduler.source_digest, "sync", boom)
+    assert (
+        scheduler._preflight_sources(
+            "Course-Org", "Cohort-Org", Schedule(), WHEN, False
+        )
+        == 0
+    )
+
+
+def test_a_source_check_that_cannot_run_is_not_read_as_everything_missing(monkeypatch):
+    # A rate limit must not be reported as 22 broken entries, and must not go red.
+    def boom(sched, org):
+        raise RuntimeError("API rate limit exceeded")
+
+    monkeypatch.setattr(scheduler.schedule, "source_faults", boom)
+    assert (
+        scheduler._preflight_sources(
+            "Course-Org", "Cohort-Org", Schedule(), WHEN, False
+        )
+        == 0
+    )
+
+
+def test_preflight_passes_dry_run_through(monkeypatch):
+    _, seen = _preflight(
+        monkeypatch, [SourceFault("releases.a", "gone", WHEN, "f")], dry_run=True
+    )
+    assert seen["kw"]["dry_run"] is True
