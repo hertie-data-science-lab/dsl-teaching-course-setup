@@ -16,8 +16,8 @@ Full model: [`../docs-admin-arch/architecture.md`](../docs-admin-arch/architectu
 
 ```mermaid
 flowchart TD
-  A["`**Admin**: add faculty to
-hertie-data-science-lab / faculty team
+  A["`**Admin**: add the person to
+hertie-data-science-lab / faculty or instructors team
 (grants provisioning only)`"] --> B
 
   subgraph COURSE["Course org (one-time)"]
