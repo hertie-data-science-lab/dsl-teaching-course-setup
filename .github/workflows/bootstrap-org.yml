@@ -35,17 +35,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Verify triggering user is in faculty or admin team
+      - name: Verify triggering user is in a provisioning team
         env:
           GH_TOKEN: ${{ secrets.DSL_BOT_TOKEN }}
           ACTOR: ${{ github.actor }}
         run: |
-          for team in faculty admin; do
+          for team in faculty instructors admin; do
             code=$(gh api "orgs/hertie-data-science-lab/teams/$team/memberships/$ACTOR" \
                      --jq '.state' 2>/dev/null || true)
             if [ "$code" = "active" ]; then exit 0; fi
           done
-          echo "::error::$ACTOR is not in the faculty or admin team - access denied"
+          echo "::error::$ACTOR is not in the faculty, instructors or admin team - access denied"
           exit 1
 
   bootstrap:

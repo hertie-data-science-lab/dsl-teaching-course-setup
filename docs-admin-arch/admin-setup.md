@@ -30,8 +30,9 @@ token must carry:
 
 Two **separate** populations - keep them distinct:
 
-- **Who may provision orgs** (the central **Bootstrap Course Org** button): the `faculty`/`admin`
-  teams in `hertie-data-science-lab` → **[central-admin.md](central-admin.md)**.
+- **Who may provision orgs** (the central **Bootstrap Course Org** button): the
+  `faculty`/`instructors`/`admin` teams in `hertie-data-science-lab` →
+  **[central-admin.md](central-admin.md)**.
 - **Who may run a specific course's buttons**: that course org's own `course-admin` team, or a
   cohort's `instructors-<tag>` team → **[access-reference.md](../docs/reference/access-reference.md)**.
 

@@ -10,7 +10,7 @@ This is setup once per course - it serves every future cohort. Per-semester setu
 
 ## Prerequisites
 
-- You are in the `faculty` (or `admin`) team of
+- You are in the `faculty`, `instructors` or `admin` team of
   [`hertie-data-science-lab`](https://github.com/orgs/hertie-data-science-lab/teams) - this gates
   the *Bootstrap Course Org* button.
 

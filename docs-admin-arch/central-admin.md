@@ -4,17 +4,28 @@ Who may provision course orgs, how to rotate the bot's token, and where to see w
 Per-course access: [access-reference.md](../docs/reference/access-reference.md). PAT scopes and the token model:
 [admin-setup.md](admin-setup.md).
 
-## Granting a new faculty member access
+## Granting a new instructor access
 
 There is no config file for this. **Someone already in `hertie-data-science-lab` adds the new
-person to its `faculty` (or `admin`) team via the GitHub Teams UI** - that is the only way in,
-and it gates every central button.
+person to one of its three provisioning teams via the GitHub Teams UI** - that is the only way
+in, and it gates every central button.
 
-- **Bootstrap Course Org** checks membership of those two teams. No membership, no org
+| Team | Who | Toolkit repo |
+|---|---|---|
+| `faculty` | core DSL faculty | write |
+| `instructors` | everyone else who teaches a DSL course | write |
+| `admin` | maintainers of the toolkit itself | admin |
+
+`faculty` and `instructors` are **access-identical**; the split records who someone is, not what
+they may do. Everyone teaching a course is an instructor, and all faculty teach - but not every
+instructor is core faculty, so a person belongs to exactly one of the two.
+
+- **Bootstrap Course Org** checks membership of all three teams. No membership, no org
   provisioning.
-- Already in place as one-time setup: the central `dsl-teaching-toolkit` repo grants
-  **`faculty` → write** and **`admin` → admin**, and its `main` is **branch-protected** (changes
-  go via PR).
+- **Write is what makes the button clickable** - GitHub only shows *Run workflow* to users with
+  write on the repo, and the `check-team` job is a second gate on top of that. Downgrading a
+  team to read would silently remove its Bootstrap access, not just its push rights.
+- The toolkit's `main` is **branch-protected** (changes go via PR).
 - This authority is DSL-wide and *creation-only*. It grants **no** access to any course's own
   buttons - those come from that course org's `course-admin` / `instructors-<tag>` teams
   ([access-reference.md](../docs/reference/access-reference.md)).

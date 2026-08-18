@@ -146,7 +146,7 @@ Two **separate** gates - do not conflate them.
 flowchart TD
   subgraph prov["1 · Provision orgs (DSL-wide)"]
     ct["`hertie-data-science-lab
-faculty / admin teams`"] -->|"write/admin on"| cr["central repo"] --> ba["run Bootstrap Course Org"]
+faculty / instructors / admin teams`"] -->|"write/admin on"| cr["central repo"] --> ba["run Bootstrap Course Org"]
   end
   subgraph run["2 · Run a course's buttons (per-course)"]
     ca["`course org people: → course-admin
@@ -161,7 +161,7 @@ faculty / admin teams`"] -->|"write/admin on"| cr["central repo"] --> ba["run Bo
   prov ~~~ run
 ```
 
-- **Provisioning** is a DSL-wide authority: the central `faculty`/`admin` teams, granted
+- **Provisioning** is a DSL-wide authority: the central `faculty`/`instructors`/`admin` teams, granted
   write/admin on the central repo, may run **Bootstrap Course Org**. Nothing else.
 - **Running a course's buttons** is **per-course**: `course_admins` (course-wide admin) and each
   cohort's own `instructors`/`teaching_assistants` (per-cohort push).
@@ -197,7 +197,7 @@ sequenceDiagram
   participant Org as new course org
   Note over F,Org: org created by hand + bot invited as Owner first
   F->>A: workflow_dispatch (org, org_name, course_code, admin?)
-  A->>A: check-team - faculty/admin in central org
+  A->>A: check-team - faculty/instructors/admin in central org
   A->>Bot: bootstrap_course --propagate-secret
   Bot->>Org: org settings (2FA) + role teams
   Bot->>Org: .github profile + seed the buttons + course_admins in dsl-course.yml

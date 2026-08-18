@@ -13,7 +13,7 @@ They are not the same gate and do not overlap.
 
 | | Who | Granted by | May do |
 |---|---|---|---|
-| **Provisioning** | DSL-wide | `faculty` / `admin` team in **`hertie-data-science-lab`** | run **Bootstrap Course Org** in the central repo. **Nothing else** - it grants no access inside any course. |
+| **Provisioning** | DSL-wide | `faculty` / `instructors` / `admin` team in **`hertie-data-science-lab`** | run **Bootstrap Course Org** in the central repo. **Nothing else** - it grants no access inside any course. |
 | **Running a course** | per course | that course org's `course-admin` or an `instructors-<tag>` team | every button in that course org's `.github` Actions tab |
 
 A DSL faculty member who has never been declared in a course's config cannot push to it or
@@ -86,17 +86,23 @@ tagged repos are picked up on the next Sync membership.
 
 Cohort-side, the same people get write on `classroom-config` and `welcome`.
 
-## The three `instructors` teams
+## The four `instructors` teams
 
-Three different teams share the word "instructors" - they are not interchangeable:
+Four different teams share the word "instructors" - they are not interchangeable. The first names
+a *population* (who teaches at DSL); the other three name a *role in one course*:
 
 | Team | Lives in | Declared by | Grants |
 | --- | --- | --- | --- |
+| `instructors` | **`hertie-data-science-lab`** | nothing - manual | write on the toolkit → run **Bootstrap Course Org**. No access inside any course. |
 | `instructors` | a **cohort** org | that cohort's `classroom-config/people.yml` | cohort-org membership for that year's instructors/TAs; reconciled |
 | `instructors-<tag>` | the **course** org | the same `people.yml` (tag = e.g. `f2026`) | push on `.github` + that tag's content repos, i.e. the buttons for that cohort; reconciled |
 | `instructors` | the **course** org (generic) | nothing - manual | a rare, permanent escape hatch |
 
-The generic course-org `instructors` team is the exception: a manual add sticks until manually
+The central one is the odd kind out: it is the only one that grants **provisioning** and the only
+one that reaches nothing inside a course. See
+[central-admin.md](../../docs-admin-arch/central-admin.md).
+
+The generic course-org `instructors` team is the other exception: a manual add sticks until manually
 removed, but it is **invisible to every config file and to Check cohort setup**. Use it sparingly and
 record who's on it elsewhere. Route FA (faculty assistant) and TA access through `people.yml`.
 
